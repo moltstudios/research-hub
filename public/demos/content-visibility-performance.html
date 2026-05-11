@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSS content-visibility: Rendering Performance Boost</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0a0a0f;--card:#12121a;--border:#1e1e2e;
+    --accent:#7c6aff;--accent2:#ff6a8a;--text:#e4e4ef;--muted:#8888a0;
+    --green:#34d399;--red:#f87171;--yellow:#fbbf24;
+  }
+  html{scroll-behavior:smooth}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.6;
+  }
+
+  /* Hero */
+  .hero{
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;text-align:center;padding:2rem;position:relative;
+    overflow:hidden;
+  }
+  .hero::before{
+    content:'';position:absolute;inset:0;
+    background:radial-gradient(ellipse at 50% 0%,rgba(124,106,255,.15) 0%,transparent 60%),
+               radial-gradient(ellipse at 80% 80%,rgba(255,106,138,.1) 0%,transparent 50%);
+  }
+  .hero h1{
+    font-size:clamp(2.5rem,6vw,4.5rem);font-weight:800;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    position:relative;margin-bottom:.5rem;
+  }
+  .hero .subtitle{font-size:clamp(1rem,2.5vw,1.4rem);color:var(--muted);max-width:600px;position:relative}
+  .hero .badge{
+    display:inline-block;margin-top:1.5rem;padding:.4rem 1rem;
+    background:rgba(124,106,255,.15);border:1px solid rgba(124,106,255,.3);
+    border-radius:999px;font-size:.85rem;color:var(--accent);position:relative;
+  }
+
+  /* Section */
+  .section{max-width:1100px;margin:0 auto;padding:4rem 2rem}
+  .section h2{
+    font-size:clamp(1.5rem,3vw,2.2rem);font-weight:700;margin-bottom:1rem;
+    color:#fff;
+  }
+  .section h2 .accent{color:var(--accent)}
+  .section p{color:var(--muted);margin-bottom:1.5rem;max-width:750px;font-size:1.05rem}
+
+  /* Code blocks */
+  .code-block{
+    background:#0d0d14;border:1px solid var(--border);border-radius:12px;
+    padding:1.5rem;margin:1.5rem 0;overflow-x:auto;font-size:.9rem;line-height:1.7;
+  }
+  .code-block code{font-family:'SF Mono',Consolas,monospace;color:#c9d1d9}
+  .code-block .prop{color:#79c0ff}
+  .code-block .val{color:#a5d6ff}
+  .code-block .comment{color:#6e7681;font-style:italic}
+  .code-block .tag{color:#7ee787}
+  .code-block .str{color:#a5d6ff}
+  .code-block .kw{color:#ff7b72}
+
+  /* Grid comparison */
+  .comparison{
+    display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin:2rem 0;
+  }
+  @media(max-width:700px){.comparison{grid-template-columns:1fr}}
+  .comp-card{
+    background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:2rem;text-align:center;
+  }
+  .comp-card h3{font-size:1.1rem;margin-bottom:.5rem;color:#fff}
+  .comp-card .big-num{
+    font-size:3.5rem;font-weight:800;margin:.5rem 0;
+  }
+  .comp-card .label{color:var(--muted);font-size:.9rem}
+  .comp-card .bar{
+    height:6px;border-radius:3px;margin-top:1rem;background:var(--border);overflow:hidden;
+  }
+  .comp-card .bar-fill{height:100%;border-radius:3px;transition:width 1.5s ease}
+  .slow .big-num{color:var(--red)}
+  .slow .bar-fill{background:var(--red);width:100%}
+  .fast .big-num{color:var(--green)}
+  .fast .bar-fill{background:var(--green);width:13%}
+
+  /* Live demo area */
+  .demo-area{
+    background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:2rem;margin:2rem 0;position:relative;overflow:hidden;
+  }
+  .demo-area h3{font-size:1.2rem;margin-bottom:1rem;color:#fff}
+
+  .perf-meter{
+    display:flex;align-items:center;gap:1rem;margin:1rem 0;padding:1rem;
+    background:rgba(0,0,0,.3);border-radius:10px;
+  }
+  .perf-meter .meter-label{font-size:.85rem;color:var(--muted);min-width:120px}
+  .perf-meter .meter-track{
+    flex:1;height:24px;background:var(--border);border-radius:12px;overflow:hidden;position:relative;
+  }
+  .perf-meter .meter-fill{
+    height:100%;border-radius:12px;transition:width 2s ease,background 2s ease;
+  }
+  .perf-meter .meter-val{font-weight:700;min-width:60px;text-align:right;font-size:.95rem}
+
+  /* Values showcase */
+  .values-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem;margin:2rem 0}
+  .value-card{
+    background:var(--card);border:1px solid var(--border);border-radius:14px;
+    padding:1.5rem;transition:border-color .3s,transform .3s;
+  }
+  .value-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+  .value-card .icon{font-size:1.8rem;margin-bottom:.5rem}
+  .value-card h4{font-size:1rem;color:#fff;margin-bottom:.5rem}
+  .value-card .code{font-family:monospace;color:var(--accent);font-size:.85rem;margin-bottom:.5rem}
+  .value-card p{font-size:.88rem;color:var(--muted)}
+
+  /* Timeline demo */
+  .timeline-demo{margin:2rem 0}
+  .timeline-demo .row{
+    display:flex;gap:1rem;margin:.5rem 0;align-items:stretch;
+  }
+  .timeline-demo .row-label{
+    min-width:140px;font-size:.85rem;color:var(--muted);display:flex;
+    align-items:center;padding:.5rem 0;
+  }
+  .timeline-demo .blocks{display:flex;gap:4px;flex:1}
+  .timeline-demo .block{
+    height:36px;border-radius:6px;display:flex;align-items:center;
+    justify-content:center;font-size:.7rem;font-weight:600;color:rgba(255,255,255,.9);
+    transition:width 1.5s ease;
+  }
+
+  /* Use cases */
+  .use-cases{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1rem;margin:2rem 0}
+  .use-case{
+    background:rgba(124,106,255,.05);border:1px solid rgba(124,106,255,.15);
+    border-radius:12px;padding:1.25rem;
+  }
+  .use-case h4{color:var(--accent);font-size:.95rem;margin-bottom:.3rem}
+  .use-case p{font-size:.85rem;color:var(--muted)}
+
+  /* Animating content-visibility demo */
+  .cv-demo{margin:2rem 0}
+  .cv-demo-item{
+    padding:1.25rem;margin:.5rem 0;border-radius:10px;
+    background:rgba(0,0,0,.3);border:1px solid var(--border);
+    transition:opacity .5s,transform .5s,content-visibility .5s;
+    cursor:pointer;
+  }
+  .cv-demo-item.cv-hidden{
+    content-visibility:hidden;
+    opacity:0;transform:translateX(-20px);
+    contain-intrinsic-size:0 60px;
+  }
+  .cv-demo-item.cv-visible{
+    content-visibility:visible;
+    opacity:1;transform:translateX(0);
+  }
+  .cv-demo-item h4{font-size:.95rem;color:#fff;margin-bottom:.25rem}
+  .cv-demo-item p{font-size:.82rem;color:var(--muted)}
+  .cv-controls{display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap}
+  .cv-btn{
+    padding:.5rem 1rem;border-radius:8px;border:1px solid var(--border);
+    background:var(--card);color:var(--text);cursor:pointer;font-size:.85rem;
+    transition:all .2s;
+  }
+  .cv-btn:hover,.cv-btn.active{
+    background:var(--accent);border-color:var(--accent);color:#fff;
+  }
+
+  /* Scrollable list demo */
+  .scroll-list-container{
+    height:400px;overflow-y:auto;border-radius:12px;
+    border:1px solid var(--border);position:relative;
+  }
+  .scroll-list-container::-webkit-scrollbar{width:6px}
+  .scroll-list-container::-webkit-scrollbar-track{background:var(--card)}
+  .scroll-list-container::-webkit-scrollbar-thumb{background:var(--accent);border-radius:3px}
+  .scroll-item{
+    padding:1rem 1.25rem;border-bottom:1px solid var(--border);
+    display:flex;gap:1rem;align-items:center;
+  }
+  .scroll-item .avatar{
+    width:40px;height:40px;border-radius:10px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    display:flex;align-items:center;justify-content:center;
+    font-weight:700;font-size:.9rem;color:#fff;flex-shrink:0;
+  }
+  .scroll-item .info h4{font-size:.9rem;color:#fff}
+  .scroll-item .info p{font-size:.8rem;color:var(--muted)}
+  .scroll-stats{
+    display:flex;gap:1rem;margin-top:1rem;flex-wrap:wrap;
+  }
+  .scroll-stat{
+    padding:.6rem 1rem;background:rgba(0,0,0,.3);border-radius:8px;
+    font-size:.82rem;
+  }
+  .scroll-stat .label{color:var(--muted)}
+  .scroll-stat .val{color:var(--green);font-weight:700}
+
+  /* Footer */
+  footer{text-align:center;padding:3rem 2rem;color:var(--muted);font-size:.85rem;border-top:1px solid var(--border)}
+</style>
+</head>
+<body>
+
+<!-- Hero -->
+<section class="hero">
+  <h1>content-visibility</h1>
+  <p class="subtitle">The CSS property that skips rendering off-screen content — 7x faster initial load with zero JavaScript</p>
+  <span class="badge">Baseline 2024 &bull; 94%+ browser support</span>
+</section>
+
+<!-- What it is -->
+<section class="section">
+  <h2>What is <span class="accent">content-visibility</span>?</h2>
+  <p>Tells the browser to skip layout, painting, and hit-testing for off-screen elements. The browser renders only what's visible, deferring the rest until it scrolls near the viewport. Result: dramatically faster initial page loads, especially on long content-heavy pages.</p>
+
+  <div class="comparison">
+    <div class="comp-card slow">
+      <h3>Without content-visibility</h3>
+      <div class="big-num">232ms</div>
+      <div class="label">Initial render (all sections processed)</div>
+      <div class="bar"><div class="bar-fill"></div></div>
+    </div>
+    <div class="comp-card fast">
+      <h3>With content-visibility: auto</h3>
+      <div class="big-num">30ms</div>
+      <div class="label">Initial render (only visible sections)</div>
+      <div class="bar"><div class="bar-fill"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- Values -->
+<section class="section">
+  <h2>The Three <span class="accent">Values</span></h2>
+  <div class="values-grid">
+    <div class="value-card">
+      <div class="icon">👁️</div>
+      <h4>visible (default)</h4>
+      <div class="code">content-visibility: visible;</div>
+      <p>No effect. Element renders normally as it always has. All layout, painting, and hit-testing happens.</p>
+    </div>
+    <div class="value-card">
+      <div class="icon">🙈</div>
+      <h4>hidden</h4>
+      <div class="code">content-visibility: hidden;</div>
+      <p>Skips rendering entirely. Similar to display:none but preserves rendering state — showing again is instant, no re-layout needed. Content remains in DOM.</p>
+    </div>
+    <div class="value-card">
+      <div class="icon">⚡</div>
+      <h4>auto (the magic)</h4>
+      <div class="code">content-visibility: auto;</div>
+      <p>Automatically skips rendering when off-screen, renders when near viewport. The browser handles everything. This is the money value.</p>
+    </div>
+  </div>
+</section>
+
+<!-- How it works timeline -->
+<section class="section">
+  <h2>How <span class="accent">auto</span> Works</h2>
+  <p>The browser automatically applies containment based on viewport proximity:</p>
+
+  <div class="timeline-demo">
+    <div class="row">
+      <div class="row-label">Off-screen section</div>
+      <div class="blocks">
+        <div class="block" style="width:15%;background:var(--green)">Size only</div>
+        <div class="block" style="width:85%;background:rgba(255,255,255,.05);color:var(--muted)">Skipped (no layout, no paint, no hit-test)</div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="row-label">Approaching viewport</div>
+      <div class="blocks">
+        <div class="block" style="width:100%;background:linear-gradient(90deg,var(--accent),var(--accent2))">Full render begins (just in time)</div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="row-label">On-screen</div>
+      <div class="blocks">
+        <div class="block" style="width:100%;background:var(--green)">Fully rendered, interactive</div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="row-label">Scrolled past</div>
+      <div class="blocks">
+        <div class="block" style="width:15%;background:var(--green)">Size only</div>
+        <div class="block" style="width:85%;background:rgba(255,255,255,.05);color:var(--muted)">Skipped again (retains rendered size)</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- contain-intrinsic-size -->
+<section class="section">
+  <h2>The Missing Piece: <span class="accent">contain-intrinsic-size</span></h2>
+  <p>When content-visibility skips rendering, the element has zero intrinsic size. This causes layout shift (jank) when content loads. contain-intrinsic-size provides an estimate so the browser reserves space.</p>
+
+  <div class="code-block">
+    <code>
+<span class="comment">/* Basic: fixed estimate */</span>
+<span class="tag">section</span> {
+  <span class="prop">content-visibility</span>: <span class="val">auto</span>;
+  <span class="prop">contain-intrinsic-size</span>: <span class="val">auto 500px</span>;
+}
+
+<span class="comment">/* How it works: */</span>
+<span class="comment">/* "auto" = remember last rendered size */</span>
+<span class="comment">/* "500px" = fallback estimate before first render */</span>
+
+<span class="comment">/* Best practice for heterogeneous sections */</span>
+<span class="tag">.story-card</span> {
+  <span class="prop">content-visibility</span>: <span class="val">auto</span>;
+  <span class="prop">contain-intrinsic-size</span>: <span class="val">auto 300px</span>;
+}
+
+<span class="comment">/* For fixed-height sections */</span>
+<span class="tag">.product-section</span> {
+  <span class="prop">content-visibility</span>: <span class="val">auto</span>;
+  <span class="prop">contain-intrinsic-size</span>: <span class="val">600px</span>;
+}
+    </code>
+  </div>
+</section>
+
+<!-- Interactive Demo: Auto on long list -->
+<section class="section">
+  <h2>Live Demo: <span class="accent">Long List Performance</span></h2>
+  <p>A list of 100 items. With content-visibility: auto, only visible items are rendered. Scroll the list and watch the render counter.</p>
+
+  <div class="cv-controls">
+    <button class="cv-btn active" onclick="toggleCV(true)">content-visibility: auto ON</button>
+    <button class="cv-btn" onclick="toggleCV(false)">content-visibility: auto OFF</button>
+  </div>
+
+  <div class="scroll-list-container" id="scrollContainer">
+    <!-- 100 items generated by JS -->
+  </div>
+
+  <div class="scroll-stats">
+    <div class="scroll-stat"><span class="label">Items rendered: </span><span class="val" id="renderedCount">~12</span></div>
+    <div class="scroll-stat"><span class="label">Total items: </span><span class="val">100</span></div>
+    <div class="scroll-stat"><span class="label">Render savings: </span><span class="val" id="savings">~88%</span></div>
+  </div>
+</section>
+
+<!-- Animating content-visibility -->
+<section class="section">
+  <h2>Animating <span class="accent">content-visibility</span> (2026)</h2>
+  <p>content-visibility can now be animated with CSS transitions. Combined with transition-behavior: allow-discrete, you get smooth show/hide without display:none hacks.</p>
+
+  <div class="cv-controls">
+    <button class="cv-btn" onclick="cvShowAll()">Show All</button>
+    <button class="cv-btn" onclick="cvHideAll()">Hide All</button>
+    <button class="cv-btn" onclick="cvToggle()">Toggle Staggered</button>
+  </div>
+
+  <div class="cv-demo" id="cvDemo">
+    <div class="cv-demo-item cv-visible" data-idx="0">
+      <h4>📦 Order Confirmed</h4>
+      <p>Your Arc Battery Pack is being prepared for shipment.</p>
+    </div>
+    <div class="cv-demo-item cv-visible" data-idx="1">
+      <h4>🚚 Shipping Update</h4>
+      <p>Package has left the warehouse. ETA: 2 business days.</p>
+    </div>
+    <div class="cv-demo-item cv-visible" data-idx="2">
+      <h4>✅ Delivered</h4>
+      <p>Your package was delivered. Enjoy your new battery pack!</p>
+    </div>
+    <div class="cv-demo-item cv-visible" data-idx="3">
+      <h4>⭐ Review Request</h4>
+      <p>How's your new battery pack? Leave a review and get 10% off next order.</p>
+    </div>
+  </div>
+
+  <div class="code-block">
+    <code>
+<span class="comment">/* Animate content-visibility with transitions */</span>
+<span class="tag">.notification</span> {
+  <span class="prop">content-visibility</span>: <span class="val">visible</span>;
+  <span class="prop">opacity</span>: <span class="val">1</span>;
+  <span class="prop">transform</span>: <span class="val">translateX(0)</span>;
+  <span class="prop">contain-intrinsic-size</span>: <span class="val">0 80px</span>;
+  <span class="prop">transition</span>: <span class="val">content-visibility .5s allow-discrete,
+                 opacity .5s, transform .5s</span>;
+}
+
+<span class="tag">.notification.hidden</span> {
+  <span class="prop">content-visibility</span>: <span class="val">hidden</span>;
+  <span class="prop">opacity</span>: <span class="val">0</span>;
+  <span class="prop">transform</span>: <span class="val">translateX(-20px)</span>;
+}
+
+<span class="comment">/* No @starting-style needed! content-visibility */</span>
+<span class="comment">/* keeps content in DOM, unlike display:none */</span>
+    </code>
+  </div>
+</section>
+
+<!-- Next.js pattern -->
+<section class="section">
+  <h2>Next.js <span class="accent">Implementation Pattern</span></h2>
+
+  <div class="code-block">
+    <code>
+<span class="comment">/* app/globals.css — Apply to all long sections */</span>
+<span class="tag">.content-section</span> {
+  <span class="prop">content-visibility</span>: <span class="val">auto</span>;
+  <span class="prop">contain-intrinsic-size</span>: <span class="val">auto 500px</span>;
+}
+
+<span class="comment">// components/ProductGrid.tsx</span>
+<span class="kw">export default function</span> <span class="tag">ProductGrid</span>({ products }) {
+  <span class="kw">return</span> (
+    &lt;<span class="tag">div</span> className=<span class="str">"grid grid-cols-3 gap-6"</span>&gt;
+      {products.map(product =&gt; (
+        &lt;<span class="tag">article</span>
+          key={product.id}
+          className=<span class="str">"content-section"</span>
+        &gt;
+          &lt;<span class="tag">ProductCard</span> product={product} /&gt;
+        &lt;/<span class="tag">article</span>&gt;
+      ))}
+    &lt;/<span class="tag">div</span>&gt;
+  )
+}
+
+<span class="comment">// For long blog posts / docs pages:</span>
+<span class="comment">// Wrap each section in a div with content-visibility: auto</span>
+<span class="comment">// Page with 20 sections = only renders 3-4 at a time</span>
+  </code>
+  </div>
+</section>
+
+<!-- Use cases -->
+<section class="section">
+  <h2>Use Cases for <span class="accent">Molt Studios & OpenDrones</span></h2>
+  <div class="use-cases">
+    <div class="use-case">
+      <h4>🏗️ Contractor Portfolios</h4>
+      <p>Long project gallery pages with 50+ project cards. content-visibility: auto renders only visible cards, cutting initial render by 70%+.</p>
+    </div>
+    <div class="use-case">
+      <h4>🛒 Product Grids</h4>
+      <p>E-commerce category pages with hundreds of products. Only render products near the viewport. Faster LCP, better INP.</p>
+    </div>
+    <div class="use-case">
+      <h4>📝 Blog / Docs Pages</h4>
+      <p>Long-form articles with many sections. Each section skips rendering until scrolled to. Reader never notices the difference.</p>
+    </div>
+    <div class="use-case">
+      <h4>📊 Dashboard Widgets</h4>
+      <p>Collapsible dashboard panels. Use content-visibility: hidden for minimized panels — instant expand, no re-layout.</p>
+    </div>
+    <div class="use-case">
+      <h4>🔔 Notification Lists</h4>
+      <p>Animated show/hide for notification toasts. Transition between visible and hidden states smoothly without display:none.</p>
+    </div>
+    <div class="use-case">
+      <h4>📱 Mobile Performance</h4>
+      <p>Mobile CPUs are 3-5x slower than desktop. Skipping off-screen rendering on mobile provides the biggest absolute gains.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Browser support -->
+<section class="section">
+  <h2>Browser <span class="accent">Support</span></h2>
+  <div class="comparison">
+    <div class="comp-card fast" style="text-align:left">
+      <h3>content-visibility: auto</h3>
+      <p style="color:var(--green);font-weight:700;margin:.5rem 0">~94% global traffic</p>
+      <ul style="list-style:none;padding:0;font-size:.9rem;color:var(--muted)">
+        <li>✅ Chrome 85+ (Aug 2020)</li>
+        <li>✅ Edge 85+</li>
+        <li>✅ Safari 18+ (Sep 2024)</li>
+        <li>✅ Firefox 125+ (Apr 2024)</li>
+      </ul>
+    </div>
+    <div class="comp-card" style="text-align:left;border-color:var(--accent)">
+      <h3>Animation support</h3>
+      <p style="color:var(--accent);font-weight:700;margin:.5rem 0">New in 2025-2026</p>
+      <ul style="list-style:none;padding:0;font-size:.9rem;color:var(--muted)">
+        <li>✅ Chrome 125+</li>
+        <li>✅ Safari 18.4+</li>
+        <li>✅ Firefox 128+</li>
+        <li>🔄 Graceful degradation — just snaps</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>CSS content-visibility Research Demo — Jin @ Molt Studios</p>
+  <p style="margin-top:.5rem">7x faster rendering &bull; Zero JavaScript &bull; Baseline 2024</p>
+</footer>
+
+<script>
+// Generate scroll list
+const container = document.getElementById('scrollContainer');
+const names = ['Arc Battery','Tundra Prop','Nexus Frame','Pulse ESC','SkyLink GPS','Volt Charger','Heli Motor','Drift Cam','Storm ESC','Echo Receiver'];
+let cvEnabled = true;
+let items = [];
+
+for (let i = 0; i < 100; i++) {
+  const item = document.createElement('div');
+  item.className = 'scroll-item';
+  const name = names[i % names.length] + ' ' + (Math.floor(i/10)+1);
+  const rating = (4 + Math.random()).toFixed(1);
+  const price = '$' + (29 + Math.floor(Math.random()*200));
+  item.innerHTML = `
+    <div class="avatar">${(i+1).toString().padStart(2,'0')}</div>
+    <div class="info"><h4>${name}</h4><p>⭐ ${rating} &bull; ${price} &bull; In Stock</p></div>
+  `;
+  container.appendChild(item);
+  items.push(item);
+}
+
+function toggleCV(on) {
+  cvEnabled = on;
+  document.querySelectorAll('.cv-controls .cv-btn').forEach((b, i) => {
+    b.classList.toggle('active', (i === 0 && on) || (i === 1 && !on));
+  });
+  items.forEach(item => {
+    if (on) {
+      item.style.contentVisibility = 'auto';
+      item.style.containIntrinsicSize = 'auto 60px';
+    } else {
+      item.style.contentVisibility = 'visible';
+      item.style.containIntrinsicSize = '';
+    }
+  });
+  updateStats();
+}
+
+function updateStats() {
+  const rect = container.getBoundingClientRect();
+  let visible = 0;
+  items.forEach(item => {
+    const r = item.getBoundingClientRect();
+    if (r.top < rect.bottom && r.bottom > rect.top && r.height > 0) visible++;
+  });
+  document.getElementById('renderedCount').textContent = cvEnabled ? `~${visible}` : '100';
+  document.getElementById('savings').textContent = cvEnabled ? `~${100-visible}%` : '0%';
+}
+
+// Initialize
+toggleCV(true);
+container.addEventListener('scroll', updateStats);
+window.addEventListener('resize', updateStats);
+setTimeout(updateStats, 500);
+
+// Animating content-visibility demo
+function cvShowAll() {
+  document.querySelectorAll('.cv-demo-item').forEach((el, i) => {
+    setTimeout(() => {
+      el.classList.remove('cv-hidden');
+      el.classList.add('cv-visible');
+    }, i * 100);
+  });
+}
+
+function cvHideAll() {
+  document.querySelectorAll('.cv-demo-item').forEach((el, i) => {
+    setTimeout(() => {
+      el.classList.remove('cv-visible');
+      el.classList.add('cv-hidden');
+    }, i * 80);
+  });
+}
+
+function cvToggle() {
+  document.querySelectorAll('.cv-demo-item').forEach((el, i) => {
+    setTimeout(() => {
+      el.classList.toggle('cv-hidden');
+      el.classList.toggle('cv-visible');
+    }, i * 150);
+  });
+}
+</script>
+</body>
+</html>

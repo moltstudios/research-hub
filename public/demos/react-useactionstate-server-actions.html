@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>React 19 useActionState + Server Actions — Pattern Guide</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0a0a0f;
+    --surface: #14141f;
+    --surface2: #1a1a2e;
+    --border: #2a2a3d;
+    --text: #e8e8f0;
+    --text-dim: #8888a0;
+    --accent: #6c5ce7;
+    --accent-glow: rgba(108, 92, 231, 0.25);
+    --green: #00cec9;
+    --orange: #fdcb6e;
+    --red: #ff6b6b;
+    --blue: #74b9ff;
+    --radius: 12px;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 2rem;
+    line-height: 1.7;
+  }
+  .container { max-width: 960px; margin: 0 auto; }
+  h1 {
+    font-size: 2.2rem;
+    font-weight: 800;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, #6c5ce7, #a29bfe, #00cec9);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .subtitle { color: var(--text-dim); font-size: 1.05rem; margin-bottom: 3rem; }
+  .badge {
+    display: inline-block;
+    background: var(--accent-glow);
+    color: var(--accent);
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+  }
+  .badge.green { background: rgba(0,206,201,0.15); color: var(--green); }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+  }
+  .card h2 {
+    font-size: 1.2rem;
+    margin-bottom: 0.75rem;
+  }
+  .card h2 .icon { margin-right: 8px; }
+  .card p, .card li { color: var(--text-dim); font-size: 0.93rem; }
+
+  /* Code blocks */
+  .code-block {
+    background: #0d0d18;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+    overflow-x: auto;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 0.82rem;
+    line-height: 1.75;
+    color: #c0c0d0;
+    margin: 1rem 0;
+  }
+  .comment { color: #5a5a7a; }
+  .keyword { color: #6c5ce7; }
+  .string { color: #fdcb6e; }
+  .func { color: #00cec9; }
+  .type { color: #ff6b6b; }
+  .tag { color: #74b9ff; }
+  .attr { color: #fdcb6e; }
+  .punct { color: #888; }
+
+  /* Comparison table */
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin: 1rem 0;
+  }
+  .compare-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+  }
+  .compare-card h3 {
+    font-size: 0.95rem;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .compare-card.old h3 { color: var(--red); }
+  .compare-card.new h3 { color: var(--green); }
+  .compare-card ul { padding-left: 1.2rem; }
+  .compare-card li { font-size: 0.85rem; margin-bottom: 0.4rem; }
+
+  /* Flow diagram */
+  .flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    flex-wrap: wrap;
+    padding: 1.5rem;
+    background: rgba(0,0,0,0.3);
+    border-radius: 8px;
+    margin: 1rem 0;
+  }
+  .flow-step {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 16px;
+    text-align: center;
+    font-size: 0.82rem;
+    font-weight: 600;
+    min-width: 100px;
+  }
+  .flow-step.active { border-color: var(--green); color: var(--green); }
+  .flow-step.pending { border-color: var(--orange); color: var(--orange); }
+  .flow-arrow {
+    color: var(--text-dim);
+    font-size: 1.2rem;
+    padding: 0 4px;
+  }
+
+  /* Feature grid */
+  .features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin: 1rem 0;
+  }
+  .feature {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+  }
+  .feature .emoji { font-size: 1.5rem; margin-bottom: 0.5rem; }
+  .feature h4 { font-size: 0.9rem; margin-bottom: 0.25rem; }
+  .feature p { font-size: 0.8rem; color: var(--text-dim); margin: 0; }
+
+  /* Interactive demo simulation */
+  .demo-form {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2rem;
+    max-width: 420px;
+    margin: 1.5rem auto;
+  }
+  .demo-form h3 { font-size: 1.1rem; margin-bottom: 1rem; text-align: center; }
+  .form-group { margin-bottom: 1rem; }
+  .form-group label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    margin-bottom: 0.3rem;
+  }
+  .form-group input, .form-group select {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .form-group input:focus { border-color: var(--accent); }
+
+  .submit-btn {
+    width: 100%;
+    padding: 12px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+    position: relative;
+  }
+  .submit-btn:hover { opacity: 0.9; }
+  .submit-btn:active { transform: scale(0.98); }
+  .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .submit-btn .spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .form-message {
+    margin-top: 1rem;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    display: none;
+  }
+  .form-message.success {
+    display: block;
+    background: rgba(0,206,201,0.1);
+    border: 1px solid rgba(0,206,201,0.3);
+    color: var(--green);
+  }
+  .form-message.error {
+    display: block;
+    background: rgba(255,107,107,0.1);
+    border: 1px solid rgba(255,107,107,0.3);
+    color: var(--red);
+  }
+
+  /* Use cases */
+  .use-cases { margin: 1rem 0; }
+  .use-case {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 1rem;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+  }
+  .use-case .uc-icon {
+    font-size: 1.3rem;
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    border-radius: 8px;
+  }
+  .use-case h4 { font-size: 0.9rem; margin-bottom: 0.15rem; }
+  .use-case p { font-size: 0.8rem; color: var(--text-dim); margin: 0; }
+
+  .footer {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+  }
+  .footer a { color: var(--accent); text-decoration: none; }
+
+  @media (max-width: 640px) {
+    .compare { grid-template-columns: 1fr; }
+    body { padding: 1rem; }
+    h1 { font-size: 1.6rem; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="badge">React 19 + Next.js Server Actions</div>
+  <h1>useActionState & Server Actions<br>Pattern Guide</h1>
+  <p class="subtitle">The new way to handle forms, mutations, and pending states in React 19 — replacing useState + useEffect boilerplate with a single hook.</p>
+
+  <!-- Before vs After -->
+  <div class="card">
+    <h2><span class="icon">⚡</span>Before vs After</h2>
+    <div class="compare">
+      <div class="compare-card old">
+        <h3>❌ Old Way (React 18)</h3>
+        <ul>
+          <li>Manual <code>useState</code> for pending, error, data</li>
+          <li><code>useEffect</code> for side effects</li>
+          <li>Try/catch with loading state management</li>
+          <li>Form reset handled manually</li>
+          <li>Optimistic updates need custom logic</li>
+          <li>5-6 hooks for one form</li>
+        </ul>
+      </div>
+      <div class="compare-card new">
+        <h3>✅ New Way (React 19)</h3>
+        <ul>
+          <li>Single <code>useActionState</code> hook</li>
+          <li>Built-in <code>isPending</code> state</li>
+          <li>Auto error handling with Error Boundaries</li>
+          <li>Form auto-resets on success</li>
+          <li><code>useOptimistic</code> for instant feedback</li>
+          <li>1 hook + 1 server function</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- How It Works Flow -->
+  <div class="card">
+    <h2><span class="icon">🔄</span>How It Works — Request Flow</h2>
+    <div class="flow">
+      <div class="flow-step active">User submits<br><small>&lt;form action={}&gt;</small></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step pending">isPending = true<br><small>UI shows loading</small></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Server Action<br><small>'use server' fn</small></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Mutate DB<br><small>+ revalidate</small></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step active">Return state<br><small>UI updates</small></div>
+    </div>
+    <p>The browser sends the <code>FormData</code> to the server function. React handles pending state, errors, and re-renders automatically. No API route needed.</p>
+  </div>
+
+  <!-- Code Pattern 1: Basic Form -->
+  <div class="card">
+    <h2><span class="icon">📝</span>Pattern 1: Basic Form with Validation (Next.js)</h2>
+    <div class="code-block">
+<span class="comment">// app/actions.ts — Server Action</span>
+<span class="keyword">'use server'</span>
+
+<span class="keyword">import</span> { z } <span class="keyword">from</span> <span class="string">'zod'</span>
+
+<span class="keyword">const</span> schema = z.<span class="func">object</span>({
+  email: z.<span class="func">string</span>().<span class="func">email</span>(<span class="string">'Invalid email'</span>),
+  name: z.<span class="func">string</span>().<span class="func">min</span>(2, <span class="string">'Name too short'</span>),
+})
+
+<span class="keyword">export async function</span> <span class="func">createUser</span>(prevState: <span class="type">any</span>, formData: <span class="type">FormData</span>) {
+  <span class="keyword">const</span> result = schema.<span class="func">safeParse</span>({
+    email: formData.<span class="func">get</span>(<span class="string">'email'</span>),
+    name: formData.<span class="func">get</span>(<span class="string">'name'</span>),
+  })
+
+  <span class="keyword">if</span> (!result.success) {
+    <span class="keyword">return</span> { error: result.error.<span class="func">flatten</span>().fieldErrors }
+  }
+
+  <span class="keyword">await</span> db.user.<span class="func">create</span>({ data: result.data })
+  <span class="keyword">return</span> { success: <span class="keyword">true</span> }
+}
+    </div>
+    <div class="code-block">
+<span class="comment">// app/page.tsx — Client Component</span>
+<span class="keyword">'use client'</span>
+
+<span class="keyword">import</span> { <span class="func">useActionState</span> } <span class="keyword">from</span> <span class="string">'react'</span>
+<span class="keyword">import</span> { <span class="func">createUser</span> } <span class="keyword">from</span> <span class="string">'./actions'</span>
+
+<span class="keyword">export default function</span> <span class="func">SignupForm</span>() {
+  <span class="keyword">const</span> [state, formAction, isPending] = <span class="func">useActionState</span>(createUser, <span class="keyword">null</span>)
+
+  <span class="keyword">return</span> (
+    <span class="tag">&lt;form</span> <span class="attr">action</span>=<span class="string">{formAction}</span><span class="tag">&gt;</span>
+      <span class="tag">&lt;input</span> <span class="attr">name</span>=<span class="string">"name"</span> <span class="attr">required</span> <span class="tag">/&gt;</span>
+      <span class="tag">&lt;input</span> <span class="attr">name</span>=<span class="string">"email"</span> <span class="attr">type</span>=<span class="string">"email"</span> <span class="attr">required</span> <span class="tag">/&gt;</span>
+      <span class="tag">&lt;button</span> <span class="attr">type</span>=<span class="string">"submit"</span> <span class="attr">disabled</span>=<span class="string">{isPending}</span><span class="tag">&gt;</span>
+        {isPending ? <span class="string">'Creating...'</span> : <span class="string">'Sign Up'</span>}
+      <span class="tag">&lt;/button&gt;</span>
+      {state?.error && <span class="tag">&lt;p</span> <span class="attr">className</span>=<span class="string">"error"</span><span class="tag">&gt;</span>{...}<span class="tag">&lt;/p&gt;</span>}
+      {state?.success && <span class="tag">&lt;p</span> <span class="attr">className</span>=<span class="string">"success"</span><span class="tag">&gt;</span>Created!<span class="tag">&lt;/p&gt;</span>}
+    <span class="tag">&lt;/form&gt;</span>
+  )
+}
+    </div>
+  </div>
+
+  <!-- Code Pattern 2: With Optimistic Updates -->
+  <div class="card">
+    <h2><span class="icon">🚀</span>Pattern 2: Optimistic Updates + useActionState</h2>
+    <div class="code-block">
+<span class="comment">// Waitlist signup with instant feedback</span>
+<span class="keyword">'use client'</span>
+
+<span class="keyword">import</span> { useActionState, useOptimistic } <span class="keyword">from</span> <span class="string">'react'</span>
+
+<span class="keyword">export default function</span> <span class="func">WaitlistForm</span>() {
+  <span class="keyword">const</span> [optimisticEmails, addOptimistic] = <span class="func">useOptimistic</span>([])
+  <span class="keyword">const</span> [state, submitAction, isPending] = <span class="func">useActionState</span>(
+    <span class="keyword">async</span> (prev, formData) => {
+      <span class="keyword">const</span> email = formData.<span class="func">get</span>(<span class="string">'email'</span>) <span class="keyword">as</span> <span class="type">string</span>
+      addOptimistic(email) <span class="comment">// instant UI update</span>
+      <span class="keyword">const</span> res = <span class="keyword">await</span> <span class="func">addToWaitlist</span>(email)
+      <span class="keyword">if</span> (res.error) <span class="keyword">return</span> res
+      <span class="keyword">return</span> { success: <span class="keyword">true</span>, message: <span class="string">'You\'re on the list!'</span> }
+    },
+    <span class="keyword">null</span>
+  )
+
+  <span class="keyword">return</span> (
+    <span class="tag">&lt;form</span> <span class="attr">action</span>=<span class="string">{submitAction}</span><span class="tag">&gt;</span>
+      <span class="tag">&lt;input</span> <span class="attr">name</span>=<span class="string">"email"</span> <span class="attr">type</span>=<span class="string">"email"</span> <span class="tag">/&gt;</span>
+      <span class="tag">&lt;button</span> <span class="attr">disabled</span>=<span class="string">{isPending}</span><span class="tag">&gt;</span>
+        {isPending ? <span class="string">'Joining...'</span> : <span class="string">'Join Waitlist'</span>}
+      <span class="tag">&lt;/button&gt;</span>
+      <span class="comment">{/* Email appears in list BEFORE server responds */}</span>
+      {optimisticEmails.<span class="func">map</span>(e => <span class="tag">&lt;div</span> <span class="attr">key</span>=<span class="string">{e}</span><span class="tag">&gt;</span>{e} ✓<span class="tag">&lt;/div&gt;</span>)}
+    <span class="tag">&lt;/form&gt;</span>
+  )
+}
+    </div>
+  </div>
+
+  <!-- Interactive Demo -->
+  <div class="card">
+    <h2><span class="icon">🎮</span>Interactive Simulation</h2>
+    <p style="margin-bottom: 1rem;">Try the waitlist signup flow — simulates server latency and state transitions.</p>
+    <div class="demo-form">
+      <h3>🔋 OpenDrones Waitlist</h3>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="demo-email" placeholder="pilot@example.com" />
+      </div>
+      <div class="form-group">
+        <label>Interest</label>
+        <select id="demo-interest">
+          <option value="arc">The Arc Battery Pack</option>
+          <option value="nav">Nav Module</option>
+          <option value="both">Both Products</option>
+        </select>
+      </div>
+      <button class="submit-btn" id="demo-submit" onclick="simulateAction()">Join Waitlist</button>
+      <div class="form-message" id="demo-message"></div>
+      <div id="demo-entries" style="margin-top:1rem;"></div>
+    </div>
+  </div>
+
+  <!-- Key Features -->
+  <div class="card">
+    <h2><span class="icon">🧩</span>Key Features</h2>
+    <div class="features">
+      <div class="feature">
+        <div class="emoji">⏳</div>
+        <h4>Automatic Pending</h4>
+        <p>isPending is true during server execution, false when done. No manual loading state.</p>
+      </div>
+      <div class="feature">
+        <div class="emoji">🔄</div>
+        <h4>Auto Form Reset</h4>
+        <p>Uncontrolled form inputs reset automatically on successful submission.</p>
+      </div>
+      <div class="feature">
+        <div class="feature">🛡️</div>
+        <h4>Error Boundaries</h4>
+        <p>Thrown errors caught by nearest Error Boundary. No try/catch needed in component.</p>
+      </div>
+      <div class="feature">
+        <div class="emoji">🚀</div>
+        <h4>Progressive Enhancement</h4>
+        <p>Forms work before JS hydrates. Server receives the FormData directly via POST.</p>
+      </div>
+      <div class="feature">
+        <div class="emoji">📦</div>
+        <h4>No API Routes</h4>
+        <p>Server Actions replace /api routes for mutations. Less boilerplate, better types.</p>
+      </div>
+      <div class="feature">
+        <div class="emoji">🔐</div>
+        <h4>Built-in CSRF</h4>
+        <p>Next.js Server Actions have built-in CSRF protection. No tokens needed.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Use Cases -->
+  <div class="card">
+    <h2><span class="icon">🎯</span>Use Cases for Molt Studios & OpenDrones</h2>
+    <div class="use-cases">
+      <div class="use-case">
+        <div class="uc-icon">🔋</div>
+        <div>
+          <h4>OpenDrones Waitlist</h4>
+          <p>Email signup → Server Action validates → Supabase insert → success/error state. Already live at opendrones.vercel.app.</p>
+        </div>
+      </div>
+      <div class="use-case">
+        <div class="uc-icon">🛒</div>
+        <div>
+          <h4>OpenDrones Checkout</h4>
+          <p>Cart form → Server Action creates Stripe session → redirect. Zero client-side payment logic.</p>
+        </div>
+      </div>
+      <div class="use-case">
+        <div class="uc-icon">📬</div>
+        <div>
+          <h4>Molt Studios Contact Form</h4>
+          <p>Lead capture → Server Action sends email via Raven → revalidates cache. No /api/contact route.</p>
+        </div>
+      </div>
+      <div class="use-case">
+        <div class="uc-icon">⚙️</div>
+        <div>
+          <h4>MC Dashboard Actions</h4>
+          <p>Task status changes, lead updates, research edits — all mutations through Server Actions with optimistic UI.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Migration Tips -->
+  <div class="card" style="border-color: var(--accent);">
+    <h2 style="color: var(--accent);"><span class="icon">🔧</span>Migration Tips</h2>
+    <ul style="padding-left: 1.2rem; color: var(--text-dim);">
+      <li style="margin-bottom:0.5rem;"><strong style="color:var(--text)">Replace <code>useState + fetch</code> forms</strong> → Move fetch logic into a Server Action with <code>'use server'</code></li>
+      <li style="margin-bottom:0.5rem;"><strong style="color:var(--text)">Replace <code>useFormState</code></strong> → Renamed to <code>useActionState</code> in React 19 (import from <code>'react'</code>, not <code>'react-dom'</code>)</li>
+      <li style="margin-bottom:0.5rem;"><strong style="color:var(--text)">Replace <code>/api/*</code> routes</strong> → Server Actions handle mutations. Keep API routes for webhooks (Stripe, etc.)</li>
+      <li style="margin-bottom:0.5rem;"><strong style="color:var(--text)">Add <code>useOptimistic</code></strong> → For instant feedback on list operations (add/remove items, status toggles)</li>
+      <li style="margin-bottom:0.5rem;"><strong style="color:var(--text)">Validation:</strong> Use Zod schemas in Server Actions — errors returned as state, no client-side schema needed</li>
+    </ul>
+  </div>
+
+  <div class="footer">
+    Research by <a href="https://moltstudios.app">Molt Studios</a> · React 19 + Next.js Patterns · <a href="https://react.dev/reference/react/useActionState">React Docs</a>
+  </div>
+</div>
+
+<script>
+  const entries = [];
+  function simulateAction() {
+    const btn = document.getElementById('demo-submit');
+    const email = document.getElementById('demo-email').value;
+    const msg = document.getElementById('demo-message');
+    const container = document.getElementById('demo-entries');
+
+    if (!email || !email.includes('@')) {
+      msg.className = 'form-message error';
+      msg.textContent = '⚠ Please enter a valid email address';
+      return;
+    }
+
+    // Simulate isPending
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Joining...';
+    msg.className = 'form-message';
+    msg.style.display = 'none';
+
+    // Simulate optimistic update
+    const opt = document.createElement('div');
+    opt.style.cssText = 'padding:8px 12px;background:rgba(253,203,110,0.1);border:1px solid rgba(253,203,110,0.3);border-radius:6px;margin-bottom:4px;font-size:0.82rem;color:var(--orange)';
+    opt.textContent = '⏳ ' + email + ' (joining...)';
+    container.prepend(opt);
+
+    // Simulate server latency
+    setTimeout(() => {
+      opt.style.background = 'rgba(0,206,201,0.1)';
+      opt.style.borderColor = 'rgba(0,206,201,0.3)';
+      opt.style.color = 'var(--green)';
+      opt.textContent = '✅ ' + email + ' — Waitlist position #' + (entries.length + 1);
+      entries.push(email);
+
+      msg.className = 'form-message success';
+      msg.textContent = '🎉 Success! You\'re on the waitlist.';
+
+      btn.disabled = false;
+      btn.innerHTML = 'Join Waitlist';
+      document.getElementById('demo-email').value = '';
+    }, 1200);
+  }
+</script>
+</body>
+</html>
