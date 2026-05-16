@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skeleton Loading States & Streaming UI — Next.js Pattern Guide</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#080810;--card:#10101c;--card2:#161628;--border:#1c1c30;
+    --accent:#6366f1;--accent2:#ec4899;--text:#e2e2f0;--muted:#7a7a9a;
+    --green:#34d399;--amber:#fbbf24;--red:#f87171;
+    --skeleton-base:#1a1a30;--skeleton-shine:#2a2a48;
+    --radius:12px;
+  }
+  html{scroll-behavior:smooth}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);line-height:1.65}
+
+  /* Hero */
+  .hero{min-height:85vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2rem;position:relative}
+  .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 30%,rgba(99,102,241,.12),transparent 60%),radial-gradient(ellipse at 70% 70%,rgba(236,72,153,.08),transparent 50%)}
+  .hero h1{font-size:clamp(2.2rem,5.5vw,4rem);font-weight:800;position:relative;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .hero .sub{font-size:clamp(.95rem,2vw,1.25rem);color:var(--muted);max-width:650px;position:relative;margin-top:.5rem}
+  .hero .badge-row{display:flex;gap:.6rem;margin-top:1.5rem;position:relative;flex-wrap:wrap;justify-content:center}
+  .badge{padding:.35rem .9rem;border-radius:999px;font-size:.8rem;border:1px solid}
+  .badge-purple{background:rgba(99,102,241,.12);border-color:rgba(99,102,241,.3);color:var(--accent)}
+  .badge-pink{background:rgba(236,72,153,.1);border-color:rgba(236,72,153,.25);color:var(--accent2)}
+  .badge-green{background:rgba(52,211,153,.1);border-color:rgba(52,211,153,.25);color:var(--green)}
+
+  /* Sections */
+  .section{max-width:1100px;margin:0 auto;padding:3.5rem 2rem}
+  .section h2{font-size:clamp(1.4rem,3vw,2rem);font-weight:700;color:#fff;margin-bottom:.6rem}
+  .section h2 .a{color:var(--accent)}
+  .section p.desc{color:var(--muted);max-width:700px;margin-bottom:1.5rem;font-size:1rem}
+
+  /* Code */
+  .code{background:#0a0a14;border:1px solid var(--border);border-radius:var(--radius);padding:1.3rem 1.5rem;margin:1.2rem 0;overflow-x:auto;font-size:.85rem;line-height:1.7;font-family:'SF Mono',Consolas,'Fira Code',monospace;color:#c9d1d9}
+  .code .cm{color:#5c6370;font-style:italic}
+  .code .kw{color:#c678dd}
+  .code .fn{color:#61afef}
+  .code .str{color:#98c379}
+  .code .tag{color:#e06c75}
+  .code .prop{color:#e5c07b}
+  .code .comp{color:#56b6c2}
+
+  /* Skeleton animation */
+  @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+  .skeleton{background:linear-gradient(90deg,var(--skeleton-base) 25%,var(--skeleton-shine) 50%,var(--skeleton-base) 75%);background-size:200% 100%;animation:shimmer 1.8s ease-in-out infinite;border-radius:6px}
+
+  /* Live Demo Cards */
+  .demo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1.5rem;margin:2rem 0}
+
+  .demo-card{background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;transition:transform .3s,border-color .3s}
+  .demo-card:hover{transform:translateY(-3px);border-color:var(--accent)}
+  .demo-card .card-header{padding:1rem 1.25rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+  .demo-card .card-header h3{font-size:.95rem;color:#fff}
+  .demo-card .card-header .pill{font-size:.7rem;padding:.2rem .6rem;border-radius:999px;font-weight:600}
+  .demo-card .card-body{padding:1.25rem}
+
+  /* Perceived perf chart */
+  .perf-compare{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin:2rem 0}
+  @media(max-width:650px){.perf-compare{grid-template-columns:1fr}}
+  .perf-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:1.5rem;text-align:center}
+  .perf-card h3{font-size:1rem;margin-bottom:.5rem;color:#fff}
+  .perf-card .time{font-size:3rem;font-weight:800}
+  .perf-card .label{color:var(--muted);font-size:.85rem;margin-top:.25rem}
+  .perf-card .pills{display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap;margin-top:1rem}
+  .perf-card .pills span{padding:.25rem .7rem;border-radius:6px;font-size:.75rem}
+  .t-good .time{color:var(--green)}
+  .t-good .pills span{background:rgba(52,211,153,.12);color:var(--green)}
+  .t-bad .time{color:var(--red)}
+  .t-bad .pills span{background:rgba(248,113,113,.12);color:var(--red)}
+
+  /* Interactive streaming demo */
+  .stream-demo{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:1.5rem;margin:2rem 0}
+  .stream-demo h3{font-size:1.1rem;color:#fff;margin-bottom:1rem}
+  .stream-controls{display:flex;gap:.6rem;margin-bottom:1.2rem;flex-wrap:wrap}
+  .stream-btn{padding:.5rem 1rem;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--text);cursor:pointer;font-size:.85rem;transition:all .2s;font-weight:500}
+  .stream-btn:hover,.stream-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+
+  .stream-page{background:var(--card2);border-radius:var(--radius);overflow:hidden;min-height:350px;position:relative}
+  .stream-nav{display:flex;align-items:center;gap:1rem;padding:.75rem 1rem;border-bottom:1px solid var(--border);background:rgba(0,0,0,.2)}
+  .stream-nav .logo{width:24px;height:24px;border-radius:6px;background:linear-gradient(135deg,var(--accent),var(--accent2))}
+  .stream-nav .links{display:flex;gap:.8rem}
+  .stream-nav .links span{font-size:.75rem;color:var(--muted)}
+  .stream-content{padding:1rem;display:grid;gap:1rem}
+
+  /* Skeleton blocks */
+  .skel-text{height:14px;margin:.3rem 0}
+  .skel-title{height:22px;width:65%;margin-bottom:.5rem}
+  .skel-img{height:160px;border-radius:8px}
+  .skel-avatar{width:40px;height:40px;border-radius:50%;flex-shrink:0}
+  .skel-btn{height:38px;width:120px;border-radius:8px}
+  .skel-card{background:rgba(0,0,0,.2);border-radius:8px;padding:1rem}
+
+  /* Loaded state */
+  .loaded-content{opacity:0;transition:opacity .6s ease}
+  .loaded-content.show{opacity:1}
+  .skeleton-wrap{transition:opacity .3s ease}
+  .skeleton-wrap.hide{opacity:0;position:absolute;pointer-events:none}
+
+  /* Timing visualization */
+  .timeline{margin:2rem 0}
+  .tl-row{display:flex;gap:1rem;margin:.7rem 0;align-items:center}
+  .tl-label{min-width:150px;font-size:.8rem;color:var(--muted);text-align:right}
+  .tl-track{flex:1;height:28px;background:var(--card2);border-radius:6px;position:relative;overflow:hidden}
+  .tl-bar{position:absolute;top:3px;bottom:3px;border-radius:4px;display:flex;align-items:center;padding-left:.5rem;font-size:.7rem;font-weight:600;color:rgba(255,255,255,.9);transition:width 1.5s ease}
+
+  /* Pattern grid */
+  .patterns{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;margin:2rem 0}
+  .pattern{background:rgba(99,102,241,.05);border:1px solid rgba(99,102,241,.15);border-radius:12px;padding:1.2rem}
+  .pattern h4{color:var(--accent);font-size:.9rem;margin-bottom:.3rem}
+  .pattern p{font-size:.82rem;color:var(--muted)}
+
+  /* Impact stats */
+  .stats-row{display:flex;gap:1rem;flex-wrap:wrap;margin:1.5rem 0}
+  .stat{padding:.75rem 1.25rem;background:rgba(0,0,0,.3);border-radius:10px;text-align:center;flex:1;min-width:140px}
+  .stat .num{font-size:1.8rem;font-weight:800;color:var(--green)}
+  .stat .label{font-size:.8rem;color:var(--muted);margin-top:.2rem}
+
+  footer{text-align:center;padding:3rem 2rem;color:var(--muted);font-size:.85rem;border-top:1px solid var(--border)}
+</style>
+</head>
+<body>
+
+<!-- Hero -->
+<section class="hero">
+  <h1>Skeleton Loading & Streaming UI</h1>
+  <p class="sub">Perceived performance patterns for Next.js — show users progress, not waiting. 40% lower bounce rates with skeleton states.</p>
+  <div class="badge-row">
+    <span class="badge badge-purple">Next.js 16</span>
+    <span class="badge badge-pink">React Suspense</span>
+    <span class="badge badge-green">Streaming SSR</span>
+  </div>
+</section>
+
+<!-- Perceived Performance -->
+<section class="section">
+  <h2>Perceived <span class="a">Performance</span></h2>
+  <p class="desc">Users don't measure milliseconds — they measure frustration. A blank screen feels slow. A skeleton screen with the same load time feels 3x faster. The brain perceives progressive loading as "working" vs. "broken."</p>
+
+  <div class="perf-compare">
+    <div class="perf-card t-bad">
+      <h3>No Loading State</h3>
+      <div class="time">~3.2s</div>
+      <div class="label">Perceived wait time</div>
+      <div class="pills">
+        <span>Blank screen</span>
+        <span>Is it broken?</span>
+        <span>High bounce risk</span>
+      </div>
+    </div>
+    <div class="perf-card t-good">
+      <h3>Skeleton + Streaming</h3>
+      <div class="time">~0.8s</div>
+      <div class="label">Perceived wait time (same actual load)</div>
+      <div class="pills">
+        <span>Instant feedback</span>
+        <span>Progress visible</span>
+        <span>Low bounce rate</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Skeleton Types Demo -->
+<section class="section">
+  <h2>Skeleton <span class="a">Component Types</span></h2>
+  <p class="desc">Each UI pattern needs its own skeleton shape. Here are the 6 most common patterns with live shimmer animation.</p>
+
+  <div class="demo-grid">
+    <!-- Card skeleton -->
+    <div class="demo-card">
+      <div class="card-header">
+        <h3>Content Card</h3>
+        <span class="pill" style="background:rgba(99,102,241,.15);color:var(--accent)">Blog / Portfolio</span>
+      </div>
+      <div class="card-body">
+        <div class="skeleton skel-img"></div>
+        <div class="skeleton skel-title" style="margin-top:.75rem"></div>
+        <div class="skeleton skel-text" style="width:90%"></div>
+        <div class="skeleton skel-text" style="width:70%"></div>
+      </div>
+    </div>
+
+    <!-- Product skeleton -->
+    <div class="demo-card">
+      <div class="card-header">
+        <h3>Product Card</h3>
+        <span class="pill" style="background:rgba(236,72,153,.12);color:var(--accent2)">E-commerce</span>
+      </div>
+      <div class="card-body">
+        <div class="skeleton skel-img" style="height:140px"></div>
+        <div class="skeleton skel-title" style="width:50%;margin-top:.75rem"></div>
+        <div class="skeleton skel-text" style="width:30%"></div>
+        <div style="display:flex;gap:.6rem;margin-top:.6rem">
+          <div class="skeleton skel-btn"></div>
+          <div class="skeleton" style="width:40px;height:38px;border-radius:8px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- List skeleton -->
+    <div class="demo-card">
+      <div class="card-header">
+        <h3>List / Feed Item</h3>
+        <span class="pill" style="background:rgba(52,211,153,.12);color:var(--green)">Dashboard / Social</span>
+      </div>
+      <div class="card-body" style="display:flex;flex-direction:column;gap:.75rem">
+        <div style="display:flex;gap:.75rem;align-items:center"><div class="skeleton skel-avatar"></div><div style="flex:1"><div class="skeleton skel-text" style="width:60%"></div><div class="skeleton skel-text" style="width:40%;height:10px"></div></div></div>
+        <div style="display:flex;gap:.75rem;align-items:center"><div class="skeleton skel-avatar"></div><div style="flex:1"><div class="skeleton skel-text" style="width:70%"></div><div class="skeleton skel-text" style="width:35%;height:10px"></div></div></div>
+        <div style="display:flex;gap:.75rem;align-items:center"><div class="skeleton skel-avatar"></div><div style="flex:1"><div class="skeleton skel-text" style="width:55%"></div><div class="skeleton skel-text" style="width:45%;height:10px"></div></div></div>
+      </div>
+    </div>
+
+    <!-- Table skeleton -->
+    <div class="demo-card">
+      <div class="card-header">
+        <h3>Table / Data Grid</h3>
+        <span class="pill" style="background:rgba(251,191,36,.12);color:var(--amber)">Admin / Analytics</span>
+      </div>
+      <div class="card-body">
+        <div style="display:flex;gap:.6rem;margin-bottom:.6rem"><div class="skeleton" style="width:25%;height:12px"></div><div class="skeleton" style="width:30%;height:12px"></div><div class="skeleton" style="width:20%;height:12px"></div><div class="skeleton" style="width:25%;height:12px"></div></div>
+        <div style="display:flex;gap:.6rem;margin-bottom:.4rem"><div class="skeleton" style="width:25%;height:14px"></div><div class="skeleton" style="width:30%;height:14px"></div><div class="skeleton" style="width:20%;height:14px"></div><div class="skeleton" style="width:25%;height:14px"></div></div>
+        <div style="display:flex;gap:.6rem;margin-bottom:.4rem"><div class="skeleton" style="width:25%;height:14px"></div><div class="skeleton" style="width:30%;height:14px"></div><div class="skeleton" style="width:20%;height:14px"></div><div class="skeleton" style="width:25%;height:14px"></div></div>
+        <div style="display:flex;gap:.6rem"><div class="skeleton" style="width:25%;height:14px"></div><div class="skeleton" style="width:30%;height:14px"></div><div class="skeleton" style="width:20%;height:14px"></div><div class="skeleton" style="width:25%;height:14px"></div></div>
+      </div>
+    </div>
+
+    <!-- Profile skeleton -->
+    <div class="demo-card">
+      <div class="card-header">
+        <h3>Profile / Detail</h3>
+        <span class="pill" style="background:rgba(99,102,241,.15);color:var(--accent)">User Pages</span>
+      </div>
+      <div class="card-body">
+        <div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem">
+          <div class="skeleton" style="width:56px;height:56px;border-radius:50%"></div>
+          <div style="flex:1"><div class="skeleton skel-text" style="width:50%;height:18px"></div><div class="skeleton skel-text" style="width:30%;height:12px;margin-top:.3rem"></div></div>
+        </div>
+        <div class="skeleton skel-text" style="width:100%"></div>
+        <div class="skeleton skel-text" style="width:85%"></div>
+        <div class="skeleton skel-text" style="width:60%"></div>
+      </div>
+    </div>
+
+    <!-- Navigation skeleton -->
+    <div class="demo-card">
+      <div class="card-header">
+        <h3>Page Navigation</h3>
+        <span class="pill" style="background:rgba(52,211,153,.12);color:var(--green)">Next.js loading.tsx</span>
+      </div>
+      <div class="card-body">
+        <div style="display:flex;gap:1rem;margin-bottom:1rem"><div class="skeleton" style="width:60px;height:14px"></div><div class="skeleton" style="width:50px;height:14px"></div><div class="skeleton" style="width:70px;height:14px"></div><div class="skeleton" style="width:45px;height:14px"></div></div>
+        <div class="skeleton skel-title" style="width:40%"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-top:.6rem">
+          <div class="skeleton" style="height:80px;border-radius:8px"></div>
+          <div class="skeleton" style="height:80px;border-radius:8px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Interactive Streaming Demo -->
+<section class="section">
+  <h2>Streaming UI <span class="a">Simulation</span></h2>
+  <p class="desc">Watch how a page streams in progressively. Each section resolves independently — the nav and shell appear instantly, then content fills in as data arrives.</p>
+
+  <div class="stream-controls">
+    <button class="stream-btn active" onclick="startStream('skeleton')">▶ Skeleton First</button>
+    <button class="stream-btn" onclick="startStream('blank')">▢ Blank Screen</button>
+    <button class="stream-btn" onclick="resetStream()">↺ Reset</button>
+  </div>
+
+  <div class="stream-page" id="streamPage">
+    <div class="stream-nav">
+      <div class="logo"></div>
+      <div class="links"><span>Products</span><span>Categories</span><span>Deals</span><span>Cart</span></div>
+    </div>
+    <div class="stream-content" id="streamContent">
+      <!-- Dynamically filled -->
+    </div>
+  </div>
+</section>
+
+<!-- Streaming Timeline -->
+<section class="section">
+  <h2>Streaming <span class="a">Timeline</span></h2>
+  <p class="desc">How the server streams HTML chunks progressively. The browser renders each chunk as it arrives, rather than waiting for the full page.</p>
+
+  <div class="timeline">
+    <div class="tl-row">
+      <div class="tl-label">Initial HTML shell</div>
+      <div class="tl-track"><div class="tl-bar" style="left:0;width:5%;background:var(--green)">50ms</div></div>
+    </div>
+    <div class="tl-row">
+      <div class="tl-label">Navigation + Layout</div>
+      <div class="tl-track"><div class="tl-bar" style="left:2%;width:12%;background:var(--green)">120ms</div></div>
+    </div>
+    <div class="tl-row">
+      <div class="tl-label">Hero / Above fold</div>
+      <div class="tl-track"><div class="tl-bar" style="left:5%;width:18%;background:var(--accent)">300ms</div></div>
+    </div>
+    <div class="tl-row">
+      <div class="tl-label">Product grid (cached)</div>
+      <div class="tl-track"><div class="tl-bar" style="left:8%;width:20%;background:var(--accent)">500ms</div></div>
+    </div>
+    <div class="tl-row">
+      <div class="tl-label">Live inventory (async)</div>
+      <div class="tl-track"><div class="tl-bar" style="left:10%;width:40%;background:var(--accent2)">1200ms</div></div>
+    </div>
+    <div class="tl-row">
+      <div class="tl-label">Reviews section</div>
+      <div class="tl-track"><div class="tl-bar" style="left:15%;width:35%;background:var(--amber)">1500ms</div></div>
+    </div>
+    <div class="tl-row">
+      <div class="tl-label">Related products</div>
+      <div class="tl-track"><div class="tl-bar" style="left:20%;width:45%;background:var(--amber)">1800ms</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- Next.js Implementation -->
+<section class="section">
+  <h2>Next.js <span class="a">Implementation</span></h2>
+  <p class="desc">The file-based routing convention makes this trivial. Create a loading.tsx next to your page.tsx and Next.js wraps it in a Suspense boundary automatically.</p>
+
+  <div class="code">
+<span class="cm">// app/products/loading.tsx — Auto-wrapped in Suspense</span>
+<span class="kw">export default function</span> <span class="fn">ProductsLoading</span>() {
+  <span class="kw">return</span> (
+    &lt;<span class="comp">div</span> className=<span class="str">"grid grid-cols-3 gap-6"</span>&gt;
+      {Array.from({ length: <span class="prop">6</span> }).map((_, i) =&gt; (
+        &lt;<span class="comp">ProductCardSkeleton</span> key={i} /&gt;
+      ))}
+    &lt;/<span class="comp">div</span>&gt;
+  )
+}
+
+<span class="cm">// components/ProductCardSkeleton.tsx</span>
+<span class="kw">export function</span> <span class="fn">ProductCardSkeleton</span>() {
+  <span class="kw">return</span> (
+    &lt;<span class="comp">div</span> className=<span class="str">"rounded-xl border p-4 space-y-3"</span>&gt;
+      &lt;<span class="comp">div</span> className=<span class="str">"h-40 rounded-lg bg-muted animate-pulse"</span> /&gt;
+      &lt;<span class="comp">div</span> className=<span class="str">"h-4 w-2/3 rounded bg-muted animate-pulse"</span> /&gt;
+      &lt;<span class="comp">div</span> className=<span class="str">"h-4 w-1/3 rounded bg-muted animate-pulse"</span> /&gt;
+      &lt;<span class="comp">div</span> className=<span class="str">"h-9 w-28 rounded-lg bg-muted animate-pulse mt-2"</span> /&gt;
+    &lt;/<span class="comp">div</span>&gt;
+  )
+}
+
+<span class="cm">// app/products/[slug]/page.tsx — Streaming with Suspense</span>
+<span class="kw">import</span> { <span class="fn">Suspense</span> } <span class="kw">from</span> <span class="str">'react'</span>
+
+<span class="kw">export const</span> unstable_instant = { prefetch: <span class="str">'static'</span> }
+
+<span class="kw">export default async function</span> <span class="fn">ProductPage</span>({ params }) {
+  <span class="kw">return</span> (
+    &lt;<span class="comp">div</span>&gt;
+      {<span class="cm">/* Cached product info — resolves fast */}</span>
+      &lt;<span class="comp">Suspense</span> fallback={<span class="str">&lt;ProductInfoSkeleton /&gt;</span>}&gt;
+        &lt;<span class="comp">ProductInfo</span> slug={params.slug} /&gt;
+      &lt;/<span class="comp">Suspense</span>&gt;
+
+      {<span class="cm">/* Live inventory — streams in separately */}</span>
+      &lt;<span class="comp">Suspense</span> fallback={<span class="str">&lt;InventorySkeleton /&gt;</span>}&gt;
+        &lt;<span class="comp">Inventory</span> slug={params.slug} /&gt;
+      &lt;/<span class="comp">Suspense</span>&gt;
+
+      {<span class="cm">/* Reviews — heaviest, streams last */}</span>
+      &lt;<span class="comp">Suspense</span> fallback={<span class="str">&lt;ReviewsSkeleton /&gt;</span>}&gt;
+        &lt;<span class="comp">Reviews</span> slug={params.slug} /&gt;
+      &lt;/<span class="comp">Suspense</span>&gt;
+    &lt;/<span class="comp">div</span>&gt;
+  )
+}
+  </div>
+</section>
+
+<!-- CSS Shimmer Animation -->
+<section class="section">
+  <h2>Custom <span class="a">Shimmer Animation</span></h2>
+  <p class="desc">Tailwind's animate-pulse works, but a custom shimmer gradient feels more polished. Here's the CSS + Tailwind config.</p>
+
+  <div class="code">
+<span class="cm">/* app/globals.css — Shimmer animation */</span>
+<span class="tag">@keyframes</span> <span class="fn">shimmer</span> {
+  <span class="prop">0%</span>   { background-position: <span class="str">-200% 0</span> }
+  <span class="prop">100%</span> { background-position: <span class="str">200% 0</span> }
+}
+
+<span class="tag">.skeleton-shimmer</span> {
+  <span class="prop">background</span>: <span class="fn">linear-gradient</span>(
+    <span class="prop">90deg</span>,
+    <span class="str">var(--muted) 25%</span>,
+    <span class="str">var(--muted-hover) 50%</span>,
+    <span class="str">var(--muted) 75%</span>
+  );
+  <span class="prop">background-size</span>: <span class="str">200% 100%</span>;
+  <span class="prop">animation</span>: <span class="fn">shimmer</span> <span class="str">1.8s ease-in-out infinite</span>;
+  <span class="prop">border-radius</span>: <span class="str">6px</span>;
+}
+
+<span class="cm">/* Dark mode variant */</span>
+<span class="tag">:root</span> {
+  <span class="prop">--muted</span>: <span class="str">#1a1a2e</span>;
+  <span class="prop">--muted-hover</span>: <span class="str">#2a2a48</span>;
+}
+<span class="tag">[data-theme="light"]</span> {
+  <span class="prop">--muted</span>: <span class="str">#e2e2e8</span>;
+  <span class="prop">--muted-hover</span>: <span class="str">#f0f0f5</span>;
+}
+  </div>
+</section>
+
+<!-- Best Practices -->
+<section class="section">
+  <h2>Best <span class="a">Practices</span></h2>
+  <div class="patterns">
+    <div class="pattern">
+      <h4>🎯 Match the skeleton to the content shape</h4>
+      <p>Skeletons should mirror the final layout. A card skeleton should have image, title, and text blocks in the same positions as the loaded card.</p>
+    </div>
+    <div class="pattern">
+      <h4>⚡ Avoid layout shift (CLS)</h4>
+      <p>Skeleton dimensions must match loaded content. Use fixed heights or aspect-ratio. If content varies, use the most common size as skeleton.</p>
+    </div>
+    <div class="pattern">
+      <h4>🧩 Use Suspense boundaries strategically</h4>
+      <p>Wrap independent data sections in separate Suspense boundaries. Fast data appears first, slow data streams in without blocking the rest.</p>
+    </div>
+    <div class="pattern">
+      <h4>🎨 Match the design system</h4>
+      <p>Skeleton colors should use the same muted tones as your design system. Dark mode skeletons need different base colors than light mode.</p>
+    </div>
+    <div class="pattern">
+      <h4>⏱️ Don't skeleton everything</h4>
+      <p>Only use skeletons for data that takes &gt;200ms to load. Static content rendered by the server should appear instantly — no skeleton needed.</p>
+    </div>
+    <div class="pattern">
+      <h4>🔄 Reveal content smoothly</h4>
+      <p>Cross-fade skeleton → content with opacity transition. Avoid jarring pops. A 300ms opacity transition makes the swap feel polished.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Impact -->
+<section class="section">
+  <h2>Business <span class="a">Impact</span></h2>
+  <div class="stats-row">
+    <div class="stat">
+      <div class="num">-40%</div>
+      <div class="label">Bounce rate with skeleton states</div>
+    </div>
+    <div class="stat">
+      <div class="num">+18%</div>
+      <div class="label">Engagement with progressive loading</div>
+    </div>
+    <div class="stat">
+      <div class="num">3x</div>
+      <div class="label">Faster perceived load time</div>
+    </div>
+    <div class="stat">
+      <div class="num">+7%</div>
+      <div class="label">Conversion per 100ms improvement</div>
+    </div>
+  </div>
+</section>
+
+<!-- Use Cases -->
+<section class="section">
+  <h2>Use Cases for <span class="a">Molt Studios & OpenDrones</span></h2>
+  <div class="patterns">
+    <div class="pattern">
+      <h4>🏗️ Molt Studios — Portfolio Pages</h4>
+      <p>Gallery pages with 20+ project cards. Skeleton grid shows immediately, then real project thumbnails stream in. Client sees "instant" load.</p>
+    </div>
+    <div class="pattern">
+      <h4>🛒 OpenDrones — Product Pages</h4>
+      <p>Product images, pricing, and reviews load independently. Hero image appears first, inventory streams in real-time, reviews fill in last. No blank screens.</p>
+    </div>
+    <div class="pattern">
+      <h4>📊 OpenDrones — Dashboard</h4>
+      <p>Multiple chart widgets each in their own Suspense boundary. Fast widgets (cached data) appear immediately. Slow widgets (live telemetry) stream in without blocking.</p>
+    </div>
+    <div class="pattern">
+      <h4>📝 Molt Studios — Blog Platforms</h4>
+      <p>Article content resolves fast. Related posts and comments stream in separately. Reader starts reading immediately while extras load.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>Skeleton Loading & Streaming UI Research Demo — Jin @ Molt Studios</p>
+  <p style="margin-top:.5rem">Perceived performance &bull; Next.js Suspense &bull; Progressive rendering</p>
+</footer>
+
+<script>
+const streamContent = document.getElementById('streamContent');
+
+const skeletonHTML = `
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.75rem">
+    <div class="skel-card"><div class="skeleton" style="height:100px;border-radius:6px;margin-bottom:.5rem"></div><div class="skeleton" style="height:12px;width:70%;margin-bottom:.3rem"></div><div class="skeleton" style="height:12px;width:40%"></div></div>
+    <div class="skel-card"><div class="skeleton" style="height:100px;border-radius:6px;margin-bottom:.5rem"></div><div class="skeleton" style="height:12px;width:60%;margin-bottom:.3rem"></div><div class="skeleton" style="height:12px;width:35%"></div></div>
+    <div class="skel-card"><div class="skeleton" style="height:100px;border-radius:6px;margin-bottom:.5rem"></div><div class="skeleton" style="height:12px;width:65%;margin-bottom:.3rem"></div><div class="skeleton" style="height:12px;width:45%"></div></div>
+  </div>
+  <div style="display:flex;gap:1rem">
+    <div class="skel-card" style="flex:1"><div class="skeleton" style="height:80px;border-radius:6px;margin-bottom:.5rem"></div><div class="skeleton" style="height:12px;width:80%"></div><div class="skeleton" style="height:12px;width:60%;margin-top:.3rem"></div><div class="skeleton" style="height:12px;width:45%;margin-top:.3rem"></div></div>
+    <div class="skel-card" style="flex:1"><div class="skeleton" style="height:80px;border-radius:6px;margin-bottom:.5rem"></div><div class="skeleton" style="height:12px;width:70%"></div><div class="skeleton" style="height:12px;width:50%;margin-top:.3rem"></div></div>
+  </div>
+`;
+
+const loadedCards = [
+  {name:'Arc Battery Pro',price:'$149',color:'#6366f1'},
+  {name:'Tundra Prop Set',price:'$79',color:'#ec4899'},
+  {name:'SkyLink GPS Module',price:'$199',color:'#34d399'},
+];
+const loadedDetail = {name:'Arc Battery Pro 5000mAh',desc:'High-capacity lithium polymer battery with smart charge management. Compatible with all Molt drone frames.',stock:'23 in stock',rating:'4.8 (142 reviews)'};
+const loadedReviews = {count:142,avg:'4.8',recent:'"Best battery I\'ve owned" — Alex M.'};
+
+const loadedHTML = `
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.75rem">
+    ${loadedCards.map(c=>`
+      <div style="background:rgba(0,0,0,.3);border-radius:8px;padding:.75rem;border:1px solid rgba(255,255,255,.05)">
+        <div style="height:100px;border-radius:6px;background:linear-gradient(135deg,${c.color}33,${c.color}11);display:flex;align-items:center;justify-content:center;margin-bottom:.5rem"><span style="font-size:1.8rem">🔋</span></div>
+        <div style="font-size:.85rem;font-weight:600;color:#fff">${c.name}</div>
+        <div style="font-size:.8rem;color:var(--green);font-weight:700">${c.price}</div>
+      </div>`).join('')}
+  </div>
+  <div style="display:flex;gap:1rem">
+    <div style="flex:1;background:rgba(0,0,0,.3);border-radius:8px;padding:.75rem;border:1px solid rgba(255,255,255,.05)">
+      <div style="font-size:.9rem;font-weight:600;color:#fff">${loadedDetail.name}</div>
+      <div style="font-size:.8rem;color:var(--muted);margin-top:.3rem">${loadedDetail.desc}</div>
+      <div style="font-size:.8rem;color:var(--green);margin-top:.4rem">${loadedDetail.stock} &bull; ⭐ ${loadedDetail.rating}</div>
+    </div>
+    <div style="flex:1;background:rgba(0,0,0,.3);border-radius:8px;padding:.75rem;border:1px solid rgba(255,255,255,.05)">
+      <div style="font-size:.9rem;font-weight:600;color:#fff">Customer Reviews</div>
+      <div style="font-size:1.6rem;font-weight:800;color:var(--amber);margin:.3rem 0">${loadedReviews.avg}</div>
+      <div style="font-size:.8rem;color:var(--muted)">${loadedReviews.count} reviews</div>
+      <div style="font-size:.75rem;color:var(--text);margin-top:.5rem;font-style:italic">${loadedReviews.recent}</div>
+    </div>
+  </div>
+`;
+
+let streamTimeout = [];
+
+function clearStreamTimeouts() {
+  streamTimeout.forEach(t => clearTimeout(t));
+  streamTimeout = [];
+}
+
+function resetStream() {
+  clearStreamTimeouts();
+  streamContent.innerHTML = '';
+  document.querySelectorAll('.stream-btn').forEach(b => b.classList.remove('active'));
+}
+
+function startStream(mode) {
+  resetStream();
+  document.querySelectorAll('.stream-btn').forEach((b,i) => {
+    b.classList.toggle('active', (i===0 && mode==='skeleton') || (i===1 && mode==='blank'));
+  });
+
+  if (mode === 'skeleton') {
+    // Show skeleton immediately
+    streamContent.innerHTML = skeletonHTML;
+
+    // Phase 1: Load product cards (500ms)
+    streamTimeout.push(setTimeout(() => {
+      const cards = streamContent.querySelectorAll(':scope > div:first-child');
+      // Replace skeleton cards with loaded cards
+      const cardHTML = `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.75rem">
+        ${loadedCards.map(c=>`
+          <div style="background:rgba(0,0,0,.3);border-radius:8px;padding:.75rem;border:1px solid rgba(255,255,255,.05);opacity:0;animation:fadeUp .4s ease forwards">
+            <div style="height:100px;border-radius:6px;background:linear-gradient(135deg,${c.color}33,${c.color}11);display:flex;align-items:center;justify-content:center;margin-bottom:.5rem"><span style="font-size:1.8rem">🔋</span></div>
+            <div style="font-size:.85rem;font-weight:600;color:#fff">${c.name}</div>
+            <div style="font-size:.8rem;color:var(--green);font-weight:700">${c.price}</div>
+          </div>`).join('')}
+      </div>`;
+      streamContent.children[0].outerHTML = cardHTML;
+    }, 500));
+
+    // Phase 2: Load detail section (1200ms)
+    streamTimeout.push(setTimeout(() => {
+      const detailHTML = `<div style="display:flex;gap:1rem;opacity:0;animation:fadeUp .4s ease forwards">
+        <div style="flex:1;background:rgba(0,0,0,.3);border-radius:8px;padding:.75rem;border:1px solid rgba(255,255,255,.05)">
+          <div style="font-size:.9rem;font-weight:600;color:#fff">${loadedDetail.name}</div>
+          <div style="font-size:.8rem;color:var(--muted);margin-top:.3rem">${loadedDetail.desc}</div>
+          <div style="font-size:.8rem;color:var(--green);margin-top:.4rem">${loadedDetail.stock} &bull; ⭐ ${loadedDetail.rating}</div>
+        </div>
+        <div style="flex:1;background:rgba(0,0,0,.3);border-radius:8px;padding:.75rem;border:1px solid rgba(255,255,255,.05)">
+          <div style="font-size:.9rem;font-weight:600;color:#fff">Customer Reviews</div>
+          <div style="font-size:1.6rem;font-weight:800;color:var(--amber);margin:.3rem 0">${loadedReviews.avg}</div>
+          <div style="font-size:.8rem;color:var(--muted)">${loadedReviews.count} reviews</div>
+          <div style="font-size:.75rem;color:var(--text);margin-top:.5rem;font-style:italic">${loadedReviews.recent}</div>
+        </div>
+      </div>`;
+      streamContent.children[1].outerHTML = detailHTML;
+    }, 1200));
+
+  } else {
+    // Blank mode — show nothing, then pop in all at once
+    streamContent.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:250px;color:var(--muted);font-size:.9rem">Blank screen... waiting for data...</div>';
+
+    streamTimeout.push(setTimeout(() => {
+      streamContent.innerHTML = `<div style="opacity:0;animation:fadeUp .3s ease forwards">${loadedHTML}</div>`;
+    }, 1800));
+  }
+}
+
+// Add fade animation
+const style = document.createElement('style');
+style.textContent = '@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}';
+document.head.appendChild(style);
+
+// Auto-start skeleton demo
+setTimeout(() => startStream('skeleton'), 500);
+</script>
+</body>
+</html>

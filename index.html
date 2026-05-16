@@ -11,10 +11,12 @@ body{background:#0a0a0a;color:#e5e5e5;font-family:-apple-system,sans-serif;min-h
 .header{border-bottom:1px solid #262626;padding-bottom:1.5rem;margin-bottom:2rem}
 .header h1{font-size:1.75rem;font-weight:700;color:#fff}
 .header p{color:#737373;font-size:0.875rem;margin-top:0.5rem}
+.counter{color:#6366f1;font-size:0.875rem;margin-top:0.5rem}
 .filters{display:flex;gap:1.5rem;margin-bottom:2rem;flex-wrap:wrap}
 .filter-group{display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center}
 .filter-label{font-size:0.75rem;color:#737373;text-transform:uppercase}
 .btn{padding:0.25rem 0.75rem;border-radius:9999px;font-size:0.75rem;border:none;cursor:pointer;background:#262626;color:#a3a3a3}
+.btn:hover{background:#333}
 .btn.active{background:#6366f1;color:#fff}
 .agent-section{margin-bottom:2rem}
 .agent-header{font-size:1.125rem;font-weight:600;margin-bottom:0.75rem;display:flex;align-items:center;gap:0.5rem}
@@ -32,6 +34,9 @@ body{background:#0a0a0a;color:#e5e5e5;font-family:-apple-system,sans-serif;min-h
 .tags{display:flex;gap:0.5rem;margin-top:0.5rem;flex-wrap:wrap;align-items:center}
 .tag{font-size:0.625rem;background:#1e1b4b;color:#a5b4fc;padding:0.125rem 0.5rem;border-radius:9999px}
 .link{font-size:0.75rem;color:#818cf8;text-decoration:none}
+.show-more{display:block;width:100%;padding:0.75rem;background:#1a1a2e;border:1px solid #262626;border-radius:0.5rem;color:#818cf8;font-size:0.875rem;cursor:pointer;margin-top:0.5rem;text-align:center}
+.show-more:hover{background:#262640;border-color:#3b3b6b}
+.hidden{display:none}
 .empty{text-align:center;padding:4rem;color:#525252}
 .empty-icon{font-size:3rem;margin-bottom:1rem}
 </style>
@@ -41,6 +46,7 @@ body{background:#0a0a0a;color:#e5e5e5;font-family:-apple-system,sans-serif;min-h
   <div class="header">
     <h1>🔬 Molt Studios Research Hub</h1>
     <p>Agent research & live demos — organized by priority</p>
+    <div class="counter" id="counter"></div>
   </div>
   <div class="filters">
     <div class="filter-group">
@@ -58,54 +64,146 @@ body{background:#0a0a0a;color:#e5e5e5;font-family:-apple-system,sans-serif;min-h
 const API='https://mission-control-api-gamma.vercel.app/api/research';
 const EMOJI={ghost:'👻',maya:'🧘‍♀️',dex:'🔍',raven:'📧',jin:'🎨',neo:'⚙️',aria:'🎯',sage:'🧠',cash:'💰'};
 const COLORS={ghost:'#6366f1',maya:'#a855f7',dex:'#f59e0b',raven:'#ef4444',jin:'#ec4899',neo:'#3b82f6',aria:'#10b981',sage:'#8b5cf6',cash:'#f97316'};
-let filterAgent='all',filterCat='all',research=[];
+const PAGE_SIZE=25;
+let filterAgent='all',filterCat='all',research=[],expanded={};
+
 async function load(){research=await fetch(API).then(r=>r.json()).catch(()=>[]);render()}
+
+function esc(s){if(!s)return'';return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
 function render(){
   var agents=[...new Set(research.map(r=>r.agent))].sort();
   var cats=[...new Set(research.map(r=>r.category))].sort();
   var af=document.getElementById('agent-filters');
-  af.innerHTML='<button class="btn '+(filterAgent==='all'?'active':'')+'" onclick="setFilter(\'agent\',\'all\')">All</button>'+agents.map(a=>'<button class="btn '+(filterAgent===a?'active':'')+'" style="'+(filterAgent===a?'background:'+(COLORS[a]||'#6366f1'):'')+'" onclick="setFilter(\'agent\',\''+a+'\')">'+(EMOJI[a]||'🤖')+' '+a+'</button>').join('');
+  af.innerHTML='<button class="btn '+(filterAgent==='all'?'active':'')+'" onclick="setFilter(\'agent\',\'all\')">All ('+research.length+')</button>'+agents.map(a=>{
+    var c=research.filter(r=>r.agent===a).length;
+    return '<button class="btn '+(filterAgent===a?'active':'')+'" style="'+(filterAgent===a?'background:'+(COLORS[a]||'#6366f1'):'')+'" onclick="setFilter(\'agent\',\''+a+'\')">'+(EMOJI[a]||'🤖')+' '+a+' ('+c+')</button>';
+  }).join('');
   var cf=document.getElementById('cat-filters');
-  cf.innerHTML='<button class="btn '+(filterCat==='all'?'active':'')+'" onclick="setFilter(\'cat\',\'all\')">All</button>'+cats.map(c=>'<button class="btn '+(filterCat===c?'active':'')+'" onclick="setFilter(\'cat\',\''+c+'\')">'+c+'</button>').join('');
+  cf.innerHTML='<button class="btn '+(filterCat==='all'?'active':'')+'" onclick="setFilter(\'cat\',\'all\')">All</button>'+cats.map(c=>'<button class="btn '+(filterCat===c?'active':'')+'" onclick="setFilter(\'cat\',\''+esc(c)+'\')">'+esc(c)+'</button>').join('');
+
   var filtered=research;
   if(filterAgent!=='all')filtered=filtered.filter(r=>r.agent===filterAgent);
   if(filterCat!=='all')filtered=filtered.filter(r=>r.category===filterCat);
   filtered.sort((a,b)=>a.priority-b.priority);
+
+  document.getElementById('counter').textContent='Showing '+filtered.length+' of '+research.length+' entries';
+
+  // Group by agent
   var grouped={};
   filtered.forEach(r=>{if(!grouped[r.agent])grouped[r.agent]=[];grouped[r.agent].push(r)});
-  var html='';
+
+  // Build HTML safely using DOM
+  var content=document.getElementById('content');
+  content.innerHTML='';
+
   if(Object.keys(grouped).length===0){
-    html='<div class="empty"><div class="empty-icon">🔬</div><p>No research entries yet.</p><p style="font-size:0.875rem;margin-top:0.5rem">Jin and Sage will populate this with their daily research.</p></div>';
-  } else {
-    Object.keys(grouped).sort().forEach(agent=>{
-      html+='<div class="agent-section">';
-      html+='<div class="agent-header" style="color:'+(COLORS[agent]||'#fff')+'">'+(EMOJI[agent]||'🤖')+' '+agent.toUpperCase()+' <span style="font-size:0.75rem;color:#525252;font-weight:400">('+grouped[agent].length+' entries)</span></div>';
-      grouped[agent].forEach(r=>{
-        var pc=r.priority<=3?'high':r.priority<=6?'med':'low';
-        var pl=r.priority<=3?'HIGH':r.priority<=6?'MED':'LOW';
-        html+='<div class="entry" id="entry-'+r.id+'"><div class="entry-title" onclick="toggleDesc(\''+r.id+'\')"><span class="priority '+pc+'">['+pl+' '+r.priority+']</span><span class="name">'+r.title+'</span><span class="cat">'+r.category+'</span>';
-        if(r.description && r.description.length > 150) html+='<span class="expand-btn" id="btn-'+r.id+'">▼ Read more</span>';
-        html+='</div>';
-        if(r.description){
-          if(r.description.length > 150){
-            html+='<div class="desc">'+r.description.substring(0,150)+'...</div>';
-            html+='<div class="desc-full" id="desc-'+r.id+'">'+r.description+'</div>';
-          } else {
-            html+='<div class="desc">'+r.description+'</div>';
-          }
-        }
-        var extras=[];
-        if(r.example_url)extras.push('<a class="link" href="'+r.example_url+'" target="_blank">🔗 View Demo</a>');
-        if(r.tags&&r.tags.length)extras.push(r.tags.map(t=>'<span class="tag">'+t+'</span>').join(''));
-        if(extras.length)html+='<div class="tags">'+extras.join(' ')+'</div>';
-        html+='</div>';
-      });
-      html+='</div>';
-    });
+    content.innerHTML='<div class="empty"><div class="empty-icon">🔬</div><p>No research entries match your filters.</p></div>';
+    return;
   }
-  document.getElementById('content').innerHTML=html;
+
+  Object.keys(grouped).sort().forEach(function(agent){
+    var entries=grouped[agent];
+    var isExpanded=expanded[agent]||false;
+    var visible=isExpanded?entries.length:Math.min(PAGE_SIZE,entries.length);
+    var hasMore=entries.length>PAGE_SIZE;
+
+    var section=document.createElement('div');
+    section.className='agent-section';
+
+    var header=document.createElement('div');
+    header.className='agent-header';
+    header.style.color=COLORS[agent]||'#fff';
+    header.innerHTML=(EMOJI[agent]||'🤖')+' '+agent.toUpperCase()+' <span style="font-size:0.75rem;color:#525252;font-weight:400">('+entries.length+' entries)</span>';
+    section.appendChild(header);
+
+    // Render visible entries
+    for(var i=0;i<visible;i++){
+      var r=entries[i];
+      var el=document.createElement('div');
+      el.className='entry';
+      el.id='entry-'+r.id;
+
+      var pc=r.priority<=3?'high':r.priority<=6?'med':'low';
+      var pl=r.priority<=3?'HIGH':r.priority<=6?'MED':'LOW';
+
+      var titleDiv=document.createElement('div');
+      titleDiv.className='entry-title';
+      titleDiv.onclick=(function(id){return function(){toggleDesc(id)}})(r.id);
+
+      titleDiv.innerHTML='<span class="priority '+pc+'">['+pl+' '+r.priority+']</span><span class="name">'+esc(r.title)+'</span><span class="cat">'+esc(r.category)+'</span>';
+
+      if(r.description && r.description.length > 150){
+        var btn=document.createElement('span');
+        btn.className='expand-btn';
+        btn.id='btn-'+r.id;
+        btn.textContent='▼ Read more';
+        titleDiv.appendChild(btn);
+      }
+      el.appendChild(titleDiv);
+
+      if(r.description){
+        if(r.description.length>150){
+          var shortD=document.createElement('div');
+          shortD.className='desc';
+          shortD.textContent=r.description.substring(0,150)+'...';
+          el.appendChild(shortD);
+
+          var fullD=document.createElement('div');
+          fullD.className='desc-full';
+          fullD.id='desc-'+r.id;
+          fullD.textContent=r.description;
+          el.appendChild(fullD);
+        } else {
+          var d=document.createElement('div');
+          d.className='desc';
+          d.textContent=r.description;
+          el.appendChild(d);
+        }
+      }
+
+      var extras=[];
+      if(r.example_url){
+        var a=document.createElement('a');
+        a.className='link';
+        a.href=r.example_url;
+        a.target='_blank';
+        a.textContent='🔗 View Demo';
+        extras.push(a.outerHTML);
+      }
+      if(r.tags&&r.tags.length){
+        extras.push(r.tags.map(function(t){return '<span class="tag">'+esc(t)+'</span>'}).join(''));
+      }
+      if(extras.length){
+        var tagsDiv=document.createElement('div');
+        tagsDiv.className='tags';
+        tagsDiv.innerHTML=extras.join(' ');
+        el.appendChild(tagsDiv);
+      }
+
+      section.appendChild(el);
+    }
+
+    // Show more button
+    if(hasMore && !isExpanded){
+      var moreBtn=document.createElement('button');
+      moreBtn.className='show-more';
+      moreBtn.textContent='Show all '+entries.length+' '+agent+' entries ('+(entries.length-PAGE_SIZE)+' more)';
+      moreBtn.onclick=(function(ag){return function(){expanded[ag]=true;render()}})(agent);
+      section.appendChild(moreBtn);
+    } else if(hasMore && isExpanded){
+      var lessBtn=document.createElement('button');
+      lessBtn.className='show-more';
+      lessBtn.textContent='Show less (collapse to '+PAGE_SIZE+')';
+      lessBtn.onclick=(function(ag){return function(){expanded[ag]=false;render()}})(agent);
+      section.appendChild(lessBtn);
+    }
+
+    content.appendChild(section);
+  });
 }
-function setFilter(type,val){if(type==='agent')filterAgent=val;else filterCat=val;render()}
+
+function setFilter(type,val){if(type==='agent')filterAgent=val;else filterCat=val;expanded={};render()}
 function toggleDesc(id){
   var el=document.getElementById('desc-'+id);
   var btn=document.getElementById('btn-'+id);
