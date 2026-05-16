@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Next.js Partial Prerendering (PPR) — Jin Research</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0f;
+      --surface: #12121a;
+      --surface-2: #1a1a28;
+      --surface-3: #222236;
+      --border: #2a2a42;
+      --text: #e8e8f0;
+      --text-muted: #8888a8;
+      --accent: #7c6aff;
+      --accent-2: #ff6a8a;
+      --accent-3: #4aff8a;
+      --accent-4: #6ab4ff;
+      --success: #4aff8a;
+      --warning: #ffaa4a;
+      --code-bg: #0d0d18;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* Hero */
+    .hero {
+      min-height: 50vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 4rem 2rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(ellipse at 30% 40%, rgba(124,106,255,0.08) 0%, transparent 50%),
+                  radial-gradient(ellipse at 70% 60%, rgba(106,180,255,0.06) 0%, transparent 50%);
+      animation: heroFloat 20s ease-in-out infinite;
+    }
+
+    @keyframes heroFloat {
+      0%, 100% { transform: translate(0, 0) rotate(0deg); }
+      33% { transform: translate(2%, -1%) rotate(1deg); }
+      66% { transform: translate(-1%, 1%) rotate(-0.5deg); }
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.4rem 1rem;
+      background: rgba(124,106,255,0.12);
+      border: 1px solid rgba(124,106,255,0.25);
+      border-radius: 100px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--accent);
+      margin-bottom: 1.5rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-badge .dot {
+      width: 6px;
+      height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 800;
+      line-height: 1.1;
+      margin-bottom: 1rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero h1 .gradient {
+      background: linear-gradient(135deg, var(--accent), var(--accent-4));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero p {
+      font-size: 1.1rem;
+      color: var(--text-muted);
+      max-width: 640px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Container */
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 2rem 4rem;
+    }
+
+    /* Section */
+    .section {
+      margin-bottom: 4rem;
+    }
+
+    .section-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .section-title .icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+
+    /* PPR Visualization */
+    .ppr-viz {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+    }
+
+    .ppr-viz-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+    }
+
+    .page-shell {
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      position: relative;
+      background: rgba(124,106,255,0.03);
+    }
+
+    .page-shell::before {
+      content: 'Static Shell (Pre-rendered at build time, served from CDN)';
+      position: absolute;
+      top: -0.6rem;
+      left: 1rem;
+      background: var(--accent);
+      color: white;
+      font-size: 0.65rem;
+      font-weight: 600;
+      padding: 0.15rem 0.6rem;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .shell-nav {
+      display: flex;
+      gap: 1rem;
+      padding: 0.75rem 1rem;
+      background: var(--surface-2);
+      border-radius: 8px;
+      margin-bottom: 1rem;
+    }
+
+    .shell-nav span {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      height: 12px;
+      border-radius: 4px;
+    }
+
+    .shell-nav span:nth-child(1) { width: 60px; background: var(--surface-3); }
+    .shell-nav span:nth-child(2) { width: 40px; background: var(--surface-3); }
+    .shell-nav span:nth-child(3) { width: 50px; background: var(--surface-3); }
+    .shell-nav span:nth-child(4) { width: 45px; background: var(--surface-3); }
+
+    .shell-hero {
+      background: linear-gradient(135deg, rgba(124,106,255,0.15), rgba(106,180,255,0.1));
+      border-radius: 8px;
+      padding: 2rem;
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+
+    .shell-hero h3 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-bottom: 0.3rem;
+    }
+
+    .shell-hero p {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .dynamic-holes {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    @media (max-width: 600px) {
+      .dynamic-holes { grid-template-columns: 1fr; }
+    }
+
+    .dynamic-hole {
+      border: 2px solid rgba(255,106,138,0.4);
+      border-radius: 10px;
+      padding: 1.25rem;
+      position: relative;
+      background: rgba(255,106,138,0.04);
+      min-height: 100px;
+    }
+
+    .dynamic-hole::before {
+      content: '⚡ Dynamic Hole';
+      position: absolute;
+      top: -0.55rem;
+      left: 0.75rem;
+      background: var(--accent-2);
+      color: white;
+      font-size: 0.6rem;
+      font-weight: 600;
+      padding: 0.1rem 0.5rem;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .hole-content {
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.4s ease, transform 0.4s ease;
+    }
+
+    .hole-content.loaded {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .hole-line {
+      height: 8px;
+      border-radius: 4px;
+      background: var(--surface-3);
+      margin-bottom: 0.5rem;
+    }
+
+    .hole-line:nth-child(1) { width: 80%; }
+    .hole-line:nth-child(2) { width: 60%; }
+    .hole-line:nth-child(3) { width: 90%; }
+
+    /* Timeline */
+    .timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin-top: 2rem;
+    }
+
+    .timeline-step {
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+      padding: 1rem 0;
+      border-left: 2px solid var(--border);
+      padding-left: 1.5rem;
+      position: relative;
+      opacity: 0;
+      transform: translateX(-10px);
+      transition: opacity 0.4s ease, transform 0.4s ease;
+    }
+
+    .timeline-step.active {
+      opacity: 1;
+      transform: translateX(0);
+    }
+
+    .timeline-step::before {
+      content: '';
+      position: absolute;
+      left: -6px;
+      top: 1.2rem;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--border);
+      transition: background 0.3s;
+    }
+
+    .timeline-step.active::before {
+      background: var(--accent);
+      box-shadow: 0 0 12px rgba(124,106,255,0.5);
+    }
+
+    .timeline-step .time {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--accent);
+      min-width: 60px;
+      flex-shrink: 0;
+      padding-top: 0.1rem;
+    }
+
+    .timeline-step .desc {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    .timeline-step .desc strong {
+      color: var(--text);
+    }
+
+    /* Comparison */
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+    }
+
+    @media (max-width: 600px) {
+      .comparison { grid-template-columns: 1fr; }
+    }
+
+    .compare-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+
+    .compare-card.before { border-color: rgba(255,106,138,0.3); }
+    .compare-card.after { border-color: rgba(74,255,138,0.3); }
+
+    .compare-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.75rem;
+    }
+
+    .compare-card.before .compare-label { color: var(--accent-2); }
+    .compare-card.after .compare-label { color: var(--accent-3); }
+
+    .compare-stat {
+      font-size: 2rem;
+      font-weight: 800;
+      margin-bottom: 0.25rem;
+    }
+
+    .compare-card.before .compare-stat { color: var(--accent-2); }
+    .compare-card.after .compare-stat { color: var(--accent-3); }
+
+    .compare-desc {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    /* Code Block */
+    .code-block {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 1.5rem;
+    }
+
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.6rem 1rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .code-header .file {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .code-header .lang {
+      font-size: 0.65rem;
+      font-weight: 600;
+      padding: 0.15rem 0.5rem;
+      background: rgba(124,106,255,0.15);
+      color: var(--accent);
+      border-radius: 4px;
+    }
+
+    .code-body {
+      padding: 1rem;
+      overflow-x: auto;
+    }
+
+    .code-body pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      line-height: 1.7;
+      color: var(--text);
+      white-space: pre;
+    }
+
+    .code-body .comment { color: #5a5a7a; }
+    .code-body .keyword { color: var(--accent); }
+    .code-body .string { color: var(--accent-3); }
+    .code-body .func { color: var(--accent-4); }
+    .code-body .tag { color: var(--accent-2); }
+    .code-body .attr { color: var(--warning); }
+
+    /* Play Button */
+    .play-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.5rem;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.2s;
+      margin: 1rem 0;
+    }
+
+    .play-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px rgba(124,106,255,0.4);
+    }
+
+    .play-btn:active {
+      transform: translateY(0);
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 1.8rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--accent), var(--accent-4));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+    }
+
+    /* Use Cases */
+    .use-case-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+
+    .use-case {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      transition: border-color 0.2s;
+    }
+
+    .use-case:hover {
+      border-color: var(--accent);
+    }
+
+    .use-case-icon {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .use-case h4 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+    }
+
+    .use-case p {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: 3rem 2rem;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-badge"><span class="dot"></span> Research by Jin — May 2026</div>
+    <h1>Next.js <span class="gradient">Partial Prerendering</span></h1>
+    <p>Static shell + dynamic holes. The best of SSR and SSG combined into one architecture. Ship instant static shells with streaming dynamic content.</p>
+  </section>
+
+  <div class="container">
+
+    <!-- Interactive PPR Visualization -->
+    <section class="section">
+      <h2 class="section-title">
+        <span class="icon" style="background: rgba(124,106,255,0.15);">⚡</span>
+        How PPR Works — Interactive Demo
+      </h2>
+
+      <div class="ppr-viz">
+        <div class="ppr-viz-label">Click "Simulate Request" to watch the rendering pipeline</div>
+
+        <div class="page-shell" id="pprDemo">
+          <div class="shell-nav">
+            <span></span><span></span><span></span><span></span>
+          </div>
+          <div class="shell-hero">
+            <h3>OpenDrones Arc Battery Pack</h3>
+            <p>Next-gen power for your drone fleet</p>
+          </div>
+          <div class="dynamic-holes">
+            <div class="dynamic-hole" id="hole1">
+              <div class="hole-content" id="hole1Content">
+                <div class="hole-line"></div>
+                <div class="hole-line"></div>
+                <div class="hole-line"></div>
+              </div>
+            </div>
+            <div class="dynamic-hole" id="hole2">
+              <div class="hole-content" id="hole2Content">
+                <div class="hole-line"></div>
+                <div class="hole-line"></div>
+                <div class="hole-line"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button class="play-btn" id="playBtn" onclick="simulatePPR()">▶ Simulate Request</button>
+
+        <div class="timeline" id="timeline">
+          <div class="timeline-step" id="step0">
+            <span class="time">0ms</span>
+            <span class="desc"><strong>Request received</strong> — CDN serves pre-rendered static shell instantly</span>
+          </div>
+          <div class="timeline-step" id="step1">
+            <span class="time">~20ms</span>
+            <span class="desc"><strong>Static shell renders</strong> — Nav, hero, layout visible. Skeleton placeholders show for dynamic sections.</span>
+          </div>
+          <div class="timeline-step" id="step2">
+            <span class="time">~150ms</span>
+            <span class="desc"><strong>Inventory stream resolves</strong> — Live stock count fills first dynamic hole via Suspense boundary.</span>
+          </div>
+          <div class="timeline-step" id="step3">
+            <span class="time">~300ms</span>
+            <span class="desc"><strong>Reviews stream resolves</strong> — User reviews fill second dynamic hole. Page fully loaded.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Performance Comparison -->
+    <section class="section">
+      <h2 class="section-title">
+        <span class="icon" style="background: rgba(74,255,138,0.15);">📊</span>
+        Performance Comparison
+      </h2>
+
+      <div class="comparison">
+        <div class="compare-card before">
+          <div class="compare-label">❌ Without PPR (Full SSR)</div>
+          <div class="compare-stat">300–800ms</div>
+          <div class="compare-desc">Entire page blocks until ALL data is fetched. User sees blank screen. Slowest data source determines total wait.</div>
+        </div>
+        <div class="compare-card after">
+          <div class="compare-label">✅ With PPR</div>
+          <div class="compare-stat">~20ms TTFB</div>
+          <div class="compare-desc">Static shell serves instantly from CDN edge. Dynamic content streams in independently. User sees layout immediately.</div>
+        </div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value">~20ms</div>
+          <div class="stat-label">Time to First Byte (CDN shell)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">10-40x</div>
+          <div class="stat-label">Faster initial render vs SSR</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">0 JS</div>
+          <div class="stat-label">Client bundle for static parts</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">100%</div>
+          <div class="stat-label">Cache hit rate for shell</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Code Examples -->
+    <section class="section">
+      <h2 class="section-title">
+        <span class="icon" style="background: rgba(106,180,255,0.15);">💻</span>
+        Implementation Code
+      </h2>
+
+      <div class="code-block">
+        <div class="code-header">
+          <span class="file">next.config.ts</span>
+          <span class="lang">TypeScript</span>
+        </div>
+        <div class="code-body">
+<pre><span class="comment">// Enable PPR in Next.js 15.3+/16</span>
+<span class="keyword">import</span> type { Config } <span class="keyword">from</span> <span class="string">'next'</span>
+
+<span class="keyword">const</span> config: Config = {
+  <span class="attr">experimental</span>: {
+    <span class="attr">ppr</span>: <span class="string">'incremental'</span>  <span class="comment">// 'incremental' = opt-in per route</span>
+    <span class="comment">// 'true' = enable for all routes (Next.js 16)</span>
+  }
+}
+
+<span class="keyword">export default</span> config</pre>
+        </div>
+      </div>
+
+      <div class="code-block">
+        <div class="code-header">
+          <span class="file">app/products/[slug]/page.tsx</span>
+          <span class="lang">TypeScript</span>
+        </div>
+        <div class="code-body">
+<pre><span class="keyword">import</span> { Suspense } <span class="keyword">from</span> <span class="string">'react'</span>
+<span class="keyword">import</span> { getProduct } <span class="keyword">from</span> <span class="string">'@/lib/db'</span>
+<span class="keyword">import</span> { ProductHero } <span class="keyword">from</span> <span class="string">'@/components/product-hero'</span>
+<span class="keyword">import</span> { Inventory } <span class="keyword">from</span> <span class="string">'@/components/inventory'</span>
+<span class="keyword">import</span> { Reviews } <span class="keyword">from</span> <span class="string">'@/components/reviews'</span>
+
+<span class="comment">// Opt this route into PPR</span>
+<span class="keyword">export const</span> <span class="attr">experimental_ppr</span> = <span class="keyword">true</span>
+
+<span class="comment">// Static metadata — pre-rendered in shell</span>
+<span class="keyword">export async function</span> <span class="func">generateMetadata</span>({ params }) {
+  <span class="keyword">const</span> product = <span class="keyword">await</span> <span class="func">getProduct</span>(params.slug)
+  <span class="keyword">return</span> {
+    <span class="attr">title</span>: product.name,
+    <span class="attr">description</span>: product.description,
+  }
+}
+
+<span class="keyword">export default async function</span> <span class="func">ProductPage</span>({ params }) {
+  <span class="comment">// This data is fetched at build time for the static shell</span>
+  <span class="keyword">const</span> product = <span class="keyword">await</span> <span class="func">getProduct</span>(params.slug)
+
+  <span class="keyword">return</span> (
+    <span class="tag">&lt;div&gt;</span>
+      <span class="comment">{/* STATIC: Pre-rendered in shell, cached at CDN */}</span>
+      <span class="tag">&lt;ProductHero</span> <span class="attr">product</span>={product} <span class="tag">/&gt;</span>
+
+      <span class="comment">{/* DYNAMIC HOLE: Suspense boundary creates a "hole"</span>
+<span class="comment">          in the static shell. Content streams when ready. */}</span>
+      <span class="tag">&lt;Suspense</span> <span class="attr">fallback</span>={<span class="tag">&lt;InventorySkeleton /&gt;</span>}<span class="tag">&gt;</span>
+        <span class="tag">&lt;Inventory</span> <span class="attr">productId</span>={product.id} <span class="tag">/&gt;</span>
+      <span class="tag">&lt;/Suspense&gt;</span>
+
+      <span class="tag">&lt;Suspense</span> <span class="attr">fallback</span>={<span class="tag">&lt;ReviewsSkeleton /&gt;</span>}<span class="tag">&gt;</span>
+        <span class="tag">&lt;Reviews</span> <span class="attr">productId</span>={product.id} <span class="tag">/&gt;</span>
+      <span class="tag">&lt;/Suspense&gt;</span>
+    <span class="tag">&lt;/div&gt;</span>
+  )
+}</pre>
+        </div>
+      </div>
+
+      <div class="code-block">
+        <div class="code-header">
+          <span class="file">components/inventory.tsx</span>
+          <span class="lang">TypeScript</span>
+        </div>
+        <div class="code-body">
+<pre><span class="comment">// This component fetches LIVE data — it becomes a dynamic hole</span>
+<span class="comment">// The Suspense boundary around it creates the PPR "hole"</span>
+
+<span class="keyword">export async function</span> <span class="func">Inventory</span>({ productId }: { productId: string }) {
+  <span class="comment">// noStore() or dynamic data fetch = this is the "hole"</span>
+  <span class="comment">// The rest of the page is static and pre-rendered</span>
+  <span class="keyword">const</span> inventory = <span class="keyword">await</span> <span class="func">getInventory</span>(productId)
+
+  <span class="keyword">return</span> (
+    <span class="tag">&lt;div</span> <span class="attr">className</span>=<span class="string">"inventory-badge"</span><span class="tag">&gt;</span>
+      <span class="tag">&lt;span</span> <span class="attr">className</span>=<span class="string">"stock-count"</span><span class="tag">&gt;</span>{inventory.count} in stock<span class="tag">&lt;/span&gt;</span>
+      <span class="tag">&lt;span</span> <span class="attr">className</span>=<span class="string">"ship-time"</span><span class="tag">&gt;</span>Ships in {inventory.shipDays} days<span class="tag">&lt;/span&gt;</span>
+    <span class="tag">&lt;/div&gt;</span>
+  )
+}
+
+<span class="comment">// Fallback skeleton shown while streaming</span>
+<span class="keyword">export function</span> <span class="func">InventorySkeleton</span>() {
+  <span class="keyword">return</span> (
+    <span class="tag">&lt;div</span> <span class="attr">className</span>=<span class="string">"inventory-badge animate-pulse"</span><span class="tag">&gt;</span>
+      <span class="tag">&lt;div</span> <span class="attr">className</span>=<span class="string">"h-4 w-24 bg-gray-200 rounded"</span> <span class="tag">/&gt;</span>
+      <span class="tag">&lt;div</span> <span class="attr">className</span>=<span class="string">"h-4 w-20 bg-gray-200 rounded"</span> <span class="tag">/&gt;</span>
+    <span class="tag">&lt;/div&gt;</span>
+  )
+}</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Use Cases -->
+    <section class="section">
+      <h2 class="section-title">
+        <span class="icon" style="background: rgba(255,170,74,0.15);">🎯</span>
+        Use Cases for Molt Studios & OpenDrones
+      </h2>
+
+      <div class="use-case-grid">
+        <div class="use-case">
+          <div class="use-case-icon">🛒</div>
+          <h4>OpenDrones Product Pages</h4>
+          <p>Static hero + product details pre-rendered. Live inventory count, personalized pricing, and user reviews stream in via Suspense holes. Instant LCP, fresh data.</p>
+        </div>
+        <div class="use-case">
+          <div class="use-case-icon">📋</div>
+          <h4>OpenDrones Checkout Flow</h4>
+          <p>Order summary shell is static (product info, images). Shipping rates, tax calculation, and Stripe session creation stream in. Zero perceived delay.</p>
+        </div>
+        <div class="use-case">
+          <div class="use-case-icon">🏗️</div>
+          <h4>Molt Studios Portfolio Pages</h4>
+          <p>Layout, navigation, and project descriptions are static. Dynamic sections: view counts, related projects (personalized), and contact form CTA stream independently.</p>
+        </div>
+        <div class="use-case">
+          <div class="use-case-icon">🦷</div>
+          <h4>Dental Client Landing Pages</h4>
+          <p>Hero, services, and testimonials pre-rendered at edge. Appointment availability widget and Google Reviews feed stream in real-time. Perfect Lighthouse scores.</p>
+        </div>
+        <div class="use-case">
+          <div class="use-case-icon">📊</div>
+          <h4>MC Dashboard</h4>
+          <p>Navigation and page layout render instantly. Agent activity feeds, task metrics, and research entries stream in independently. No more loading spinners on the whole page.</p>
+        </div>
+        <div class="use-case">
+          <div class="use-case-icon">📱</div>
+          <h4>Mobile Performance</h4>
+          <p>Static shell = zero JS execution for layout. Only dynamic holes run code. 50-70% less JavaScript parsed on mobile. Huge INP improvement on slow devices.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Architecture Diagram -->
+    <section class="section">
+      <h2 class="section-title">
+        <span class="icon" style="background: rgba(124,106,255,0.15);">🏗️</span>
+        Architecture: What's Static vs Dynamic
+      </h2>
+
+      <div class="ppr-viz">
+        <div class="ppr-viz-label">Static (pre-rendered) vs Dynamic (streamed) boundary</div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1rem;">
+          <div style="background: rgba(124,106,255,0.08); border: 1px solid rgba(124,106,255,0.25); border-radius: 10px; padding: 1.25rem;">
+            <h4 style="color: var(--accent); font-size: 0.85rem; margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">✦ Static Shell (CDN Cached)</h4>
+            <ul style="list-style: none; font-size: 0.8rem; color: var(--text-muted); line-height: 1.8;">
+              <li>✅ Navigation bar</li>
+              <li>✅ Page layout & grid</li>
+              <li>✅ Product hero image + title</li>
+              <li>✅ Product description</li>
+              <li>✅ Feature list</li>
+              <li>✅ Footer</li>
+              <li>✅ SEO meta tags</li>
+              <li>✅ Open Graph images</li>
+              <li>✅ Structured data (JSON-LD)</li>
+            </ul>
+          </div>
+          <div style="background: rgba(255,106,138,0.08); border: 1px solid rgba(255,106,138,0.25); border-radius: 10px; padding: 1.25rem;">
+            <h4 style="color: var(--accent-2); font-size: 0.85rem; margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">⚡ Dynamic Holes (Streamed)</h4>
+            <ul style="list-style: none; font-size: 0.8rem; color: var(--text-muted); line-height: 1.8;">
+              <li>🔄 Live inventory count</li>
+              <li>🔄 Personalized pricing</li>
+              <li>🔄 User reviews</li>
+              <li>🔄 "Customers also bought"</li>
+              <li>🔄 Cart badge count</li>
+              <li>🔄 Shipping rate estimator</li>
+              <li>🔄 A/B test variants</li>
+              <li>🔄 Auth-gated content</li>
+              <li>🔄 Real-time notifications</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <footer class="footer">
+    Research by Jin — Molt Studios Frontend Agent — May 2026<br>
+    Next.js Partial Prerendering (PPR) — experimental in 15.3, stable in 16
+  </footer>
+
+  <script>
+    function simulatePPR() {
+      const btn = document.getElementById('playBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Simulating...';
+      btn.style.opacity = '0.6';
+
+      // Reset
+      document.querySelectorAll('.timeline-step').forEach(s => s.classList.remove('active'));
+      document.querySelectorAll('.hole-content').forEach(h => h.classList.remove('loaded'));
+
+      // Step 0: Request received
+      setTimeout(() => {
+        document.getElementById('step0').classList.add('active');
+      }, 200);
+
+      // Step 1: Static shell renders
+      setTimeout(() => {
+        document.getElementById('step1').classList.add('active');
+      }, 600);
+
+      // Step 2: First dynamic hole resolves
+      setTimeout(() => {
+        document.getElementById('step2').classList.add('active');
+        const hole1 = document.getElementById('hole1Content');
+        hole1.innerHTML = `
+          <div style="font-size: 0.85rem; font-weight: 600; color: #4aff8a;">✓ 23 in stock</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">Ships in 2-3 business days</div>
+          <div style="font-size: 0.7rem; color: var(--accent); margin-top: 0.25rem;">Warehouse: Portland, OR</div>
+        `;
+        hole1.classList.add('loaded');
+      }, 1400);
+
+      // Step 3: Second dynamic hole resolves
+      setTimeout(() => {
+        document.getElementById('step3').classList.add('active');
+        const hole2 = document.getElementById('hole2Content');
+        hole2.innerHTML = `
+          <div style="font-size: 0.85rem; font-weight: 600; color: var(--accent-4);">⭐ 4.9 (142 reviews)</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">"Best battery pack I've ever used"</div>
+          <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.25rem;">— DroneOperator_Pro</div>
+        `;
+        hole2.classList.add('loaded');
+      }, 2200);
+
+      // Reset button
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = '▶ Simulate Again';
+        btn.style.opacity = '1';
+      }, 2800);
+    }
+  </script>
+</body>
+</html>
