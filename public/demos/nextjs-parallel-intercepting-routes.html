@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Next.js Parallel Routes + Intercepting Routes</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #e5e5e5;
+      min-height: 100vh;
+    }
+
+    .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+
+    h1 {
+      font-size: 2.2rem;
+      font-weight: 800;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle { color: #737373; margin-bottom: 2.5rem; font-size: 1.05rem; }
+
+    section { margin-bottom: 3rem; }
+
+    h2 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+      color: #f5f5f5;
+    }
+
+    .desc { color: #a3a3a3; line-height: 1.7; margin-bottom: 1.5rem; }
+
+    /* Demo 1: File Structure Visualization */
+    .file-tree {
+      background: #171717;
+      border: 1px solid #262626;
+      border-radius: 12px;
+      padding: 1.5rem;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.85rem;
+      line-height: 1.8;
+      overflow-x: auto;
+    }
+
+    .file-tree .folder { color: #60a5fa; }
+    .file-tree .file { color: #a3a3a3; }
+    .file-tree .slot { color: #f59e0b; font-weight: 600; }
+    .file-tree .intercept { color: #10b981; font-weight: 600; }
+    .file-tree .comment { color: #525252; font-style: italic; }
+    .file-tree .indent { margin-left: 1.5rem; }
+    .file-tree .indent2 { margin-left: 3rem; }
+    .file-tree .indent3 { margin-left: 4.5rem; }
+
+    /* Demo 2: Interactive Drone Catalog with Modal */
+    .demo-label {
+      display: inline-block;
+      background: #6366f1;
+      color: white;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.25rem 0.75rem;
+      border-radius: 999px;
+      margin-bottom: 1rem;
+    }
+
+    .drone-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+    }
+
+    .drone-card {
+      background: #171717;
+      border: 1px solid #262626;
+      border-radius: 12px;
+      padding: 1.25rem;
+      cursor: pointer;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+
+    .drone-card:hover {
+      border-color: #6366f1;
+      transform: translateY(-2px);
+    }
+
+    .drone-card h3 { font-size: 1rem; font-weight: 600; color: #f5f5f5; margin-bottom: 0.5rem; }
+    .drone-card .price { font-size: 1.25rem; font-weight: 700; color: #6366f1; }
+    .drone-card .spec { font-size: 0.8rem; color: #737373; margin-top: 0.5rem; }
+    .drone-card .img-placeholder {
+      width: 100%;
+      height: 120px;
+      background: linear-gradient(135deg, #1e1b4b, #312e81);
+      border-radius: 8px;
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+    }
+
+    /* Modal Overlay */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 100;
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 5vh;
+      backdrop-filter: blur(4px);
+    }
+
+    .modal-overlay.active { display: flex; }
+
+    .modal-content {
+      background: #171717;
+      border: 1px solid #262626;
+      border-radius: 16px;
+      max-width: 600px;
+      width: 90%;
+      padding: 2rem;
+      position: relative;
+      animation: modalIn 0.3s ease;
+      max-height: 85vh;
+      overflow-y: auto;
+    }
+
+    @keyframes modalIn {
+      from { opacity: 0; transform: translateY(20px) scale(0.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .modal-close {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      background: #262626;
+      border: none;
+      color: #a3a3a3;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 1.2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+    }
+
+    .modal-close:hover { background: #404040; color: #f5f5f5; }
+
+    .modal-header {
+      display: flex;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .modal-img {
+      width: 180px;
+      height: 180px;
+      background: linear-gradient(135deg, #1e1b4b, #312e81);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 4rem;
+      flex-shrink: 0;
+    }
+
+    .modal-info h3 { font-size: 1.5rem; font-weight: 700; color: #f5f5f5; }
+    .modal-info .price { font-size: 1.75rem; font-weight: 800; color: #6366f1; margin: 0.5rem 0; }
+    .modal-info .tag {
+      display: inline-block;
+      background: #262626;
+      color: #a3a3a3;
+      padding: 0.2rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      margin-right: 0.4rem;
+    }
+
+    .specs-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.75rem;
+      margin: 1.5rem 0;
+    }
+
+    .spec-item {
+      background: #0a0a0a;
+      padding: 0.75rem;
+      border-radius: 8px;
+    }
+
+    .spec-item .label { font-size: 0.75rem; color: #525252; text-transform: uppercase; letter-spacing: 0.05em; }
+    .spec-item .value { font-size: 1.1rem; font-weight: 600; color: #f5f5f5; margin-top: 0.2rem; }
+
+    .cta-btn {
+      width: 100%;
+      padding: 0.875rem;
+      background: #6366f1;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .cta-btn:hover { background: #4f46e5; }
+
+    .url-bar {
+      background: #0a0a0a;
+      border: 1px solid #262626;
+      border-radius: 8px;
+      padding: 0.5rem 1rem;
+      font-family: monospace;
+      font-size: 0.8rem;
+      color: #737373;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .url-bar .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .url-bar .dot-green { background: #22c55e; }
+    .url-bar .url-text { color: #a3a3a3; }
+
+    /* Demo 3: Parallel Routes Split View */
+    .split-view {
+      display: grid;
+      grid-template-columns: 250px 1fr;
+      border: 1px solid #262626;
+      border-radius: 12px;
+      overflow: hidden;
+      height: 350px;
+    }
+
+    .split-sidebar {
+      background: #111;
+      border-right: 1px solid #262626;
+      padding: 1rem;
+    }
+
+    .split-sidebar h4 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      color: #525252;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.75rem;
+    }
+
+    .sidebar-item {
+      padding: 0.6rem 0.75rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      color: #a3a3a3;
+      transition: all 0.15s;
+      margin-bottom: 0.25rem;
+    }
+
+    .sidebar-item:hover { background: #1a1a1a; color: #f5f5f5; }
+    .sidebar-item.active { background: #6366f1; color: white; }
+
+    .split-main {
+      padding: 1.5rem;
+      overflow-y: auto;
+    }
+
+    .split-main h3 { font-size: 1.2rem; font-weight: 600; color: #f5f5f5; margin-bottom: 0.75rem; }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+
+    .metric-card {
+      background: #0a0a0a;
+      padding: 0.75rem;
+      border-radius: 8px;
+    }
+
+    .metric-card .metric-label { font-size: 0.7rem; color: #525252; text-transform: uppercase; }
+    .metric-card .metric-value { font-size: 1.3rem; font-weight: 700; color: #f5f5f5; margin-top: 0.2rem; }
+    .metric-card .metric-change { font-size: 0.75rem; }
+    .metric-card .positive { color: #22c55e; }
+    .metric-card .negative { color: #ef4444; }
+
+    /* Flow Diagram */
+    .flow {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      padding: 1.5rem;
+      background: #171717;
+      border: 1px solid #262626;
+      border-radius: 12px;
+    }
+
+    .flow-step {
+      background: #0a0a0a;
+      border: 1px solid #262626;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      color: #a3a3a3;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .flow-step.highlight {
+      border-color: #6366f1;
+      color: #f5f5f5;
+    }
+
+    .flow-step .step-title { font-weight: 600; color: #f5f5f5; font-size: 0.9rem; }
+    .flow-step .step-sub { font-size: 0.75rem; margin-top: 0.25rem; }
+
+    .flow-arrow { color: #525252; font-size: 1.2rem; flex-shrink: 0; }
+
+    /* Comparison table */
+    .comparison-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      background: #171717;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #262626;
+    }
+
+    .comparison-table th {
+      background: #1a1a1a;
+      padding: 0.75rem 1rem;
+      text-align: left;
+      color: #a3a3a3;
+      font-weight: 600;
+      border-bottom: 1px solid #262626;
+    }
+
+    .comparison-table td {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid #1a1a1a;
+      color: #a3a3a3;
+    }
+
+    .comparison-table tr:last-child td { border-bottom: none; }
+
+    .check { color: #22c55e; font-weight: 700; }
+    .cross { color: #525252; }
+    .na { color: #404040; }
+
+    /* Gotchas */
+    .gotchas {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+
+    .gotcha {
+      background: #171717;
+      border: 1px solid #262626;
+      border-left: 3px solid #f59e0b;
+      padding: 1rem;
+      border-radius: 0 8px 8px 0;
+    }
+
+    .gotcha h4 { color: #f59e0b; font-size: 0.9rem; margin-bottom: 0.4rem; }
+    .gotcha p { color: #737373; font-size: 0.85rem; line-height: 1.5; }
+
+    @media (max-width: 768px) {
+      h1 { font-size: 1.6rem; }
+      .split-view { grid-template-columns: 1fr; height: auto; }
+      .modal-header { flex-direction: column; }
+      .modal-img { width: 100%; height: 120px; }
+      .specs-grid { grid-template-columns: 1fr; }
+      .flow { flex-direction: column; }
+      .flow-arrow { transform: rotate(90deg); }
+      .metric-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Parallel Routes + Intercepting Routes</h1>
+    <p class="subtitle">Next.js App Router patterns for URL-powered modals, split views, and independent rendering</p>
+
+    <!-- Flow: How it works -->
+    <section>
+      <h2>How Intercepting Routes Work</h2>
+      <p class="desc">When a user clicks an in-app link, the intercepting route catches the navigation and renders a modal overlay. Direct URL access loads the full page. The URL always reflects the current state.</p>
+      <div class="flow">
+        <div class="flow-step">
+          <div class="step-title">User on /drones</div>
+          <div class="step-sub">Listing page</div>
+        </div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-step">
+          <div class="step-title">Clicks "Phantom X1"</div>
+          <div class="step-sub">Client navigation</div>
+        </div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-step highlight">
+          <div class="step-title">Route Intercepted!</div>
+          <div class="step-sub">(.)[slug] activates</div>
+        </div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-step">
+          <div class="step-title">Modal Renders</div>
+          <div class="step-sub">URL: /drones/phantom-x1</div>
+        </div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-step">
+          <div class="step-title">Back / Close</div>
+          <div class="step-sub">router.back()</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- File Structure -->
+    <section>
+      <h2>File Structure</h2>
+      <p class="desc">The @ prefix creates named slots (parallel routes). The (.) prefix intercepts sibling routes.</p>
+      <div class="file-tree">
+        <div><span class="folder">app/</span></div>
+        <div class="indent"><span class="folder">drones/</span></div>
+        <div class="indent2"><span class="file">layout.tsx</span> <span class="comment">← receives { children, modal }</span></div>
+        <div class="indent2"><span class="file">page.tsx</span> <span class="comment">← drone listing</span></div>
+        <div class="indent2"><span class="file">[slug]/page.tsx</span> <span class="comment">← full drone detail (direct URL)</span></div>
+        <div class="indent2"><span class="slot">@modal/</span> <span class="comment">← parallel route slot</span></div>
+        <div class="indent3"><span class="intercept">(.)[slug]/page.tsx</span> <span class="comment">← intercepted modal version</span></div>
+        <div class="indent3"><span class="file">default.tsx</span> <span class="comment">← empty fallback (required!)</span></div>
+      </div>
+    </section>
+
+    <!-- Interactive Demo: Drone Catalog -->
+    <section>
+      <span class="demo-label">Interactive Demo</span>
+      <h2>OpenDrones Product Catalog</h2>
+      <p class="desc">Click any drone card to see the intercepting route modal. Notice the URL bar updates. Press Escape or click outside to close.</p>
+
+      <div class="url-bar" id="urlBar">
+        <span class="dot dot-green"></span>
+        <span class="url-text" id="urlText">https://opendrones.com/drones</span>
+      </div>
+
+      <div class="drone-grid" id="droneGrid">
+        <!-- Populated by JS -->
+      </div>
+
+      <div class="modal-overlay" id="modalOverlay">
+        <div class="modal-content" id="modalContent">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Parallel Routes: Split View -->
+    <section>
+      <span class="demo-label">Interactive Demo</span>
+      <h2>Parallel Routes: Dashboard Split View</h2>
+      <p class="desc">Click a drone in the sidebar. Only the main panel updates — the sidebar stays static. This is parallel routes in action.</p>
+
+      <div class="split-view">
+        <div class="split-sidebar">
+          <h4>@sidebar Slot</h4>
+          <div id="sidebarItems">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+        <div class="split-main" id="splitMain">
+          <h3>Select a drone to view telemetry</h3>
+          <p style="color: #525252; font-size: 0.85rem; margin-top: 0.5rem;">The @main slot renders independently from @sidebar.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Comparison -->
+    <section>
+      <h2>Traditional Modals vs Intercepting Routes</h2>
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th>Traditional Modal</th>
+            <th>Intercepting Route</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>URL updates</td>
+            <td><span class="cross">✗</span> Stays same</td>
+            <td><span class="check">✓</span> Updates to /drones/phantom</td>
+          </tr>
+          <tr>
+            <td>Shareable links</td>
+            <td><span class="cross">✗</span> No deep link</td>
+            <td><span class="check">✓</span> URL is shareable</td>
+          </tr>
+          <tr>
+            <td>Back button works</td>
+            <td><span class="cross">✗</span> Leaves page</td>
+            <td><span class="check">✓</span> Closes modal</td>
+          </tr>
+          <tr>
+            <td>Direct access fallback</td>
+            <td><span class="cross">✗</span> 404 or broken</td>
+            <td><span class="check">✓</span> Full page renders</td>
+          </tr>
+          <tr>
+            <td>SEO indexable</td>
+            <td><span class="cross">✗</span> Content hidden</td>
+            <td><span class="check">✓</span> Full page indexed</td>
+          </tr>
+          <tr>
+            <td>Browser history</td>
+            <td><span class="cross">✗</span> Not tracked</td>
+            <td><span class="check">✓</span> Full history</td>
+          </tr>
+          <tr>
+            <td>Refresh behavior</td>
+            <td><span class="na">N/A</span></td>
+            <td><span class="check">✓</span> Shows full page</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Gotchas -->
+    <section>
+      <h2>Common Gotchas</h2>
+      <div class="gotchas">
+        <div class="gotcha">
+          <h4>Missing default.tsx</h4>
+          <p>Every parallel route slot MUST have a default.tsx. Without it, Next.js errors when the slot has no matching route.</p>
+        </div>
+        <div class="gotcha">
+          <h4>Refresh Shows Full Page</h4>
+          <p>Refreshing an intercepted route loads the FULL page, not the modal. This is by design but can surprise users.</p>
+        </div>
+        <div class="gotcha">
+          <h4>@ Prefix Convention</h4>
+          <p>Slots use @ in the filesystem (@modal) but the prop name drops it (modal). Don't mix them up.</p>
+        </div>
+        <div class="gotcha">
+          <h4>Active Slot Tracking</h4>
+          <p>Next.js tracks which slot was 'last active' for URL purposes. Navigate to understand which slot owns the URL.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // Drone data
+    const drones = [
+      {
+        slug: 'phantom-x1',
+        name: 'Phantom X1',
+        price: '$2,499',
+        emoji: '🚁',
+        tags: ['Professional', '4K Camera'],
+        specs: { range: '15km', flightTime: '42 min', speed: '72 km/h', weight: '895g', sensor: '1-inch CMOS', obstacle: '360°' }
+      },
+      {
+        slug: 'scout-mini',
+        name: 'Scout Mini',
+        price: '$899',
+        emoji: '🛸',
+        tags: ['Beginner', 'Portable'],
+        specs: { range: '8km', flightTime: '28 min', speed: '54 km/h', weight: '249g', sensor: '1/2.3" CMOS', obstacle: 'Forward/Down' }
+      },
+      {
+        slug: 'agri-pro',
+        name: 'Agri Pro',
+        price: '$12,999',
+        emoji: '🌾',
+        tags: ['Agriculture', 'Industrial'],
+        specs: { range: '25km', flightTime: '65 min', speed: '36 km/h', weight: '12.5kg', payload: '16L Tank', obstacle: '360° Pro' }
+      },
+      {
+        slug: 'swift-racer',
+        name: 'Swift Racer',
+        price: '$1,299',
+        emoji: '🏁',
+        tags: ['Racing', 'FPV'],
+        specs: { range: '5km', flightTime: '15 min', speed: '165 km/h', weight: '410g', camera: 'DJI O3 Air', obstacle: 'None' }
+      }
+    ];
+
+    // Populate drone grid
+    const droneGrid = document.getElementById('droneGrid');
+    drones.forEach(drone => {
+      const card = document.createElement('div');
+      card.className = 'drone-card';
+      card.innerHTML = `
+        <div class="img-placeholder">${drone.emoji}</div>
+        <h3>${drone.name}</h3>
+        <div class="price">${drone.price}</div>
+        <div class="spec">${drone.tags.join(' · ')}</div>
+      `;
+      card.addEventListener('click', () => openModal(drone));
+      droneGrid.appendChild(card);
+    });
+
+    // Modal
+    const modalOverlay = document.getElementById('modalOverlay');
+    const modalContent = document.getElementById('modalContent');
+    const urlText = document.getElementById('urlText');
+    const baseUrl = 'https://opendrones.com/drones';
+
+    function openModal(drone) {
+      urlText.textContent = `${baseUrl}/${drone.slug}`;
+
+      const specEntries = Object.entries(drone.specs);
+      modalContent.innerHTML = `
+        <button class="modal-close" onclick="closeModal()">×</button>
+        <div class="modal-header">
+          <div class="modal-img">${drone.emoji}</div>
+          <div class="modal-info">
+            <h3>${drone.name}</h3>
+            <div class="price">${drone.price}</div>
+            <div style="margin-top: 0.5rem;">
+              ${drone.tags.map(t => `<span class="tag">${t}</span>`).join('')}
+            </div>
+          </div>
+        </div>
+        <div class="specs-grid">
+          ${specEntries.map(([key, val]) => `
+            <div class="spec-item">
+              <div class="label">${key.replace(/([A-Z])/g, ' $1').trim()}</div>
+              <div class="value">${val}</div>
+            </div>
+          `).join('')}
+        </div>
+        <button class="cta-btn">Add to Cart</button>
+        <p style="text-align:center; color:#525252; font-size:0.75rem; margin-top:0.75rem;">
+          URL: /drones/${drone.slug} — shareable, bookmarkable, back-button friendly
+        </p>
+      `;
+
+      modalOverlay.classList.add('active');
+      history.pushState({ modal: true }, '', `#${drone.slug}`);
+    }
+
+    function closeModal() {
+      modalOverlay.classList.remove('active');
+      urlText.textContent = baseUrl;
+      history.back();
+    }
+
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) closeModal();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modalOverlay.classList.contains('active')) closeModal();
+    });
+
+    window.addEventListener('popstate', () => {
+      if (!history.state?.modal) {
+        modalOverlay.classList.remove('active');
+        urlText.textContent = baseUrl;
+      }
+    });
+
+    // Split view
+    const sidebarItems = document.getElementById('sidebarItems');
+    const splitMain = document.getElementById('splitMain');
+
+    const telemetryData = {
+      'phantom-x1': { battery: '87%', altitude: '120m', signal: '-42 dBm', temp: '38°C', gps: '14 sats', wind: '12 km/h', flightTime: '23:41', distance: '3.2 km' },
+      'scout-mini': { battery: '94%', altitude: '50m', signal: '-38 dBm', temp: '32°C', gps: '12 sats', wind: '8 km/h', flightTime: '08:12', distance: '1.1 km' },
+      'agri-pro': { battery: '62%', altitude: '30m', signal: '-55 dBm', temp: '41°C', gps: '18 sats', wind: '15 km/h', flightTime: '42:18', distance: '8.7 km' },
+      'swift-racer': { battery: '45%', altitude: '85m', signal: '-48 dBm', temp: '52°C', gps: '10 sats', wind: '20 km/h', flightTime: '04:33', distance: '2.8 km' },
+    };
+
+    drones.forEach((drone, i) => {
+      const item = document.createElement('div');
+      item.className = 'sidebar-item' + (i === 0 ? ' active' : '');
+      item.textContent = `${drone.emoji} ${drone.name}`;
+      item.addEventListener('click', () => {
+        document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+        item.classList.add('active');
+        updateSplitMain(drone);
+      });
+      sidebarItems.appendChild(item);
+    });
+
+    function updateSplitMain(drone) {
+      const t = telemetryData[drone.slug];
+      splitMain.innerHTML = `
+        <h3>${drone.emoji} ${drone.name} — Live Telemetry</h3>
+        <p style="color: #525252; font-size: 0.8rem;">@main slot updates independently. @sidebar stays static.</p>
+        <div class="metric-grid">
+          <div class="metric-card">
+            <div class="metric-label">Battery</div>
+            <div class="metric-value">${t.battery}</div>
+            <div class="metric-change positive">▲ Charging</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Altitude</div>
+            <div class="metric-value">${t.altitude}</div>
+            <div class="metric-change negative">▼ Descending</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Signal</div>
+            <div class="metric-value">${t.signal}</div>
+            <div class="metric-change positive">▲ Strong</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">GPS Sats</div>
+            <div class="metric-value">${t.gps}</div>
+            <div class="metric-change positive">▲ Locked</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Distance</div>
+            <div class="metric-value">${t.distance}</div>
+            <div class="metric-change neutral">→ Holding</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Flight Time</div>
+            <div class="metric-value">${t.flightTime}</div>
+            <div class="metric-change negative">▼ ${drone.specs.flightTime} max</div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Init first drone in split view
+    updateSplitMain(drones[0]);
+  </script>
+</body>
+</html>

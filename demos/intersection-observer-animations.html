@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Intersection Observer API for Scroll-Triggered Animations</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080810;--card:#10101c;--card2:#161628;--border:#1c1c30;
+  --accent:#6366f1;--accent2:#ec4899;--text:#e2e2f0;--muted:#7a7a9a;
+  --green:#34d399;--amber:#fbbf24;--red:#f87171;
+  --radius:12px;
+}
+html{scroll-behavior:smooth}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);line-height:1.65}
+
+/* Hero */
+.hero{min-height:85vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2rem;position:relative}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 30%,rgba(99,102,241,.12),transparent 60%),radial-gradient(ellipse at 70% 70%,rgba(236,72,153,.08),transparent 50%)}
+.hero h1{font-size:clamp(2.2rem,5.5vw,3.8rem);font-weight:800;position:relative;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hero .sub{font-size:clamp(.95rem,2vw,1.25rem);color:var(--muted);max-width:650px;position:relative;margin-top:.5rem}
+.hero .badge-row{display:flex;gap:.6rem;margin-top:1.5rem;position:relative;flex-wrap:wrap;justify-content:center}
+.badge{padding:.35rem .9rem;border-radius:999px;font-size:.8rem;border:1px solid}
+.badge-purple{background:rgba(99,102,241,.12);border-color:rgba(99,102,241,.3);color:var(--accent)}
+.badge-pink{background:rgba(236,72,153,.1);border-color:rgba(236,72,153,.25);color:var(--accent2)}
+.badge-green{background:rgba(52,211,153,.1);border-color:rgba(52,211,153,.25);color:var(--green)}
+.badge-amber{background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.25);color:var(--amber)}
+
+/* Scroll indicator */
+.scroll-hint{position:absolute;bottom:2rem;animation:bounce 2s infinite;color:var(--muted);font-size:.85rem}
+@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(8px)}}
+
+/* Sections */
+.section{max-width:1100px;margin:0 auto;padding:3.5rem 2rem}
+.section h2{font-size:clamp(1.4rem,3vw,2rem);font-weight:700;color:#fff;margin-bottom:.6rem}
+.section h2 .a{color:var(--accent)}
+.section p.desc{color:var(--muted);max-width:700px;margin-bottom:1.5rem;font-size:1rem}
+
+/* Code */
+.code{background:#0a0a14;border:1px solid var(--border);border-radius:var(--radius);padding:1.3rem 1.5rem;margin:1.2rem 0;overflow-x:auto;font-size:.85rem;line-height:1.7;font-family:'SF Mono',Consolas,'Fira Code',monospace;color:#c9d1d9}
+.code .cm{color:#5c6370;font-style:italic}
+.code .kw{color:#c678dd}
+.code .fn{color:#61afef}
+.code .str{color:#98c379}
+.code .tag{color:#e06c75}
+.code .prop{color:#e5c07b}
+.code .comp{color:#56b6c2}
+.code-label{font-size:.75rem;color:var(--muted);margin-bottom:.4rem;text-transform:uppercase;letter-spacing:.5px}
+
+/* Demo Grid */
+.demo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1.5rem;margin:2rem 0}
+@media(max-width:650px){.demo-grid{grid-template-columns:1fr}}
+
+/* Cards */
+.demo-card{background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;transition:transform .3s,border-color .3s}
+.demo-card:hover{transform:translateY(-3px);border-color:var(--accent)}
+.demo-card .card-header{padding:1rem 1.25rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.demo-card .card-header h3{font-size:.95rem;color:#fff}
+.demo-card .card-header .pill{font-size:.7rem;padding:.2rem .6rem;border-radius:999px;font-weight:600}
+.demo-card .card-body{padding:1.25rem}
+
+/* ── Scroll-Reveal Cards ── */
+.reveal-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
+.reveal-card{background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:1.4rem;opacity:0;transform:translateY(32px);transition:opacity .6s cubic-bezier(.22,1,.36,1),transform .6s cubic-bezier(.22,1,.36,1);display:flex;flex-direction:column;align-items:center;text-align:center;gap:.6rem}
+.reveal-card.in-view{opacity:1;transform:translateY(0)}
+.reveal-card .r-emoji{font-size:2rem}
+.reveal-card .r-title{font-size:.9rem;font-weight:600;color:#fff}
+.reveal-card .r-desc{font-size:.78rem;color:var(--muted);line-height:1.5}
+
+/* Slide variants */
+.reveal-card.slide-left{transform:translateX(-40px);opacity:0}
+.reveal-card.slide-left.in-view{transform:translateX(0);opacity:1}
+.reveal-card.slide-right{transform:translateX(40px);opacity:0}
+.reveal-card.slide-right.in-view{transform:translateX(0);opacity:1}
+.reveal-card.scale-in{transform:scale(.85);opacity:0}
+.reveal-card.scale-in.in-view{transform:scale(1);opacity:1}
+
+/* ── Counter Animation ── */
+.counter-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1rem;margin:1.5rem 0}
+.counter-box{text-align:center;padding:1.5rem 1rem;background:var(--card2);border-radius:14px;border:1px solid var(--border)}
+.counter-box .counter-val{font-size:2.5rem;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.counter-box .counter-label{font-size:.8rem;color:var(--muted);margin-top:.3rem}
+
+/* ── Lazy Image Demo ── */
+.lazy-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem}
+.lazy-img-wrap{background:var(--card2);border-radius:14px;overflow:hidden;border:1px solid var(--border);aspect-ratio:4/3;position:relative}
+.lazy-img-wrap img{width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .8s ease}
+.lazy-img-wrap img.loaded{opacity:1}
+.lazy-img-wrap .placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.85rem}
+.lazy-img-wrap img.loaded~.placeholder{display:none}
+
+/* ── Performance Comparison ── */
+.perf-compare{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin:2rem 0}
+@media(max-width:650px){.perf-compare{grid-template-columns:1fr}}
+.perf-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:1.5rem;text-align:center}
+.perf-card h3{font-size:1rem;margin-bottom:.3rem;color:#fff}
+.perf-card .sub-label{font-size:.8rem;color:var(--muted);margin-bottom:1rem}
+.perf-bar-wrap{display:flex;flex-direction:column;gap:.8rem;align-items:center}
+.perf-stat{display:flex;align-items:center;gap:.8rem;width:100%;max-width:280px}
+.perf-stat .perf-label{font-size:.8rem;color:var(--muted);width:80px;text-align:right}
+.perf-stat .perf-bar-bg{flex:1;height:8px;background:var(--card2);border-radius:99px;overflow:hidden}
+.perf-stat .perf-bar{height:100%;border-radius:99px;width:0%;transition:width 1.5s cubic-bezier(.22,1,.36,1)}
+.perf-stat .perf-val{font-size:.8rem;width:40px;text-align:left}
+.p-bad{color:var(--red)}.p-bad .perf-bar{background:var(--red)}
+.p-good{color:var(--green)}.p-good .perf-bar{background:var(--green)}
+.perf-card .perf-footer{margin-top:1rem;font-size:.85rem;font-weight:700}
+
+/* ── Observer Status ── */
+.observer-log{background:var(--card2);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;max-height:180px;overflow-y:auto;font-size:.8rem;font-family:'SF Mono',Consolas,monospace;line-height:1.6;color:var(--muted)}
+.observer-log .log-entry{opacity:0;transform:translateY(6px);transition:all .3s}
+.observer-log .log-entry.show{opacity:1;transform:translateY(0)}
+.observer-log .log-time{color:var(--accent);margin-right:.5rem}
+
+/* Tip cards */
+.tip-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.2rem;margin:2rem 0}
+.tip-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:1.5rem;transition:border-color .3s}
+.tip-card:hover{border-color:var(--accent)}
+.tip-card .tip-icon{font-size:1.5rem;margin-bottom:.6rem}
+.tip-card h4{font-size:.95rem;color:#fff;margin-bottom:.4rem}
+.tip-card p{font-size:.85rem;color:var(--muted);line-height:1.6}
+
+/* Reduced motion */
+@media(prefers-reduced-motion:reduce){
+  .reveal-card,.counter-val,.perf-bar{transition:none!important;animation:none!important}
+}
+
+/* Footer */
+.footer{text-align:center;padding:3rem 2rem;color:var(--muted);font-size:.85rem;border-top:1px solid var(--border);margin-top:2rem}
+</style>
+</head>
+<body>
+
+<!-- Hero -->
+<section class="hero">
+  <h1>Intersection Observer for Scroll Animations</h1>
+  <p class="sub">Performant, native scroll-triggered animations without scroll event listeners — detect element visibility with zero jank.</p>
+  <div class="badge-row">
+    <span class="badge badge-purple">intersection-observer</span>
+    <span class="badge badge-pink">scroll-animations</span>
+    <span class="badge badge-green">performance</span>
+    <span class="badge badge-amber">css-transitions</span>
+  </div>
+  <div class="scroll-hint">↓ Scroll to see demos in action</div>
+</section>
+
+<!-- Live Demo 1: Scroll-Triggered Card Reveal -->
+<div class="section" id="revealSection">
+  <h2>Live Demo: <span class="a">Scroll-Triggered Card Reveal</span></h2>
+  <p class="desc">Cards animate in with different styles as you scroll them into view — fade up, slide left/right, and scale in. All driven by Intersection Observer.</p>
+  <div class="demo-grid">
+    <div class="demo-card" style="grid-column:1/-1">
+      <div class="card-header">
+        <h3>🎬 Fade + Slide Reveal</h3>
+        <span class="pill badge-purple">Scroll to trigger</span>
+      </div>
+      <div class="card-body">
+        <div class="reveal-grid" id="revealGrid">
+          <div class="reveal-card slide-left"><div class="r-emoji">🎯</div><div class="r-title">Threshold</div><div class="r-desc">Fine-tune when callbacks fire based on visibility percentage</div></div>
+          <div class="reveal-card"><div class="r-emoji">⚡</div><div class="r-title">Performant</div><div class="r-desc">Zero scroll listeners — the browser handles observation natively</div></div>
+          <div class="reveal-card slide-right"><div class="r-emoji">🔄</div><div class="r-title">RootMargin</div><div class="r-desc">Pre-trigger animations before elements enter the viewport</div></div>
+          <div class="reveal-card scale-in"><div class="r-emoji">📐</div><div class="r-title">Unobserve</div><div class="r-desc">Disconnect after triggering for one-shot animations</div></div>
+          <div class="reveal-card slide-left"><div class="r-emoji">🧩</div><div class="r-title">Composable</div><div class="r-desc">Combine with CSS transitions for any animation style</div></div>
+          <div class="reveal-card slide-right"><div class="r-emoji">♿</div><div class="r-title">Accessible</div><div class="r-desc">Respect prefers-reduced-motion with instant fallbacks</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Code: Basic Observer -->
+<div class="section">
+  <h2>Code: <span class="a">Basic Observer Setup</span></h2>
+  <p class="desc">The core pattern — create an observer, define a callback, and observe elements. Clean, no dependencies.</p>
+  <div class="code-label">Vanilla JS</div>
+  <div class="code">
+<span class="cm">// Create the observer with options</span><br>
+<span class="kw">const</span> <span class="fn">observer</span> = <span class="kw">new</span> <span class="fn">IntersectionObserver</span>(<br>
+&nbsp;&nbsp;(entries) =&gt; {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;entries.<span class="fn">forEach</span>((entry) =&gt; {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">if</span> (entry.<span class="prop">isIntersecting</span>) {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;entry.<span class="prop">target</span>.classList.<span class="fn">add</span>(<span class="str">'in-view'</span>);<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cm">// One-shot: unobserve after triggering</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;observer.<span class="fn">unobserve</span>(entry.<span class="prop">target</span>);<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}<br>
+&nbsp;&nbsp;&nbsp;&nbsp;});<br>
+&nbsp;&nbsp;},<br>
+&nbsp;&nbsp;{<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="prop">threshold</span>: <span class="comp">0.15</span>, <span class="cm">// Trigger at 15% visible</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="prop">rootMargin</span>: <span class="str">'0px 0px -50px 0px'</span> <span class="cm">// Offset trigger point</span><br>
+&nbsp;&nbsp;}<br>
+);<br><br>
+<span class="cm">// Observe all elements with data-reveal</span><br>
+document.<span class="fn">querySelectorAll</span>(<span class="str">'[data-reveal]'</span>)<br>
+&nbsp;&nbsp;.<span class="fn">forEach</span>(el =&gt; observer.<span class="fn">observe</span>(el));
+  </div>
+
+  <div class="code-label" style="margin-top:2rem">React Hook Version</div>
+  <div class="code">
+<span class="kw">import</span> { <span class="fn">useEffect</span>, <span class="fn">useRef</span> } <span class="kw">from</span> <span class="str">'react'</span>;<br><br>
+<span class="kw">export function</span> <span class="fn">useScrollReveal</span>(options = {}) {<br>
+&nbsp;&nbsp;<span class="kw">const</span> <span class="prop">ref</span> = <span class="fn">useRef</span>(<span class="comp">null</span>);<br><br>
+&nbsp;&nbsp;<span class="fn">useEffect</span>(() =&gt; {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">const</span> el = ref.<span class="prop">current</span>;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">if</span> (!el) <span class="kw">return</span>;<br><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">const</span> obs = <span class="kw">new</span> <span class="fn">IntersectionObserver</span>(<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;([entry]) =&gt; {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">if</span> (entry.<span class="prop">isIntersecting</span>) {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;el.classList.<span class="fn">add</span>(<span class="str">'revealed'</span>);<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;obs.<span class="fn">unobserve</span>(el); <span class="cm">// One-shot</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;},<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{ <span class="prop">threshold</span>: options.<span class="prop">threshold</span> ?? <span class="comp">0.1</span> }<br>
+&nbsp;&nbsp;&nbsp;&nbsp;);<br><br>
+&nbsp;&nbsp;&nbsp;&nbsp;obs.<span class="fn">observe</span>(el);<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">return</span> () =&gt; obs.<span class="fn">disconnect</span>();<br>
+&nbsp;&nbsp;}, []);<br><br>
+&nbsp;&nbsp;<span class="kw">return</span> ref;<br>
+}
+  </div>
+</div>
+
+<!-- Live Demo 2: Counter Animation -->
+<div class="section" id="counterSection">
+  <h2>Live Demo: <span class="a">Counter Animation on Scroll</span></h2>
+  <p class="desc">Numbers count up from zero when they enter the viewport — perfect for stats sections and dashboards.</p>
+  <div class="demo-card">
+    <div class="card-header">
+      <h3>📊 Animated Counters</h3>
+      <span class="pill badge-green">Triggers on scroll</span>
+    </div>
+    <div class="card-body">
+      <div class="counter-row" id="counterRow">
+        <div class="counter-box"><div class="counter-val" data-target="987">0</div><div class="counter-label">API Calls / sec</div></div>
+        <div class="counter-box"><div class="counter-val" data-target="99.9">0</div><div class="counter-label">Uptime %</div></div>
+        <div class="counter-box"><div class="counter-val" data-target="247">0</div><div class="counter-label">Active Projects</div></div>
+        <div class="counter-box"><div class="counter-val" data-target="12">0</div><div class="counter-label">ms Avg Response</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Code: Threshold + RootMargin -->
+<div class="section">
+  <h2>Code: <span class="a">Threshold & RootMargin</span></h2>
+  <p class="desc">Fine-tune exactly when your observer fires with threshold (visibility %) and rootMargin (trigger offset).</p>
+  <div class="code-label">Advanced Options</div>
+  <div class="code">
+<span class="cm">// Multiple thresholds = more granular control</span><br>
+<span class="kw">const</span> <span class="fn">progressObserver</span> = <span class="kw">new</span> <span class="fn">IntersectionObserver</span>(<br>
+&nbsp;&nbsp;(entries) =&gt; {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;entries.<span class="fn">forEach</span>((entry) =&gt; {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">const</span> ratio = entry.<span class="prop">intersectionRatio</span>;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cm">// Scale animation progress with visibility</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;entry.<span class="prop">target</span>.style.<span class="prop">opacity</span> = ratio;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;entry.<span class="prop">target</span>.style.<span class="prop">transform</span> =<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="str">`translateY(${(1 - ratio) * 40}px)`</span>;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;});<br>
+&nbsp;&nbsp;},<br>
+&nbsp;&nbsp;{<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="cm">// Fire at every 10% visibility change</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="prop">threshold</span>: [<span class="comp">0</span>, <span class="comp">0.1</span>, <span class="comp">0.2</span>, <span class="comp">0.3</span>, <span class="comp">0.4</span>, <span class="comp">0.5</span>,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="comp">0.6</span>, <span class="comp">0.7</span>, <span class="comp">0.8</span>, <span class="comp">0.9</span>, <span class="comp">1.0</span>],<br>
+&nbsp;&nbsp;}<br>
+);<br><br>
+<span class="cm">// rootMargin: pre-trigger before element is visible</span><br>
+<span class="cm">// Positive = trigger EARLIER (element still off-screen)</span><br>
+<span class="cm">// Negative = trigger LATER (element further in viewport)</span><br>
+{ <span class="prop">rootMargin</span>: <span class="str">'100px 0px'</span> } <span class="cm">// 100px before entering</span>
+  </div>
+</div>
+
+<!-- Live Demo 3: Lazy Image Loading -->
+<div class="section" id="lazySection">
+  <h2>Live Demo: <span class="a">Lazy Image Loading</span></h2>
+  <p class="desc">Images load only when scrolled into view — no data wasted on off-screen content. The placeholder disappears with a smooth fade.</p>
+  <div class="demo-card">
+    <div class="card-header">
+      <h3>🖼️ Lazy-Loaded Images</h3>
+      <span class="pill badge-amber">Network-aware</span>
+    </div>
+    <div class="card-body">
+      <div class="lazy-grid" id="lazyGrid">
+        <div class="lazy-img-wrap">
+          <div class="placeholder">⏳ Loading...</div>
+          <img data-src="https://picsum.photos/seed/io-alpha/400/300" alt="Lazy loaded 1">
+        </div>
+        <div class="lazy-img-wrap">
+          <div class="placeholder">⏳ Loading...</div>
+          <img data-src="https://picsum.photos/seed/io-beta/400/300" alt="Lazy loaded 2">
+        </div>
+        <div class="lazy-img-wrap">
+          <div class="placeholder">⏳ Loading...</div>
+          <img data-src="https://picsum.photos/seed/io-gamma/400/300" alt="Lazy loaded 3">
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Live Demo 4: Observer Log -->
+<div class="section" id="logSection">
+  <h2>Live Demo: <span class="a">Observer Event Log</span></h2>
+  <p class="desc">See Intersection Observer callbacks fire in real-time as you scroll the log element into view.</p>
+  <div class="demo-grid">
+    <div class="demo-card">
+      <div class="card-header">
+        <h3>📋 Live Event Log</h3>
+        <span class="pill badge-purple">Real-time</span>
+      </div>
+      <div class="card-body">
+        <div class="observer-log" id="observerLog">
+          <div style="color:var(--accent);margin-bottom:.5rem">⏳ Waiting for observer events...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="demo-card">
+      <div class="card-header">
+        <h3>🎛️ Observer Controls</h3>
+        <span class="pill badge-green">Interactive</span>
+      </div>
+      <div class="card-body" style="display:flex;flex-direction:column;gap:.8rem">
+        <div style="display:flex;align-items:center;gap:.8rem">
+          <label style="font-size:.85rem;color:var(--muted);width:100px">Threshold</label>
+          <input type="range" id="thresholdSlider" min="0" max="100" value="15" style="flex:1;accent-color:var(--accent)">
+          <span id="thresholdVal" style="font-size:.85rem;color:var(--accent);width:40px">0.15</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:.8rem">
+          <label style="font-size:.85rem;color:var(--muted);width:100px">RootMargin</label>
+          <input type="range" id="marginSlider" min="0" max="200" value="50" style="flex:1;accent-color:var(--accent2)">
+          <span id="marginVal" style="font-size:.85rem;color:var(--accent2);width:60px">-50px</span>
+        </div>
+        <div style="display:flex;gap:.6rem;margin-top:.5rem;flex-wrap:wrap">
+          <button class="presence-btn" onclick="resetObserver()">↻ Reset Observer</button>
+          <button class="presence-btn" onclick="clearLog()">✕ Clear Log</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Performance Comparison -->
+<div class="section" id="perfSection">
+  <h2>Performance: <span class="a">Scroll Events vs Intersection Observer</span></h2>
+  <p class="desc">Scroll listeners fire on every frame. Intersection Observer fires only when visibility changes — dramatically less work for the browser.</p>
+  <div class="perf-compare">
+    <div class="perf-card">
+      <h3>addEventListener('scroll')</h3>
+      <div class="sub-label">Traditional approach</div>
+      <div class="perf-bar-wrap">
+        <div class="perf-stat p-bad"><span class="perf-label">Calls/sec</span><div class="perf-bar-bg"><div class="perf-bar" data-width="95"></div></div><span class="perf-val">~60</span></div>
+        <div class="perf-stat p-bad"><span class="perf-label">Main thread</span><div class="perf-bar-bg"><div class="perf-bar" data-width="85"></div></div><span class="perf-val">High</span></div>
+        <div class="perf-stat p-bad"><span class="perf-label">Jank risk</span><div class="perf-bar-bg"><div class="perf-bar" data-width="90"></div></div><span class="perf-val">High</span></div>
+      </div>
+      <div class="perf-footer" style="color:var(--red)">❌ Not recommended</div>
+    </div>
+    <div class="perf-card">
+      <h3>IntersectionObserver</h3>
+      <div class="sub-label">Modern approach</div>
+      <div class="perf-bar-wrap">
+        <div class="perf-stat p-good"><span class="perf-label">Calls/sec</span><div class="perf-bar-bg"><div class="perf-bar" data-width="8"></div></div><span class="perf-val">~1-4</span></div>
+        <div class="perf-stat p-good"><span class="perf-label">Main thread</span><div class="perf-bar-bg"><div class="perf-bar" data-width="10"></div></div><span class="perf-val">Low</span></div>
+        <div class="perf-stat p-good"><span class="perf-label">Jank risk</span><div class="perf-bar-bg"><div class="perf-bar" data-width="5"></div></div><span class="perf-val">None</span></div>
+      </div>
+      <div class="perf-footer" style="color:var(--green)">✅ Recommended</div>
+    </div>
+  </div>
+</div>
+
+<!-- Tips -->
+<div class="section">
+  <h2>Tips & <span class="a">Best Practices</span></h2>
+  <div class="tip-grid">
+    <div class="tip-card">
+      <div class="tip-icon">🎯</div>
+      <h4>Unobserve After Triggering</h4>
+      <p>For one-shot animations, call <code>observer.unobserve(el)</code> in the callback. Prevents re-triggering and frees memory.</p>
+    </div>
+    <div class="tip-card">
+      <div class="tip-icon">📐</div>
+      <h4>Use rootMargin for Early Trigger</h4>
+      <p><code>rootMargin: '100px 0px'</code> starts animations 100px before elements enter view — feels more responsive.</p>
+    </div>
+    <div class="tip-card">
+      <div class="tip-icon">🧩</div>
+      <h4>Combine with CSS Transitions</h4>
+      <p>Observer toggles a class. CSS handles the animation. Separation of concerns — observer for "when", CSS for "how".</p>
+    </div>
+    <div class="tip-card">
+      <div class="tip-icon">♿</div>
+      <h4>Respect Reduced Motion</h4>
+      <p><code>matchMedia('(prefers-reduced-motion: reduce)')</code> — skip transitions and show elements instantly for users who need it.</p>
+    </div>
+    <div class="tip-card">
+      <div class="tip-icon">📦</div>
+      <h4>Lazy-Load Below Fold</h4>
+      <p>Only load images, videos, and heavy components when they enter the viewport. Saves bandwidth and improves LCP.</p>
+    </div>
+    <div class="tip-card">
+      <div class="tip-icon">🔄</div>
+      <h4>Batch Observations</h4>
+      <p>One observer can watch multiple elements. Create it once, observe many — avoid creating separate observers per element.</p>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  Intersection Observer API Guide · Molt Studios Research
+</div>
+
+<script>
+// ── Scroll Reveal Observer ──
+(function() {
+  const cards = document.querySelectorAll('.reveal-card');
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach((entry, i) => {
+      if (entry.isIntersecting) {
+        // Stagger within view
+        const idx = Array.from(cards).indexOf(entry.target);
+        setTimeout(() => {
+          entry.target.classList.add('in-view');
+        }, idx * 100);
+        obs.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+
+  cards.forEach(c => obs.observe(c));
+})();
+
+// ── Counter Animation ──
+(function() {
+  const counters = document.querySelectorAll('.counter-val');
+  let counted = false;
+
+  const counterObs = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting && !counted) {
+        counted = true;
+        counters.forEach(el => {
+          const target = parseFloat(el.dataset.target);
+          const isDecimal = target % 1 !== 0;
+          const duration = 1800;
+          const start = performance.now();
+
+          function tick(now) {
+            const elapsed = now - start;
+            const progress = Math.min(elapsed / duration, 1);
+            // Ease out cubic
+            const eased = 1 - Math.pow(1 - progress, 3);
+            const current = eased * target;
+            el.textContent = isDecimal ? current.toFixed(1) : Math.round(current);
+            if (progress < 1) requestAnimationFrame(tick);
+          }
+          requestAnimationFrame(tick);
+        });
+        counterObs.disconnect();
+      }
+    });
+  }, { threshold: 0.3 });
+
+  counterObs.observe(document.getElementById('counterRow'));
+})();
+
+// ── Lazy Image Loading ──
+(function() {
+  const imgs = document.querySelectorAll('.lazy-img-wrap img');
+  const imgObs = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const img = entry.target;
+        img.src = img.dataset.src;
+        img.onload = () => img.classList.add('loaded');
+        imgObs.unobserve(img);
+      }
+    });
+  }, { rootMargin: '200px 0px' });
+
+  imgs.forEach(img => imgObs.observe(img));
+})();
+
+// ── Performance Bars ──
+(function() {
+  const bars = document.querySelectorAll('.perf-bar');
+  const barObs = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.style.width = entry.target.dataset.width + '%';
+        barObs.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.2 });
+
+  bars.forEach(b => barObs.observe(b));
+})();
+
+// ── Observer Log ──
+let activeLogObserver = null;
+let logCount = 0;
+
+function addLogEntry(text) {
+  const log = document.getElementById('observerLog');
+  const now = new Date();
+  const time = now.toLocaleTimeString('en-US', { hour12: false });
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="log-time">[${time}]</span> ${text}`;
+  log.appendChild(entry);
+  requestAnimationFrame(() => entry.classList.add('show'));
+  log.scrollTop = log.scrollHeight;
+  logCount++;
+}
+
+function clearLog() {
+  const log = document.getElementById('observerLog');
+  log.innerHTML = '<div style="color:var(--accent);margin-bottom:.5rem">⏳ Waiting for observer events...</div>';
+  logCount = 0;
+}
+
+function createLogObserver() {
+  if (activeLogObserver) activeLogObserver.disconnect();
+
+  const threshold = parseInt(document.getElementById('thresholdSlider').value) / 100;
+  const margin = parseInt(document.getElementById('marginSlider').value);
+  const rootMargin = `0px 0px -${margin}px 0px`;
+
+  document.getElementById('thresholdVal').textContent = threshold.toFixed(2);
+  document.getElementById('marginVal').textContent = `-${margin}px`;
+
+  const target = document.getElementById('logSection');
+  if (!target) return;
+
+  activeLogObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const ratio = (entry.intersectionRatio * 100).toFixed(0);
+      if (entry.isIntersecting) {
+        addLogEntry(`✅ INTERSECTING — ratio: ${ratio}% — threshold: ${threshold.toFixed(2)}`);
+      } else {
+        addLogEntry(`⬜ EXITED — ratio: ${ratio}%`);
+      }
+    });
+  }, { threshold: [0, threshold, threshold + 0.1, 1], rootMargin });
+
+  activeLogObserver.observe(target);
+  addLogEntry(`🔧 Observer created — threshold: ${threshold.toFixed(2)}, rootMargin: ${rootMargin}`);
+}
+
+function resetObserver() {
+  clearLog();
+  createLogObserver();
+}
+
+// Slider listeners
+document.getElementById('thresholdSlider').addEventListener('input', function() {
+  document.getElementById('thresholdVal').textContent = (this.value / 100).toFixed(2);
+});
+document.getElementById('marginSlider').addEventListener('input', function() {
+  document.getElementById('marginVal').textContent = `-${this.value}px`;
+});
+
+// Button styles for presence-btn (reuse from framer-motion demo)
+const style = document.createElement('style');
+style.textContent = `.presence-btn{padding:.5rem 1rem;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--text);cursor:pointer;font-size:.85rem;transition:all .2s;font-weight:500;font-family:inherit}.presence-btn:hover{background:var(--accent);border-color:var(--accent);color:#fff}`;
+document.head.appendChild(style);
+
+// Initialize observer when section comes into view for the first time
+const logInitObs = new IntersectionObserver((entries) => {
+  if (entries[0].isIntersecting) {
+    createLogObserver();
+    logInitObs.disconnect();
+  }
+}, { threshold: 0.1 });
+logInitObs.observe(document.getElementById('logSection'));
+</script>
+
+</body>
+</html>

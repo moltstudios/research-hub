@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Push API & Cart Abandonment Recovery — Demo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0a0a14;
+      --bg-soft: #12121f;
+      --surface: #1a1a2e;
+      --surface-2: #22223c;
+      --border: rgba(255,255,255,0.08);
+      --text: #f0f0f5;
+      --text-muted: #9ca3af;
+      --accent: #1677ff;
+      --accent-2: #7c3aed;
+      --green: #10b981;
+      --orange: #f59e0b;
+      --red: #ef4444;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: radial-gradient(ellipse at top left, #1a1a2e 0%, #0a0a14 60%);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.55;
+      padding: 32px 20px 80px;
+    }
+
+    .container { max-width: 1180px; margin: 0 auto; }
+
+    .header { text-align: center; margin-bottom: 48px; }
+    h1 {
+      font-size: 2.6rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      background: linear-gradient(90deg, #00d4ff, #1677ff, #7c3aed);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 12px;
+    }
+    .subtitle { color: var(--text-muted); font-size: 1.05rem; max-width: 680px; margin: 0 auto; }
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      background: rgba(22,119,255,0.15);
+      border: 1px solid rgba(22,119,255,0.4);
+      border-radius: 999px;
+      color: #4ea1ff;
+      font-size: 0.78rem;
+      font-weight: 600;
+      margin-bottom: 16px;
+      letter-spacing: 0.04em;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+      margin-bottom: 48px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 20px;
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+    .stat-card:hover { transform: translateY(-2px); border-color: rgba(22,119,255,0.4); }
+    .stat-num {
+      font-size: 1.85rem;
+      font-weight: 800;
+      background: linear-gradient(90deg, #00d4ff, #7c3aed);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.1;
+    }
+    .stat-label { color: var(--text-muted); font-size: 0.82rem; margin-top: 4px; }
+
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 28px 28px 32px;
+      margin-bottom: 24px;
+    }
+    .section h2 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section h2 .icon { font-size: 1.3rem; }
+    .section p.lead { color: var(--text-muted); margin-bottom: 20px; font-size: 0.95rem; }
+
+    /* ==== DEMO: Browser opt-in flow ==== */
+    .browser-mock {
+      background: #ffffff;
+      color: #1f2937;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+      max-width: 520px;
+      margin: 20px auto;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    .browser-bar {
+      background: #f3f4f6;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .browser-bar .dot { width: 12px; height: 12px; border-radius: 50%; }
+    .dot.red { background: #ff5f57; }
+    .dot.yellow { background: #febc2e; }
+    .dot.green { background: #28c840; }
+    .browser-bar .url {
+      background: #fff;
+      border-radius: 6px;
+      padding: 4px 12px;
+      font-size: 0.75rem;
+      color: #6b7280;
+      margin-left: 8px;
+      flex: 1;
+    }
+    .browser-content { padding: 28px 24px; min-height: 320px; position: relative; }
+    .site-brand { font-size: 0.78rem; color: #6b7280; letter-spacing: 0.1em; font-weight: 600; }
+    .site-title { font-size: 1.4rem; font-weight: 700; color: #111827; margin: 6px 0 16px; }
+
+    /* The soft prompt (custom, single-click) */
+    .soft-prompt {
+      position: absolute;
+      bottom: 20px;
+      left: 24px;
+      right: 24px;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .soft-prompt .bell { font-size: 1.5rem; }
+    .soft-prompt .sp-text { flex: 1; font-size: 0.85rem; }
+    .soft-prompt .sp-text strong { display: block; color: #111827; }
+    .soft-prompt .sp-text span { color: #6b7280; font-size: 0.78rem; }
+    .soft-prompt .sp-actions { display: flex; gap: 6px; }
+    .soft-prompt button {
+      padding: 7px 14px;
+      border-radius: 8px;
+      border: 1px solid #e5e7eb;
+      background: #fff;
+      color: #6b7280;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .soft-prompt button.primary {
+      background: #1677ff;
+      color: #fff;
+      border-color: #1677ff;
+    }
+
+    /* Native browser dialog (simulated) */
+    .native-dialog {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #ffffff;
+      border-radius: 10px;
+      padding: 18px 20px;
+      width: 88%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+      border: 1px solid #d1d5db;
+      display: none;
+    }
+    .native-dialog.show { display: block; animation: popIn 0.3s ease; }
+    @keyframes popIn { from { transform: translate(-50%, -45%); opacity: 0; } to { transform: translate(-50%, -50%); opacity: 1; } }
+    .native-dialog .nd-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 6px; color: #111827; }
+    .native-dialog .nd-body { font-size: 0.8rem; color: #6b7280; margin-bottom: 14px; }
+    .native-dialog .nd-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .native-dialog button {
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      background: transparent;
+      color: #1677ff;
+    }
+    .native-dialog button.allow {
+      background: #1677ff;
+      color: #fff;
+    }
+
+    /* ==== DEMO: Notification mockup (system-style) ==== */
+    .notification-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 20px;
+      margin-top: 20px;
+    }
+    .device-frame {
+      background: linear-gradient(135deg, #1e1e2e, #0f0f17);
+      border-radius: 28px;
+      padding: 12px 10px 20px;
+      border: 2px solid #2a2a3e;
+      box-shadow: 0 30px 80px rgba(0,0,0,0.5);
+      max-width: 380px;
+      margin: 0 auto;
+    }
+    .device-screen {
+      background: #000;
+      border-radius: 18px;
+      padding: 14px 12px;
+      min-height: 440px;
+      position: relative;
+    }
+    .device-status {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.7rem;
+      color: #fff;
+      margin-bottom: 16px;
+      padding: 0 4px;
+    }
+    .device-time { font-weight: 600; }
+
+    .notification {
+      background: rgba(40, 40, 60, 0.95);
+      backdrop-filter: blur(20px);
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      border: 1px solid rgba(255,255,255,0.06);
+      animation: slideDown 0.5s ease;
+      cursor: pointer;
+    }
+    @keyframes slideDown { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    .notification .nt-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .notification .app-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      background: linear-gradient(135deg, #1677ff, #7c3aed);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      color: white;
+      font-weight: 700;
+    }
+    .notification .app-name { font-size: 0.78rem; font-weight: 600; color: #fff; flex: 1; }
+    .notification .nt-time { font-size: 0.68rem; color: #9ca3af; }
+    .notification .nt-title { font-size: 0.85rem; font-weight: 600; color: #fff; margin-bottom: 2px; }
+    .notification .nt-body { font-size: 0.8rem; color: #d1d5db; line-height: 1.4; }
+    .notification .nt-cta {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 4px 12px;
+      background: #1677ff;
+      color: white;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+
+    /* ==== TIMELINE ==== */
+    .timeline {
+      position: relative;
+      padding-left: 28px;
+      margin-top: 16px;
+    }
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 8px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: linear-gradient(180deg, #1677ff, #7c3aed);
+    }
+    .timeline-item {
+      position: relative;
+      padding-bottom: 24px;
+    }
+    .timeline-item::before {
+      content: '';
+      position: absolute;
+      left: -24px;
+      top: 4px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--bg);
+      border: 3px solid #1677ff;
+    }
+    .timeline-time { color: #4ea1ff; font-size: 0.78rem; font-weight: 600; letter-spacing: 0.04em; }
+    .timeline-title { font-size: 1rem; font-weight: 600; margin: 4px 0; }
+    .timeline-desc { color: var(--text-muted); font-size: 0.88rem; }
+    .timeline-msg {
+      margin-top: 8px;
+      padding: 10px 14px;
+      background: var(--bg-soft);
+      border-radius: 10px;
+      border-left: 3px solid #1677ff;
+      font-size: 0.85rem;
+      color: #d1d5db;
+      font-style: italic;
+    }
+
+    /* ==== CODE ==== */
+    pre {
+      background: #0d0d1a;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      overflow-x: auto;
+      font-size: 0.78rem;
+      line-height: 1.55;
+      color: #d4d4dc;
+      font-family: 'SF Mono', Monaco, Consolas, monospace;
+      margin-top: 10px;
+    }
+    .token-key { color: #7dd3fc; }
+    .token-str { color: #86efac; }
+    .token-com { color: #6b7280; font-style: italic; }
+    .token-fn { color: #fbbf24; }
+    .token-pun { color: #d4d4dc; }
+
+    /* ==== COMPARISON TABLE ==== */
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 12px;
+    }
+    .compare-card {
+      background: var(--bg-soft);
+      border-radius: 12px;
+      padding: 16px;
+      border: 1px solid var(--border);
+    }
+    .compare-card.good { border-color: rgba(16,185,129,0.3); }
+    .compare-card.bad { border-color: rgba(239,68,68,0.3); }
+    .compare-card h3 {
+      font-size: 0.95rem;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .compare-card ul { list-style: none; padding: 0; }
+    .compare-card li {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      padding: 4px 0;
+      padding-left: 16px;
+      position: relative;
+    }
+    .compare-card li::before {
+      content: '→';
+      position: absolute;
+      left: 0;
+      color: var(--accent);
+    }
+
+    .footer-note {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      padding: 30px 0 0;
+    }
+    .footer-note a { color: #4ea1ff; text-decoration: none; }
+
+    /* small screen */
+    @media (max-width: 640px) {
+      h1 { font-size: 1.85rem; }
+      .section { padding: 20px; }
+      .comparison { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <span class="badge">FRONTEND RESEARCH</span>
+      <h1>Web Push API & Cart Abandonment Recovery</h1>
+      <p class="subtitle">Reach lost visitors in their browser — even when your site is closed. The 2026 revenue recovery channel for e-commerce and lead-gen.</p>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-num">45–90%</div>
+        <div class="stat-label">Web push open rates</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">+600%</div>
+        <div class="stat-label">Sign-ups with single opt-in</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">10–15%</div>
+        <div class="stat-label">Avg opt-in rate (e-com)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">2–10×</div>
+        <div class="stat-label">ROI vs email</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">35%</div>
+        <div class="stat-label">Click-to-purchase rate</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">~0s</div>
+        <div class="stat-label">Delivery vs 6.4h email</div>
+      </div>
+    </div>
+
+    <!-- SECTION 1: The Opt-in Flow -->
+    <div class="section">
+      <h2><span class="icon">🔔</span> The Two-Step Opt-in Flow</h2>
+      <p class="lead">A <strong>custom soft prompt</strong> shows first to warm up the user. After they click "Allow," the <strong>native browser dialog</strong> appears. This two-step pattern gets 600%+ higher sign-up rates than jumping straight to the native dialog.</p>
+
+      <div class="browser-mock">
+        <div class="browser-bar">
+          <div class="dot red"></div>
+          <div class="dot yellow"></div>
+          <div class="dot green"></div>
+          <div class="url">🔒 opendrones.vercel.app</div>
+        </div>
+        <div class="browser-content">
+          <div class="site-brand">OPENDRONES</div>
+          <div class="site-title">Arc 18650 Battery Pack</div>
+          <p style="font-size: 0.85rem; color: #6b7280;">XT30 + BT2.0 dual connectors. Free shipping on orders $50+.</p>
+
+          <div class="soft-prompt">
+            <span class="bell">🔔</span>
+            <div class="sp-text">
+              <strong>Get notified about restocks & flash sales</strong>
+              <span>One tap. Unsubscribe anytime.</span>
+            </div>
+            <div class="sp-actions">
+              <button onclick="dismissPrompt()">Not now</button>
+              <button class="primary" onclick="showNative()">Allow</button>
+            </div>
+          </div>
+
+          <div class="native-dialog" id="nativeDialog">
+            <div class="nd-title">opendrones.vercel.app wants to</div>
+            <div class="nd-body">Show notifications</div>
+            <div class="nd-actions">
+              <button>Block</button>
+              <button class="allow" onclick="approved()">Allow</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p style="text-align:center; color: var(--text-muted); font-size: 0.82rem; margin-top: 14px;">👆 Click <strong>Allow</strong> on the soft prompt to see the native dialog flow</p>
+    </div>
+
+    <!-- SECTION 2: Notification mockups -->
+    <div class="section">
+      <h2><span class="icon">📬</span> Cart Abandonment Notifications in the Wild</h2>
+      <p class="lead">Once opted-in, you can reach the user anytime — even with the browser closed. Here are three real-world messages OpenDrones could send.</p>
+
+      <div class="notification-grid">
+
+        <!-- Notification 1: Soft reminder -->
+        <div>
+          <div class="device-frame">
+            <div class="device-screen">
+              <div class="device-status">
+                <span class="device-time">9:41</span>
+                <span>📶 🔋</span>
+              </div>
+
+              <div class="notification" style="animation-delay: 0.2s;">
+                <div class="nt-header">
+                  <div class="app-icon">O</div>
+                  <span class="app-name">OpenDrones</span>
+                  <span class="nt-time">2h ago</span>
+                </div>
+                <div class="nt-title">Forgot something? 🛸</div>
+                <div class="nt-body">Your Arc battery pack is still in your cart. Free shipping on us — code <strong>COMEBACK</strong>.</div>
+                <span class="nt-cta">View cart →</span>
+              </div>
+
+              <div class="notification" style="animation-delay: 0.5s;">
+                <div class="nt-header">
+                  <div class="app-icon">O</div>
+                  <span class="app-name">OpenDrones</span>
+                  <span class="nt-time">just now</span>
+                </div>
+                <div class="nt-title">⚡ Flash: 15% off — next 2 hours</div>
+                <div class="nt-body">Your saved Arc pack just dropped to <strong>$42.49</strong>. Claim before stock runs out.</div>
+                <span class="nt-cta">Buy now →</span>
+              </div>
+
+              <div class="notification" style="animation-delay: 0.8s; opacity: 0.85;">
+                <div class="nt-header">
+                  <div class="app-icon">O</div>
+                  <span class="app-name">OpenDrones</span>
+                  <span class="nt-time">3 days ago</span>
+                </div>
+                <div class="nt-title">Last call for your cart</div>
+                <div class="nt-body">We saved it for you. Tap to checkout — we even covered shipping this time.</div>
+                <span class="nt-cta">Complete order →</span>
+              </div>
+            </div>
+          </div>
+          <p style="text-align:center; color: var(--text-muted); font-size: 0.78rem; margin-top: 12px;">3-message cart abandonment sequence (2h → 24h → 72h)</p>
+        </div>
+
+        <!-- Notification 2: Back in stock -->
+        <div>
+          <div class="device-frame">
+            <div class="device-screen">
+              <div class="device-status">
+                <span class="device-time">9:41</span>
+                <span>📶 🔋</span>
+              </div>
+
+              <div class="notification" style="animation-delay: 0.2s;">
+                <div class="nt-header">
+                  <div class="app-icon">O</div>
+                  <span class="app-name">OpenDrones</span>
+                  <span class="nt-time">just now</span>
+                </div>
+                <div class="nt-title">Back in stock 🔥</div>
+                <div class="nt-body">The item you saved is available again. Only 47 left at this price.</div>
+                <span class="nt-cta">Shop now →</span>
+              </div>
+
+              <div class="notification" style="animation-delay: 0.5s;">
+                <div class="nt-header">
+                  <div class="app-icon">O</div>
+                  <span class="app-name">OpenDrones</span>
+                  <span class="nt-time">1h ago</span>
+                </div>
+                <div class="nt-title">Order delivered ✅</div>
+                <div class="nt-body">Your Arc pack arrived. Tap to leave a review — get $5 off your next order.</div>
+                <span class="nt-cta">Rate & earn →</span>
+              </div>
+
+              <div class="notification" style="animation-delay: 0.8s;">
+                <div class="nt-header">
+                  <div class="app-icon">O</div>
+                  <span class="app-name">OpenDrones</span>
+                  <span class="nt-time">3 days ago</span>
+                </div>
+                <div class="nt-title">New: XT60 adapter kit</div>
+                <div class="nt-body">Based on your Arc pack purchase, you might want this. Free with $75+ order.</div>
+                <span class="nt-cta">See adapter →</span>
+              </div>
+            </div>
+          </div>
+          <p style="text-align:center; color: var(--text-muted); font-size: 0.78rem; margin-top: 12px;">Behavioral triggers (back-in-stock, post-purchase, cross-sell)</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 3: Recovery Timeline -->
+    <div class="section">
+      <h2><span class="icon">⏱️</span> The Recovery Timeline</h2>
+      <p class="lead">Three touches beat one. The first 24 hours recover the most revenue — after that, your email sequence can take over.</p>
+
+      <div class="timeline">
+        <div class="timeline-item">
+          <div class="timeline-time">T+0 MIN</div>
+          <div class="timeline-title">Cart abandoned — no notification yet</div>
+          <div class="timeline-desc">User left without checking out. Capture their intent immediately via <code>beforeunload</code> + cart API.</div>
+          <div class="timeline-msg">📊 No push yet — this is the funnel drop-off point</div>
+        </div>
+
+        <div class="timeline-item">
+          <div class="timeline-time">T+2 HOURS</div>
+          <div class="timeline-title">Soft reminder push</div>
+          <div class="timeline-desc">Friendly nudge. No discount — just a reminder. 8–15% recovery rate at this stage.</div>
+          <div class="timeline-msg">"Forgot something? 🛸 Your Arc battery pack is still in your cart."</div>
+        </div>
+
+        <div class="timeline-item">
+          <div class="timeline-time">T+24 HOURS</div>
+          <div class="timeline-title">Incentive push</div>
+          <div class="timeline-desc">Add a small incentive (free shipping or 10% off). 5–10% additional recovery.</div>
+          <div class="timeline-msg">"⚡ Flash: 15% off your saved cart — next 2 hours only"</div>
+        </div>
+
+        <div class="timeline-item">
+          <div class="timeline-time">T+72 HOURS</div>
+          <div class="timeline-title">Final touch</div>
+          <div class="timeline-desc">Last chance. Stop sending after this — over-messaging causes opt-outs (46% opt out at 2-5 msgs/week).</div>
+          <div class="timeline-msg">"Last call for your cart — we covered shipping. Tap to checkout."</div>
+        </div>
+
+        <div class="timeline-item">
+          <div class="timeline-time">T+30 DAYS</div>
+          <div class="timeline-title">Re-engagement campaign</div>
+          <div class="timeline-desc">If still no purchase, drop into a monthly "new arrivals" sequence — keep the channel warm.</div>
+          <div class="timeline-msg">"New: XT60 adapter kit + restocked Arc packs"</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 4: Code patterns -->
+    <div class="section">
+      <h2><span class="icon">💻</span> Implementation Pattern (Next.js 16)</h2>
+      <p class="lead">Three files: a service worker, a custom hook, and a server action for sending pushes via VAPID.</p>
+
+      <p style="font-weight: 600; margin-top: 16px; color: var(--text);">📁 public/sw.js — Service Worker</p>
+<pre><span class="token-com">// public/sw.js — receives push events and shows notifications</span>
+self.<span class="token-fn">addEventListener</span>(<span class="token-str">'push'</span>, (event) => {
+  <span class="token-key">const</span> data = event.data ? event.data.json() : {}
+  <span class="token-key">const</span> { title, body, url, icon } = data
+
+  <span class="token-key">const</span> options = {
+    body,
+    icon: icon || <span class="token-str">'/icon-192.png'</span>,
+    badge: <span class="token-str">'/badge-72.png'</span>,
+    data: { url },
+    <span class="token-com">// Actions: rich push (Android/Chrome)</span>
+    actions: [
+      { action: <span class="token-str">'view'</span>, title: <span class="token-str">'View'</span> },
+      { action: <span class="token-str">'dismiss'</span>, title: <span class="token-str">'Dismiss'</span> }
+    ],
+    vibrate: [<span class="token-pun">200</span>, <span class="token-pun">100</span>, <span class="token-pun">200</span>],
+    tag: <span class="token-str">'cart-recovery'</span>,  <span class="token-com">// dedupe repeats</span>
+    renotify: <span class="token-key">true</span>,
+  }
+
+  event.<span class="token-fn">waitUntil</span>(
+    self.registration.<span class="token-fn">showNotification</span>(title, options)
+  )
+})
+
+self.<span class="token-fn">addEventListener</span>(<span class="token-str">'notificationclick'</span>, (event) => {
+  event.notification.<span class="token-fn">close</span>()
+  <span class="token-key">if</span> (event.action === <span class="token-str">'dismiss'</span>) <span class="token-key">return</span>
+  <span class="token-key">const</span> url = event.notification.data?.url || <span class="token-str">'/'</span>
+  event.<span class="token-fn">waitUntil</span>(clients.<span class="token-fn">openWindow</span>(url))
+})</pre>
+
+      <p style="font-weight: 600; margin-top: 20px; color: var(--text);">📁 hooks/useWebPush.ts — Client subscription</p>
+<pre><span class="token-com">// hooks/useWebPush.ts — soft prompt → native dialog → save subscription</span>
+<span class="token-key">import</span> { useState } <span class="token-key">from</span> <span class="token-str">'react'</span>
+
+<span class="token-key">export function</span> <span class="token-fn">useWebPush</span>() {
+  <span class="token-key">const</span> [status, setStatus] = useState&lt;<span class="token-str">'idle'</span> | <span class="token-str">'subscribed'</span> | <span class="token-str">'denied'</span>&gt;(<span class="token-str">'idle'</span>)
+
+  <span class="token-key">const</span> <span class="token-fn">subscribe</span> = <span class="token-key">async</span> () => {
+    <span class="token-key">if</span> (!(<span class="token-str">'serviceWorker'</span> <span class="token-key">in</span> navigator) || !(<span class="token-str">'PushManager'</span> <span class="token-key">in</span> window)) {
+      <span class="token-key">return</span> <span class="token-key">false</span>
+    }
+
+    <span class="token-key">const</span> reg = <span class="token-key">await</span> navigator.serviceWorker.<span class="token-fn">register</span>(<span class="token-str">'/sw.js'</span>)
+    <span class="token-key">const</span> perm = <span class="token-key">await</span> Notification.<span class="token-fn">requestPermission</span>()
+    <span class="token-key">if</span> (perm !== <span class="token-str">'granted'</span>) { setStatus(<span class="token-str">'denied'</span>); <span class="token-key">return</span> <span class="token-key">false</span> }
+
+    <span class="token-key">const</span> sub = <span class="token-key">await</span> reg.pushManager.<span class="token-fn">subscribe</span>({
+      userVisibleOnly: <span class="token-key">true</span>,
+      applicationServerKey: <span class="token-str">process.env.NEXT_PUBLIC_VAPID_PUBLIC</span>
+    })
+
+    <span class="token-com">// Save to server</span>
+    <span class="token-key">await</span> <span class="token-fn">fetch</span>(<span class="token-str">'/api/push/subscribe'</span>, {
+      method: <span class="token-str">'POST'</span>,
+      body: JSON.<span class="token-fn">stringify</span>(sub),
+      headers: { <span class="token-str">'Content-Type'</span>: <span class="token-str">'application/json'</span> }
+    })
+
+    setStatus(<span class="token-str">'subscribed'</span>)
+    <span class="token-key">return</span> <span class="token-key">true</span>
+  }
+
+  <span class="token-key">return</span> { status, subscribe }
+}</pre>
+
+      <p style="font-weight: 600; margin-top: 20px; color: var(--text);">📁 app/api/push/send/route.ts — Server trigger (cart abandonment cron)</p>
+<pre><span class="token-com">// app/api/push/send/route.ts — Vercel Cron triggers this on cart abandonment</span>
+<span class="token-key">import</span> webpush <span class="token-key">from</span> <span class="token-str">'web-push'</span>
+<span class="token-key">import</span> { createClient } <span class="token-key">from</span> <span class="token-str">'@supabase/supabase-js'</span>
+
+webpush.<span class="token-fn">setVapidDetails</span>(
+  <span class="token-str">'mailto:hello@opendrones.app'</span>,
+  process.env.VAPID_PUBLIC!,
+  process.env.VAPID_PRIVATE!
+)
+
+<span class="token-key">export async function</span> <span class="token-fn">POST</span>(req: Request) {
+  <span class="token-key">const</span> { userId, title, body, url } = <span class="token-key">await</span> req.json()
+  <span class="token-key">const</span> supabase = <span class="token-fn">createClient</span>(process.env.SUPABASE_URL!, process.env.SUPABASE_KEY!)
+
+  <span class="token-com">// Look up this user's push subscription(s)</span>
+  <span class="token-key">const</span> { data: subs } = <span class="token-key">await</span> supabase
+    .from(<span class="token-str">'push_subscriptions'</span>)
+    .select(<span class="token-str">'*'</span>)
+    .eq(<span class="token-str">'user_id'</span>, userId)
+
+  <span class="token-com">// Fire-and-track</span>
+  <span class="token-key">await</span> Promise.<span class="token-fn">all</span>(subs.map(s =>
+    webpush.<span class="token-fn">sendNotification</span>(s.subscription, JSON.<span class="token-fn">stringify</span>({
+      title, body, url, icon: <span class="token-str">'/icon-192.png'</span>
+    })).<span class="token-fn">catch</span>(async (err) => {
+      <span class="token-key">if</span> (err.statusCode === <span class="token-pun">410</span>) {
+        <span class="token-com">// Subscription expired — clean up</span>
+        <span class="token-key">await</span> supabase.from(<span class="token-str">'push_subscriptions'</span>).<span class="token-fn">delete</span>().eq(<span class="token-str">'id'</span>, s.id)
+      }
+    })
+  ))
+
+  <span class="token-key">return</span> Response.<span class="token-fn">json</span>({ sent: subs.length })
+}</pre>
+    </div>
+
+    <!-- SECTION 5: Best Practices -->
+    <div class="section">
+      <h2><span class="icon">✅</span> Best Practices vs Pitfalls</h2>
+
+      <div class="comparison">
+        <div class="compare-card good">
+          <h3>✅ Do</h3>
+          <ul>
+            <li>Use a <strong>custom soft prompt</strong> before the native dialog (2-step flow = +600%)</li>
+            <li>Trigger on <strong>exit intent</strong> or after 30s of engagement (not on page load)</li>
+            <li>Show a <strong>clear value prop</strong> in the soft prompt ("Get restock alerts & flash sales")</li>
+            <li>Limit pushes to <strong>1–2 per week</strong> to avoid the 46% opt-out cliff</li>
+            <li>Use the <code>tag</code> field to dedupe repeat notifications</li>
+            <li>Track <code>click → conversion</code> with UTM params per push</li>
+          </ul>
+        </div>
+
+        <div class="compare-card bad">
+          <h3>❌ Don't</h3>
+          <ul>
+            <li>Show the <strong>native dialog immediately</strong> on page load — kills opt-in rate</li>
+            <li>Ask for permission on the <strong>first page visit</strong> — no trust yet</li>
+            <li>Send more than <strong>5 pushes per week</strong> — drives opt-outs</li>
+            <li>Use generic copy like "Subscribe to our newsletter" — vague kills CTR</li>
+            <li>Forget <strong>iOS PWA</strong> — push only works if the user installs to home screen</li>
+            <li>Skip <strong>subscription cleanup</strong> — dead subs (HTTP 410) pile up</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer-note">
+      <p>📊 Source: 2026 push notification benchmarks (Sleeknote, Pushwoosh, Flowium, MoEngage) · Web Push API browser support: 96%+</p>
+      <p style="margin-top: 8px;">Researched by <strong>Jin</strong> · Molt Studios Research Hub · <a href="https://molt-research.vercel.app/">molt-research.vercel.app</a></p>
+    </div>
+  </div>
+
+  <script>
+    function dismissPrompt() {
+      document.querySelector('.soft-prompt').style.display = 'none';
+    }
+    function showNative() {
+      document.querySelector('.soft-prompt').style.display = 'none';
+      document.getElementById('nativeDialog').classList.add('show');
+    }
+    function approved() {
+      const d = document.getElementById('nativeDialog');
+      d.querySelector('.nd-title').textContent = '✓ Subscribed!';
+      d.querySelector('.nd-body').textContent = "We'll send you push notifications. You can change this anytime in browser settings.";
+      d.querySelector('.nd-actions').innerHTML = '<button class="allow" onclick="this.closest(\\'.native-dialog\\').remove()">Done</button>';
+    }
+  </script>
+</body>
+</html>
