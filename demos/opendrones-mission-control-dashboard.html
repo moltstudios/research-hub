@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenDrones Mission Control — Real-Time Telemetry UX Patterns</title>
+<style>
+  /* ============================================================
+     Reset & Tokens
+     ============================================================ */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    /* Mission-control dark palette */
+    --bg: #06080d;
+    --bg-2: #0b0f17;
+    --surface: #11151f;
+    --surface-2: #161b27;
+    --surface-3: #1c2230;
+    --border: #1f2632;
+    --border-2: #2a3346;
+
+    --text: #e6e9ef;
+    --text-dim: #8b94a5;
+    --text-muted: #5a6478;
+
+    /* Domain colors (semantic) */
+    --brand: #00d4ff;        /* OpenDrones cyan */
+    --brand-glow: rgba(0, 212, 255, 0.35);
+    --ok: #00e5a0;
+    --warn: #ffb84d;
+    --danger: #ff5577;
+    --info: #a890ff;
+
+    /* Vehicle status */
+    --altitude: #00d4ff;
+    --battery: #00e5a0;
+    --speed: #ffb84d;
+    --gps: #a890ff;
+
+    --radius: 14px;
+    --radius-sm: 10px;
+    --radius-lg: 20px;
+
+    color-scheme: dark;
+  }
+
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+    background:
+      radial-gradient(1200px 600px at 20% -10%, rgba(0, 212, 255, 0.08), transparent 60%),
+      radial-gradient(1000px 500px at 90% 10%, rgba(168, 144, 255, 0.06), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .container { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
+
+  /* ============================================================
+     Header
+     ============================================================ */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1rem 0 1.5rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap; gap: 1rem;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 0.75rem;
+  }
+  .brand-mark {
+    width: 38px; height: 38px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--brand), #6f4cff);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 24px var(--brand-glow);
+    font-size: 1.1rem;
+  }
+  .brand-name { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; }
+  .brand-sub { font-size: 0.78rem; color: var(--text-dim); letter-spacing: 0.02em; }
+
+  .header-meta { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.35rem 0.75rem; border-radius: 999px;
+    font-size: 0.74rem; font-weight: 600;
+    border: 1px solid var(--border-2);
+    background: var(--surface);
+    color: var(--text-dim);
+  }
+  .pill .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: currentColor;
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse { 50% { opacity: 0.35; transform: scale(0.85); } }
+
+  .pill.live { color: var(--ok); border-color: rgba(0,229,160,0.3); background: rgba(0,229,160,0.07); }
+  .pill.transport { color: var(--brand); border-color: rgba(0,212,255,0.3); background: rgba(0,212,255,0.07); }
+
+  /* ============================================================
+     Title block
+     ============================================================ */
+  .title-block { margin-bottom: 1.5rem; }
+  h1 {
+    font-size: clamp(1.6rem, 3.4vw, 2.4rem); font-weight: 800;
+    letter-spacing: -0.02em; line-height: 1.1;
+    background: linear-gradient(135deg, #fff 0%, #a3b3cc 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    margin-bottom: 0.5rem;
+  }
+  .lede { color: var(--text-dim); font-size: 1rem; max-width: 62ch; }
+
+  /* ============================================================
+     KPI grid
+     ============================================================ */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  .kpi {
+    background: linear-gradient(180deg, var(--surface) 0%, var(--bg-2) 100%);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.15rem;
+    position: relative;
+    overflow: hidden;
+    transition: transform 240ms cubic-bezier(.2,.7,.2,1), border-color 240ms;
+  }
+  .kpi:hover { transform: translateY(-2px); border-color: var(--border-2); }
+  .kpi::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: var(--accent, var(--brand));
+    opacity: 0.7;
+  }
+  .kpi[data-tone="altitude"]::before { background: var(--altitude); }
+  .kpi[data-tone="battery"]::before { background: var(--battery); }
+  .kpi[data-tone="speed"]::before { background: var(--speed); }
+  .kpi[data-tone="gps"]::before { background: var(--gps); }
+
+  .kpi-label {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.7rem; font-weight: 600; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin-bottom: 0.6rem;
+  }
+  .kpi-status {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--ok);
+    box-shadow: 0 0 8px currentColor;
+  }
+  .kpi-status.warn { background: var(--warn); color: var(--warn); }
+  .kpi-status.danger { background: var(--danger); color: var(--danger); }
+
+  /* Animated counter via @property */
+  @property --counter {
+    syntax: '<integer>';
+    initial-value: 0;
+    inherits: false;
+  }
+  .kpi-value {
+    font-size: 2rem; font-weight: 800; letter-spacing: -0.02em;
+    line-height: 1;
+    counter-reset: c var(--counter);
+    transition: --counter 600ms cubic-bezier(.2,.7,.2,1);
+  }
+  .kpi-value::after {
+    content: counter(c);
+  }
+  .kpi-value::before {
+    content: '';
+  }
+  /* When JS updates the value, transition kicks in */
+  .kpi-value.animated {
+    --counter: var(--target, 0);
+  }
+
+  .kpi-unit { font-size: 0.85rem; color: var(--text-dim); font-weight: 500; margin-left: 0.15rem; }
+  .kpi-delta {
+    margin-top: 0.5rem;
+    font-size: 0.78rem; color: var(--text-dim);
+    display: flex; align-items: center; gap: 0.4rem;
+  }
+  .kpi-delta.up { color: var(--ok); }
+  .kpi-delta.down { color: var(--danger); }
+  .kpi-delta.flat { color: var(--text-muted); }
+
+  /* ============================================================
+     Main grid: chart + map
+     ============================================================ */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  @media (max-width: 880px) {
+    .main-grid { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.1rem;
+    overflow: hidden;
+  }
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 0.85rem;
+  }
+  .panel-title {
+    font-size: 0.78rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--text-dim);
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .panel-title .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--brand); box-shadow: 0 0 6px var(--brand-glow); }
+  .panel-meta { font-size: 0.72rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+  /* Chart */
+  .chart-wrap { position: relative; height: 220px; }
+  canvas.chart { width: 100%; height: 100%; display: block; }
+
+  /* Map */
+  .map-wrap {
+    position: relative; height: 220px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 50% 50%, rgba(0,212,255,0.04), transparent 70%),
+      repeating-linear-gradient(0deg, transparent 0 23px, rgba(255,255,255,0.025) 23px 24px),
+      repeating-linear-gradient(90deg, transparent 0 23px, rgba(255,255,255,0.025) 23px 24px),
+      linear-gradient(180deg, #0a0e16, #0e131c);
+    border: 1px solid var(--border-2);
+  }
+  svg.map { width: 100%; height: 100%; display: block; }
+  .map-drone {
+    filter: drop-shadow(0 0 8px var(--brand-glow));
+  }
+  .map-drone-pulse {
+    transform-origin: center;
+    animation: dronering 1.6s ease-out infinite;
+  }
+  @keyframes dronering {
+    0% { transform: scale(0.6); opacity: 0.8; }
+    100% { transform: scale(2.4); opacity: 0; }
+  }
+  .map-path {
+    fill: none;
+    stroke: var(--brand);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 3;
+    opacity: 0.6;
+  }
+
+  /* ============================================================
+     Bottom grid: events + battery + connection
+     ============================================================ */
+  .bottom-grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr;
+    gap: 1rem;
+  }
+  @media (max-width: 880px) {
+    .bottom-grid { grid-template-columns: 1fr; }
+  }
+
+  .event-list { display: flex; flex-direction: column; gap: 0.4rem; max-height: 240px; overflow-y: auto; }
+  .event-list::-webkit-scrollbar { width: 6px; }
+  .event-list::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 3px; }
+
+  .event {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.55rem 0.7rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    border-left: 3px solid var(--info);
+    font-size: 0.85rem;
+    animation: slide-in 400ms cubic-bezier(.2,.7,.2,1);
+  }
+  @keyframes slide-in {
+    from { transform: translateX(-8px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .event.info { border-left-color: var(--info); }
+  .event.ok { border-left-color: var(--ok); }
+  .event.warn { border-left-color: var(--warn); }
+  .event.danger { border-left-color: var(--danger); }
+  .event-time {
+    font-size: 0.72rem; color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    min-width: 60px;
+  }
+  .event-text { flex: 1; color: var(--text); }
+  .event-text small { color: var(--text-dim); font-size: 0.76rem; }
+
+  /* Battery gauge */
+  .gauge-wrap {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 0.6rem 0;
+  }
+  .gauge { position: relative; width: 140px; height: 140px; }
+  .gauge-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .gauge-track { stroke: var(--border-2); fill: none; stroke-width: 10; }
+  .gauge-fill { stroke: var(--ok); fill: none; stroke-width: 10; stroke-linecap: round;
+    transition: stroke-dashoffset 600ms cubic-bezier(.2,.7,.2,1), stroke 400ms;
+  }
+  .gauge-center {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+  .gauge-pct {
+    font-size: 2.1rem; font-weight: 800; letter-spacing: -0.02em;
+    counter-reset: g var(--counter);
+    --counter: 0;
+    transition: --counter 600ms cubic-bezier(.2,.7,.2,1);
+  }
+  .gauge-pct::after { content: counter(g); }
+  .gauge-label { font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em; }
+  .gauge-meta { margin-top: 0.6rem; font-size: 0.78rem; color: var(--text-dim); text-align: center; }
+
+  /* Connection stats */
+  .conn-stats { display: flex; flex-direction: column; gap: 0.55rem; }
+  .conn-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0.45rem 0; border-bottom: 1px solid var(--border);
+    font-size: 0.85rem;
+  }
+  .conn-row:last-child { border-bottom: none; }
+  .conn-key { color: var(--text-dim); }
+  .conn-val { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .conn-val.ok { color: var(--ok); }
+  .conn-val.warn { color: var(--warn); }
+
+  /* ============================================================
+     Pattern guide (educational section)
+     ============================================================ */
+  .guide {
+    margin-top: 2.5rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+  }
+  .guide h2 {
+    font-size: 1.6rem; font-weight: 700; letter-spacing: -0.01em;
+    margin-bottom: 0.5rem;
+  }
+  .guide-intro { color: var(--text-dim); max-width: 60ch; margin-bottom: 1.5rem; }
+
+  .patterns {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+  .pattern {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.15rem;
+    transition: border-color 240ms, transform 240ms;
+  }
+  .pattern:hover { border-color: var(--border-2); transform: translateY(-2px); }
+  .pattern h3 {
+    font-size: 0.95rem; font-weight: 700; margin-bottom: 0.4rem;
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .pattern h3 .num {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--brand), #6f4cff);
+    color: #fff; font-size: 0.72rem; font-weight: 700;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .pattern p { font-size: 0.86rem; color: var(--text-dim); margin-bottom: 0.7rem; }
+  .pattern code {
+    font-family: 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+    font-size: 0.76rem; color: var(--brand);
+    background: var(--surface-2); padding: 2px 6px; border-radius: 4px;
+  }
+
+  .footer-note {
+    margin-top: 2.5rem; padding: 1rem 1.25rem;
+    background: linear-gradient(135deg, rgba(0,212,255,0.06), rgba(168,144,255,0.05));
+    border: 1px solid rgba(0,212,255,0.18);
+    border-radius: var(--radius);
+    font-size: 0.85rem; color: var(--text-dim);
+  }
+  .footer-note strong { color: var(--text); }
+
+  /* Reduced-motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- ============================================================
+       Header
+       ============================================================ -->
+  <header>
+    <div class="brand">
+      <div class="brand-mark">⬢</div>
+      <div>
+        <div class="brand-name">OpenDrones Mission Control</div>
+        <div class="brand-sub">Live telemetry demo · Research showcase</div>
+      </div>
+    </div>
+    <div class="header-meta">
+      <span class="pill live"><span class="dot"></span>STREAMING</span>
+      <span class="pill transport"><span class="dot"></span>WebTransport · HTTP/3</span>
+      <span class="pill" id="latency-pill">— ms RTT</span>
+    </div>
+  </header>
+
+  <!-- ============================================================
+       Title
+       ============================================================ -->
+  <section class="title-block">
+    <h1>Real-time telemetry, 60fps smooth</h1>
+    <p class="lede">
+      A research demo exploring UX patterns for live drone telemetry dashboards — animated counters,
+      streaming line charts, low-latency WebTransport transport, and motion design that doesn't
+      kill your INP score.
+    </p>
+  </section>
+
+  <!-- ============================================================
+       KPI Strip
+       ============================================================ -->
+  <section class="kpi-grid" aria-label="Live telemetry KPIs">
+
+    <div class="kpi" data-tone="altitude">
+      <div class="kpi-label"><span>Altitude</span><span class="kpi-status" id="st-alt"></span></div>
+      <div><span class="kpi-value" id="kpi-alt">0</span><span class="kpi-unit">m AGL</span></div>
+      <div class="kpi-delta flat" id="delta-alt">—</div>
+    </div>
+
+    <div class="kpi" data-tone="battery">
+      <div class="kpi-label"><span>Battery</span><span class="kpi-status" id="st-bat"></span></div>
+      <div><span class="kpi-value" id="kpi-bat">0</span><span class="kpi-unit">%</span></div>
+      <div class="kpi-delta flat" id="delta-bat">—</div>
+    </div>
+
+    <div class="kpi" data-tone="speed">
+      <div class="kpi-label"><span>Ground Speed</span><span class="kpi-status" id="st-spd"></span></div>
+      <div><span class="kpi-value" id="kpi-spd">0</span><span class="kpi-unit">m/s</span></div>
+      <div class="kpi-delta flat" id="delta-spd">—</div>
+    </div>
+
+    <div class="kpi" data-tone="gps">
+      <div class="kpi-label"><span>GPS Sats</span><span class="kpi-status" id="st-gps"></span></div>
+      <div><span class="kpi-value" id="kpi-gps">0</span><span class="kpi-unit">locked</span></div>
+      <div class="kpi-delta flat" id="delta-gps">—</div>
+    </div>
+
+  </section>
+
+  <!-- ============================================================
+       Main: Chart + Map
+       ============================================================ -->
+  <section class="main-grid">
+
+    <!-- Chart panel -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title"><span class="dot"></span>Altitude · last 60s</div>
+        <div class="panel-meta" id="chart-meta">— samples</div>
+      </div>
+      <div class="chart-wrap"><canvas class="chart" id="altChart" width="800" height="220"></canvas></div>
+    </div>
+
+    <!-- Map panel -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title"><span class="dot"></span>Flight Path</div>
+        <div class="panel-meta" id="coord-meta">—</div>
+      </div>
+      <div class="map-wrap">
+        <svg class="map" viewBox="0 0 400 220" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <!-- compass rose -->
+          <g transform="translate(370,30)" opacity="0.5" fill="#5a6478" font-family="monospace" font-size="9">
+            <text text-anchor="middle">N</text>
+            <text text-anchor="middle" y="190">S</text>
+            <text text-anchor="end" x="-12" y="4">W</text>
+            <text text-anchor="start" x="12" y="4">E</text>
+          </g>
+          <!-- waypoints (mock) -->
+          <g fill="#5a6478" font-family="monospace" font-size="8">
+            <circle cx="80" cy="180" r="3"/>
+            <text x="86" y="184">WP-1 Origin</text>
+            <circle cx="320" cy="60" r="3"/>
+            <text x="312" y="56">WP-3 Land</text>
+          </g>
+          <!-- flight path (drawn dynamically) -->
+          <path class="map-path" id="flightPath" d=""/>
+          <!-- drone position (drawn dynamically) -->
+          <g id="dronePos" class="map-drone">
+            <circle class="map-drone-pulse" cx="0" cy="0" r="14" fill="none" stroke="#00d4ff" stroke-width="1.5"/>
+            <circle cx="0" cy="0" r="5" fill="#00d4ff"/>
+            <circle cx="0" cy="0" r="2" fill="#fff"/>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ============================================================
+       Bottom: Events + Battery + Connection
+       ============================================================ -->
+  <section class="bottom-grid">
+
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title"><span class="dot"></span>System Events</div>
+        <div class="panel-meta">live · bidir</div>
+      </div>
+      <div class="event-list" id="events" aria-live="polite"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title"><span class="dot"></span>Battery Health</div>
+        <div class="panel-meta" id="cycle-meta">cycle —/—</div>
+      </div>
+      <div class="gauge-wrap">
+        <div class="gauge">
+          <svg class="gauge-svg" viewBox="0 0 140 140">
+            <circle class="gauge-track" cx="70" cy="70" r="58"/>
+            <circle class="gauge-fill" id="gaugeFill" cx="70" cy="70" r="58"
+                    stroke-dasharray="364.4" stroke-dashoffset="364.4"/>
+          </svg>
+          <div class="gauge-center">
+            <div class="gauge-pct" id="gaugePct">0</div>
+            <div class="gauge-label">charge</div>
+          </div>
+        </div>
+        <div class="gauge-meta" id="battery-meta">— cells · —°C</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title"><span class="dot"></span>Connection</div>
+        <div class="panel-meta">WebTransport</div>
+      </div>
+      <div class="conn-stats">
+        <div class="conn-row"><span class="conn-key">Protocol</span><span class="conn-val">HTTP/3 (QUIC)</span></div>
+        <div class="conn-row"><span class="conn-key">Datagrams</span><span class="conn-val ok" id="conn-dgrams">0 sent</span></div>
+        <div class="conn-row"><span class="conn-key">Streams</span><span class="conn-val ok">2 open</span></div>
+        <div class="conn-row"><span class="conn-key">RTT (p50)</span><span class="conn-val warn" id="conn-rtt">— ms</span></div>
+        <div class="conn-row"><span class="conn-key">Bytes in</span><span class="conn-val" id="conn-byin">0 KB</span></div>
+        <div class="conn-row"><span class="conn-key">Bytes out</span><span class="conn-val" id="conn-byout">0 KB</span></div>
+        <div class="conn-row"><span class="conn-key">Packet loss</span><span class="conn-val ok" id="conn-loss">0.0%</span></div>
+        <div class="conn-row"><span class="conn-key">Stream mode</span><span class="conn-val">Reliable + Unreliable</span></div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ============================================================
+       Guide
+       ============================================================ -->
+  <section class="guide">
+    <h2>7 patterns this demo showcases</h2>
+    <p class="guide-intro">
+      The visual interface above is built around principles derived from real drone operations
+      software (AirData, DroneDeploy, Litchi) and modern dashboard UX for live data — every choice
+      prioritizes low cognitive load, instant legibility, and 60fps motion.
+    </p>
+
+    <div class="patterns">
+
+      <div class="pattern">
+        <h3><span class="num">1</span>Animated counters via @property</h3>
+        <p>
+          KPI values roll smoothly between updates using CSS <code>@property --counter</code> rather
+          than a JS animation library. Zero bundle cost, offloaded to the compositor.
+        </p>
+      </div>
+
+      <div class="pattern">
+        <h3><span class="num">2</span>WebTransport over WebSockets</h3>
+        <p>
+          Live drone telemetry is bidirectional + lossy-tolerant — perfect for WebTransport's
+          unreliable <strong>datagrams</strong> API (HQ at <code>.datagrams.send()</code>) plus
+          <strong>streams</strong> for commands. Native Baseline since March 2026.
+        </p>
+      </div>
+
+      <div class="pattern">
+        <h3><span class="num">3</span>Throttled canvas rendering</h3>
+        <p>
+          The altitude chart updates through a <code>requestAnimationFrame</code> loop that pulls
+          from a ring buffer — never re-paints faster than the display refreshes.
+        </p>
+      </div>
+
+      <div class="pattern">
+        <h3><span class="num">4</span>Semantic color tokens</h3>
+        <p>
+          Each metric (altitude/battery/speed/GPS) carries a domain color. Status pills use
+          ok/warn/danger states — no decorative color anywhere. Users learn the language in 2s.
+        </p>
+      </div>
+
+      <div class="pattern">
+        <h3><span class="num">5</span>Live event feed w/ aria-live</h3>
+        <p>
+          New events slide in from the left. The feed carries <code>aria-live="polite"</code> so
+          screen readers announce system state without stealing focus.
+        </p>
+      </div>
+
+      <div class="pattern">
+        <h3><span class="num">6</span>Dark-mode by default</h3>
+        <p>
+          Operations software is dark — fewer photons, less eye fatigue on long shifts. The palette
+          is single-source via CSS custom properties, light-mode available by overriding tokens.
+        </p>
+      </div>
+
+      <div class="pattern">
+        <h3><span class="num">7</span>prefers-reduced-motion</h3>
+        <p>
+          All animations honor the user's reduced-motion preference and collapse to instant
+          transitions. Critical for an operations dashboard watched for hours.
+        </p>
+      </div>
+
+    </div>
+
+    <div class="footer-note">
+      <strong>About this demo.</strong> This dashboard simulates a WebTransport stream with
+      <code>setInterval</code>-generated telemetry frames. In production for OpenDrones, the same
+      UI would consume real datagrams from the drone via a Cloudflare Worker relay or a Mosquitto
+      MQTT-over-WebTransport broker. Latency values shown are realistic for 4G/5G connections.
+    </div>
+  </section>
+
+</div>
+
+<script>
+/* =================================================================
+   Real-time telemetry simulator
+   ----------------------------------------------------------------
+   In production, this would be a WebTransport connection:
+     const transport = new WebTransport('https://relay.opendrones.app/telemetry');
+     const stream = await transport.createBidirectionalStream();
+     const writer = stream.writable.getWriter();
+     const reader = transport.datagrams.readable.getReader();
+   For demo purposes we simulate a drone at steady cruise with
+   believable sensor noise + occasional system events.
+   ================================================================= */
+
+(function () {
+  'use strict';
+
+  // ---------- Configuration ----------
+  const TICK_MS = 80;        // 12.5Hz telemetry rate (drones typically 10–50Hz)
+  const CHART_WINDOW_S = 60; // visible chart window
+  const MAX_SAMPLES = CHART_WINDOW_S * 12.5;
+
+  // ---------- State ----------
+  const state = {
+    t: 0,
+    altitude: 18,
+    battery: 100,
+    speed: 0,
+    gpsSats: 0,
+    pos: { x: 80, y: 180 }, // map coords
+    target: { x: 320, y: 60 },
+    heading: 0,
+    cells: { v: [4.18, 4.18, 4.18, 4.18], temp: 24.5 },
+    cycle: { count: 14, max: 200 },
+    events: [],
+    samples: [],            // ring buffer of {t, alt}
+    conn: { dgrams: 0, bytesIn: 0, bytesOut: 0, rtts: [], loss: 0 }
+  };
+
+  // ---------- Helpers ----------
+  const $ = (sel) => document.querySelector(sel);
+  const fmtTime = (d) => d.toTimeString().slice(0, 8);
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function clamp(v, mn, mx) { return Math.max(mn, Math.min(mx, v)); }
+
+  function pushEvent(level, text) {
+    const list = $('#events');
+    const el = document.createElement('div');
+    el.className = `event ${level}`;
+    el.innerHTML = `
+      <span class="event-time">${fmtTime(new Date())}</span>
+      <span class="event-text">${text}</span>
+    `;
+    list.prepend(el);
+    while (list.children.length > 12) list.lastElementChild.remove();
+    state.events.unshift({ level, text, t: Date.now() });
+  }
+
+  // Stable @property counter updater — keeps transition state consistent
+  // across ticks. First call sets the value instantly (no animation), subsequent
+  // calls animate from previous value to new value.
+  function setCounter(el, value) {
+    if (!el) return;
+    const n = Math.round(value);
+    if (!el.classList.contains('animated')) {
+      // First-time install: jump straight to the value (no anim), then arm future anims
+      el.style.setProperty('--target', String(n));
+      // Force one synchronous apply so the first paint shows the real value
+      el.style.transition = 'none';
+      // eslint-disable-next-line no-unused-expressions
+      el.offsetHeight;
+      el.classList.add('animated');
+      // Re-enable transitions after the next frame so subsequent updates animate
+      requestAnimationFrame(() => { el.style.transition = ''; });
+    } else {
+      el.style.setProperty('--target', String(n));
+    }
+  }
+
+  // ---------- Map drone positioning ----------
+  function updateDroneOnMap() {
+    const pos = state.pos;
+    const drone = $('#dronePos');
+    drone.setAttribute('transform', `translate(${pos.x.toFixed(1)},${pos.y.toFixed(1)}) rotate(${-state.heading})`);
+
+    // Path
+    const path = $('#flightPath');
+    if (state.samples.length > 1) {
+      const recent = state.samples.slice(-200);
+      // Map from sample values to coords
+      const d = recent.map((s, i) => {
+        const x = lerp(80, 320, i / recent.length);
+        const y = 180 - (s.alt / 60) * 120;
+        return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+      }).join(' ');
+      path.setAttribute('d', d);
+    }
+    $('#coord-meta').textContent = `${pos.x.toFixed(2)}, ${pos.y.toFixed(2)}`;
+  }
+
+  // ---------- Chart drawing ----------
+  let chartCtx = null;
+  function initChart() {
+    const c = $('#altChart');
+    const dpr = window.devicePixelRatio || 1;
+    const w = c.clientWidth, h = c.clientHeight;
+    c.width = w * dpr; c.height = h * dpr;
+    chartCtx = c.getContext('2d');
+    chartCtx.scale(dpr, dpr);
+  }
+
+  function drawChart() {
+    if (!chartCtx) return;
+    const c = $('#altChart');
+    const W = c.clientWidth, H = c.clientHeight;
+    chartCtx.clearRect(0, 0, W, H);
+
+    // Grid
+    chartCtx.strokeStyle = 'rgba(255,255,255,0.04)';
+    chartCtx.lineWidth = 1;
+    for (let i = 0; i < 5; i++) {
+      const y = (H / 4) * i;
+      chartCtx.beginPath(); chartCtx.moveTo(0, y); chartCtx.lineTo(W, y); chartCtx.stroke();
+    }
+
+    const samples = state.samples;
+    if (samples.length < 2) return;
+
+    const minA = 0, maxA = 70;
+    const padTop = 12, padBot = 14;
+
+    // Gradient under line
+    const grad = chartCtx.createLinearGradient(0, padTop, 0, H - padBot);
+    grad.addColorStop(0, 'rgba(0,212,255,0.35)');
+    grad.addColorStop(1, 'rgba(0,212,255,0)');
+
+    chartCtx.beginPath();
+    samples.forEach((s, i) => {
+      const x = (i / (MAX_SAMPLES - 1)) * W;
+      const y = padTop + (1 - (s.alt - minA) / (maxA - minA)) * (H - padTop - padBot);
+      if (i === 0) chartCtx.moveTo(x, y); else chartCtx.lineTo(x, y);
+    });
+    const lastX = ((samples.length - 1) / (MAX_SAMPLES - 1)) * W;
+    const lastY = padTop + (1 - (samples[samples.length - 1].alt - minA) / (maxA - minA)) * (H - padTop - padBot);
+    chartCtx.lineTo(lastX, H - padBot);
+    chartCtx.lineTo(0, H - padBot);
+    chartCtx.closePath();
+    chartCtx.fillStyle = grad;
+    chartCtx.fill();
+
+    // Line
+    chartCtx.beginPath();
+    samples.forEach((s, i) => {
+      const x = (i / (MAX_SAMPLES - 1)) * W;
+      const y = padTop + (1 - (s.alt - minA) / (maxA - minA)) * (H - padTop - padBot);
+      if (i === 0) chartCtx.moveTo(x, y); else chartCtx.lineTo(x, y);
+    });
+    chartCtx.strokeStyle = '#00d4ff';
+    chartCtx.lineWidth = 1.6;
+    chartCtx.stroke();
+
+    // Last-point dot
+    chartCtx.beginPath();
+    chartCtx.arc(lastX, lastY, 3, 0, Math.PI * 2);
+    chartCtx.fillStyle = '#00d4ff';
+    chartCtx.shadowColor = '#00d4ff';
+    chartCtx.shadowBlur = 8;
+    chartCtx.fill();
+    chartCtx.shadowBlur = 0;
+
+    $('#chart-meta').textContent = `${samples.length} samples · ${CHART_WINDOW_S}s`;
+  }
+
+  // ---------- Telemetry simulation ----------
+  function simulateFrame() {
+    state.t += TICK_MS / 1000;
+
+    // Phase-based simulation:
+    // 0–5s: takeoff (altitude 0→45, speed 0→12)
+    // 5–25s: cruise (altitude noise around 45)
+    // 25–40s: maneuver (altitude 45→55)
+    // 40–60s: returning home
+    let targetAlt, targetSpd;
+    if (state.t < 5) {
+      targetAlt = lerp(0, 45, state.t / 5);
+      targetSpd = lerp(0, 12, state.t / 5);
+    } else if (state.t < 25) {
+      targetAlt = 45 + Math.sin(state.t * 0.4) * 1.5;
+      targetSpd = 12 + Math.sin(state.t * 0.2) * 1.0;
+    } else if (state.t < 40) {
+      targetAlt = 45 + lerp(0, 10, (state.t - 25) / 15) + Math.sin(state.t) * 0.5;
+      targetSpd = 12 + Math.sin(state.t * 0.3) * 1.5;
+    } else {
+      targetAlt = lerp(55, 25, clamp((state.t - 40) / 20, 0, 1));
+      targetSpd = lerp(12, 6, clamp((state.t - 40) / 20, 0, 1));
+    }
+
+    // Smooth follow
+    state.altitude = lerp(state.altitude, targetAlt, 0.18) + (Math.random() - 0.5) * 0.3;
+    state.speed = lerp(state.speed, targetSpd, 0.12) + (Math.random() - 0.5) * 0.2;
+
+    // Battery: constant drain rate (in production tied to throttle + wind + climb amp draw)
+    state.battery = Math.max(0, state.battery - 0.0035);
+
+    // GPS lock improves over time, may drop momentarily
+    if (state.t < 3) {
+      state.gpsSats = Math.min(14, state.t * 4 + Math.random() * 1.5);
+    } else {
+      state.gpsSats = clamp(state.gpsSats + (Math.random() - 0.45) * 0.3, 11, 16);
+    }
+    state.gpsSats = Math.round(state.gpsSats);
+
+    // Cells drift
+    state.cells.temp = clamp(state.cells.temp + (Math.random() - 0.5) * 0.05, 22, 38);
+    state.cells.v = state.cells.v.map(v => clamp(v + (Math.random() - 0.5) * 0.002, 3.5, 4.2));
+
+    // Map position: lerp toward target on realistic curve
+    const dx = state.target.x - state.pos.x;
+    const dy = state.target.y - state.pos.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 1) {
+      const step = state.speed * 0.012;
+      state.pos.x += (dx / dist) * step;
+      state.pos.y += (dy / dist) * step;
+      state.heading = Math.atan2(dy, dx) * 180 / Math.PI;
+    }
+
+    // Push sample
+    state.samples.push({ t: state.t, alt: state.altitude });
+    if (state.samples.length > MAX_SAMPLES) state.samples.shift();
+
+    // Connection stats (simulated)
+    state.conn.dgrams += 1;
+    state.conn.bytesIn += 64 + Math.floor(Math.random() * 32);
+    state.conn.bytesOut += 8;
+    const rtt = 12 + Math.random() * 8;
+    state.conn.rtts.push(rtt);
+    if (state.conn.rtts.length > 50) state.conn.rtts.shift();
+    state.conn.loss = state.t < 5 ? state.t * 0.4 : Math.max(0, state.conn.loss + (Math.random() - 0.97) * 0.1);
+  }
+
+  // ---------- DOM updates (throttled to ~10Hz to keep jank-free) ----------
+  let lastDomUpdate = 0;
+  function updateDom(now) {
+    // Altitude
+    setCounter($('#kpi-alt'), state.altitude);
+    // Battery
+    setCounter($('#kpi-bat'), state.battery);
+    // Speed
+    setCounter($('#kpi-spd'), Math.abs(state.speed));
+    // GPS
+    setCounter($('#kpi-gps'), state.gpsSats);
+
+    // Status lights
+    const stAlt = $('#st-alt'); const stBat = $('#st-bat'); const stSpd = $('#st-spd'); const stGps = $('#st-gps');
+    stAlt.className = 'kpi-status' + (state.altitude < 5 ? ' warn' : '');
+    stBat.className = 'kpi-status' + (state.battery < 20 ? ' danger' : state.battery < 40 ? ' warn' : '');
+    stSpd.className = 'kpi-status' + (state.speed > 18 ? ' warn' : '');
+    stGps.className = 'kpi-status' + (state.gpsSats < 8 ? ' warn' : '');
+
+    // Deltas (per-tick delta derived from simulation noise)
+    const da = (Math.random() - 0.5) * 0.4;
+    const ds = (Math.random() - 0.5) * 0.6;
+    const dbat = -0.07 + (Math.random() - 0.5) * 0.04;
+    const dgps = state.gpsSats >= 12 ? '+' + (Math.random() * 0.3).toFixed(1) : '−' + (Math.random() * 0.2).toFixed(1);
+    const fmtDelta = (v, unit, dir = 'flat') => {
+      const cls = v > 0.05 ? 'up' : v < -0.05 ? 'down' : 'flat';
+      const arrow = v > 0.05 ? '↑' : v < -0.05 ? '↓' : '·';
+      return `<span class="${cls}">${arrow} ${Math.abs(v).toFixed(2)} ${unit}</span>/tick`;
+    };
+    $('#delta-alt').innerHTML = fmtDelta(da, 'm');
+    $('#delta-spd').innerHTML = fmtDelta(ds, 'm/s');
+    $('#delta-bat').innerHTML = `<span class="${state.battery < 30 ? 'down' : 'flat'}">−${(0.0035).toFixed(4)}%/tick</span>`;
+    $('#delta-gps').innerHTML = `<span class="${state.gpsSats >= 12 ? 'up' : 'flat'}">${dgps}/s</span>`;
+
+    // Battery gauge
+    const pct = state.battery;
+    const C = 364.4; // 2π·r
+    const off = C * (1 - pct / 100);
+    const fill = $('#gaugeFill');
+    fill.style.strokeDashoffset = off;
+    fill.style.stroke = pct < 20 ? 'var(--danger)' : pct < 40 ? 'var(--warn)' : 'var(--ok)';
+    setCounter($('#gaugePct'), pct);
+    $('#battery-meta').textContent = `${state.cells.v.length} cells · ${state.cells.temp.toFixed(1)}°C`;
+    $('#cycle-meta').textContent = `cycle ${state.cycle.count}/${state.cycle.max}`;
+
+    // Connection stats
+    const dgrams = state.conn.dgrams;
+    $('#conn-dgrams').textContent = `${dgrams} sent`;
+    const rttP50 = state.conn.rtts.length
+      ? state.conn.rtts.slice().sort((a, b) => a - b)[Math.floor(state.conn.rtts.length / 2)]
+      : 0;
+    $('#conn-rtt').textContent = `${rttP50.toFixed(1)} ms`;
+    $('#conn-byin').textContent = `${(state.conn.bytesIn / 1024).toFixed(1)} KB`;
+    $('#conn-byout').textContent = `${(state.conn.bytesOut / 1024).toFixed(2)} KB`;
+    $('#conn-loss').textContent = `${state.conn.loss.toFixed(2)}%`;
+    $('#latency-pill').textContent = `${rttP50.toFixed(0)} ms RTT`;
+
+    // Map
+    updateDroneOnMap();
+    // Chart
+    drawChart();
+
+    lastDomUpdate = now;
+  }
+
+  // ---------- Random events ----------
+  function maybeEvent() {
+    if (state.t < 5) {
+      if (Math.random() < 0.2) pushEvent('ok', '🛫 Pre-flight checks passed · GPS lock acquired');
+      if (Math.random() < 0.1) pushEvent('info', 'Arming motors · spinning up ESCs');
+    } else if (state.t > 25 && state.t < 26 && Math.random() < 0.5) {
+      pushEvent('warn', '⚠ Geofence proximity alert · 12m to boundary');
+    } else if (state.battery < 30 && state.battery > 29.9 && Math.random() < 0.7) {
+      pushEvent('warn', '🔋 Battery threshold reached · RTH advised');
+    } else if (state.t > 40 && Math.random() < 0.08) {
+      pushEvent('info', '🛬 Auto-RTH initiated · returning to launch point');
+    } else if (Math.random() < 0.005) {
+      const msgs = [
+        ['info', '📡 Signal strength −2dB · link adapting'],
+        ['ok', '✓ IMU calibration fresh · 0.02° drift'],
+        ['info', '🛰 GPS module switched to multi-GNSS'],
+        ['warn', '⚠ Wind gust detected · +3m/s']
+      ];
+      pushEvent(...msgs[Math.floor(Math.random() * msgs.length)]);
+    }
+  }
+
+  // ---------- Main loop ----------
+  function tick(now) {
+    simulateFrame();
+    maybeEvent();
+    // Throttle DOM work to ~10Hz (every ~100ms)
+    if (now - lastDomUpdate > 100) updateDom(now);
+    requestAnimationFrame(tick);
+  }
+
+  // ---------- Boot ----------
+  window.addEventListener('load', () => {
+    initChart();
+    pushEvent('ok', '✓ Mission Control initialized · awaiting telemetry');
+    pushEvent('info', '🔗 WebTransport handshake · HTTP/3 · p50 14ms');
+    requestAnimationFrame(tick);
+  });
+  window.addEventListener('resize', initChart);
+
+  // Sanity: log a small welcome
+  console.log('%cOpenDrones Mission Control · research demo', 'color:#00d4ff;font-weight:bold');
+})();
+</script>
+</body>
+</html>
