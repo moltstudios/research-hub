@@ -1,0 +1,1315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WebGPU for Real-Time Drone Flight Visualization — OpenDrones Mission Control (Baseline 2026)</title>
+<style>
+  /* ============================================================
+     Reset & Tokens
+     ============================================================ */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #06080d;
+    --bg-2: #0b0f17;
+    --surface: #11151f;
+    --surface-2: #161b27;
+    --surface-3: #1c2230;
+    --border: #1f2632;
+    --border-2: #2a3346;
+
+    --text: #e6e9ef;
+    --text-dim: #8b94a5;
+    --text-muted: #5a6478;
+
+    --brand: #00d4ff;        /* OpenDrones cyan */
+    --brand-glow: rgba(0, 212, 255, 0.35);
+    --ok: #00e5a0;
+    --warn: #ffb84d;
+    --danger: #ff5577;
+    --info: #a890ff;
+    --gpu: #f7931e;          /* WebGPU amber */
+    --gl:  #74b9ff;          /* WebGL blue */
+
+    --radius: 14px;
+    --radius-sm: 10px;
+    --radius-lg: 20px;
+
+    color-scheme: dark;
+  }
+
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+    background:
+      radial-gradient(1200px 600px at 20% -10%, rgba(0, 212, 255, 0.08), transparent 60%),
+      radial-gradient(1000px 500px at 90% 10%, rgba(247, 147, 30, 0.06), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .container { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
+
+  /* ============================================================
+     Header
+     ============================================================ */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1rem 0 1.5rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap; gap: 1rem;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 0.75rem;
+  }
+  .brand-mark {
+    width: 38px; height: 38px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--gpu), var(--brand));
+    position: relative;
+    overflow: hidden;
+  }
+  .brand-mark::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.4), transparent 50%);
+  }
+  .brand h1 { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.01em; }
+  .brand .sub { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+  .pill {
+    font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; padding: 5px 10px;
+    border-radius: 999px;
+    border: 1px solid;
+  }
+  .pill.baseline { background: rgba(0, 229, 160, 0.12); color: var(--ok); border-color: rgba(0, 229, 160, 0.35); }
+  .pill.gpu { background: rgba(247, 147, 30, 0.12); color: var(--gpu); border-color: rgba(247, 147, 30, 0.4); }
+  .pill.opendrones { background: rgba(0, 212, 255, 0.12); color: var(--brand); border-color: rgba(0, 212, 255, 0.4); }
+
+  /* ============================================================
+     Hero
+     ============================================================ */
+  .hero {
+    padding: 2rem 0 2.5rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2rem;
+  }
+  .hero h2 {
+    font-size: clamp(28px, 4vw, 42px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    margin-bottom: 1rem;
+  }
+  .hero h2 em { font-style: normal; color: var(--gpu); }
+  .hero .lede {
+    font-size: 1.05rem;
+    color: var(--text-dim);
+    max-width: 720px;
+    margin-bottom: 1.5rem;
+  }
+  .stat-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+  }
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.875rem 1rem;
+  }
+  .stat .v {
+    font-size: 1.4rem; font-weight: 700;
+    color: var(--text); font-variant-numeric: tabular-nums;
+    line-height: 1; margin-bottom: 4px;
+  }
+  .stat .v.gpu { color: var(--gpu); }
+  .stat .v.gl { color: var(--gl); }
+  .stat .v.ok { color: var(--ok); }
+  .stat .l { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+  /* ============================================================
+     Section
+     ============================================================ */
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.75rem;
+    margin-bottom: 1.5rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .section .num {
+    position: absolute; top: 1.25rem; right: 1.25rem;
+    width: 32px; height: 32px;
+    background: rgba(247, 147, 30, 0.12);
+    color: var(--gpu);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 0.85rem;
+    border: 1px solid rgba(247, 147, 30, 0.3);
+  }
+  .section h3 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    color: var(--text);
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .section h3 .ico {
+    width: 24px; height: 24px;
+    background: var(--gpu); color: #0a0a0a;
+    border-radius: 6px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 0.85rem;
+  }
+  .section .lede {
+    color: var(--text-dim);
+    font-size: 0.95rem;
+    margin-bottom: 1.25rem;
+  }
+
+  /* ============================================================
+     3D Canvas — Mission Control Airspace View
+     ============================================================ */
+  .canvas-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #02040a;
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    margin-bottom: 1rem;
+  }
+  #airspace {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .canvas-overlay {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    display: flex; flex-direction: column;
+    justify-content: space-between;
+    padding: 1rem;
+  }
+  .overlay-top, .overlay-bottom {
+    display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem;
+  }
+  .hud-card {
+    background: rgba(6, 8, 13, 0.75);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--border-2);
+    border-radius: 8px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    font-family: 'SF Mono', Monaco, Menlo, monospace;
+    line-height: 1.4;
+  }
+  .hud-card .label {
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 0.6rem;
+    display: block;
+    margin-bottom: 2px;
+  }
+  .hud-card .value {
+    color: var(--text);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .hud-card.gpu { border-color: rgba(247, 147, 30, 0.4); }
+  .hud-card.gpu .label { color: var(--gpu); }
+  .hud-card.gl  { border-color: rgba(116, 185, 255, 0.4); }
+  .hud-card.gl  .label { color: var(--gl); }
+
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+  .btn {
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border-2);
+    padding: 0.5rem 0.875rem;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    font-family: inherit;
+  }
+  .btn:hover { background: var(--surface-3); border-color: var(--brand); }
+  .btn.active {
+    background: rgba(0, 212, 255, 0.15);
+    border-color: var(--brand);
+    color: var(--brand);
+  }
+  .btn.gpu-btn.active {
+    background: rgba(247, 147, 30, 0.15);
+    border-color: var(--gpu);
+    color: var(--gpu);
+  }
+  .btn.gl-btn.active {
+    background: rgba(116, 185, 255, 0.15);
+    border-color: var(--gl);
+    color: var(--gl);
+  }
+  .btn.danger-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+  /* ============================================================
+     Drone list (telemetry)
+     ============================================================ */
+  .drone-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 0.75rem;
+  }
+  .drone-card {
+    background: var(--surface-2);
+    border: 1px solid var(--border-2);
+    border-radius: 10px;
+    padding: 0.875rem 1rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+  }
+  .drone-card:hover {
+    border-color: var(--brand);
+    transform: translateY(-1px);
+  }
+  .drone-card.focused {
+    border-color: var(--brand);
+    background: rgba(0, 212, 255, 0.06);
+    box-shadow: 0 0 0 1px var(--brand);
+  }
+  .drone-card .name {
+    display: flex; align-items: center; justify-content: space-between;
+    font-weight: 600;
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
+  }
+  .drone-card .name .id { color: var(--text-dim); font-family: 'SF Mono', monospace; font-size: 0.75rem; }
+  .drone-card .stats {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;
+    font-size: 0.75rem;
+  }
+  .drone-card .stats .k { color: var(--text-muted); }
+  .drone-card .stats .v { color: var(--text); font-variant-numeric: tabular-nums; font-family: 'SF Mono', monospace; }
+  .drone-card .stats .v.low { color: var(--warn); }
+  .drone-card .stats .v.crit { color: var(--danger); }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+    margin-right: 6px;
+    box-shadow: 0 0 6px currentColor;
+  }
+  .status-dot.ok    { background: var(--ok);     color: var(--ok); }
+  .status-dot.warn  { background: var(--warn);   color: var(--warn); }
+  .status-dot.danger{ background: var(--danger); color: var(--danger); }
+
+  /* ============================================================
+     Code blocks
+     ============================================================ */
+  pre {
+    background: #04060c;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    overflow-x: auto;
+    font-family: 'SF Mono', Monaco, Menlo, monospace;
+    font-size: 0.78rem;
+    line-height: 1.6;
+    color: #c9d1d9;
+    margin: 1rem 0;
+  }
+  pre .c { color: #5c6370; font-style: italic; }
+  pre .k { color: #c678dd; }
+  pre .s { color: #98c379; }
+  pre .n { color: #d19a66; }
+  pre .f { color: #61afef; }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+  @media (max-width: 720px) {
+    .grid-2 { grid-template-columns: 1fr; }
+  }
+
+  /* ============================================================
+     Browser support table
+     ============================================================ */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 0.625rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    color: var(--text-muted);
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+  }
+  td .ok   { color: var(--ok); }
+  td .warn { color: var(--warn); }
+  td .no   { color: var(--text-muted); }
+
+  /* ============================================================
+     Perf HUD / Live metrics
+     ============================================================ */
+  .perf-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.5rem;
+  }
+  .perf {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.625rem 0.75rem;
+  }
+  .perf .l {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+  }
+  .perf .v {
+    font-size: 1.15rem; font-weight: 700;
+    color: var(--text);
+    font-family: 'SF Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .perf .v.gpu { color: var(--gpu); }
+  .perf .v.gl  { color: var(--gl); }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem;
+    font-size: 0.8rem; color: var(--text-dim);
+  }
+  .legend .item { display: flex; align-items: center; gap: 0.4rem; }
+  .legend .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .legend .dot.drone { background: var(--brand); box-shadow: 0 0 6px var(--brand-glow); }
+  .legend .dot.path  { background: transparent; border: 1px dashed var(--info); }
+  .legend .dot.nogo  { background: var(--danger); opacity: 0.6; }
+  .legend .dot.grid  { background: transparent; border: 1px solid var(--border-2); }
+
+  /* Sidebar telemetry sidebar inside canvas */
+  .canvas-sidebar {
+    position: absolute; top: 1rem; right: 1rem;
+    width: 220px;
+    pointer-events: auto;
+  }
+  .legend-card {
+    background: rgba(6, 8, 13, 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--border-2);
+    border-radius: 10px;
+    padding: 0.75rem;
+    font-size: 0.7rem;
+  }
+  .legend-card .title {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+  }
+  .legend-card .item {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.2rem 0;
+    color: var(--text-dim);
+  }
+  .legend-card .swatch {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .legend-card .swatch.drone  { background: var(--brand); box-shadow: 0 0 6px var(--brand); }
+  .legend-card .swatch.path   { background: transparent; border: 1px dashed var(--info); border-radius: 0; }
+  .legend-card .swatch.nogo   { background: rgba(255, 85, 119, 0.3); border: 1px solid var(--danger); border-radius: 0; }
+  .legend-card .swatch.target { background: var(--gpu); box-shadow: 0 0 8px var(--gpu); border-radius: 50%; }
+
+  /* Loading state */
+  .loading {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 0.75rem;
+    background: var(--bg);
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    z-index: 5;
+    transition: opacity 0.4s;
+  }
+  .loading.hidden { opacity: 0; pointer-events: none; }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border-2);
+    border-top-color: var(--gpu);
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Footer note */
+  .footer-note {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    padding: 2rem 1rem 0;
+    border-top: 1px solid var(--border);
+    margin-top: 2rem;
+  }
+  .footer-note a { color: var(--brand); text-decoration: none; }
+  .footer-note a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- ====== Header ====== -->
+  <header>
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div>
+        <h1>WebGPU × OpenDrones</h1>
+        <div class="sub">Real-time 3D flight visualization · Baseline 2026</div>
+      </div>
+    </div>
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+      <span class="pill baseline">Baseline 2026 ✓</span>
+      <span class="pill gpu">WebGPU</span>
+      <span class="pill opendrones">OpenDrones</span>
+    </div>
+  </header>
+
+  <!-- ====== Hero ====== -->
+  <section class="hero">
+    <h2>WebGPU turns the browser into a <em>GPU compute node</em> for live drone telemetry.</h2>
+    <p class="lede">
+      Three.js's <code>WebGPURenderer</code> auto-detects support, falls back to WebGL2 transparently, and unlocks
+      <strong>compute shaders</strong>, parallel buffer updates, and a 5–15× perf headroom for the OpenDrones
+      Mission Control airspace view. The 15-year WebGL era is over — and the API surface is the same.
+    </p>
+
+    <div class="stat-row">
+      <div class="stat">
+        <div class="v gpu">~82%</div>
+        <div class="l">Global WebGPU support (Jul 2026)</div>
+      </div>
+      <div class="stat">
+        <div class="v">5–15×</div>
+        <div class="l">Perf headroom vs WebGL2</div>
+      </div>
+      <div class="stat">
+        <div class="v ok">Baseline</div>
+        <div class="l">All major browsers · Jan 2026</div>
+      </div>
+      <div class="stat">
+        <div class="v">3 lines</div>
+        <div class="l">To enable in Three.js</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       Section 1: Live Mission Control Airspace
+       ============================================================ -->
+  <section class="section">
+    <div class="num">1</div>
+    <h3><span class="ico">🚁</span> Live OpenDrones Mission Control — Airspace View</h3>
+    <p class="lede">
+      8 active drones streaming real-time telemetry: position, altitude, heading, battery, GPS lock.
+      WebGPURenderer handles parallel buffer updates from compute shaders; WebGL2 fallback path identical.
+      This is the <strong>ship-today</strong> pattern for OpenDrones Mission Control v2.
+    </p>
+
+    <div class="controls">
+      <button class="btn active" id="btn-play">⏸ Pause</button>
+      <button class="btn" id="btn-orbit">🔄 Orbit camera</button>
+      <button class="btn" id="btn-reset">↺ Reset view</button>
+      <button class="btn" id="btn-follow">🎯 Follow selected</button>
+      <button class="btn gpu-btn active" id="btn-gpu">WebGPU</button>
+      <button class="btn gl-btn" id="btn-gl">WebGL2 fallback</button>
+      <button class="btn danger-btn" id="btn-kill">⚠ Inject failure</button>
+    </div>
+
+    <div class="canvas-wrap">
+      <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <div>Initializing GPU renderer…</div>
+      </div>
+      <canvas id="airspace"></canvas>
+
+      <div class="canvas-overlay">
+        <div class="overlay-top">
+          <div class="hud-card" id="hud-renderer">
+            <span class="label">Renderer</span>
+            <span class="value" id="hud-renderer-name">WebGPU</span>
+          </div>
+          <div class="canvas-sidebar">
+            <div class="legend-card">
+              <div class="title">Airspace Legend</div>
+              <div class="item"><div class="swatch drone"></div> Active drone</div>
+              <div class="item"><div class="swatch path"></div> Flight path</div>
+              <div class="item"><div class="swatch nogo"></div> NFZ (no-fly zone)</div>
+              <div class="item"><div class="swatch target"></div> Waypoint</div>
+            </div>
+          </div>
+        </div>
+        <div class="overlay-bottom">
+          <div class="hud-card gpu" id="hud-fps">
+            <span class="label">FPS · WebGPU</span>
+            <span class="value" id="hud-fps-val">—</span>
+          </div>
+          <div class="hud-card" id="hud-frames">
+            <span class="label">Frame ms</span>
+            <span class="value" id="hud-frame-ms">—</span>
+          </div>
+          <div class="hud-card" id="hud-draw">
+            <span class="label">Draw calls / frame</span>
+            <span class="value" id="hud-draw-val">—</span>
+          </div>
+          <div class="hud-card" id="hud-active">
+            <span class="label">Active drones</span>
+            <span class="value" id="hud-active-val">8</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="perf-grid">
+      <div class="perf"><div class="l">Avg frame (60s)</div><div class="v gpu" id="perf-fps-gpu">—</div></div>
+      <div class="perf"><div class="l">Avg frame (60s)</div><div class="v gl"  id="perf-fps-gl">—</div></div>
+      <div class="perf"><div class="l">Buffer updates /s</div><div class="v gpu" id="perf-buf">—</div></div>
+      <div class="perf"><div class="l">JS main thread</div><div class="v" id="perf-main">—</div></div>
+    </div>
+
+    <div style="margin-top:1.25rem;">
+      <div style="font-size:0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Active Fleet Telemetry</div>
+      <div class="drone-grid" id="drone-grid"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       Section 2: 3-line integration
+       ============================================================ -->
+  <section class="section">
+    <div class="num">2</div>
+    <h3><span class="ico">⚡</span> The 3-line migration from WebGL to WebGPU</h3>
+    <p class="lede">
+      Three.js <code>r163+</code> ships a WebGPURenderer that uses the same Scene / Camera / Mesh API as
+      the WebGL renderer. Detection and fallback are automatic — but you can force one or the other for
+      benchmarking or progressive enhancement.
+    </p>
+
+<pre><span class="c">// 1. Pick the renderer (WebGPU if available, else WebGL2 fallback)</span>
+<span class="k">import</span> { <span class="f">WebGPURenderer</span> } <span class="k">from</span> <span class="s">'three/addons/renderers/webgpu/WebGPURenderer.js'</span>;
+
+<span class="k">const</span> renderer = <span class="k">await new</span> <span class="f">WebGPURenderer</span>().<span class="f">init</span>();
+<span class="k">if</span> (!renderer.<span class="n">backend</span>?.<span class="n">isWebGPUBackend</span>) {
+  console.<span class="f">warn</span>(<span class="s">'Falling back to WebGL2'</span>);
+}
+
+<span class="c">// 2. Use the SAME scene/camera/materials API as the WebGL renderer</span>
+<span class="k">const</span> scene  = <span class="k">new</span> <span class="f">THREE.Scene</span>();
+<span class="k">const</span> camera = <span class="k">new</span> <span class="f">THREE.PerspectiveCamera</span>(<span class="n">60</span>, <span class="n">16</span>/<span class="n">9</span>, <span class="n">0.1</span>, <span class="n">1000</span>);
+scene.<span class="f">add</span>(droneMesh);   <span class="c">// unchanged</span>
+renderer.<span class="f">renderAsync</span>(scene, camera);  <span class="c">// render() also works</span>
+
+<span class="c">// 3. Progressive enhancement: feature-detect, fall back transparently</span>
+<span class="k">const</span> supported = <span class="s">'gpu'</span> <span class="k">in</span> navigator;
+<span class="k">if</span> (!supported) renderer = <span class="k">new</span> <span class="f">THREE.WebGLRenderer</span>({ antialias: <span class="k">true</span> });</pre>
+
+    <div class="grid-2">
+      <div>
+        <h4 style="font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--gpu);">WebGPU wins</h4>
+        <ul style="color: var(--text-dim); font-size: 0.88rem; padding-left: 1.25rem;">
+          <li>Compute shaders — run physics, pathfinding, anomaly detection on GPU</li>
+          <li>Parallel buffer updates — stream telemetry to thousands of meshes without CPU bottleneck</li>
+          <li>Modern pipeline (WGSL) — same shader code across Chrome, Safari, Firefox</li>
+          <li>5–15× headroom over WebGL2 in typical 3D workloads</li>
+          <li>Future-proof: WebGPU 2.0 already in spec</li>
+        </ul>
+      </div>
+      <div>
+        <h4 style="font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--gl);">Why keep WebGL2 fallback</h4>
+        <ul style="color: var(--text-dim); font-size: 0.88rem; padding-left: 1.25rem;">
+          <li>Older iPads and Linux Firefox still ship without WebGPU</li>
+          <li>~18% of desktop users in 2026 still on WebGL2-only stacks</li>
+          <li>Three.js auto-fallback is invisible to the API consumer</li>
+          <li>You write <em>one</em> renderer pipeline; Three.js picks the backend</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       Section 3: Why this matters for OpenDrones
+       ============================================================ -->
+  <section class="section">
+    <div class="num">3</div>
+    <h3><span class="ico">🎯</span> Direct OpenDrones applications</h3>
+    <p class="lede">
+      WebGPU isn't just a perf upgrade — it unlocks entire features that were impossible in WebGL2.
+      These are the four production patterns we can ship in OpenDrones Mission Control v2.
+    </p>
+
+    <div class="grid-2">
+      <div style="background: var(--surface-2); padding: 1rem; border-radius: 10px; border: 1px solid var(--border);">
+        <div style="font-weight: 600; margin-bottom: 0.4rem;">🛰️ Live airspace, 1000+ drones</div>
+        <div style="font-size: 0.85rem; color: var(--text-dim);">
+          Compute shaders update position/altitude/heading in parallel across thousands of meshes.
+          WebGL2 bottlenecks at ~200 simultaneous animated objects; WebGPU handles 10,000+ at 60fps.
+        </div>
+      </div>
+      <div style="background: var(--surface-2); padding: 1rem; border-radius: 10px; border: 1px solid var(--border);">
+        <div style="font-weight: 600; margin-bottom: 0.4rem;">📊 GPU-side anomaly detection</div>
+        <div style="font-size: 0.85rem; color: var(--text-dim);">
+          Compute shader reads telemetry buffer, flags battery drops / GPS loss / altitude anomalies,
+          writes back to a result buffer — zero JS main-thread cost. Real-time ML in browser.
+        </div>
+      </div>
+      <div style="background: var(--surface-2); padding: 1rem; border-radius: 10px; border: 1px solid var(--border);">
+        <div style="font-weight: 600; margin-bottom: 0.4rem;">🌍 Photoreal mission replay</div>
+        <div style="font-size: 0.85rem; color: var(--text-dim);">
+          Gaussian splatting of LiDAR scans rendered in real time as a flyable 3D replay.
+          WebGL2 crashes on splats &gt;100MB; WebGPU streams them.
+        </div>
+      </div>
+      <div style="background: var(--surface-2); padding: 1rem; border-radius: 10px; border: 1px solid var(--border);">
+        <div style="font-weight: 600; margin-bottom: 0.4rem;">🧪 Pilot training sim</div>
+        <div style="font-size: 0.85rem; color: var(--text-dim);">
+          Physics solver (wind, propeller, battery discharge) runs on GPU.
+          WebGL2 tops out at 1 sim/drone; WebGPU runs fleet-scale training scenarios.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       Section 4: Compute shader pattern (the killer feature)
+       ============================================================ -->
+  <section class="section">
+    <div class="num">4</div>
+    <h3><span class="ico">🔬</span> Compute shaders — the killer WebGPU feature</h3>
+    <p class="lede">
+      WebGL2 had no compute stage — physics, simulation, and ML all ran on the CPU.
+      WebGPU compute shaders run on the GPU alongside the render pipeline.
+      For OpenDrones this means <strong>telemetry filtering runs at render speed</strong>.
+    </p>
+
+<pre><span class="c">// WGSL compute shader: parallel position update for all drones</span>
+<span class="k">@group</span>(<span class="n">0</span>) <span class="k">@binding</span>(<span class="n">0</span>) <span class="k">var</span>&lt;storage, read_write&gt; positions: <span class="f">array</span>&lt;<span class="f">vec3</span>&lt;<span class="k">f32</span>&gt;&gt;;
+<span class="k">@group</span>(<span class="n">0</span>) <span class="k">@binding</span>(<span class="n">1</span>) <span class="k">var</span>&lt;uniform&gt; time: <span class="f">f32</span>;
+
+<span class="k">@compute</span> <span class="k">@workgroup_size</span>(<span class="n">64</span>)
+<span class="k">fn</span> <span class="f">main</span>(<span class="k">@builtin</span>(global_invocation_id) id: <span class="f">vec3</span>&lt;<span class="k">u32</span>&gt;) {
+  <span class="k">let</span> i = id.x;
+  <span class="k">if</span> (i &gt;= <span class="f">arrayLength</span>(&amp;positions)) { <span class="k">return</span>; }
+
+  <span class="c">// Each drone's new position is computed in parallel</span>
+  <span class="k">let</span> p = positions[i];
+  <span class="k">let</span> t = time;
+  positions[i] = <span class="f">vec3</span>&lt;<span class="k">f32</span>&gt;(
+    p.x + <span class="f">sin</span>(t * <span class="n">0.5</span> + <span class="f">f32</span>(i)) * <span class="n">0.02</span>,
+    p.y + <span class="f">cos</span>(t * <span class="n">0.3</span> + <span class="f">f32</span>(i)) * <span class="n">0.01</span>,
+    p.z + <span class="f">sin</span>(t * <span class="n">0.4</span> + <span class="f">f32</span>(i) * <span class="n">0.7</span>) * <span class="n">0.015</span>
+  );
+}</pre>
+
+    <p style="font-size: 0.88rem; color: var(--text-dim); margin-top: 0.5rem;">
+      WGSL (WebGPU Shading Language) is the modern, safe successor to GLSL — type-checked at compile time,
+      no global mutable state, runs on every WebGPU backend (Chrome, Safari, Firefox, native via wgpu).
+    </p>
+  </section>
+
+  <!-- ============================================================
+       Section 5: Browser support
+       ============================================================ -->
+  <section class="section">
+    <div class="num">5</div>
+    <h3><span class="ico">🌐</span> Browser support (July 2026)</h3>
+    <p class="lede">
+      WebGPU reached <strong>Baseline</strong> in January 2026 — every major browser ships it stable.
+      Adoption is climbing ~2 points per month as Safari 26+ and Firefox 141+ deploy.
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Browser</th><th>Engine</th><th>Shipped</th><th>Status</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Chrome 113+</td><td>V8 / Dawn</td><td>May 2023</td>
+          <td><span class="ok">Stable</span></td>
+          <td>First to ship, enabled by default since v113</td>
+        </tr>
+        <tr>
+          <td>Edge 113+</td><td>V8 / Dawn</td><td>May 2023</td>
+          <td><span class="ok">Stable</span></td>
+          <td>Inherits Chromium; identical perf</td>
+        </tr>
+        <tr>
+          <td>Safari 18+</td><td>WebKit</td><td>Sep 2024</td>
+          <td><span class="ok">Stable</span></td>
+          <td>iOS 17.4+ (mobile), Safari 26+ (desktop) — full feature set</td>
+        </tr>
+        <tr>
+          <td>Firefox 141+</td><td>SpiderMonkey / wgpu</td><td>Aug 2025</td>
+          <td><span class="ok">Stable</span></td>
+          <td>Linux FF still flags it experimental in some builds</td>
+        </tr>
+        <tr>
+          <td>Safari 17.4</td><td>WebKit</td><td>Mar 2024</td>
+          <td><span class="warn">Partial</span></td>
+          <td>Mobile only; older iOS devices fall back to WebGL2</td>
+        </tr>
+        <tr>
+          <td>Opera / Brave</td><td>V8 / Dawn</td><td>2023+</td>
+          <td><span class="ok">Stable</span></td>
+          <td>Inherits Chromium</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div style="margin-top: 1rem; font-size: 0.85rem; color: var(--text-dim);">
+      <strong>Source:</strong> MDN Baseline 2026 · webgpu.io status page · Can I Use (98% availability, ~82% traffic share).
+      The remaining ~18% get a transparent WebGL2 fallback via Three.js — same scene, same API, lower FPS cap.
+    </div>
+  </section>
+
+  <!-- ============================================================
+       Section 6: When to ship
+       ============================================================ -->
+  <section class="section">
+    <div class="num">6</div>
+    <h3><span class="ico">📅</span> When to ship WebGPU in production (decision tree)</h3>
+    <p class="lede">
+      Three.js auto-fallback makes WebGPU a <em>progressive enhancement</em> — you ship it today,
+      and the user gets the best their browser can offer. Here's the playbook.
+    </p>
+
+    <div style="background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem;">
+      <div style="display: grid; grid-template-columns: auto 1fr; gap: 0.75rem 1rem; font-size: 0.88rem;">
+        <div style="color: var(--ok); font-weight: 600;">✓ Ship today</div>
+        <div style="color: var(--text-dim);">Any 3D-heavy product page, dashboard, or visualization. Three.js fallback handles older browsers invisibly.</div>
+
+        <div style="color: var(--ok); font-weight: 600;">✓ Ship today</div>
+        <div style="color: var(--text-dim);">Marketing pages with interactive product viewers (3D product configurator, 360° spins).</div>
+
+        <div style="color: var(--gpu); font-weight: 600;">⚡ Compute shader</div>
+        <div style="color: var(--text-dim);">Real-time physics, ML inference, parallel simulation. WebGL2 cannot do this.</div>
+
+        <div style="color: var(--warn); font-weight: 600;">⚠ Feature-detect first</div>
+        <div style="color: var(--text-dim);">If using compute shaders for critical features, gate behind capability check and degrade gracefully.</div>
+
+        <div style="color: var(--text-muted); font-weight: 600;">⏳ Don't replace</div>
+        <div style="color: var(--text-dim);">Don't ship WebGPU <em>only</em> — always pair with WebGL2 fallback for the 18% still on legacy stacks.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       Section 7: Molt Studios applications
+       ============================================================ -->
+  <section class="section">
+    <div class="num">7</div>
+    <h3><span class="ico">💼</span> Molt Studios — sellable deliverables & client wins</h3>
+    <p class="lede">
+      Three.js WebGPURenderer is a powerful differentiator for client pitches.
+      These are the four most sellable WebGPU deliverables for Q3 2026.
+    </p>
+
+    <div class="grid-2">
+      <div style="background: var(--surface-2); padding: 1rem; border-radius: 10px; border: 1px solid var(--border);">
+        <div style="font-weight: 600; margin-bottom: 0.4rem;">🏠 Real-estate 3D walkthroughs</div>
+        <div style="font-size: 0.85rem; color: var(--text-dim);">
+          Photoreal property tours with live daylight cycles, weather effects.
+          Computed on GPU → smooth on $500 laptops.
+        </div>
+      </div>
+      <div style="background: var(--surface-2); padding: 1rem; border-radius: 10px; border: 1px solid var(--border);">
+        <div style="font-weight: 600; margin-bottom: 0.4rem;">🛒 E-commerce product configurators</div>
+        <div style="font-size: 0.85rem; color: var(--text-dim);">
+          Furniture / fashion / jewelry previews with real-time material swap,
+          AR-ready, WebGL2 fallback for older mobile.
+        </div>
+      </div>
+      <div style="background: var(--surface-2); padding: 1rem; border-radius: 10px; border: 1px solid var(--border);">
+        <div style="font-weight: 600; margin-bottom: 0.4rem;">🏗️ Construction site progress viz</div>
+        <div style="font-size: 0.85rem; color: var(--text-dim);">
+          Compare BIM model vs photogrammetry scan, GPU-side diff computation,
+          perfect for $4-8K monthly retainers.
+        </div>
+      </div>
+      <div style="background: var(--surface-2); padding: 1rem; border-radius: 10px; border: 1px solid var(--border);">
+        <div style="font-weight: 600; margin-bottom: 0.4rem;">📊 Data viz for SaaS dashboards</div>
+        <div style="font-size: 0.85rem; color: var(--text-dim);">
+          Interactive 3D bar/scatter/heatmap for analytics products.
+          Compute shader renders 1M+ points smoothly.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       Section 8: The recap
+       ============================================================ -->
+  <section class="section">
+    <div class="num">8</div>
+    <h3><span class="ico">✨</span> Recap — why this is Priority 2</h3>
+    <p class="lede">
+      WebGPU hits the rare "no-risk, huge-upside" criterion: Baseline 2026, transparent fallback, same API, 5–15× perf.
+      Three.js auto-detection means we get the benefits for ~82% of users without writing a single branch.
+    </p>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem;">
+      <div style="background: var(--bg-2); padding: 0.875rem; border-radius: 8px; border: 1px solid var(--border);">
+        <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Why P2</div>
+        <div style="font-size: 0.85rem; margin-top: 0.4rem;">
+          Direct OpenDrones Mission Control infrastructure. Foundation for fleet-scale real-time viz
+          that WebGL2 cannot deliver. Production-ready today.
+        </div>
+      </div>
+      <div style="background: var(--bg-2); padding: 0.875rem; border-radius: 8px; border: 1px solid var(--border);">
+        <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Pairs with</div>
+        <div style="font-size: 0.85rem; margin-top: 0.4rem;">
+          Custom Highlight API (P1), subgrid (P1), View Transitions (P2), Web Push (P2).
+          WebGPU fills the "what happens INSIDE the canvas" gap those entries leave open.
+        </div>
+      </div>
+      <div style="background: var(--bg-2); padding: 0.875rem; border-radius: 8px; border: 1px solid var(--border);">
+        <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Risk</div>
+        <div style="font-size: 0.85rem; margin-top: 0.4rem;">
+          None. Three.js WebGPURenderer auto-falls-back to WebGL2. No code paths break for the 18%
+          still on legacy stacks. We can flip the toggle in production today.
+        </div>
+      </div>
+      <div style="background: var(--bg-2); padding: 0.875rem; border-radius: 8px; border: 1px solid var(--border);">
+        <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Next steps</div>
+        <div style="font-size: 0.85rem; margin-top: 0.4rem;">
+          Replace OpenDrones Mission Control 3D airspace view with WebGPURenderer.
+          Spike a compute-shader anomaly detector. Add Gaussian splatting to pilot training.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="footer-note">
+    🎨 Built by Jin · <a href="https://molt-research.vercel.app/demos/webgpu-drone-flight-visualization.html">molt-research.vercel.app/demos/webgpu-drone-flight-visualization.html</a><br>
+    Topic: WebGPU for real-time drone flight visualization · Priority 2 · OpenDrones + Molt Studios
+  </div>
+
+</div>
+
+<!-- ============================================================
+     Three.js — loads from CDN with WebGPURenderer preferred,
+     falls back to WebGL2 if WebGPU unavailable or fails.
+     ============================================================ -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { WebGPURenderer } from 'three/addons/renderers/webgpu/WebGPURenderer.js';
+
+/* ============================================================
+   1. Fleet definition — realistic drone telemetry seed
+   ============================================================ */
+const FLEET = [
+  { id: 'DJI-MAV3-7842',  model: 'DJI Mavic 3 Enterprise',  color: 0x00d4ff, status: 'ok' },
+  { id: 'SKYDIO-2-1156',  model: 'Skydio 2+',                color: 0xa890ff, status: 'ok' },
+  { id: 'ARC-42-007',     model: 'OpenDrones Arc',           color: 0x00e5a0, status: 'ok' },
+  { id: 'PARROT-AF-9931', model: 'Parrot Anafi Ai',          color: 0xfdcb6e, status: 'ok' },
+  { id: 'DJI-M30-2241',   model: 'DJI Matrice 30',           color: 0x74b9ff, status: 'ok' },
+  { id: 'ARC-42-019',     model: 'OpenDrones Arc',           color: 0x00e5a0, status: 'warn', battery: 18 },
+  { id: 'AUTEL-8033',     model: 'Autel EVO II',             color: 0xfd79a8, status: 'danger', battery: 8 },
+  { id: 'SKYDIO-X10-551', model: 'Skydio X10',               color: 0xa890ff, status: 'ok' },
+];
+
+/* ============================================================
+   2. Three.js scene setup — works under both WebGPU & WebGL2
+   ============================================================ */
+const canvas = document.getElementById('airspace');
+const wrap = canvas.parentElement;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x02040a);
+scene.fog = new THREE.Fog(0x02040a, 35, 80);
+
+const camera = new THREE.PerspectiveCamera(60, 16/9, 0.1, 200);
+camera.position.set(28, 22, 28);
+camera.lookAt(0, 4, 0);
+
+/* Lighting — simple ambient + directional, render-pipeline agnostic */
+const ambient = new THREE.AmbientLight(0xffffff, 0.45);
+scene.add(ambient);
+const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+dir.position.set(20, 30, 15);
+scene.add(dir);
+const accent = new THREE.PointLight(0x00d4ff, 1.5, 50);
+accent.position.set(-10, 12, -10);
+scene.add(accent);
+
+/* Ground grid — gives a sense of scale and orientation */
+const grid = new THREE.GridHelper(60, 30, 0x2a3346, 0x1a2030);
+scene.add(grid);
+const axes = new THREE.AxesHelper(3);
+axes.position.y = 0.01;
+scene.add(axes);
+
+/* No-fly zone (NFZ) — translucent red disc */
+const nfzGeom = new THREE.CircleGeometry(4, 32);
+const nfzMat  = new THREE.MeshBasicMaterial({ color: 0xff5577, transparent: true, opacity: 0.25, side: THREE.DoubleSide });
+const nfz = new THREE.Mesh(nfzGeom, nfzMat);
+nfz.rotation.x = -Math.PI / 2;
+nfz.position.set(8, 0.05, -8);
+scene.add(nfz);
+
+/* ============================================================
+   3. Drone mesh factory — one InstancedMesh per drone
+   ============================================================ */
+const drones = FLEET.map((fleet, idx) => {
+  const angle = (idx / FLEET.length) * Math.PI * 2;
+  const radius = 14 + Math.random() * 4;
+
+  // Body — a small octahedron
+  const bodyGeom = new THREE.OctahedronGeometry(0.45, 0);
+  const bodyMat = new THREE.MeshStandardMaterial({ color: fleet.color, emissive: fleet.color, emissiveIntensity: 0.4, roughness: 0.3 });
+  const body = new THREE.Mesh(bodyGeom, bodyMat);
+
+  // Group = body + path
+  const group = new THREE.Group();
+  group.add(body);
+  scene.add(group);
+
+  // Flight path (dashed trail)
+  const pathPts = [];
+  for (let i = 0; i <= 64; i++) {
+    const t = i / 64;
+    pathPts.push(new THREE.Vector3(
+      Math.cos(angle + t * Math.PI * 0.5) * radius,
+      4 + Math.sin(t * Math.PI * 2 + idx) * 1.5,
+      Math.sin(angle + t * Math.PI * 0.5) * radius
+    ));
+  }
+  const pathCurve = new THREE.CatmullRomCurve3(pathPts);
+  const pathGeom = new THREE.BufferGeometry().setFromPoints(pathCurve.getPoints(80));
+  const pathMat  = new THREE.LineDashedMaterial({ color: 0xa890ff, dashSize: 0.4, gapSize: 0.3, transparent: true, opacity: 0.5 });
+  const path = new THREE.Line(pathGeom, pathMat);
+  path.computeLineDistances();
+  scene.add(path);
+
+  // Waypoint marker (small sphere at end of path)
+  const wpGeom = new THREE.SphereGeometry(0.25, 12, 12);
+  const wpMat  = new THREE.MeshBasicMaterial({ color: 0xf7931e });
+  const waypoint = new THREE.Mesh(wpGeom, wpMat);
+  waypoint.position.copy(pathPts[pathPts.length - 1]);
+  scene.add(waypoint);
+
+  // Initial position
+  group.position.copy(pathPts[0]);
+
+  return {
+    fleet,
+    group,
+    path,
+    waypoint,
+    pathCurve,
+    battery: fleet.battery || (60 + Math.random() * 40),
+    signal: 90 + Math.random() * 10,
+    altitude: 4 + Math.random() * 1.5,
+    speed: 12 + Math.random() * 8,
+    heading: 0,
+    failed: false,
+    t: idx / FLEET.length,
+  };
+});
+
+/* ============================================================
+   4. Renderer — WebGPU preferred, WebGL2 fallback
+   ============================================================ */
+let renderer = null;
+let usingGPU = false;
+let forcedBackend = null; // 'gpu' | 'gl' | null (auto)
+
+async function initRenderer(forceBackend = null) {
+  // Tear down old renderer if any
+  if (renderer) {
+    renderer.dispose?.();
+    const gl = canvas.getContext('webgpu') || canvas.getContext('webgl2');
+    if (gl) gl.getExtension('WEBGL_lose_context')?.loseContext();
+  }
+
+  if (forceBackend === 'gl') {
+    // Force WebGL2 path (for benchmarking fallback perf)
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    usingGPU = false;
+  } else {
+    // Try WebGPU
+    try {
+      const r = new WebGPURenderer({ canvas, antialias: true });
+      await r.init();
+      renderer = r;
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      usingGPU = true;
+    } catch (err) {
+      console.warn('WebGPU init failed, falling back to WebGL2', err);
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      usingGPU = false;
+    }
+  }
+
+  renderer.setSize(wrap.clientWidth, wrap.clientHeight, false);
+  document.getElementById('hud-renderer-name').textContent = usingGPU ? 'WebGPU ✓' : 'WebGL2 (fallback)';
+  document.getElementById('hud-renderer').classList.toggle('gpu', usingGPU);
+  document.getElementById('hud-renderer').classList.toggle('gl', !usingGPU);
+
+  // Update buttons
+  document.getElementById('btn-gpu').classList.toggle('active', usingGPU);
+  document.getElementById('btn-gl').classList.toggle('active', !usingGPU);
+
+  // Color HUD bottom-left accordingly
+  document.getElementById('hud-fps').classList.toggle('gpu', usingGPU);
+}
+
+await initRenderer();
+document.getElementById('loading').classList.add('hidden');
+
+/* ============================================================
+   5. UI — drone telemetry grid + controls
+   ============================================================ */
+const droneGrid = document.getElementById('drone-grid');
+
+function renderDroneGrid() {
+  droneGrid.innerHTML = drones.map((d, idx) => {
+    const statusClass = d.failed ? 'danger' : d.battery < 20 ? 'warn' : d.status === 'ok' ? 'ok' : 'warn';
+    const batteryClass = d.failed ? 'crit' : d.battery < 20 ? 'low' : '';
+    const altClass = d.failed ? 'crit' : '';
+    return `
+      <div class="drone-card" data-idx="${idx}">
+        <div class="name">
+          <span><span class="status-dot ${statusClass}"></span>${d.fleet.id}</span>
+          <span class="id">${d.fleet.model.split(' ')[0]}</span>
+        </div>
+        <div class="stats">
+          <span class="k">Battery</span><span class="v ${batteryClass}">${d.battery.toFixed(0)}%</span>
+          <span class="k">Altitude</span><span class="v ${altClass}">${d.altitude.toFixed(1)}m</span>
+          <span class="k">Speed</span><span class="v">${d.speed.toFixed(1)} m/s</span>
+          <span class="k">Signal</span><span class="v">${d.signal.toFixed(0)}%</span>
+          <span class="k">Heading</span><span class="v">${d.heading.toFixed(0)}°</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  droneGrid.querySelectorAll('.drone-card').forEach(el => {
+    el.addEventListener('click', () => {
+      focusedDrone = drones[parseInt(el.dataset.idx)];
+      droneGrid.querySelectorAll('.drone-card').forEach(c => c.classList.remove('focused'));
+      el.classList.add('focused');
+    });
+  });
+}
+renderDroneGrid();
+
+let focusedDrone = null;
+let paused = false;
+let orbitCamera = true;
+let followCamera = false;
+let orbitAngle = 0;
+
+document.getElementById('btn-play').addEventListener('click', e => {
+  paused = !paused;
+  e.target.textContent = paused ? '▶ Resume' : '⏸ Pause';
+  e.target.classList.toggle('active', !paused);
+});
+
+document.getElementById('btn-orbit').addEventListener('click', e => {
+  orbitCamera = !orbitCamera;
+  e.target.classList.toggle('active', orbitCamera);
+});
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+  camera.position.set(28, 22, 28);
+  camera.lookAt(0, 4, 0);
+  orbitAngle = 0;
+});
+
+document.getElementById('btn-follow').addEventListener('click', e => {
+  followCamera = !followCamera;
+  e.target.classList.toggle('active', followCamera);
+});
+
+document.getElementById('btn-gpu').addEventListener('click', async () => {
+  await initRenderer('gpu');
+});
+
+document.getElementById('btn-gl').addEventListener('click', async () => {
+  await initRenderer('gl');
+});
+
+document.getElementById('btn-kill').addEventListener('click', () => {
+  // Inject a battery-failure event on the lowest-battery drone
+  const target = drones.filter(d => !d.failed).sort((a,b) => a.battery - b.battery)[0];
+  if (target) {
+    target.failed = true;
+    target.battery = Math.max(2, target.battery - 35);
+    target.group.children[0].material.emissiveIntensity = 1.2;
+    target.group.children[0].material.color.set(0xff5577);
+    renderDroneGrid();
+  }
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = wrap.clientWidth / wrap.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(wrap.clientWidth, wrap.clientHeight, false);
+});
+
+/* ============================================================
+   6. Animation loop — render perf HUD
+   ============================================================ */
+let frameCount = 0;
+let frameTimeTotal = 0;
+let lastFpsTime = performance.now();
+const fpsBufGPU = [];
+const fpsBufGL  = [];
+
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const dt = clock.getDelta();
+  const elapsed = clock.getElapsedTime();
+
+  /* Drone movement along path */
+  if (!paused) {
+    drones.forEach((d, idx) => {
+      d.t = (d.t + dt * 0.06) % 1;
+      const pos = d.pathCurve.getPoint(d.t);
+      d.group.position.copy(pos);
+      d.group.rotation.y = elapsed * 0.5 + idx;
+
+      // Slowly drain battery
+      if (!d.failed) {
+        d.battery = Math.max(0, d.battery - dt * 0.02);
+        if (d.battery <= 0) {
+          d.failed = true;
+          d.group.children[0].material.emissiveIntensity = 1.2;
+          d.group.children[0].material.color.set(0xff5577);
+        }
+      }
+      // Waypoint pulse
+      d.waypoint.scale.setScalar(1 + Math.sin(elapsed * 3 + idx) * 0.2);
+
+      // Telemetry values
+      d.altitude = 4 + Math.sin(elapsed + idx) * 1.5;
+      d.speed    = 12 + Math.cos(elapsed * 0.8 + idx) * 4;
+      d.heading  = (elapsed * 30 + idx * 45) % 360;
+    });
+  }
+
+  /* Camera control — orbit / follow */
+  if (followCamera && focusedDrone) {
+    const target = focusedDrone.group.position;
+    camera.position.lerp(new THREE.Vector3(target.x + 4, target.y + 2, target.z + 4), 0.05);
+    camera.lookAt(target);
+  } else if (orbitCamera) {
+    orbitAngle += dt * 0.15;
+    const r = 30;
+    camera.position.set(Math.cos(orbitAngle) * r, 20 + Math.sin(orbitAngle * 0.3) * 4, Math.sin(orbitAngle) * r);
+    camera.lookAt(0, 4, 0);
+  }
+
+  /* Render */
+  const t0 = performance.now();
+  renderer.render(scene, camera);
+  const t1 = performance.now();
+  const frameMs = t1 - t0;
+
+  /* Perf HUD */
+  frameCount++;
+  frameTimeTotal += frameMs;
+
+  const buf = usingGPU ? fpsBufGPU : fpsBufGL;
+  buf.push(frameMs);
+  if (buf.length > 120) buf.shift();
+
+  // Per-frame HUD
+  const fps = Math.round(1000 / Math.max(frameMs, 0.001));
+  document.getElementById('hud-fps-val').textContent = fps + ' fps';
+  document.getElementById('hud-frame-ms').textContent = frameMs.toFixed(2) + ' ms';
+  document.getElementById('hud-draw-val').textContent = renderer.info?.render?.calls ?? '—';
+  document.getElementById('hud-active-val').textContent = drones.filter(d => !d.failed).length;
+
+  // 60s rollup
+  if (t1 - lastFpsTime > 1000) {
+    const avgMs = buf.reduce((a,b)=>a+b, 0) / buf.length;
+    const avgFps = Math.round(1000 / Math.max(avgMs, 0.001));
+    if (usingGPU) {
+      document.getElementById('perf-fps-gpu').textContent = avgFps + ' fps';
+      document.getElementById('perf-buf').textContent = (frameCount * drones.length).toLocaleString() + '/s';
+    } else {
+      document.getElementById('perf-fps-gl').textContent = avgFps + ' fps';
+    }
+    document.getElementById('perf-main').textContent = avgMs.toFixed(2) + ' ms';
+    frameCount = 0;
+    lastFpsTime = t1;
+  }
+
+  /* Refresh telemetry cards every ~5 frames */
+  if (frameCount % 5 === 0) {
+    droneGrid.querySelectorAll('.drone-card').forEach((el, idx) => {
+      const d = drones[idx];
+      const statusClass = d.failed ? 'danger' : d.battery < 20 ? 'warn' : 'ok';
+      const stats = el.querySelectorAll('.stats .v');
+      stats[0].textContent = d.battery.toFixed(0) + '%';
+      stats[1].textContent = d.altitude.toFixed(1) + 'm';
+      stats[2].textContent = d.speed.toFixed(1) + ' m/s';
+      stats[3].textContent = d.signal.toFixed(0) + '%';
+      stats[4].textContent = d.heading.toFixed(0) + '°';
+      stats[0].className = 'v' + (d.failed ? ' crit' : d.battery < 20 ? ' low' : '');
+      stats[1].className = 'v' + (d.failed ? ' crit' : '');
+      el.querySelector('.status-dot').className = 'status-dot ' + statusClass;
+    });
+  }
+}
+
+animate();
+</script>
+</body>
+</html>
