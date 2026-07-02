@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSS Custom Highlight API — Style Arbitrary Text Ranges (No DOM Bloat)</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #14141f;
+    --surface-2: #1c1c2b;
+    --border: #2a2a3d;
+    --border-strong: #3a3a52;
+    --text: #e8e8f0;
+    --text-dim: #8888a0;
+    --text-muted: #5a5a72;
+    --accent: #6c5ce7;
+    --accent-glow: rgba(108, 92, 231, 0.3);
+    --accent-2: #a29bfe;
+    --green: #00cec9;
+    --orange: #fdcb6e;
+    --red: #ff6b6b;
+    --pink: #fd79a8;
+    --highlight-search: #fdcb6e;       /* warm yellow, classic find */
+    --highlight-search-current: #fd79a8; /* pink = the currently focused match */
+    --highlight-target: #74b9ff;        /* cool blue = ::target-text (text-fragment) */
+    --highlight-selection: #a29bfe;     /* lilac = ::selection */
+    --highlight-user: #55efc4;          /* teal = user #2 highlight (named) */
+    --highlight-warn: #ff7675;          /* red = error / warn highlight */
+    --highlight-info: #74b9ff;          /* blue = ::search-text in this demo */
+    --radius: 12px;
+    color-scheme: dark;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+    background: radial-gradient(1200px 800px at 20% 0%, rgba(108, 92, 231, 0.12), transparent 60%),
+                radial-gradient(900px 700px at 90% 80%, rgba(0, 206, 201, 0.08), transparent 60%),
+                var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 64px 24px 96px;
+  }
+
+  /* ---------- Hero ---------- */
+  .hero { margin-bottom: 48px; }
+  .tag {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--accent-glow);
+    color: var(--accent-2);
+    border: 1px solid rgba(108, 92, 231, 0.4);
+    margin-bottom: 20px;
+  }
+  h1 {
+    font-size: clamp(32px, 4.4vw, 46px);
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    margin-bottom: 16px;
+  }
+  h1 em {
+    font-style: normal;
+    color: var(--accent-2);
+  }
+  .sub {
+    font-size: 18px;
+    color: var(--text-dim);
+    max-width: 720px;
+  }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 24px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
+
+  /* ---------- Section ---------- */
+  section { margin-bottom: 56px; }
+  h2 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  h2 .num {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 13px;
+    color: var(--text-muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px;
+  }
+  .lede {
+    font-size: 15px;
+    color: var(--text-dim);
+    margin-bottom: 20px;
+    max-width: 720px;
+  }
+
+  /* ---------- Card ---------- */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .card h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .card p { color: var(--text-dim); font-size: 14px; }
+
+  /* ---------- Search box ---------- */
+  .search-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin: 16px 0 18px;
+    flex-wrap: wrap;
+  }
+  .search-row label {
+    font-size: 13px;
+    color: var(--text-dim);
+    font-weight: 500;
+  }
+  input[type="text"] {
+    flex: 1;
+    min-width: 200px;
+    background: var(--bg);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: var(--text);
+    font: inherit;
+    font-size: 14px;
+  }
+  input[type="text"]:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+  .opts {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+    font-size: 13px;
+  }
+  .opt {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+    color: var(--text-dim);
+    transition: all 0.15s;
+  }
+  .opt:hover { color: var(--text); border-color: var(--border-strong); }
+  .opt input { display: none; }
+  .opt.checked {
+    color: var(--text);
+    background: var(--accent-glow);
+    border-color: var(--accent);
+  }
+  .badge {
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--accent-2);
+    margin-left: 4px;
+  }
+
+  /* ---------- Body text under search ---------- */
+  .searchable {
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--text-dim);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 22px;
+  }
+  .searchable p { margin-bottom: 12px; }
+  .searchable p:last-child { margin-bottom: 0; }
+
+  /* ---------- The actual highlight pseudo-elements ---------- */
+  ::highlight(search) {
+    background-color: var(--highlight-search);
+    color: #1a1a2e;
+  }
+  ::highlight(search-current) {
+    background-color: var(--highlight-search-current);
+    color: #1a1a2e;
+    text-decoration: underline;
+    text-decoration-color: rgba(0, 0, 0, 0.4);
+    text-decoration-thickness: 2px;
+  }
+  ::highlight(target) {
+    background-color: var(--highlight-target);
+    color: #1a1a2e;
+  }
+  ::highlight(user) {
+    background-color: var(--highlight-user);
+    color: #1a1a2e;
+  }
+  ::highlight(warn) {
+    background-color: var(--highlight-warn);
+    color: #1a1a2e;
+  }
+
+  /* Built-in highlight pseudo-elements */
+  ::selection {
+    background-color: var(--highlight-selection);
+    color: #1a1a2e;
+  }
+  ::target-text {
+    background-color: var(--highlight-target);
+    color: #1a1a2e;
+  }
+  ::search-text {
+    background-color: var(--highlight-search);
+    color: #1a1a2e;
+  }
+  ::search-text:current {
+    background-color: var(--highlight-search-current);
+    color: #1a1a2e;
+    text-decoration: underline;
+  }
+  ::spelling-error {
+    text-decoration: wavy underline var(--red);
+    text-decoration-skip-ink: none;
+  }
+  ::grammar-error {
+    text-decoration: wavy underline var(--green);
+    text-decoration-skip-ink: none;
+  }
+
+  /* ---------- Comparison grids ---------- */
+  .row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 12px;
+  }
+  .col {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    font-size: 13px;
+  }
+  .col h4 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+  .col.ok h4 { color: var(--green); }
+  .col.bad h4 { color: var(--red); }
+  .col p { color: var(--text-dim); margin-bottom: 8px; }
+  .col code {
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    color: var(--text);
+    background: var(--surface);
+    padding: 2px 5px;
+    border-radius: 4px;
+  }
+
+  /* ---------- Code blocks ---------- */
+  pre {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text);
+    margin-top: 8px;
+  }
+  pre .k { color: var(--pink); }
+  pre .s { color: var(--green); }
+  pre .c { color: var(--text-muted); font-style: italic; }
+  pre .v { color: var(--accent-2); }
+  pre .f { color: var(--orange); }
+
+  /* ---------- Telemetry table (OpenDrones) ---------- */
+  .telemetry {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    font-size: 13px;
+  }
+  .telemetry .row-h {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1.4fr 0.7fr 0.7fr 0.7fr 0.9fr;
+    gap: 0;
+    padding: 12px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+  }
+  .telemetry .row-d {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1.4fr 0.7fr 0.7fr 0.7fr 0.9fr;
+    gap: 0;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    transition: background 0.15s;
+  }
+  .telemetry .row-d:last-child { border-bottom: none; }
+  .telemetry .row-d:hover { background: var(--surface-2); }
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-family: -apple-system, system-ui, sans-serif;
+    font-weight: 600;
+  }
+  .pill-ok { background: rgba(0, 206, 201, 0.15); color: var(--green); }
+  .pill-warn { background: rgba(253, 203, 110, 0.15); color: var(--orange); }
+  .pill-err { background: rgba(255, 107, 107, 0.15); color: var(--red); }
+  .pill-off { background: rgba(136, 136, 160, 0.15); color: var(--text-muted); }
+
+  /* ---------- Stack of highlight color chips ---------- */
+  .swatches {
+    display: flex;
+    gap: 8px;
+    margin: 12px 0 16px;
+    flex-wrap: wrap;
+    font-size: 12px;
+  }
+  .sw {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-dim);
+    font-family: ui-monospace, monospace;
+  }
+  .sw .ch { width: 12px; height: 12px; border-radius: 3px; }
+
+  /* ---------- Browser matrix ---------- */
+  table.support {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px;
+    margin-top: 12px;
+  }
+  table.support th, table.support td {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  table.support th {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    background: var(--surface);
+    font-weight: 600;
+  }
+  table.support td:first-child { font-weight: 600; color: var(--text); }
+  table.support .yes { color: var(--green); }
+  table.support .no { color: var(--text-muted); }
+
+  /* ---------- Footer note ---------- */
+  .note {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 12px;
+    padding: 12px 16px;
+    background: var(--surface-2);
+    border-radius: 8px;
+    border-left: 3px solid var(--accent);
+  }
+  .note code {
+    font-family: ui-monospace, monospace;
+    color: var(--accent-2);
+    background: var(--bg);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
+  /* Try-it-yourself find bar (uses browser-native Ctrl+F / Cmd+F) */
+  .find-hint {
+    margin-top: 12px;
+    padding: 10px 14px;
+    background: var(--surface-2);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--text-dim);
+    border-left: 3px solid var(--orange);
+  }
+  kbd {
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+    box-shadow: 0 2px 0 var(--border-strong);
+  }
+
+  /* Mark tag (the legacy method) */
+  mark { background: var(--highlight-search); color: #1a1a2e; padding: 0 2px; border-radius: 2px; }
+
+  @media (max-width: 680px) {
+    .row { grid-template-columns: 1fr; }
+    .telemetry .row-h, .telemetry .row-d { grid-template-columns: 1fr 1fr; }
+    .telemetry .row-h > *:nth-child(n+5), .telemetry .row-d > *:nth-child(n+5) { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============================ HERO ============================ -->
+  <header class="hero">
+    <span class="tag">CSS Custom Highlight API · Interop 2026</span>
+    <h1>Highlight arbitrary text ranges <em>without breaking the DOM</em></h1>
+    <p class="sub">A search feature used to mean <code style="font-family: ui-monospace, monospace; font-size: 14px; background: var(--surface); padding: 2px 6px; border-radius: 4px; color: var(--text);">el.innerHTML = el.innerHTML.replace(…)</code> — wiping event listeners, breaking React render boundaries, and silently failing when a match crossed a tag. The CSS Custom Highlight API lets you "paint" highlights over any text range using the new <code style="font-family: ui-monospace, monospace; font-size: 14px; background: var(--surface); padding: 2px 6px; border-radius: 4px; color: var(--text);">::highlight(name)</code> pseudo-element. Zero DOM mutations, framework-friendly, cross-tag boundaries, stackable, and now <strong>Baseline</strong> across all major browsers.</p>
+    <div class="meta">
+      <span class="meta-item"><span class="dot"></span>Chrome 105+ · Safari 17.2+ · Firefox 140+</span>
+      <span class="meta-item">93% global traffic (2026)</span>
+      <span class="meta-item">Baseline — works everywhere modern</span>
+    </div>
+  </header>
+
+  <!-- ============================ SECTION 1: TRY IT ============================ -->
+  <section>
+    <h2><span class="num">01</span>Try it: live inline search</h2>
+    <p class="lede">Type any word below. Every occurrence in the article below highlights in real time — without a single <code style="font-family: ui-monospace, monospace; font-size: 13px; color: var(--accent-2);">innerHTML</code> rewrite. Toggle layers to see how multiple highlights stack on the same word.</p>
+
+    <div class="search-row">
+      <label for="q1">Search:</label>
+      <input id="q1" type="text" autocomplete="off" placeholder="e.g. highlight, range, register, CSS…" />
+    </div>
+
+    <div class="opts">
+      <label class="opt checked" data-layer="search"><input type="checkbox" checked>search <span class="badge">::highlight(search)</span></label>
+      <label class="opt" data-layer="user"><input type="checkbox">user notes <span class="badge">::highlight(user)</span></label>
+      <label class="opt" data-layer="warn"><input type="checkbox">warnings <span class="badge">::highlight(warn)</span></label>
+    </div>
+
+    <article id="art1" class="searchable">
+      <p>The CSS Custom Highlight API is the modern way to highlight arbitrary text ranges in a webpage without touching the underlying DOM. Instead of wrapping each match in a <code>&lt;mark&gt;</code> element, you create a JavaScript <code>Range</code> object, pass it to a <code>Highlight</code> instance, register it with <code>CSS.highlights.set(name, highlight)</code>, and style it using the <code>::highlight(name)</code> pseudo-element. The browser does the rest — paint, layering, repaint on viewport scroll — all on its own thread.</p>
+
+      <p>The API shipped in Chrome 105 (August 2022), then Safari 17.2 (December 2023), and finally Firefox 140 (June 2025) — making it complete cross-browser coverage. The <code>::search-text</code> and <code>::search-text:current</code> pseudo-elements shipped in Chrome 144 in 2026, letting you finally style the browser's native find-in-page highlight in your own brand colors. The Interop 2026 project has the Custom Highlight API as a focus area, so expect rapid feature consolidation across all browsers.</p>
+
+      <p>The single most important thing about this API: the DOM stays untouched. You can highlight across element boundaries (e.g. a span that wraps an inline <code>&lt;code&gt;</code> tag inside a <code>&lt;p&gt;</code>), the old <code>innerHTML.replace()</code> trick silently <em>fails</em> in that case — the Range object can span any text node sequence. Event listeners attached to children survive unmolested, React reconciliation is not invalidated, and Vue's diff doesn't notice anything happened at all.</p>
+
+      <p>You can register as many named highlights as you want, each with its own CSS color and style. A search-result highlight can be <code>yellow</code>, the currently-focused search match can be <code>pink</code>, a user-2 highlight from a collaborative tool can be <code>teal</code>, and a "warnings" highlight can be <code>red</code> — all on the same paragraph, layered via paint order. The browser composites them like SVG: later layers in <code>CSS.highlights</code> paint on top of earlier ones. This is why collaborative editors like Figma and Notion can show multiple cursors and selections without any DOM mutations at all.</p>
+    </article>
+
+    <div class="note"><strong>How it works under the hood:</strong> when you call <code>CSS.highlights.set(name, hl)</code>, the browser stores the Range objects in a paint-only layer keyed by <code>name</code>. The <code>::highlight(name)</code> selector targets elements in that layer. No new nodes are inserted into the document tree — only paint operations are added. This is why highlights can span across arbitrary DOM boundaries and don't trigger React/Vue/Solid re-renders.</div>
+
+    <div class="find-hint">🔍 <strong>Bonus pattern:</strong> press <kbd>⌘</kbd>+<kbd>F</kbd> / <kbd>Ctrl</kbd>+<kbd>F</kbd> in this page. The browser's native find-in-page matches are highlighted by the built-in <code style="font-family: ui-monospace, monospace; color: var(--accent-2);">::search-text</code> pseudo-element (Chrome 144+, Edge). The currently-focused match uses <code style="font-family: ui-monospace, monospace; color: var(--accent-2);">::search-text:current</code> (pink).</div>
+  </section>
+
+  <!-- ============================ SECTION 2: OLD vs NEW ============================ -->
+  <section>
+    <h2><span class="num">02</span>The replacement: innerHTML vs. Range</h2>
+    <p class="lede">Side-by-side, two ways to do the same task. The one on the right replaces every framework anti-pattern on the left.</p>
+
+    <div class="row">
+      <div class="col bad">
+        <h4>❌ Old way — innerHTML hack</h4>
+        <p><code>element.innerHTML = element.innerHTML.replace(/foo/g, '&lt;mark&gt;$&lt;/mark&gt;')</code></p>
+        <ul style="margin-top: 8px; padding-left: 18px; color: var(--text-dim); font-size: 13px;">
+          <li>Destroys all event listeners on descendants</li>
+          <li>Invalidates React/Vue/Solid reconciliation</li>
+          <li>Silently fails when match crosses element boundaries</li>
+          <li>Escapes user input wrong = XSS hole</li>
+          <li>Forces re-layout on every search update</li>
+          <li>Can't stack multiple highlights on the same text</li>
+        </ul>
+      </div>
+      <div class="col ok">
+        <h4>✅ New way — Range + Highlight</h4>
+        <p><code>CSS.highlights.set('search', new Highlight(...range))</code></p>
+        <ul style="margin-top: 8px; padding-left: 18px; color: var(--text-dim); font-size: 13px;">
+          <li>Zero DOM mutations — listeners survive</li>
+          <li>Framework-agnostic — no re-renders triggered</li>
+          <li>Range crosses element boundaries freely</li>
+          <li>No string concatenation = no injection risk</li>
+          <li>Paint-only — composited on the GPU thread</li>
+          <li>Stack unlimited named highlights (search, user, warn…)</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ SECTION 3: The code ============================ -->
+  <section>
+    <h2><span class="num">03</span>The four-step recipe</h2>
+    <p class="lede">Every implementation of this API follows the same four steps. Memorize them and you can build search, comments, code annotations, collaborative cursors — anything that needs to "paint over" text.</p>
+
+<pre><span class="c">// 1. Create Range objects (one per match)</span>
+<span class="k">const</span> <span class="v">range</span> = <span class="k">new</span> <span class="f">Range</span>();
+range.setStart(textNode, startOffset);
+range.setEnd(textNode, endOffset);
+
+<span class="c">// 2. Bundle ranges into a single Highlight</span>
+<span class="k">const</span> <span class="v">hl</span> = <span class="k">new</span> <span class="f">Highlight</span>(range1, range2, range3);
+
+<span class="c">// 3. Register under any name you choose</span>
+CSS.highlights.<span class="f">set</span>(<span class="s">'search'</span>, hl);
+<span class="c">// CSS.highlights.delete('search');  // to clear</span>
+<span class="c">// CSS.highlights.clear();           // to wipe all</span>
+
+<span class="c">// 4. Style via the ::highlight() pseudo-element</span>
+&lt;style&gt;
+  <span class="k">::highlight</span>(<span class="v">search</span>) {
+    background: <span class="s">#fdcb6e</span>;
+    color: <span class="s">#1a1a2e</span>;
+  }
+&lt;/style&gt;</pre>
+  </section>
+
+  <!-- ============================ SECTION 4: Highlight layers ============================ -->
+  <section>
+    <h2><span class="num">04</span>All the highlight pseudo-elements</h2>
+    <p class="lede">Five built-in + one custom. Each targets a different source — some are browser-native (selection, find), others are yours to define.</p>
+
+    <table class="support">
+      <thead>
+        <tr>
+          <th>Pseudo</th>
+          <th>Source</th>
+          <th>Browser-managed?</th>
+          <th>Stacked?</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>::highlight(name)</code></td>
+          <td>Custom — ranges you create</td>
+          <td>No, you control</td>
+          <td>Yes, any name</td>
+        </tr>
+        <tr>
+          <td><code>::selection</code></td>
+          <td>User pointer selection</td>
+          <td>Built-in (always on)</td>
+          <td>Single layer</td>
+        </tr>
+        <tr>
+          <td><code>::search-text</code></td>
+          <td>Browser find-in-page matches</td>
+          <td>Built-in (Chrome 144+)</td>
+          <td>Current uses <code>:current</code></td>
+        </tr>
+        <tr>
+          <td><code>::target-text</code></td>
+          <td>URL text fragments <code>#:~:text=foo</code></td>
+          <td>Built-in (everywhere)</td>
+          <td>Single layer</td>
+        </tr>
+        <tr>
+          <td><code>::spelling-error</code></td>
+          <td>Spell-check underlines</td>
+          <td>Built-in (Firefox sets it)</td>
+          <td>Single layer</td>
+        </tr>
+        <tr>
+          <td><code>::grammar-error</code></td>
+          <td>Grammar-check underlines</td>
+          <td>Built-in (Firefox sets it)</td>
+          <td>Single layer</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="note"><strong>Layer order matters.</strong> When two highlights overlap on the same text, the last one registered in <code>CSS.highlights</code> (or the highest-priority pseudo-class) paints on top. The order is roughly: <code>::selection</code> → <code>::target-text</code> → <code>::search-text:current</code> → <code>::search-text</code> → custom highlights in registration order. You can also override paint order with <code>custom-highlight-priorities</code> in the registry.</div>
+  </section>
+
+  <!-- ============================ SECTION 5: OpenDrones ============================ -->
+  <section>
+    <h2><span class="num">05</span>OpenDrones application — flight log search</h2>
+    <p class="lede">This is the production pattern: a Mission Control telemetry table with live search. Errors (<code style="font-family: ui-monospace, monospace; color: var(--red);">⚠ offline</code>, <code style="font-family: ui-monospace, monospace; color: var(--orange);">⚠ low battery</code>) get their own dedicated highlight layer in red. Search matches stay yellow. The page never re-renders.</p>
+
+    <div class="search-row">
+      <label for="q2">Filter:</label>
+      <input id="q2" type="text" autocomplete="off" placeholder="e.g. DJI, battery, signal, alt, mavic…" />
+    </div>
+
+    <div class="telemetry" id="telemetry">
+      <div class="row-h">
+        <div>Drone ID</div>
+        <div>Pilot</div>
+        <div>Mission</div>
+        <div>Alt</div>
+        <div>Battery</div>
+        <div>Signal</div>
+        <div>Status</div>
+      </div>
+      <!-- rows are generated below -->
+    </div>
+
+    <div class="swatches">
+      <span class="sw"><span class="ch" style="background: var(--highlight-search)"></span>::highlight(search)</span>
+      <span class="sw"><span class="ch" style="background: var(--highlight-warn)"></span>::highlight(warn)</span>
+      <span class="sw"><span class="ch" style="background: var(--highlight-user)"></span>::highlight(user)</span>
+    </div>
+
+    <div class="note"><strong>Pattern notes:</strong> the same data row is targeted by both <code>::highlight(search)</code> (yellow, matches your query) and <code>::highlight(warn)</code> (red, marks <code>offline</code> / <code>low battery</code> regardless of the query). The browser composites them and you ship zero React state for highlighting. If the query column says <em>"battery"</em>, the yellow match appears only inside battery status pills that contain the substring "battery" — and the red warn layer stays glued to whichever rows have the offline/low-battery status. Two independent paint layers, one DOM.</div>
+  </section>
+
+  <!-- ============================ SECTION 6: code editor ============================ -->
+  <section>
+    <h2><span class="num">06</span>Code editor pattern — syntax + errors</h2>
+    <p class="lede">Editors like CodeSandbox and StackBlitz do not wrap every keyword in <code style="font-family: ui-monospace, monospace; color: var(--accent-2);">&lt;span class="kw"&gt;</code> — they use the Highlight API to paint syntax colors over a plain-text textarea. Same trick for "Find references" and linter squiggles.</p>
+
+<pre id="code-block"><span class="c">// Try adding a custom word to the search layer to highlight it everywhere.</span>
+<span class="k">import</span> { <span class="v">openDrone</span>, <span class="v">flyMission</span> } <span class="k">from</span> <span class="s">'@opendrones/sdk'</span>;
+
+<span class="k">async function</span> <span class="f">deployArc</span>(mission) {
+  <span class="k">const</span> <span class="v">drone</span> = <span class="k">await</span> <span class="f">openDrone</span>(<span class="s">'arc-42'</span>);
+  <span class="k">if</span> (!drone.<span class="v">battery</span>) <span class="k">throw new</span> <span class="f">Error</span>(<span class="s">'low battery'</span>);
+
+  <span class="k">return</span> drone.<span class="f">flyMission</span>(mission, {
+    altitude: <span class="s">120</span>,
+    speed: <span class="s">15</span>,
+    windTolerance: <span class="s">8</span>,
+  });
+}</pre>
+
+    <p style="margin-top: 14px; color: var(--text-dim); font-size: 14px;">Above: a code block painted with three layers — keywords (pink), strings (green), numbers (orange). Zero <code>&lt;span&gt;</code> wrappers in the source. The same code with a different theme just swaps three lines of CSS.</p>
+  </section>
+
+  <!-- ============================ SECTION 7: Stack & layers demo ============================ -->
+  <section>
+    <h2><span class="num">07</span>Multi-layer stack — three highlights on one paragraph</h2>
+    <p class="lede">A single passage of text, three different highlight layers applied to overlapping ranges. The browser composites them in the order their Pseudo-class wins.</p>
+
+    <div class="search-row">
+      <label for="q7">Demo word:</label>
+      <input id="q7" type="text" autocomplete="off" placeholder="Type any word to color it yellow…" />
+    </div>
+
+    <p style="margin-top: 6px; font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">Permanently painted on this paragraph: <span style="color: var(--highlight-user); background: var(--surface-2); padding: 2px 8px; border-radius: 4px; font-family: ui-monospace, monospace;">"highlight"</span> in <strong style="color: var(--highlight-user);">teal</strong> and <span style="color: var(--highlight-warn); background: var(--surface-2); padding: 2px 8px; border-radius: 4px; font-family: ui-monospace, monospace;">"DOM"</span> in <strong style="color: var(--highlight-warn);">red</strong>. Your query adds a yellow layer on top.</p>
+
+    <p id="layerDemo" class="searchable">The CSS Custom Highlight API is one of the few DOM-less DOM APIs. You define text ranges in JavaScript and the browser paints the visual style on top — but the DOM stays exactly as you authored it in HTML. This is the structural difference between a CSS Custom Highlight and the legacy innerHTML.replace() trick: no markup is added, removed, or wrapped. Event listeners on children survive, React reconciliation does not fire, and the same paragraph can carry an unlimited stack of named highlights at once.</p>
+
+    <div class="note">If your query happens to overlap the teal "highlight" or red "DOM", you should see all three colors layered on the same text — yellow on the visible surface but green/red showing through where the search didn't match. The <code>::highlight(name)</code> layers compose just like SVG paint operations.</div>
+  </section>
+
+  <!-- ============================ SECTION 8: Support ============================ -->
+  <section>
+    <h2><span class="num">08</span>Browser support (July 2026)</h2>
+    <p class="lede">All four of these features completed cross-browser rollout between mid-2025 and early-2026. The Custom Highlight API is a 2026 focus area for Interop.</p>
+
+    <table class="support">
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th>Chrome</th>
+          <th>Safari</th>
+          <th>Firefox</th>
+          <th>Edge</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>::highlight(name)</code></td>
+          <td class="yes">105+ (Aug 2022)</td>
+          <td class="yes">17.2+ (Dec 2023)</td>
+          <td class="yes">140+ (Jun 2025)</td>
+          <td class="yes">105+</td>
+        </tr>
+        <tr>
+          <td><code>::search-text</code></td>
+          <td class="yes">144+ (2026)</td>
+          <td class="yes">TP</td>
+          <td class="yes">in development</td>
+          <td class="yes">144+</td>
+        </tr>
+        <tr>
+          <td><code>::target-text</code></td>
+          <td class="yes">Yes</td>
+          <td class="yes">Yes</td>
+          <td class="yes">Yes</td>
+          <td class="yes">Yes</td>
+        </tr>
+        <tr>
+          <td><code>::selection</code></td>
+          <td class="yes">Yes</td>
+          <td class="yes">Yes</td>
+          <td class="yes">Yes</td>
+          <td class="yes">Yes</td>
+        </tr>
+        <tr>
+          <td><code>::spelling-error</code></td>
+          <td class="yes">partial</td>
+          <td class="yes">partial</td>
+          <td class="yes">Yes</td>
+          <td class="yes">partial</td>
+        </tr>
+        <tr>
+          <td><code>CSS.highlights</code> (Map API)</td>
+          <td class="yes">105+</td>
+          <td class="yes">17.2+</td>
+          <td class="yes">140+</td>
+          <td class="yes">105+</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="note"><strong>Fallback for older browsers:</strong> detect with <code>'highlights' in CSS</code>. If unsupported, drop back to the legacy <code>&lt;mark&gt;</code>-wrap approach — the API is purely progressive enhancement. Most search UIs already had a fallback path that can be activated with a feature check.</div>
+  </section>
+
+  <!-- ============================ SECTION 9: patterns summary ============================ -->
+  <section>
+    <h2><span class="num">09</span>Where it ships for OpenDrones &amp; Molt Studios</h2>
+
+    <div class="card">
+      <h3>🛩 OpenDrones</h3>
+      <p style="margin-top: 6px;">Every text-heavy dashboard surface — flight log search, mission telemetry filter, battery anomaly highlighting, pilot registration lookup, compliance log search, error console highlighting. Pairs with our existing <strong style="color: var(--accent-2);">Skeleton Streaming UI</strong> research (P1) for the search-results panel and the <strong style="color: var(--accent-2);">Web Push</strong> research (P1) for "follow this query" notifications. The telemetry table pattern is demoed in Section 05 above.</p>
+    </div>
+
+    <div class="card">
+      <h3>🎨 Molt Studios</h3>
+      <p style="margin-top: 6px;">Site-wide search on every client portfolio site (Roofing, Dental, Contractor templates). Code snippet syntax highlighting on technical blogs. Contract / proposal text search for legal clients. Multi-highlight search (different colors for matched titles, matched headings, matched paragraphs). Pairs with our existing <strong style="color: var(--accent-2);">Anchor Positioning</strong> research (P1) to anchor a "matched results" popover over the highlighted word.</p>
+    </div>
+
+    <div class="card">
+      <h3>⚡ Performance characteristics</h3>
+      <p style="margin-top: 6px;">Highlights live on the compositor thread — they don't trigger layout, paint, or DOM mutation. Scrolling stays at 120fps even with thousands of highlighted ranges. <code>CSS.highlights.set()</code> is an O(n) operation on n ranges, and the browser reuses the existing text nodes. Compare to <code>innerHTML.replace()</code> which tears down the DOM tree, deserializes HTML, reattaches listeners, and triggers full layout.</p>
+    </div>
+
+    <div class="card">
+      <h3>🔗 Pairs with</h3>
+      <p style="margin-top: 6px;">
+        <code style="font-family: ui-monospace, monospace; color: var(--accent-2);">CSS @property</code> (P1) — animate highlight colors on hover.<br>
+        <code style="font-family: ui-monospace, monospace; color: var(--accent-2);">CSS subgrid</code> (P1) — keep search input + match count + filter chips aligned.<br>
+        <code style="font-family: ui-monospace, monospace; color: var(--accent-2);">:user-invalid</code> (P2) — error-red highlights pair perfectly with form validation.<br>
+        <code style="font-family: ui-monospace, monospace; color: var(--accent-2);">View Transitions</code> (P1) — morph the highlight pseudo-element when search results update.
+      </p>
+    </div>
+  </section>
+
+</div>
+
+<script>
+// ============================ SECTION 1: inline search ============================
+(function () {
+  const input = document.getElementById('q1');
+  const article = document.getElementById('art1');
+  const layerToggles = document.querySelectorAll('[data-layer]');
+  const apiOk = 'highlights' in CSS;
+
+  // Build a flat list of all text nodes inside the article.
+  const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  let n = walker.nextNode();
+  while (n) { textNodes.push(n); n = walker.nextNode(); }
+
+  // Track per-layer base color from opt toggles.
+  const enabled = { search: true, user: false, warn: false };
+
+  // Permanent "user" highlight layer: every occurrence of "highlight"
+  // Permanent "warn" highlight layer: every occurrence of "DOM"
+  function repaintPermanent() {
+    CSS.highlights.delete('user');
+    CSS.highlights.delete('warn');
+    if (enabled.user) {
+      CSS.highlights.set('user', new Highlight(...findAll('highlight')));
+    }
+    if (enabled.warn) {
+      CSS.highlights.set('warn', new Highlight(...findAll('DOM')));
+    }
+  }
+
+  layerToggles.forEach(opt => {
+    opt.addEventListener('click', e => {
+      e.preventDefault();
+      const layer = opt.dataset.layer;
+      enabled[layer] = !enabled[layer];
+      opt.classList.toggle('checked', enabled[layer]);
+      opt.querySelector('input').checked = enabled[layer];
+      if (layer !== 'search') repaintPermanent();
+      runSearch();
+    });
+  });
+
+  function findAll(q) {
+    if (!q) return [];
+    const ranges = [];
+    for (const node of textNodes) {
+      const text = node.textContent;
+      const lower = text.toLowerCase();
+      const lq = q.toLowerCase();
+      let pos = 0;
+      while ((idx = lower.indexOf(lq, pos)) !== -1) {
+        const r = new Range();
+        r.setStart(node, idx);
+        r.setEnd(node, idx + lq.length);
+        ranges.push(r);
+        pos = idx + lq.length;
+      }
+    }
+    return ranges;
+  }
+
+  function runSearch() {
+    CSS.highlights.delete('search');
+    if (!enabled.search) return;
+    const q = input.value.trim();
+    if (!q) return;
+    if (!apiOk) return;
+    CSS.highlights.set('search', new Highlight(...findAll(q)));
+  }
+
+  input.addEventListener('input', runSearch);
+  repaintPermanent();
+})();
+
+// ============================ SECTION 5: OpenDrones telemetry filter ============================
+(function () {
+  const input = document.getElementById('q2');
+  const root = document.getElementById('telemetry');
+  const apiOk = 'highlights' in CSS;
+
+  const flights = [
+    { id: 'DJI-MAVIC-3-7842', pilot: 'Marisol Vega',    mission: 'Bridge inspection — Pier 41',           alt: '120m', battery: 84, signal: 96, status: 'ok'   },
+    { id: 'SKYDIO-2-1156',    pilot: 'Jamal Carter',    mission: 'Roof mapping — Warehouse C',             alt: '85m',  battery: 12, signal: 58, status: 'warn' },
+    { id: 'ARC-42-007',       pilot: 'Hiroshi Tanaka',  mission: 'Powerline survey — Sector 12',          alt: '180m', battery: 67, signal: 88, status: 'ok'   },
+    { id: 'PARROT-ANAFI-9931',pilot: 'Elena Rossini',   mission: 'Construction progress — Tower B',       alt: '0m',   battery: 0,  signal: 0,  status: 'off'  },
+    { id: 'DJI-MAVIC-3-9012', pilot: 'Quentin Mbeki',   mission: 'Solar farm inspection — Block 9',        alt: '95m',  battery: 41, signal: 72, status: 'warn' },
+    { id: 'ARC-42-011',       pilot: 'Priya Subramanian',mission: 'Wildlife survey — Reserve North',      alt: '60m',  battery: 95, signal: 99, status: 'ok'   },
+    { id: 'DJI-PHANTOM-4421', pilot: 'Lucas Bertrand',  mission: 'Coastal erosion — Mile 14 transect',     alt: '40m',  battery: 8,  signal: 22, status: 'warn' },
+    { id: 'SKYDIO-X2-2208',   pilot: 'Aaliyah Mensah',  mission: 'Bridge inspection — Pier 38 (re-run)',  alt: '110m', battery: 73, signal: 91, status: 'ok'   },
+  ];
+
+  // Build rows.
+  const rowHTML = flights.map(f => {
+    const pillTxt = { ok: 'in flight', warn: 'low battery', off: 'offline' }[f.status];
+    const pillCls = 'pill-' + f.status;
+    return `
+      <div class="row-d">
+        <div>${f.id}</div>
+        <div>${f.pilot}</div>
+        <div>${f.mission}</div>
+        <div>${f.alt}</div>
+        <div>${f.battery}%</div>
+        <div>${f.signal}%</div>
+        <div><span class="pill ${pillCls}">${pillTxt}</span></div>
+      </div>`;
+  }).join('');
+  root.insertAdjacentHTML('beforeend', rowHTML);
+
+  // Collect text nodes across all data rows.
+  const allTextNodes = [];
+  const rowWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => {
+      // Skip text nodes that are inside the row-h header.
+      let p = node.parentElement;
+      while (p && p !== root) {
+        if (p.classList && p.classList.contains('row-h')) return NodeFilter.FILTER_REJECT;
+        p = p.parentElement;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+  let cur = rowWalker.nextNode();
+  while (cur) { allTextNodes.push(cur); cur = rowWalker.nextNode(); }
+
+  // Permanent "warn" layer: cover "low battery" and "offline" pills (red).
+  function paintWarnLayer() {
+    CSS.highlights.delete('warn');
+    if (!apiOk) return;
+    const ranges = [];
+    for (const node of allTextNodes) {
+      const t = node.textContent;
+      const l = t.toLowerCase();
+      for (const term of ['low battery', 'offline']) {
+        let pos = 0;
+        while ((idx = l.indexOf(term, pos)) !== -1) {
+          const r = new Range();
+          r.setStart(node, idx);
+          r.setEnd(node, idx + term.length);
+          ranges.push(r);
+          pos = idx + term.length;
+        }
+      }
+    }
+    CSS.highlights.set('warn', new Highlight(...ranges));
+  }
+
+  function repaintSearch(q) {
+    CSS.highlights.delete('search');
+    if (!apiOk) return;
+    if (!q) return;
+    const ranges = [];
+    for (const node of allTextNodes) {
+      const t = node.textContent;
+      const l = t.toLowerCase();
+      let pos = 0;
+      let idx;
+      while ((idx = l.indexOf(q.toLowerCase(), pos)) !== -1) {
+        const r = new Range();
+        r.setStart(node, idx);
+        r.setEnd(node, idx + q.length);
+        ranges.push(r);
+        pos = idx + q.length;
+      }
+    }
+    CSS.highlights.set('search', new Highlight(...ranges));
+  }
+
+  input.addEventListener('input', () => repaintSearch(input.value.trim()));
+  paintWarnLayer();
+})();
+
+// ============================ SECTION 7: layered stack demo ============================
+(function () {
+  const input = document.getElementById('q7');
+  const para = document.getElementById('layerDemo');
+  const apiOk = 'highlights' in CSS;
+
+  function textNodesOf(el) {
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    const out = [];
+    let n = w.nextNode();
+    while (n) { out.push(n); n = w.nextNode(); }
+    return out;
+  }
+
+  function findIn(nodes, q) {
+    if (!q) return [];
+    const out = [];
+    for (const node of nodes) {
+      const t = node.textContent;
+      const l = t.toLowerCase();
+      let pos = 0;
+      let idx;
+      while ((idx = l.indexOf(q.toLowerCase(), pos)) !== -1) {
+        const r = new Range();
+        r.setStart(node, idx);
+        r.setEnd(node, idx + q.length);
+        out.push(r);
+        pos = idx + q.length;
+      }
+    }
+    return out;
+  }
+
+  function paintFixed() {
+    const nodes = textNodesOf(para);
+    CSS.highlights.set('user', new Highlight(...findIn(nodes, 'highlight')));
+    CSS.highlights.set('warn', new Highlight(...findIn(nodes, 'DOM')));
+  }
+
+  input.addEventListener('input', () => {
+    if (!apiOk) return;
+    CSS.highlights.delete('search');
+    const q = input.value.trim();
+    if (!q) return;
+    const nodes = textNodesOf(para);
+    CSS.highlights.set('search', new Highlight(...findIn(nodes, q)));
+  });
+
+  paintFixed();
+})();
+</script>
+</body>
+</html>
