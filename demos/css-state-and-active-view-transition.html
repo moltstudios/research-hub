@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSS :state() & :active-view-transition — Encapsulated Web Component States + View-Transition Phase Styling</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #14141f;
+    --surface-2: #1c1c2b;
+    --surface-3: #252538;
+    --border: #2a2a3d;
+    --border-strong: #3a3a52;
+    --text: #e8e8f0;
+    --text-dim: #8888a0;
+    --text-muted: #5a5a72;
+    --accent: #6c5ce7;
+    --accent-glow: rgba(108, 92, 231, 0.3);
+    --accent-2: #a29bfe;
+    --green: #00cec9;
+    --orange: #fdcb6e;
+    --red: #ff6b6b;
+    --pink: #fd79a8;
+    --blue: #74b9ff;
+    --radius: 12px;
+    color-scheme: dark;
+    /* Phase-1: default. Phase-2 (during view transition): rotate hue, soften. */
+  }
+
+  /* ---------- Active view transition: only matches :root while the snapshot is being morphed ---------- */
+  :root:active-view-transition {
+    --bg: #0c0a1a;
+    --accent: #a29bfe;
+    /* Cosmetic "transitioning" affordance — used to confirm the selector fires */
+    --vt-glow: 0 0 0 4px rgba(162, 155, 254, 0.35), 0 0 60px rgba(162, 155, 254, 0.18);
+  }
+  :root:active-view-transition body::before {
+    content: "";
+    position: fixed; inset: 0;
+    pointer-events: none;
+    background: linear-gradient(135deg, rgba(162, 155, 254, 0.06), transparent 40%, rgba(116, 185, 255, 0.06));
+    z-index: 9999;
+    animation: vt-shimmer 400ms ease-out;
+  }
+  @keyframes vt-shimmer {
+    from { opacity: 0; }
+    50%  { opacity: 1; }
+    to   { opacity: 0.6; }
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+    background:
+      radial-gradient(1200px 800px at 20% 0%, rgba(108, 92, 231, 0.12), transparent 60%),
+      radial-gradient(900px 700px at 90% 80%, rgba(0, 206, 201, 0.08), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    transition: background 220ms ease, color 220ms ease;
+  }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 64px 24px 96px; }
+
+  /* ---------- Hero ---------- */
+  .hero { margin-bottom: 56px; }
+  .tag {
+    display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; padding: 6px 12px; border-radius: 999px;
+    background: var(--accent-glow); color: var(--accent-2);
+    border: 1px solid rgba(108, 92, 231, 0.4); margin-bottom: 20px;
+  }
+  h1 {
+    font-size: clamp(32px, 4.4vw, 46px); font-weight: 700; line-height: 1.1;
+    letter-spacing: -0.02em; margin-bottom: 16px;
+  }
+  h1 em { font-style: normal; color: var(--accent-2); }
+  .sub { font-size: 18px; color: var(--text-dim); max-width: 760px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; font-size: 13px; color: var(--text-muted); }
+  .meta-item {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--border);
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
+
+  /* ---------- Section ---------- */
+  section { margin-bottom: 56px; }
+  h2 {
+    font-size: 22px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  h2 .num {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px;
+    color: var(--text-muted); background: var(--surface);
+    border: 1px solid var(--border); padding: 2px 8px; border-radius: 6px;
+  }
+  .lead { color: var(--text-dim); font-size: 15px; max-width: 720px; margin-bottom: 24px; }
+
+  /* ---------- Cards / surfaces ---------- */
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 24px; margin-bottom: 16px;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 16px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  /* ---------- Code blocks ---------- */
+  pre, code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px;
+  }
+  pre {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px; overflow-x: auto;
+    color: #d0d0e8; line-height: 1.55;
+  }
+  pre .c { color: #6a6a82; font-style: italic; }
+  pre .k { color: #a29bfe; }
+  pre .s { color: #55efc4; }
+  pre .n { color: #fdcb6e; }
+  pre .p { color: #ff7675; }
+  .label {
+    font-size: 12px; color: var(--text-muted); text-transform: uppercase;
+    letter-spacing: 0.04em; margin-bottom: 8px;
+  }
+
+  /* ---------- Pills / chips ---------- */
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    background: var(--surface-3); border: 1px solid var(--border); color: var(--text-dim);
+  }
+  .pill.green { background: rgba(0, 206, 201, 0.12); border-color: rgba(0, 206, 201, 0.4); color: var(--green); }
+  .pill.red   { background: rgba(255, 107, 107, 0.12); border-color: rgba(255, 107, 107, 0.4); color: var(--red); }
+  .pill.amber { background: rgba(253, 203, 110, 0.12); border-color: rgba(253, 203, 110, 0.4); color: var(--orange); }
+  .pill.blue  { background: rgba(116, 185, 255, 0.12); border-color: rgba(116, 185, 255, 0.4); color: var(--blue); }
+
+  /* ---------- Custom Element: <state-button> ---------- */
+  state-button {
+    --btn-bg: var(--accent);
+    --btn-fg: white;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: var(--btn-bg);
+    color: var(--btn-fg);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 180ms ease, transform 120ms ease, box-shadow 180ms ease;
+    box-shadow: 0 6px 20px -8px var(--accent-glow);
+    user-select: none;
+  }
+  state-button:hover { transform: translateY(-1px); }
+  state-button:active { transform: translateY(0); }
+
+  /* The :state() pseudo-class — this is the headline feature */
+  state-button:state(loading) {
+    --btn-bg: var(--surface-3);
+    --btn-fg: var(--text-dim);
+    cursor: progress;
+    box-shadow: none;
+    pointer-events: none;
+  }
+  state-button:state(loading) .label-text { opacity: 0.45; }
+  state-button:state(loading) .spinner { display: inline-block; }
+
+  state-button:state(success) {
+    --btn-bg: rgba(0, 206, 201, 0.18);
+    --btn-fg: var(--green);
+    border-color: rgba(0, 206, 201, 0.55);
+    box-shadow: 0 0 0 4px rgba(0, 206, 201, 0.12);
+  }
+  state-button:state(success) .check { display: inline-block; }
+
+  state-button:state(error) {
+    --btn-bg: rgba(255, 107, 107, 0.18);
+    --btn-fg: var(--red);
+    border-color: rgba(255, 107, 107, 0.55);
+    box-shadow: 0 0 0 4px rgba(255, 107, 107, 0.14);
+    animation: shake 320ms ease;
+  }
+  state-button:state(error) .bang { display: inline-block; }
+
+  /* Spinner glyph using conic-gradient + animation */
+  state-button .spinner {
+    display: none; width: 14px; height: 14px; border-radius: 50%;
+    background: conic-gradient(transparent 0deg, var(--text) 270deg, transparent 360deg);
+    mask: radial-gradient(circle, transparent 4px, black 5px);
+    -webkit-mask: radial-gradient(circle, transparent 4px, black 5px);
+    animation: spin 700ms linear infinite;
+  }
+  state-button .check, state-button .bang { display: none; font-weight: 800; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-3px); }
+    40% { transform: translateX(3px); }
+    60% { transform: translateX(-2px); }
+    80% { transform: translateX(2px); }
+  }
+
+  /* ---------- Custom Element: <drone-card> ---------- */
+  drone-card {
+    --card-border: var(--border);
+    --pill-color: var(--text-muted);
+    display: block;
+    background: var(--surface-2);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 18px;
+    transition: border-color 220ms ease, transform 200ms ease;
+  }
+  drone-card .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  drone-card .name { font-weight: 700; font-size: 15px; }
+  drone-card .meta { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  drone-card .bar { height: 6px; border-radius: 3px; background: var(--surface-3); overflow: hidden; margin-top: 10px; }
+  drone-card .bar > i { display: block; height: 100%; background: var(--green); transition: width 320ms ease, background 200ms ease; }
+  drone-card .stat { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; color: var(--text-dim); }
+
+  drone-card:state(idle)     { --card-border: rgba(136, 136, 160, 0.4); --pill-color: var(--text-dim); }
+  drone-card:state(armed)    { --card-border: rgba(116, 185, 255, 0.5);  --pill-color: var(--blue); }
+  drone-card:state(flying)   { --card-border: rgba(0, 206, 201, 0.55);    --pill-color: var(--green); }
+  drone-card:state(low-batt) {
+    --card-border: rgba(253, 203, 110, 0.6);
+    --pill-color: var(--orange);
+  }
+  drone-card:state(low-batt) .bar > i { background: var(--orange); }
+  drone-card:state(low-batt)::after {
+    content: "⚠ LOW BATTERY — return-to-home recommended";
+    display: block; margin-top: 10px; font-size: 11px; font-weight: 700;
+    color: var(--orange); letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  drone-card:state(critical) {
+    --card-border: rgba(255, 107, 107, 0.7);
+    --pill-color: var(--red);
+    animation: pulse-red 1.6s ease-in-out infinite;
+  }
+  drone-card:state(critical) .bar > i { background: var(--red); }
+  drone-card:state(critical)::after {
+    content: "✕ CRITICAL — IMMEDIATE LANDING REQUIRED";
+    display: block; margin-top: 10px; font-size: 11px; font-weight: 800;
+    color: var(--red); letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  drone-card:state(flying)   .bar > i { background: var(--green); }
+  drone-card:state(armed)    .bar > i { background: var(--blue); }
+  drone-card:state(idle)     .bar > i { background: var(--text-muted); width: 100% !important; }
+  @keyframes pulse-red {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 107, 0); }
+    50%      { box-shadow: 0 0 0 6px rgba(255, 107, 107, 0.12); }
+  }
+
+  /* ---------- Theme switcher (drives a real view transition) ---------- */
+  .theme-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .theme-btn {
+    padding: 14px; border: 1px solid var(--border); border-radius: 10px;
+    background: var(--surface-2); color: var(--text); cursor: pointer;
+    font-family: inherit; font-size: 13px; font-weight: 600;
+    text-align: left; transition: border-color 180ms ease, transform 120ms ease;
+  }
+  .theme-btn:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .theme-btn .swatch { display: block; height: 32px; border-radius: 6px; margin-bottom: 8px; }
+
+  /* ---------- Multi-state wizard ---------- */
+  wizard-stepper {
+    --step-color: var(--text-muted);
+    --step-bg: var(--surface-2);
+    display: block;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+    background: var(--surface);
+  }
+  wizard-stepper .steps { display: flex; gap: 6px; margin-bottom: 14px; }
+  wizard-stepper .step {
+    flex: 1; text-align: center; font-size: 12px; padding: 8px 6px;
+    background: var(--step-bg); border-radius: 8px; color: var(--step-color);
+    border: 1px solid transparent; transition: all 200ms ease;
+  }
+  wizard-stepper .step.done { background: rgba(0, 206, 201, 0.1); color: var(--green); border-color: rgba(0, 206, 201, 0.4); }
+  wizard-stepper .step.active { background: var(--accent-glow); color: var(--accent-2); border-color: var(--accent); }
+  wizard-stepper .label { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  wizard-stepper .body { font-size: 13px; color: var(--text-dim); }
+  wizard-stepper .nav { display: flex; gap: 8px; margin-top: 14px; }
+  wizard-stepper button {
+    padding: 8px 14px; border: 1px solid var(--border); background: var(--surface-2);
+    color: var(--text); border-radius: 8px; cursor: pointer; font-family: inherit;
+    font-size: 13px;
+  }
+  wizard-stepper button:hover { border-color: var(--accent); }
+  wizard-stepper button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* These :state() rules let us show progress without ANY attribute reflection */
+  wizard-stepper:state(step-1) .step[data-step="1"] { background: var(--accent-glow); color: var(--accent-2); border-color: var(--accent); }
+  wizard-stepper:state(step-1) .step[data-step="2"],
+  wizard-stepper:state(step-1) .step[data-step="3"] { /* future */ }
+  wizard-stepper:state(step-2) .step[data-step="2"] { background: var(--accent-glow); color: var(--accent-2); border-color: var(--accent); }
+  wizard-stepper:state(step-2) .step[data-step="1"] { background: rgba(0, 206, 201, 0.1); color: var(--green); border-color: rgba(0, 206, 201, 0.4); }
+  wizard-stepper:state(step-3) .step[data-step="3"] { background: var(--accent-glow); color: var(--accent-2); border-color: var(--accent); }
+  wizard-stepper:state(step-3) .step[data-step="1"],
+  wizard-stepper:state(step-3) .step[data-step="2"] { background: rgba(0, 206, 201, 0.1); color: var(--green); border-color: rgba(0, 206, 201, 0.4); }
+  wizard-stepper:state(complete) .step { background: rgba(0, 206, 201, 0.1); color: var(--green); border-color: rgba(0, 206, 201, 0.4); }
+
+  /* ---------- View-transition flash indicator (proves :active-view-transition fires) ---------- */
+  .vt-indicator {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 999px; background: var(--surface-3);
+    border: 1px solid var(--border); font-size: 12px; color: var(--text-muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  .vt-indicator .live { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
+  :root:active-view-transition .vt-indicator .live {
+    background: var(--accent-2); box-shadow: 0 0 12px var(--accent-2);
+    animation: vt-blink 200ms ease infinite alternate;
+  }
+  :root:active-view-transition .vt-indicator { color: var(--accent-2); border-color: var(--accent); }
+  @keyframes vt-blink {
+    from { opacity: 0.4; }
+    to   { opacity: 1; }
+  }
+
+  /* ---------- Browser support table ---------- */
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  td { color: var(--text); }
+  tr:last-child td { border-bottom: none; }
+  td.yes { color: var(--green); }
+  td.no  { color: var(--text-muted); }
+  td.partial { color: var(--orange); }
+
+  /* ---------- Footer ---------- */
+  footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 13px; text-align: center; }
+
+  /* Subtle confetti for success state button */
+  state-button:state(success)::after {
+    content: ""; position: absolute; /* decoration would go here in production */
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============================ HERO ============================ -->
+  <div class="hero">
+    <span class="tag">Baseline 2025 · CustomStateSet · View Transitions</span>
+    <h1>CSS <em><code>:state()</code></em> & <em><code>:active-view-transition</code></em></h1>
+    <p class="sub">
+      Two pseudo-classes that close the gap between component logic and CSS.
+      <code>:state()</code> lets custom elements expose internal state as a pure-CSS selector
+      (no attribute reflection, no DOM pollution). <code>:active-view-transition</code> matches
+      the document root <em>only while</em> a view transition snapshot is being morphed —
+      perfect for the transition-phase affordances no other selector can express.
+    </p>
+    <div class="meta">
+      <span class="meta-item"><span class="dot"></span>Baseline 2025 (Newly Available)</span>
+      <span class="meta-item">~96% global support</span>
+      <span class="meta-item">Composes with Highlight API · Web Components · View Transitions</span>
+      <span class="vt-indicator"><span class="live"></span><span class="vt-status">:active-view-transition: idle</span></span>
+    </div>
+  </div>
+
+  <!-- ============================ 1. THE PROBLEM ============================ -->
+  <section>
+    <h2><span class="num">01</span> The "reflect-to-attribute" hack</h2>
+    <p class="lead">
+      For a decade, the only way to style a custom element based on its internal state was
+      to mirror that state into an HTML attribute and write a CSS selector against the attribute.
+      That meant <em>two sources of truth</em>, attribute mutation overhead, and the user being
+      able to break your UI by deleting the attribute in DevTools.
+    </p>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="label">❌ Old way — attribute reflection</div>
+<pre><span class="c">// JS</span>
+<span class="k">this</span>.setAttribute(<span class="s">'loading'</span>, <span class="s">''</span>);
+<span class="k">this</span>.removeAttribute(<span class="s">'loading'</span>);
+
+<span class="c">// CSS</span>
+my-button[<span class="n">loading</span>] {
+  background: gray;
+  cursor: progress;
+}</pre>
+        <p style="margin-top:12px;font-size:13px;color:var(--text-muted)">
+          Public attribute. User can <code>removeAttribute('loading')</code> and your UI lies.
+          DOM panel is full of dummy attributes. Selector invalidates React reconciliation.
+        </p>
+      </div>
+
+      <div class="card">
+        <div class="label">✅ New way — <code>:state()</code></div>
+<pre><span class="c">// JS — internal-only state</span>
+<span class="k">this</span>._internals.states.add(<span class="s">'loading'</span>);
+<span class="k">this</span>._internals.states.delete(<span class="s">'loading'</span>);
+
+<span class="c">// CSS</span>
+my-button:<span class="k">state</span>(loading) {
+  background: gray;
+  cursor: progress;
+}</pre>
+        <p style="margin-top:12px;font-size:13px;color:var(--text-muted)">
+          Private to the element. Not visible in DevTools as an attribute.
+          Optimized for the CSS engine. Set operations are O(1).
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 2. LIVE: state-button ============================ -->
+  <section>
+    <h2><span class="num">02</span> Live demo — <code>&lt;state-button&gt;</code></h2>
+    <p class="lead">
+      A custom element with three toggleable states (<code>loading</code>, <code>success</code>, <code>error</code>).
+      Click any button to drive a simulated async action; watch the <code>:state()</code> selectors
+      re-paint the button without touching its attributes. Inspect the element in DevTools —
+      there are <em>zero</em> state-related attributes in the DOM.
+    </p>
+
+    <div class="card">
+      <div class="row" style="gap:12px">
+        <state-button data-mode="random">
+          <span class="spinner"></span>
+          <span class="check">✓</span>
+          <span class="bang">!</span>
+          <span class="label-text">Try me (random)</span>
+        </state-button>
+        <state-button data-mode="success">
+          <span class="spinner"></span>
+          <span class="check">✓</span>
+          <span class="bang">!</span>
+          <span class="label-text">Always success</span>
+        </state-button>
+        <state-button data-mode="error">
+          <span class="spinner"></span>
+          <span class="check">✓</span>
+          <span class="bang">!</span>
+          <span class="label-text">Always error</span>
+        </state-button>
+      </div>
+      <p style="margin-top:16px;font-size:13px;color:var(--text-muted)">
+        Each button's states are added/removed via <code>this._internals.states.add(...)</code>.
+        The <code>:state(loading)</code>, <code>:state(success)</code>, <code>:state(error)</code>
+        selectors apply visual variants purely from CSS.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================ 3. LIVE: drone-card ============================ -->
+  <section>
+    <h2><span class="num">03</span> OpenDrones Mission Control — <code>&lt;drone-card&gt;</code></h2>
+    <p class="lead">
+      A production-shaped use case. Each drone card has internal state (<code>idle</code>,
+      <code>armed</code>, <code>flying</code>, <code>low-batt</code>, <code>critical</code>) that
+      drives the border color, status pill, battery bar color, and warning banners — all from
+      <code>:state()</code> selectors. The five cards below share one CSS rule-set;
+      flip a card's state and the visuals re-derive automatically.
+    </p>
+
+    <div class="row">
+      <drone-card data-name="DJI Mavic 3" data-batt="78" data-state="flying" data-alt="124m"></drone-card>
+      <drone-card data-name="Skydio X10"   data-batt="42" data-state="low-batt" data-alt="88m"></drone-card>
+      <drone-card data-name="OpenDrones Arc" data-batt="12" data-state="critical" data-alt="0m"></drone-card>
+      <drone-card data-name="Parrot Anafi" data-batt="95" data-state="armed" data-alt="0m"></drone-card>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <drone-card data-name="Autel EVO II" data-batt="100" data-state="idle" data-alt="0m"></drone-card>
+      <drone-card data-name="DJI Matrice 30" data-batt="64" data-state="flying" data-alt="201m"></drone-card>
+      <drone-card data-name="Skydio 2+" data-batt="55" data-state="low-batt" data-alt="67m"></drone-card>
+      <drone-card data-name="EVO Nano+" data-batt="22" data-state="critical" data-alt="0m"></drone-card>
+    </div>
+  </section>
+
+  <!-- ============================ 4. MULTI-STATE WIZARD ============================ -->
+  <section>
+    <h2><span class="num">04</span> Multi-stage components — state machine in CSS</h2>
+    <p class="lead">
+      A 3-step wizard driven entirely by the <code>step-1</code> / <code>step-2</code> / <code>step-3</code> /
+      <code>complete</code> custom states. The "done" highlight, "active" highlight, and final "complete"
+      state all come from CSS selectors — the component never reflects anything into attributes.
+    </p>
+
+    <wizard-stepper>
+      <div class="steps">
+        <div class="step" data-step="1">1 · Account</div>
+        <div class="step" data-step="2">2 · Payment</div>
+        <div class="step" data-step="3">3 · Confirm</div>
+      </div>
+      <div class="label">Arc pre-order checkout</div>
+      <div class="body">Step through the OpenDrones Arc purchase flow. The component's state changes, CSS re-paints, no DOM mutation.</div>
+      <div class="nav">
+        <button data-action="prev">← Back</button>
+        <button data-action="next">Next →</button>
+      </div>
+    </wizard-stepper>
+  </section>
+
+  <!-- ============================ 5. THE 4-STEP RECIPE ============================ -->
+  <section>
+    <h2><span class="num">05</span> The 4-step recipe for <code>:state()</code></h2>
+    <p class="lead">Adding custom states to a web component takes four lines of JavaScript and zero CSS framework.</p>
+
+    <div class="card">
+<pre><span class="c">// 1. Define a custom element</span>
+<span class="k">class</span> MyWidget <span class="k">extends</span> HTMLElement {
+  constructor() {
+    <span class="k">super</span>();
+    <span class="c">// 2. Attach internals (gives access to .states)</span>
+    <span class="k">this</span>._internals = <span class="k">this</span>.attachInternals();
+  }
+
+  set loading(value) {
+    <span class="c">// 3. Add/remove the state — O(1) on a CustomStateSet</span>
+    <span class="k">if</span> (value) <span class="k">this</span>._internals.states.add(<span class="s">'loading'</span>);
+    <span class="k">else</span>      <span class="k">this</span>._internals.states.delete(<span class="s">'loading'</span>);
+  }
+}
+customElements.define(<span class="s">'my-widget'</span>, MyWidget);
+
+<span class="c">// 4. CSS — no attribute selector needed</span>
+my-widget:<span class="k">state</span>(loading) { opacity: 0.5; cursor: progress; }</pre>
+    </div>
+  </section>
+
+  <!-- ============================ 6. :active-view-transition ============================ -->
+  <section>
+    <h2><span class="num">06</span> <code>:active-view-transition</code> — the transition-phase selector</h2>
+    <p class="lead">
+      The View Transitions API (P2 research) gave us <code>document.startViewTransition()</code>
+      to morph between two DOM states. But until <code>:active-view-transition</code> shipped
+      (Baseline 2025), there was <em>no way to style the page while the snapshot was being animated</em>.
+      The selector matches <code>:root</code> from the moment a transition starts until the
+      last pseudo-element animation finishes — typically 200–600ms.
+    </p>
+
+    <div class="card">
+      <div class="label">Watch the indicator in the hero bar 👆 — it lights up while a transition is active.</div>
+      <div class="theme-grid" style="margin-top:12px">
+        <button class="theme-btn" data-theme="purple">
+          <span class="swatch" style="background:linear-gradient(135deg,#6c5ce7,#a29bfe)"></span>
+          Purple (default)
+        </button>
+        <button class="theme-btn" data-theme="teal">
+          <span class="swatch" style="background:linear-gradient(135deg,#00cec9,#55efc4)"></span>
+          Teal
+        </button>
+        <button class="theme-btn" data-theme="sunset">
+          <span class="swatch" style="background:linear-gradient(135deg,#fd79a8,#fdcb6e)"></span>
+          Sunset
+        </button>
+        <button class="theme-btn" data-theme="ocean">
+          <span class="swatch" style="background:linear-gradient(135deg,#74b9ff,#0984e3)"></span>
+          Ocean
+        </button>
+        <button class="theme-btn" data-theme="forest">
+          <span class="swatch" style="background:linear-gradient(135deg,#00b894,#55efc4)"></span>
+          Forest
+        </button>
+        <button class="theme-btn" data-theme="ember">
+          <span class="swatch" style="background:linear-gradient(135deg,#e17055,#d63031)"></span>
+          Ember
+        </button>
+      </div>
+      <pre style="margin-top:12px"><span class="c">/* Style the root ONLY while a view transition snapshot is being morphed */</span>
+:root:<span class="k">active-view-transition</span> {
+  --bg: <span class="s">#0c0a1a</span>;
+  --accent: <span class="s">#a29bfe</span>;
+}
+
+:root:<span class="k">active-view-transition</span> body::before {
+  content: <span class="s">""</span>;
+  position: fixed; inset: <span class="n">0</span>;
+  background: linear-gradient(<span class="n">135</span>deg, rgba(<span class="n">162</span>,<span class="n">155</span>,<span class="n">254</span>,<span class="n">0.06</span>), transparent);
+  animation: vt-shimmer <span class="n">400ms</span> ease-out;
+}
+
+<span class="c">/* JS — start the transition */</span>
+document.startViewTransition(() => updateAccent());</pre>
+      <p style="margin-top:12px;font-size:13px;color:var(--text-muted)">
+        <strong>Why this matters:</strong> Without <code>:active-view-transition</code>, you have to
+        wire transition-end listeners in JS to undo the cosmetic changes you made. With it,
+        the CSS automatically snaps back the moment the morph finishes. Zero JS bookkeeping.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================ 7. PAIRS WITH HIGHLIGHT API ============================ -->
+  <section>
+    <h2><span class="num">07</span> Pairs with Highlight API — combined power</h2>
+    <p class="lead">
+      <code>:state()</code> + <code>::highlight()</code> is the modern alternative to attribute-driven
+      styling + DOM-wrap search highlighting. Both are state-based, both are zero-JS-bundle, both
+      are Baseline 2025. They compose naturally: a custom element can be in a <code>loading</code>
+      state while the body shows a search highlight on its own content.
+    </p>
+
+    <div class="card">
+      <div class="label">Same search-and-style patterns, zero DOM writes</div>
+      <p style="font-size:14px;color:var(--text-dim);margin-bottom:8px">
+        Search this paragraph: try <code style="color:var(--accent-2)">custom</code>, <code style="color:var(--accent-2)">state</code>, <code style="color:var(--accent-2)">pseudo</code>.
+      </p>
+      <p id="hl-para" style="font-size:14px;color:var(--text);line-height:1.7">
+        The :state() pseudo-class matches custom elements that have the specified custom state.
+        Combined with ::highlight() it becomes a private styling API for web components. The CSS engine
+        handles invalidation, the Set data structure handles membership, and the developer gets a
+        clean state-machine pattern that does not pollute the public DOM surface.
+      </p>
+      <input id="hl-input" type="search" placeholder="search…" style="margin-top:10px;padding:8px 12px;width:100%;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:13px">
+    </div>
+  </section>
+
+  <!-- ============================ 8. BROWSER SUPPORT ============================ -->
+  <section>
+    <h2><span class="num">08</span> Browser support</h2>
+    <p class="lead">Both selectors shipped to <strong>Baseline 2025 (Newly Available)</strong>. Wide enough to ship without polyfills for new projects.</p>
+
+    <div class="card">
+      <div class="label"><code>:state()</code> (CustomStateSet via ElementInternals)</div>
+      <table style="margin-bottom:24px">
+        <thead><tr><th>Browser</th><th>Engine</th><th>Shipped</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Chrome 125+</td><td>Blink</td><td>May 2024</td><td class="yes">Supported</td></tr>
+          <tr><td>Edge 125+</td><td>Blink</td><td>May 2024</td><td class="yes">Supported (inherits)</td></tr>
+          <tr><td>Safari 17.4+</td><td>WebKit</td><td>Mar 2024</td><td class="yes">Supported (first to ship)</td></tr>
+          <tr><td>iOS Safari 17.4+</td><td>WebKit</td><td>Mar 2024</td><td class="yes">Supported (inherits)</td></tr>
+          <tr><td>Firefox 126+</td><td>Gecko</td><td>May 2024</td><td class="yes">Supported</td></tr>
+          <tr><td>Samsung Internet 27+</td><td>Blink</td><td>2024</td><td class="yes">Supported</td></tr>
+        </tbody>
+      </table>
+
+      <div class="label"><code>:active-view-transition</code> (View Transitions Module L2)</div>
+      <table>
+        <thead><tr><th>Browser</th><th>Engine</th><th>Shipped</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Chrome 126+</td><td>Blink</td><td>Jun 2024</td><td class="yes">Supported</td></tr>
+          <tr><td>Edge 126+</td><td>Blink</td><td>Jun 2024</td><td class="yes">Supported (inherits)</td></tr>
+          <tr><td>Safari 18.2+</td><td>WebKit</td><td>Dec 2024</td><td class="yes">Supported</td></tr>
+          <tr><td>iOS Safari 18.2+</td><td>WebKit</td><td>Dec 2024</td><td class="yes">Supported (inherits)</td></tr>
+          <tr><td>Firefox 132+</td><td>Gecko</td><td>Apr 2025</td><td class="yes">Supported</td></tr>
+          <tr><td>Baseline 2025</td><td>—</td><td>Oct 2025</td><td class="yes">Newly Available</td></tr>
+        </tbody>
+      </table>
+
+      <p style="margin-top:16px;font-size:13px;color:var(--text-muted)">
+        Combined <strong>~96% global support</strong> (StatCounter, July 2026).
+        <code>:state()</code> gracefully no-ops on non-custom elements. <code>:active-view-transition</code>
+        only matches while a transition is active — if <code>startViewTransition</code> isn't called,
+        the selector never fires. Both are safe to ship to greenfield projects today.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================ 9. WHEN TO USE / WHEN NOT TO ============================ -->
+  <section>
+    <h2><span class="num">09</span> Decision matrix</h2>
+    <div class="grid-2">
+      <div class="card">
+        <div class="label">✅ Use <code>:state()</code> when</div>
+        <ul style="list-style:none;padding:0;margin:0;font-size:14px;color:var(--text-dim);line-height:1.8">
+          <li>· You're building web components (custom elements)</li>
+          <li>· State should be <em>internal</em> (not user-mutable from DevTools)</li>
+          <li>· You need ≥2 derived visual states (loading, success, error, etc.)</li>
+          <li>· You're building a state machine (wizard, stepper, multi-stage form)</li>
+          <li>· You want a single CSS rule-set for many component variants</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="label">❌ Stick with attributes when</div>
+        <ul style="list-style:none;padding:0;margin:0;font-size:14px;color:var(--text-dim);line-height:1.8">
+          <li>· You're not using custom elements (use <code>:checked</code>, <code>:disabled</code>, <code>:user-invalid</code> etc.)</li>
+          <li>· The state needs to be queryable from the public DOM (URL state, persistence)</li>
+          <li>· You need full Safari &lt; 17.4 or Firefox &lt; 126 support</li>
+          <li>· You're styling a single, non-component element (an attribute is fine)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-top:16px">
+      <div class="card">
+        <div class="label">✅ Use <code>:active-view-transition</code> when</div>
+        <ul style="list-style:none;padding:0;margin:0;font-size:14px;color:var(--text-dim);line-height:1.8">
+          <li>· You want cosmetic "transitioning" affordances (cursor, glow, gradient)</li>
+          <li>· You need to disable interaction during the morph</li>
+          <li>· You want a flash/highlight effect without wiring <code>transitionend</code> in JS</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="label">❌ Don't bother when</div>
+        <ul style="list-style:none;padding:0;margin:0;font-size:14px;color:var(--text-dim);line-height:1.8">
+          <li>· You're not using <code>startViewTransition()</code> at all</li>
+          <li>· Your morph animation is &lt;100ms (no perceivable "during" state)</li>
+          <li>· You can solve the same problem with a CSS transition on the morphed element itself</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 10. RECAP ============================ -->
+  <section>
+    <h2><span class="num">10</span> Recap</h2>
+    <div class="card">
+      <div style="font-size:15px;color:var(--text);line-height:1.7">
+        <p><strong style="color:var(--accent-2)">`:state(name)`</strong> · the modern replacement for attribute-reflection hacks. Internal-only state for custom elements, accessed via <code>ElementInternals.states</code>. Set operations are O(1); CSS selectors are engine-optimized; DOM is clean.</p>
+        <p style="margin-top:12px"><strong style="color:var(--accent-2)">`:active-view-transition`</strong> · the selector that matches <code>:root</code> only while a view transition snapshot is being morphed. Eliminates <code>transitionend</code> bookkeeping for cosmetic "during" effects.</p>
+        <p style="margin-top:12px;color:var(--text-dim)">Together they form the <strong>state-based CSS</strong> primitive set for 2026 — alongside <code>:has()</code>, <code>:user-invalid</code>, <code>:user-valid</code>, <code>:checked</code>, and the Custom Highlight API. The CSS engine is finally the state-machine for components, not just a static style sheet.</p>
+      </div>
+
+      <div style="margin-top:20px;display:flex;gap:8px;flex-wrap:wrap">
+        <span class="pill blue">Baseline 2025</span>
+        <span class="pill green">~96% support</span>
+        <span class="pill amber">Web Components</span>
+        <span class="pill blue">View Transitions</span>
+        <span class="pill">Pairs with Highlight API</span>
+        <span class="pill">Pairs with :has()</span>
+        <span class="pill">Pairs with :user-invalid</span>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Demo for Molt Studios research · July 2026 · Baseline 2025 Newly Available
+  </footer>
+</div>
+
+<script>
+  // ============================================================
+  // Custom Element: <state-button>
+  // ============================================================
+  class StateButton extends HTMLElement {
+    constructor() {
+      super();
+      this._internals = this.attachInternals();
+      this.addEventListener('click', this._onClick);
+    }
+    disconnectedCallback() {
+      this.removeEventListener('click', this._onClick);
+    }
+    async _onClick() {
+      const mode = this.dataset.mode;
+      let outcome;
+      if (mode === 'success') outcome = 'success';
+      else if (mode === 'error') outcome = 'error';
+      else outcome = Math.random() < 0.7 ? 'success' : 'error';
+
+      this._internals.states.add('loading');
+      await new Promise(r => setTimeout(r, 900 + Math.random() * 600));
+      this._internals.states.delete('loading');
+      this._internals.states.add(outcome);
+      setTimeout(() => this._internals.states.delete(outcome), 1800);
+    }
+  }
+  customElements.define('state-button', StateButton);
+
+  // ============================================================
+  // Custom Element: <drone-card>
+  // ============================================================
+  const STATE_PILL_TEXT = {
+    idle: 'IDLE', armed: 'ARMED', flying: 'IN FLIGHT',
+    'low-batt': 'LOW BATTERY', critical: 'CRITICAL',
+  };
+  const STATE_PILL_CLASS = {
+    idle: '', armed: 'blue', flying: 'green', 'low-batt': 'amber', critical: 'red',
+  };
+  class DroneCard extends HTMLElement {
+    constructor() {
+      super();
+      this._internals = this.attachInternals();
+    }
+    connectedCallback() {
+      this.render();
+      this._applyState(this.dataset.state || 'idle');
+    }
+    static get observedAttributes() {
+      return ['data-state', 'data-batt'];
+    }
+    attributeChangedCallback() {
+      this._applyState(this.dataset.state || 'idle');
+      this._updateBar();
+    }
+    _applyState(s) {
+      // Clear all known states, then add the current one.
+      ['idle','armed','flying','low-batt','critical'].forEach(k => this._internals.states.delete(k));
+      this._internals.states.add(s);
+      const pill = this.querySelector('.pill');
+      if (pill) {
+        pill.className = 'pill ' + STATE_PILL_CLASS[s];
+        pill.textContent = STATE_PILL_TEXT[s];
+      }
+    }
+    _updateBar() {
+      const bar = this.querySelector('.bar > i');
+      if (bar) bar.style.width = (this.dataset.batt || 0) + '%';
+    }
+    render() {
+      const name = this.dataset.name || 'Drone';
+      const batt = this.dataset.batt || 0;
+      const alt = this.dataset.alt || '0m';
+      this.innerHTML = `
+        <div class="head">
+          <div>
+            <div class="name">${name}</div>
+            <div class="meta">${alt} AGL · ${batt}% battery</div>
+          </div>
+          <span class="pill"></span>
+        </div>
+        <div class="bar"><i style="width:${batt}%"></i></div>
+        <div class="stat" style="margin-top:8px">${batt}% / ${alt} / telemetry nominal</div>
+      `;
+    }
+  }
+  customElements.define('drone-card', DroneCard);
+
+  // Click any drone card to cycle: idle → armed → flying → low-batt → critical → idle
+  document.querySelectorAll('drone-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const order = ['idle', 'armed', 'flying', 'low-batt', 'critical'];
+      const cur = card.dataset.state || 'idle';
+      const next = order[(order.indexOf(cur) + 1) % order.length];
+      // Randomize battery when entering low-batt / critical
+      let batt = parseInt(card.dataset.batt, 10);
+      if (next === 'low-batt') batt = Math.min(batt, 35);
+      if (next === 'critical') batt = Math.min(batt, 15);
+      card.dataset.state = next;
+      card.dataset.batt = batt;
+    });
+  });
+
+  // ============================================================
+  // Custom Element: <wizard-stepper>
+  // ============================================================
+  class WizardStepper extends HTMLElement {
+    constructor() {
+      super();
+      this._internals = this.attachInternals();
+      this._step = 1;
+      this._total = 3;
+    }
+    connectedCallback() {
+      this._applyState();
+      this.querySelectorAll('button[data-action]').forEach(b => {
+        b.addEventListener('click', () => this[b.dataset.action]());
+      });
+    }
+    next() {
+      if (this._step < this._total) { this._step++; this._applyState(); }
+      else if (this._step === this._total) { this._step = 0; this._applyState(); } // → complete
+    }
+    prev() {
+      if (this._step === 0) { this._step = this._total; }
+      else if (this._step > 1) { this._step--; }
+      this._applyState();
+    }
+    _applyState() {
+      ['step-1','step-2','step-3','complete'].forEach(s => this._internals.states.delete(s));
+      if (this._step === 0) this._internals.states.add('complete');
+      else this._internals.states.add(`step-${this._step}`);
+
+      const next = this.querySelector('button[data-action="next"]');
+      const prev = this.querySelector('button[data-action="prev"]');
+      const label = this.querySelector('.label');
+      const body = this.querySelector('.body');
+
+      if (this._step === 0) {
+        next.disabled = true; prev.disabled = false;
+        label.textContent = '✓ Order confirmed';
+        body.textContent = 'Welcome to the OpenDrones Arc pilot program. Confirmation email sent.';
+      } else {
+        const titles = ['Create your pilot account', 'Add payment method', 'Confirm & submit pre-order'];
+        const bodies = [
+          'Email, password, Part 107 certificate number, and shipping address.',
+          'Card or ACH. Refundable deposit, charged on shipment.',
+          'Review your order. Refundable until ship date.',
+        ];
+        next.disabled = false;
+        prev.disabled = (this._step === 1);
+        next.textContent = (this._step === this._total) ? 'Submit ✓' : 'Next →';
+        label.textContent = titles[this._step - 1];
+        body.textContent = bodies[this._step - 1];
+      }
+    }
+  }
+  customElements.define('wizard-stepper', WizardStepper);
+
+  // ============================================================
+  // Theme switcher (real view transition)
+  // ============================================================
+  const THEMES = {
+    purple: { '--accent': '#6c5ce7', '--accent-2': '#a29bfe', '--accent-glow': 'rgba(108, 92, 231, 0.3)' },
+    teal:   { '--accent': '#00cec9', '--accent-2': '#55efc4', '--accent-glow': 'rgba(0, 206, 201, 0.3)' },
+    sunset: { '--accent': '#fd79a8', '--accent-2': '#fdcb6e', '--accent-glow': 'rgba(253, 121, 168, 0.3)' },
+    ocean:  { '--accent': '#74b9ff', '--accent-2': '#a29bfe', '--accent-glow': 'rgba(116, 185, 255, 0.3)' },
+    forest: { '--accent': '#00b894', '--accent-2': '#55efc4', '--accent-glow': 'rgba(0, 184, 148, 0.3)' },
+    ember:  { '--accent': '#e17055', '--accent-2': '#fab1a0', '--accent-glow': 'rgba(225, 112, 85, 0.3)' },
+  };
+  document.querySelectorAll('[data-theme]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const theme = THEMES[btn.dataset.theme];
+      if (!theme) return;
+      // If the browser doesn't support view transitions, just apply.
+      if (!document.startViewTransition) {
+        Object.entries(theme).forEach(([k, v]) => document.documentElement.style.setProperty(k, v));
+        return;
+      }
+      document.startViewTransition(() => {
+        Object.entries(theme).forEach(([k, v]) => document.documentElement.style.setProperty(k, v));
+      });
+    });
+  });
+
+  // ============================================================
+  // :active-view-transition indicator updater (DOM side, just for the status text)
+  // ============================================================
+  const vtStatus = document.querySelector('.vt-status');
+  if (vtStatus) {
+    const updateStatus = () => {
+      if (document.activeViewTransition) {
+        vtStatus.textContent = ':active-view-transition: ACTIVE';
+        document.addEventListener('transitionend', updateStatus, { once: true });
+      } else {
+        vtStatus.textContent = ':active-view-transition: idle';
+      }
+    };
+    document.addEventListener('startViewTransition', updateStatus);
+    // Fallback poll (most browsers don't fire the event)
+    setInterval(() => {
+      if (document.activeViewTransition) {
+        vtStatus.textContent = ':active-view-transition: ACTIVE';
+      } else if (vtStatus.textContent !== ':active-view-transition: idle') {
+        vtStatus.textContent = ':active-view-transition: idle';
+      }
+    }, 60);
+  }
+
+  // ============================================================
+  // Highlight API mini-demo (pair with :state())
+  // ============================================================
+  const hlInput = document.getElementById('hl-input');
+  const hlPara = document.getElementById('hl-para');
+  if (hlInput && hlPara) {
+    const apply = () => {
+      const q = hlInput.value.trim();
+      CSS.highlights.delete('search');
+      if (!q) return;
+      const ranges = [];
+      const walker = document.createTreeWalker(hlPara, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walker.nextNode())) {
+        const txt = node.textContent;
+        const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        let m;
+        while ((m = re.exec(txt)) !== null) {
+          const r = new Range();
+          r.setStart(node, m.index);
+          r.setEnd(node, m.index + m[0].length);
+          ranges.push(r);
+        }
+      }
+      if (ranges.length) CSS.highlights.set('search', new Highlight(...ranges));
+    };
+    hlInput.addEventListener('input', apply);
+  }
+
+  // Inject ::highlight() style
+  const style = document.createElement('style');
+  style.textContent = `
+    ::highlight(search) { background: #fdcb6e; color: #1a1a2e; border-radius: 2px; }
+  `;
+  document.head.appendChild(style);
+</script>
+</body>
+</html>
