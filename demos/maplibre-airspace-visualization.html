@@ -1,0 +1,1716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MapLibre GL JS — 3D Airspace Visualization for OpenDrones Mission Control</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.4.0/dist/maplibre-gl.css" />
+<style>
+  /* ============================================================
+     Tokens & Reset
+     ============================================================ */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #06080d;
+    --bg-2: #0b0f17;
+    --surface: #11151f;
+    --surface-2: #161b27;
+    --surface-3: #1c2230;
+    --border: #1f2632;
+    --border-2: #2a3346;
+    --text: #e6e9ef;
+    --text-dim: #8b94a5;
+    --text-muted: #5a6478;
+    --brand: #00d4ff;
+    --brand-glow: rgba(0,212,255,0.35);
+    --ok: #00e5a0;
+    --warn: #ffb84d;
+    --danger: #ff5577;
+    --info: #a890ff;
+    --shadow-1: 0 1px 3px rgba(0,0,0,0.35);
+    --shadow-2: 0 8px 24px rgba(0,0,0,0.45);
+    --shadow-glow: 0 0 24px var(--brand-glow);
+    color-scheme: dark;
+  }
+
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection { background: var(--brand); color: var(--bg); }
+
+  a { color: var(--brand); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  code, pre {
+    font-family: 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+    font-size: 13px;
+  }
+
+  pre {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    line-height: 1.55;
+  }
+  pre code { color: #c5cad6; }
+  .tok-kw { color: #ff79c6; }
+  .tok-str { color: #f1fa8c; }
+  .tok-num { color: #bd93f9; }
+  .tok-com { color: #6272a4; font-style: italic; }
+  .tok-fn { color: #50fa7b; }
+  .tok-prop { color: #8be9fd; }
+
+  /* ============================================================
+     Layout
+     ============================================================ */
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+
+  .hero {
+    padding: 80px 0 56px;
+    background:
+      radial-gradient(ellipse at top left, rgba(0, 212, 255, 0.12) 0%, transparent 50%),
+      radial-gradient(ellipse at bottom right, rgba(168, 144, 255, 0.08) 0%, transparent 60%),
+      var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-2);
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--brand);
+    text-transform: uppercase;
+  }
+  .tag .pulse {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--ok); box-shadow: 0 0 8px var(--ok);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  h1 {
+    font-size: clamp(32px, 5vw, 52px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    margin: 18px 0 14px;
+  }
+  h1 .accent {
+    background: linear-gradient(135deg, var(--brand) 0%, var(--info) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .subtitle {
+    font-size: 18px;
+    color: var(--text-dim);
+    max-width: 760px;
+    margin-bottom: 28px;
+  }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 12px;
+    margin-bottom: 24px;
+  }
+  .meta-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .meta-pill b { color: var(--text); font-weight: 600; }
+
+  .toc {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    margin-top: 28px;
+  }
+  .toc a {
+    padding: 6px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--text-dim);
+    transition: all 0.2s;
+  }
+  .toc a:hover {
+    background: var(--surface-2);
+    border-color: var(--brand);
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  section {
+    padding: 56px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  section h2 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin-bottom: 8px;
+    color: var(--text);
+  }
+  section h2 .num {
+    color: var(--brand);
+    font-family: 'SF Mono', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    margin-right: 12px;
+  }
+  section .lead {
+    font-size: 16px;
+    color: var(--text-dim);
+    max-width: 760px;
+    margin-bottom: 28px;
+  }
+
+  /* ============================================================
+     The Map
+     ============================================================ */
+  .stage {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 20px;
+    align-items: start;
+  }
+  @media (max-width: 920px) {
+    .stage { grid-template-columns: 1fr; }
+  }
+
+  .map-shell {
+    position: relative;
+    height: 640px;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid var(--border-2);
+    background: var(--surface);
+    box-shadow: var(--shadow-2);
+  }
+
+  #map { position: absolute; inset: 0; }
+
+  .map-fallback {
+    position: absolute; inset: 0;
+    display: grid;
+    place-items: center;
+    background:
+      linear-gradient(135deg, #0e1a26 0%, #0b1521 100%);
+    color: var(--text-dim);
+    text-align: center;
+    padding: 32px;
+  }
+  .map-fallback h3 { color: var(--text); margin-bottom: 12px; }
+  .map-fallback code {
+    background: var(--bg); padding: 4px 10px;
+    border-radius: 6px; font-size: 12px;
+  }
+
+  .map-overlay {
+    position: absolute;
+    pointer-events: none;
+    padding: 16px;
+    z-index: 5;
+  }
+  .map-overlay > * { pointer-events: auto; }
+
+  .hud-top {
+    top: 0; left: 0;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .hud-top-right {
+    top: 0; right: 0;
+    display: flex; gap: 8px;
+  }
+  .hud-bottom {
+    bottom: 0; left: 0;
+    display: flex; align-items: center; gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .badge {
+    background: rgba(11, 15, 23, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border-2);
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: var(--text);
+    box-shadow: var(--shadow-1);
+  }
+  .badge .lbl { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .badge .val { font-family: 'SF Mono', monospace; font-size: 14px; font-weight: 600; color: var(--text); }
+  .badge .val.ok { color: var(--ok); }
+  .badge .val.warn { color: var(--warn); }
+  .badge .val.danger { color: var(--danger); }
+
+  .controls {
+    display: flex; gap: 8px;
+  }
+  .ctrl-btn {
+    background: rgba(11, 15, 23, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border-2);
+    border-radius: 10px;
+    padding: 8px 12px;
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.18s;
+  }
+  .ctrl-btn:hover { border-color: var(--brand); }
+  .ctrl-btn[aria-pressed="true"] {
+    background: var(--brand);
+    color: var(--bg);
+    border-color: var(--brand);
+  }
+
+  .legend {
+    display: flex; align-items: center; gap: 14px;
+    flex-wrap: wrap;
+    font-size: 12px;
+  }
+  .legend-item { display: inline-flex; align-items: center; gap: 6px; color: var(--text-dim); }
+  .dot {
+    display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  }
+  .dot.brand { background: var(--brand); box-shadow: 0 0 8px var(--brand-glow); }
+  .dot.ok { background: var(--ok); }
+  .dot.warn { background: var(--warn); }
+  .dot.danger { background: var(--danger); }
+  .dot.nfz {
+    background: var(--danger); opacity: 0.4;
+    border-radius: 0; transform: rotate(45deg);
+  }
+
+  /* Side panel */
+  .side {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    height: 640px;
+    display: flex; flex-direction: column;
+  }
+  .side-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .side-header h3 { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  .side-header p { font-size: 12px; color: var(--text-dim); }
+  .side-search {
+    width: 100%; padding: 8px 10px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text); font-size: 13px;
+    margin-top: 10px;
+    font-family: inherit;
+  }
+  .side-search:focus { outline: 1px solid var(--brand); border-color: var(--brand); }
+
+  .drone-list { overflow-y: auto; flex: 1; }
+  .drone-row {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.15s;
+    position: relative;
+  }
+  .drone-row:hover { background: var(--surface-2); }
+  .drone-row.active { background: var(--surface-2); }
+  .drone-row.active::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px; background: var(--brand);
+    box-shadow: 0 0 12px var(--brand-glow);
+  }
+  .drone-row .row-top {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .drone-name { font-weight: 600; font-size: 13px; }
+  .drone-pill {
+    font-size: 10px; padding: 2px 6px; border-radius: 4px;
+    text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
+  }
+  .drone-pill.flying { background: rgba(0, 229, 160, 0.15); color: var(--ok); }
+  .drone-pill.armed { background: rgba(255, 184, 77, 0.15); color: var(--warn); }
+  .drone-pill.idle { background: rgba(91, 100, 120, 0.2); color: var(--text-muted); }
+  .drone-pill.low-batt { background: rgba(255, 85, 119, 0.15); color: var(--danger); }
+  .drone-pill.critical { background: rgba(255, 85, 119, 0.3); color: var(--danger); animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: 0.5; } }
+
+  .telemetry {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    font-size: 11px;
+  }
+  .tlm {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+  }
+  .tlm .lbl { color: var(--text-muted); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .tlm .val { font-family: 'SF Mono', monospace; font-size: 13px; font-weight: 600; }
+
+  /* @property animated bars */
+  @property --batt {
+    syntax: '<percentage>';
+    inherits: false;
+    initial-value: 100%;
+  }
+  .batt-bar {
+    height: 4px;
+    background: var(--surface-3);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-top: 8px;
+    position: relative;
+  }
+  .batt-fill {
+    height: 100%;
+    width: var(--batt);
+    background: linear-gradient(90deg, var(--ok), var(--warn), var(--danger));
+    border-radius: 999px;
+    transition: --batt 0.8s ease;
+  }
+
+  /* Highlight API for search */
+  ::highlight(search) {
+    background: rgba(255, 230, 80, 0.45);
+    color: #1a1a2e;
+    border-radius: 2px;
+    padding: 1px 0;
+  }
+  ::highlight(low-batt) {
+    background: rgba(255, 85, 119, 0.25);
+    color: var(--danger);
+    font-weight: 700;
+  }
+
+  /* ============================================================
+     Feature grid
+     ============================================================ */
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+    margin: 24px 0;
+  }
+  .feature-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    transition: all 0.2s;
+  }
+  .feature-card:hover {
+    border-color: var(--brand);
+    transform: translateY(-2px);
+  }
+  .feature-card .icon {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--brand), var(--info));
+    border-radius: 10px;
+    display: grid; place-items: center;
+    color: var(--bg);
+    font-weight: 700;
+    margin-bottom: 14px;
+    box-shadow: var(--shadow-glow);
+  }
+  .feature-card h4 { font-size: 16px; margin-bottom: 6px; color: var(--text); }
+  .feature-card p { font-size: 13px; color: var(--text-dim); line-height: 1.5; }
+
+  /* Comparison table */
+  .compare {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 24px 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    font-size: 13px;
+  }
+  .compare th, .compare td {
+    padding: 12px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .compare th {
+    background: var(--surface-2);
+    color: var(--text-dim);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .compare td { color: var(--text); }
+  .compare tr:last-child td { border-bottom: none; }
+  .compare .check { color: var(--ok); font-weight: 700; }
+  .compare .cross { color: var(--danger); font-weight: 700; }
+  .compare .maybe { color: var(--warn); font-weight: 700; }
+
+  /* Timeline / pipeline */
+  .pipeline {
+    display: flex; align-items: stretch; gap: 0;
+    margin: 32px 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .pipe-step {
+    flex: 1;
+    padding: 18px;
+    border-right: 1px solid var(--border);
+    position: relative;
+  }
+  .pipe-step:last-child { border-right: none; }
+  .pipe-step .step-num {
+    font-size: 11px; color: var(--brand);
+    font-family: 'SF Mono', monospace;
+    font-weight: 700; letter-spacing: 0.06em;
+    margin-bottom: 6px;
+  }
+  .pipe-step h4 { font-size: 14px; margin-bottom: 6px; }
+  .pipe-step p { font-size: 12px; color: var(--text-dim); line-height: 1.45; }
+
+  @media (max-width: 768px) {
+    .pipeline { flex-direction: column; }
+    .pipe-step { border-right: none; border-bottom: 1px solid var(--border); }
+    .pipe-step:last-child { border-bottom: none; }
+  }
+
+  /* CTA / bottom card */
+  .cta {
+    margin: 48px 0;
+    padding: 40px;
+    background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+    border: 1px solid var(--border-2);
+    border-radius: 20px;
+    text-align: center;
+  }
+  .cta h2 {
+    color: var(--text);
+    font-size: 26px;
+    margin-bottom: 12px;
+    letter-spacing: -0.01em;
+  }
+  .cta .num { display: none; }
+  .cta p {
+    color: var(--text-dim);
+    max-width: 600px;
+    margin: 0 auto 24px;
+    font-size: 15px;
+  }
+  .cta-row {
+    display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;
+  }
+  .cta-row a {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 20px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 14px;
+    transition: all 0.2s;
+  }
+  .cta-row a.primary {
+    background: var(--brand);
+    color: var(--bg);
+    box-shadow: var(--shadow-glow);
+  }
+  .cta-row a.primary:hover { text-decoration: none; transform: translateY(-1px); }
+  .cta-row a.secondary {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border-2);
+  }
+  .cta-row a.secondary:hover { border-color: var(--brand); text-decoration: none; }
+
+  footer {
+    padding: 32px 0;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+  footer a { color: var(--text-dim); }
+
+  /* 3D toggle state */
+  .map-shell[data-3d="true"] {
+    border-color: var(--brand);
+    box-shadow: 0 8px 32px rgba(0, 212, 255, 0.15);
+  }
+
+  /* MapLibre tweaks */
+  .maplibregl-popup-content {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border-2);
+    border-radius: 10px;
+    padding: 12px 14px;
+    box-shadow: var(--shadow-2);
+    font-family: inherit;
+  }
+  .maplibregl-popup-tip { display: none; }
+  .maplibregl-popup-close-button {
+    color: var(--text-dim); padding: 4px 8px; font-size: 16px;
+  }
+  .drone-popup h4 { font-size: 14px; margin-bottom: 6px; }
+  .drone-popup .row { font-size: 12px; margin: 2px 0; color: var(--text-dim); }
+  .drone-popup .row b { color: var(--text); font-family: 'SF Mono', monospace; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="tag"><span class="pulse"></span>Research · Open Source · 3D Geospatial</span>
+    <h1>MapLibre GL JS for <span class="accent">OpenDrones</span><br/>Mission Control airspace</h1>
+    <p class="subtitle">
+      The 5-line drop-in that turns any OpenDrones page into a 3D airspace visualization.
+      Zero API keys, zero per-tile fees, 100% open source. The same vector-tile engine
+      Mapbox charges $5-30K/year for — yours forever, BSD-licensed, self-hostable.
+    </p>
+    <div class="meta">
+      <span class="meta-pill">📦 <b>MapLibre GL JS v5.4</b> · Open Source · BSD-3</span>
+      <span class="meta-pill">🗺️ <b>OpenFreeMap</b> · No API Key Required</span>
+      <span class="meta-pill">⚡ <b>WebGL2</b> · 60fps Vector Tiles</span>
+      <span class="meta-pill">🏢 <b>3D Buildings</b> · fill-extrusion · Terrain</span>
+      <span class="meta-pill">🚀 <b>Ship-today</b> · Pairs with WebGPU + Highlight API</span>
+    </div>
+    <nav class="toc">
+      <a href="#live">1. Live Demo</a>
+      <a href="#what">2. What &amp; Why</a>
+      <a href="#anatomy">3. Anatomia</a>
+      <a href="#missions">4. OpenDrones Patterns</a>
+      <a href="#code">5. The 5-Line Drop-in</a>
+      <a href="#compare">6. MapLibre vs Mapbox</a>
+      <a href="#pipeline">7. Production Pipeline</a>
+      <a href="#uses">8. Molt Studios Deliverables</a>
+      <a href="#support">9. Browser Support</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ============================================================
+     Section 1: LIVE DEMO
+     ============================================================ -->
+<section id="live">
+  <div class="wrap">
+    <h2><span class="num">01</span>Live Demo — OpenDrones Mission Control Airspace</h2>
+    <p class="lead">
+      Eight drones flying across downtown San Francisco with live NFZ (no-fly zone) polygons,
+      flight path polylines, animated markers, and a clickable fleet panel that pivots the camera.
+      All Telemetry search uses the CSS Custom Highlight API — search any drone name, "battery",
+      or "offline" across the panel without DOM bloat.
+    </p>
+
+    <div class="stage">
+      <div class="map-shell" id="map-shell" data-3d="true">
+        <div id="map"></div>
+        <div class="map-fallback" id="map-fallback">
+          <div>
+            <h3>🗺️ Loading airspace…</h3>
+            <p>Fetching MapLibre GL JS v5.4 + OpenFreeMap tiles.<br/>
+            First load may take 3-5 seconds. If the map doesn't appear,
+            your network blocks <code>tiles.openfreemap.org</code>.</p>
+          </div>
+        </div>
+        <div class="map-overlay hud-top">
+          <div class="badge"><span class="lbl">Airspace</span> &nbsp;<span class="val">SF · 8 Active</span></div>
+          <div class="badge" id="fps-badge"><span class="lbl">FPS</span> &nbsp;<span class="val ok" id="fps-val">—</span></div>
+        </div>
+        <div class="map-overlay hud-top-right">
+          <div class="controls">
+            <button class="ctrl-btn" id="btn-3d" aria-pressed="true">3D Buildings</button>
+            <button class="ctrl-btn" id="btn-fly" aria-pressed="false">Auto-Fly</button>
+            <button class="ctrl-btn" id="btn-reset">Reset</button>
+          </div>
+        </div>
+        <div class="map-overlay hud-bottom">
+          <div class="legend">
+            <span class="legend-item"><span class="dot brand"></span> Active Drone</span>
+            <span class="legend-item"><span class="dot ok"></span> Healthy</span>
+            <span class="legend-item"><span class="dot warn"></span> Armed</span>
+            <span class="legend-item"><span class="dot danger"></span> Critical</span>
+            <span class="legend-item"><span class="dot nfz"></span> NFZ (No-Fly)</span>
+          </div>
+        </div>
+      </div>
+
+      <aside class="side">
+        <div class="side-header">
+          <h3>🐝 Active Fleet · 8 Drones</h3>
+          <p>Click any drone to focus. Search updates Highlight API ranges in real time.</p>
+          <input type="text" class="side-search" id="fleet-search" placeholder="🔍 Search drone, status, telemetry…" />
+        </div>
+        <div class="drone-list" id="fleet-list"></div>
+      </aside>
+    </div>
+
+    <p style="margin-top: 20px; font-size: 13px; color: var(--text-muted); text-align: center;">
+      Pan, zoom, rotate (right-click drag), and pitch (right-drag up/down). Click any drone for live popups.
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================
+     Section 2: WHAT & WHY
+     ============================================================ -->
+<section id="what">
+  <div class="wrap">
+    <h2><span class="num">02</span>What Is MapLibre GL JS — And Why It Wins for OpenDrones</h2>
+    <p class="lead">
+      MapLibre GL JS is the open-source fork of Mapbox GL JS created in December 2020 when Mapbox
+      relicensed their library from BSD to a proprietary license. The MapLibre team picked up where
+      Mapbox left off, added 3D terrain, custom layer hooks, and a fully open ecosystem. Today it's
+      a <strong>production-grade</strong> alternative used by Wikipedia, Foursquare, AWS Location Service,
+      Meta, and the entire OpenStreetMap ecosystem.
+    </p>
+
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="icon">$</div>
+        <h4>Zero Per-Tile Fees</h4>
+        <p>Mapbox charges $5–30K/yr for production tile loads. MapLibre + OpenFreeMap (or self-hosted
+        PMTiles) is <strong>free forever</strong>. Critical for OpenDrones pre-revenue and
+        for Molt Studios agency clients who don't want map bills.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">⌬</div>
+        <h4>3D Vector Tiles</h4>
+        <p>Real buildings extrude from geometry via <code>fill-extrusion</code> paint properties.
+        3D terrain via raster-dem source. Custom shader hooks for GPU-accelerated effects.
+        WebGL2 backs it all — same GPU path as WebGPU (P2).</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">⚡</div>
+        <h4>Custom Layers</h4>
+        <p>Custom WebGL layer hook lets you render raw geometry alongside map tiles. Drone flight paths,
+        NFZ polygons, geofences, telemetry heatmaps — all rendered in one draw call.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">🧩</div>
+        <h4>React-Native Bindings</h4>
+        <p>First-party <code>react-map-gl</code> (Uber) + <code>maplibre-react</code> wrappers mean
+        the Mission Control stack stays in React. Controlled props, refs, hooks — the same
+        component model OpenDrones already uses.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">📡</div>
+        <h4>Composable with P1/P2 Stack</h4>
+        <p>Pairs directly with <strong>WebGPU</strong> (P2, airspace 3D), <strong>Highlight API</strong>
+        (P1, fleet search), <strong>Subgrid</strong> (P1, telemetry tables), <strong>@property</strong>
+        (P1, animated battery bars). All primitives ship together as one Mission Control page.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">🔓</div>
+        <h4>Self-Hostable PMTiles</h4>
+        <p>Protomaps PMTiles format ships the whole planet in a single 100GB static file. Serve it
+        from your CDN for sub-200ms tile loads anywhere on Earth with zero API keys.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     Section 3: ANATOMY (annotated code)
+     ============================================================ -->
+<section id="anatomy">
+  <div class="wrap">
+    <h2><span class="num">03</span>The Anatomy of a Mission Control Airspace Layer</h2>
+    <p class="lead">
+      MapLibre models the world as <strong>layers</strong> — sources feed geometry, layers style and
+      render it. Three primitive types: <code>circle</code> (drone markers), <code>line</code> (flight
+      paths), <code>fill</code> (NFZ polygons). Plus <code>fill-extrusion</code> for real 3D buildings
+      and the <code>custom</code> hook for arbitrary GPU work.
+    </p>
+
+<pre><code><span class="tok-com">// 1. Map init — pitch + bearing for the hero 3D angle</span>
+<span class="tok-kw">const</span> <span class="tok-prop">map</span> = <span class="tok-kw">new</span> <span class="tok-fn">maplibregl.Map</span>({
+  container: <span class="tok-str">'map'</span>,
+  style: <span class="tok-str">'https://tiles.openfreemap.org/styles/liberty'</span>,
+  center: [<span class="tok-num">-122.4194</span>, <span class="tok-num">37.7749</span>], <span class="tok-com">// SF</span>
+  zoom: <span class="tok-num">14.5</span>,
+  pitch: <span class="tok-num">55</span>,                 <span class="tok-com">// 3D view</span>
+  bearing: <span class="tok-num">-17</span>,
+  antialias: <span class="tok-kw">true</span>,
+});
+
+<span class="tok-com">// 2. Source — flight paths as a FeatureCollection (GeoJSON)</span>
+map.<span class="tok-fn">addSource</span>(<span class="tok-str">'flights'</span>, {
+  type: <span class="tok-str">'geojson'</span>,
+  data: {
+    type: <span class="tok-str">'FeatureCollection'</span>,
+    features: [
+      { type: <span class="tok-str">'Feature'</span>, properties: { id: <span class="tok-str">'AC-7421'</span> },
+        geometry: { type: <span class="tok-str">'LineString'</span>,
+          coordinates: [[<span class="tok-num">-122.418</span>,<span class="tok-num">37.775</span>], [<span class="tok-num">-122.417</span>,<span class="tok-num">37.776</span>], ...] } }
+    ]
+  }
+});
+
+<span class="tok-com">// 3. Line layer — flight path with dashed style</span>
+map.<span class="tok-fn">addLayer</span>({
+  id: <span class="tok-str">'flight-paths'</span>,
+  type: <span class="tok-str">'line'</span>,
+  source: <span class="tok-str">'flights'</span>,
+  paint: {
+    <span class="tok-str">'line-color'</span>: [<span class="tok-str">'get'</span>, <span class="tok-str">'color'</span>],
+    <span class="tok-str">'line-width'</span>: <span class="tok-num">2.5</span>,
+    <span class="tok-str">'line-dasharray'</span>: [<span class="tok-num">2</span>, <span class="tok-num">1.5</span>],
+    <span class="tok-str">'line-opacity'</span>: <span class="tok-num">0.7</span>
+  }
+});
+
+<span class="tok-com">// 4. NFZ polygon — no-fly zone, extruded slightly for visibility</span>
+map.<span class="tok-fn">addLayer</span>({
+  id: <span class="tok-str">'nfz'</span>,
+  type: <span class="tok-str">'fill-extrusion'</span>,
+  source: { type: <span class="tok-str">'geojson'</span>, data: nfzGeoJSON },
+  paint: {
+    <span class="tok-str">'fill-extrusion-color'</span>: <span class="tok-str">'#ff5577'</span>,
+    <span class="tok-str">'fill-extrusion-opacity'</span>: <span class="tok-num">0.35</span>,
+    <span class="tok-str">'fill-extrusion-height'</span>: <span class="tok-num">120</span>        <span class="tok-com">// meters AGL</span>,
+    <span class="tok-str">'fill-extrusion-base'</span>: <span class="tok-num">0</span>
+  }
+});
+
+<span class="tok-com">// 5. Drone markers — animated circles + click popups</span>
+<span class="tok-kw">for</span> (<span class="tok-kw">const</span> drone <span class="tok-kw">of</span> fleet) {
+  <span class="tok-kw">new</span> <span class="tok-fn">maplibregl.Marker</span>({ element: <span class="tok-fn">droneMarker</span>(drone) })
+    .<span class="tok-fn">setLngLat</span>(drone.lngLat)
+    .<span class="tok-fn">addTo</span>(map);
+}</code></pre>
+  </div>
+</section>
+
+<!-- ============================================================
+     Section 4: OPENDRONES PATTERNS
+     ============================================================ -->
+<section id="missions">
+  <div class="wrap">
+    <h2><span class="num">04</span>Four OpenDrones Mission Patterns</h2>
+    <p class="lead">
+      How MapLibre turns the OpenDrones product surface — from pilot app to insurance review to
+      enterprise fleet dashboard — into an airborne command center.
+    </p>
+
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="icon">🚁</div>
+        <h4>Live Airspace Management</h4>
+        <p>Simultaneous real-time position for 1,000+ drones across a city. Compute-side
+        clustering in MapLibre 5.4 means the renderer only draws drones visible in the viewport
+        — 60fps with fleets of any size.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">🚫</div>
+        <h4>NFZ Compliance Overlay</h4>
+        <p>Airports, prisons, stadiums, national parks. MapLibre's <code>fill-extrusion</code> renders
+        no-fly zones as 3D volumes (m AGL) so pilots see exactly where they cannot fly, with
+        altitude-aware conflict detection.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">📼</div>
+        <h4>Mission Replay (2D Top-Down)</h4>
+        <p>Pairs with our Gaussian Splatting 3D replay (P3) — view the same mission as both
+        a photoreal 3D flythrough and a clean 2D top-down audit trail. Insurance, regulators,
+        and clients see exactly what happened, where, and at what altitude.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">🌐</div>
+        <h4>Fleet-Scale Pilot Operations</h4>
+        <p>Enterprise ops dashboards for survey companies, agriculture, inspection, and public safety.
+        Live drone positions + thermal overlay + wind data + restricted airspace — one map
+        for the entire fleet operation.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     Section 5: THE 5-LINE DROP-IN
+     ============================================================ -->
+<section id="code">
+  <div class="wrap">
+    <h2><span class="num">05</span>The 5-Line Drop-in</h2>
+    <p class="lead">
+      An entire 3D airspace map — vector tiles, 3D buildings, pan/zoom/rotate/pitch — in five lines of JavaScript.
+      Everything else is styling and data on top.
+    </p>
+
+<pre><code><span class="tok-kw">&lt;link</span> <span class="tok-prop">href</span>=<span class="tok-str">"https://unpkg.com/maplibre-gl@5.4.0/dist/maplibre-gl.css"</span> <span class="tok-prop">rel</span>=<span class="tok-str">"stylesheet"</span><span class="tok-kw">&gt;</span>
+<span class="tok-kw">&lt;div</span> <span class="tok-prop">id</span>=<span class="tok-str">"map"</span> <span class="tok-prop">style</span>=<span class="tok-str">"width:100vw;height:100vh"</span><span class="tok-kw">&gt;&lt;/div&gt;</span>
+<span class="tok-kw">&lt;script</span> <span class="tok-prop">src</span>=<span class="tok-str">"https://unpkg.com/maplibre-gl@5.4.0/dist/maplibre-gl.js"</span><span class="tok-kw">&gt;&lt;/script&gt;</span>
+<span class="tok-kw">&lt;script&gt;</span>
+  <span class="tok-kw">new</span> <span class="tok-fn">maplibregl.Map</span>({
+    container: <span class="tok-str">'map'</span>,
+    style: <span class="tok-str">'https://tiles.openfreemap.org/styles/liberty'</span>,
+    center: [<span class="tok-num">-122.4194</span>, <span class="tok-num">37.7749</span>], zoom: <span class="tok-num">14</span>, pitch: <span class="tok-num">55</span>
+  });
+<span class="tok-kw">&lt;/script&gt;</span></code></pre>
+
+    <p style="margin-top: 24px; font-size: 14px; color: var(--text-dim);">
+      For production, swap <code>tiles.openfreemap.org</code> with your own
+      <a href="https://docs.protomaps.com/pmtiles/" target="_blank" rel="noopener">Protomaps PMTiles</a>
+      hosting or <a href="https://www.maptiler.com/" target="_blank" rel="noopener">MapTiler</a>'s
+      free 100K-tile tier. The map API doesn't change.
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================
+     Section 6: COMPARE (MapLibre vs Mapbox)
+     ============================================================ -->
+<section id="compare">
+  <div class="wrap">
+    <h2><span class="num">06</span>MapLibre GL JS vs Mapbox GL JS — 2026 Comparison</h2>
+    <p class="lead">
+      The license split (Mapbox went proprietary December 2020) is the headline. Everything else
+      — features, perf, DX — has been a steady MapLibre lead for 18+ months. For OpenDrones and
+      most Molt Studios clients, MapLibre is the default.
+    </p>
+
+    <table class="compare">
+      <thead>
+        <tr><th>Dimension</th><th>MapLibre GL JS v5</th><th>Mapbox GL JS v3+</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>License</td>
+          <td><span class="check">BSD-3-Clause</span> · forever free</td>
+          <td><span class="cross">Proprietary</span> · per-load fees</td>
+        </tr>
+        <tr>
+          <td>Vector tile engine</td>
+          <td><span class="check">Yes</span> · same as Mapbox</td>
+          <td><span class="check">Yes</span> · the original</td>
+        </tr>
+        <tr>
+          <td>3D Buildings</td>
+          <td><span class="check">fill-extrusion</span> · baked-in</td>
+          <td><span class="check">fill-extrusion</span> · baked-in</td>
+        </tr>
+        <tr>
+          <td>3D Terrain</td>
+          <td><span class="check">raster-dem + terrain</span> source</td>
+          <td><span class="check">raster-dem + terrain</span> source</td>
+        </tr>
+        <tr>
+          <td>Cost at 1M tile loads/mo</td>
+          <td><span class="check">$0</span> (self-host or OpenFreeMap)</td>
+          <td><span class="cross">$300-1,200/mo</span> Mapbox Standard</td>
+        </tr>
+        <tr>
+          <td>React wrapper</td>
+          <td><span class="check">react-map-gl v8</span> · first-class</td>
+          <td><span class="check">react-map-gl v7</span> · first-class</td>
+        </tr>
+        <tr>
+          <td>Custom layer hook</td>
+          <td><span class="check">Yes</span> (map.addLayer custom)</td>
+          <td><span class="check">Yes</span> (Mapbox custom layers)</td>
+        </tr>
+        <tr>
+          <td>Style spec coverage</td>
+          <td><span class="check">~95%</span> of Mapbox v8 spec</td>
+          <td><span class="check">100%</span> (it's theirs)</td>
+        </tr>
+        <tr>
+          <td>Vector style editor</td>
+          <td><span class="check">Maputnik</span> (open source)</td>
+          <td><span class="maybe">Mapbox Studio</span> (proprietary)</td>
+        </tr>
+        <tr>
+          <td>PMTiles support (Protomaps)</td>
+          <td><span class="check">Native</span> · serve entire planet as static file</td>
+          <td><span class="cross">Via custom source</span></td>
+        </tr>
+        <tr>
+          <td>GitHub stars (2026)</td>
+          <td><span class="check">~7.4K</span></td>
+          <td><span class="check">~4.2K</span> (public repo)</td>
+        </tr>
+        <tr>
+          <td>Used by</td>
+          <td>Wikipedia, Foursquare, AWS Location, OSM.org, HN</td>
+          <td>The New York Times, Strava, Shopify</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p style="margin-top: 16px; font-size: 13px; color: var(--text-dim);">
+      <strong>Use Mapbox</strong> only if a client specifically demands it, or a legacy enterprise
+      stack already locks them in. For greenfield work in 2026 — including OpenDrones — MapLibre
+      with OpenFreeMap or self-hosted PMTiles is the right call.
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================
+     Section 7: PRODUCTION PIPELINE
+     ============================================================ -->
+<section id="pipeline">
+  <div class="wrap">
+    <h2><span class="num">07</span>OpenDrones Production Pipeline</h2>
+    <p class="lead">
+      From a captured drone flight to a live, browser-rendered 3D airspace view — the full data
+      path that turns drone telemetry into a $500-2K-per-replay deliverable.
+    </p>
+
+    <div class="pipeline">
+      <div class="pipe-step">
+        <div class="step-num">STEP 01</div>
+        <h4>Capture</h4>
+        <p>Drone records 4K video + LiDAR + IMU + GPS at 30Hz. ~2GB raw per 30s flight.
+        Auto-upload to OpenDrones CDN over 5G/Wi-Fi.</p>
+      </div>
+      <div class="pipe-step">
+        <div class="step-num">STEP 02</div>
+        <h4>Process</h4>
+        <p>Server-side: derive flight path (GeoJSON), detect NFZ intersections, snap to FAA
+        airspace, generate altitude profile. ~30s server-time per minute of flight.</p>
+      </div>
+      <div class="pipe-step">
+        <div class="step-num">STEP 03</div>
+        <h4>Tile &amp; Style</h4>
+        <p>GeoJSON downsampled to ~10K vertices per flight. Stored alongside PMTiles. A single
+        <code>addSource()</code> call materializes the flight as a MapLibre <code>line</code> layer.</p>
+      </div>
+      <div class="pipe-step">
+        <div class="step-num">STEP 04</div>
+        <h4>Live Render</h4>
+        <p>Mission Control page opens. MapLibre streams 3D vector tiles from OpenFreeMap.
+        Flight path + NFZ overlays + drone markers render at 60fps in WebGL2.</p>
+      </div>
+      <div class="pipe-step">
+        <div class="step-num">STEP 05</div>
+        <h4>Replay &amp; Audit</h4>
+        <p>Pilot, client, regulator, or insurance inspector sees the same photoreal + map-based view.
+        Compliance check is one button click: "Did this flight stay below 400ft AGL in NFZ-7421?"</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     Section 8: MOLT STUDIOS DELIVERABLES
+     ============================================================ -->
+<section id="uses">
+  <div class="wrap">
+    <h2><span class="num">08</span>Sellable Molt Studios Deliverables</h2>
+    <p class="lead">
+      Every client with a location has a map problem. Most agencies punt to Google Maps embed.
+      MapLibre turns that into a $5-15K "production map dashboard" deliverable — the kind of
+      thing only studios with deep frontend chops ship.
+    </p>
+
+    <table class="compare">
+      <thead>
+        <tr><th>Deliverable</th><th>Pricing</th><th>Ship time</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Real-estate 3D walkthrough</strong> — listings with 3D building context</td>
+          <td>$5,000 - $10,000</td>
+          <td>2-3 weeks</td>
+        </tr>
+        <tr>
+          <td><strong>Local SEO store locator</strong> — multi-location brands with territory heatmap</td>
+          <td>$3,000 - $5,000</td>
+          <td>1-2 weeks</td>
+        </tr>
+        <tr>
+          <td><strong>Construction site progress</strong> — drone-captured GIS overlays on BIM</td>
+          <td>$6,000 - $15,000</td>
+          <td>3-4 weeks</td>
+        </tr>
+        <tr>
+          <td><strong>Logistics &amp; fleet dashboard</strong> — delivery routes, geofencing, live tracking</td>
+          <td>$8,000 - $25,000</td>
+          <td>4-6 weeks</td>
+        </tr>
+        <tr>
+          <td><strong>Tourism / hospitality 3D</strong> — attractions with 3D context, geofenced AR</td>
+          <td>$5,000 - $12,000</td>
+          <td>2-4 weeks</td>
+        </tr>
+        <tr>
+          <td><strong>Insurance claim visualization</strong> — incident overlay on context map</td>
+          <td>$4,000 - $8,000</td>
+          <td>2 weeks</td>
+        </tr>
+        <tr>
+          <td><strong>Event / concert site maps</strong> — interactive 3D festival maps</td>
+          <td>$3,000 - $7,000</td>
+          <td>1-2 weeks</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================================
+     Section 9: BROWSER SUPPORT
+     ============================================================ -->
+<section id="support">
+  <div class="wrap">
+    <h2><span class="num">09</span>Browser Support &amp; Fallback</h2>
+    <p class="lead">
+      MapLibre GL JS v5 requires WebGL2. Coverage today: <strong>~96% global traffic</strong>.
+      Old browsers and IE11 fall back to a static 2D map embed.
+    </p>
+
+    <table class="compare">
+      <thead>
+        <tr><th>Browser</th><th>Engine</th><th>WebGL2</th><th>Coverage</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Chrome 56+</td><td>Blink</td><td><span class="check">✓</span></td><td>~64%</td></tr>
+        <tr><td>Edge 79+</td><td>Blink</td><td><span class="check">✓</span></td><td>~5%</td></tr>
+        <tr><td>Safari 15+</td><td>WebKit</td><td><span class="check">✓</span></td><td>~19%</td></tr>
+        <tr><td>Firefox 51+</td><td>Gecko</td><td><span class="check">✓</span></td><td>~5%</td></tr>
+        <tr><td>Samsung Internet 8+</td><td>Blink</td><td><span class="check">✓</span></td><td>~1%</td></tr>
+        <tr><td>IE 11</td><td>Trident</td><td><span class="cross">✗</span></td><td>~0.3% (fallback only)</td></tr>
+      </tbody>
+    </table>
+
+    <p style="margin-top: 24px; font-size: 14px; color: var(--text-dim);">
+      <strong>Safe-launch strategy:</strong> detect WebGL2 with
+      <code>if (!maplibregl.supported())</code> — degrade to a static 2D
+      OpenStreetMap embed via an iframe.
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================
+     CTA
+     ============================================================ -->
+<section>
+  <div class="wrap">
+    <div class="cta">
+      <h2>Open-source 3D maps for your next product</h2>
+      <p>MapLibre + OpenFreeMap + Protomaps PMTiles is the modern mapping stack.
+        Zero fees, full self-host control, production-grade. Ready to ship today.</p>
+      <div class="cta-row">
+        <a class="primary" href="https://maplibre.org/maplibre-gl-js/docs/" target="_blank" rel="noopener">MapLibre Docs →</a>
+        <a class="secondary" href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a>
+        <a class="secondary" href="https://protomaps.com/docs/frontends/maplibre" target="_blank" rel="noopener">Protomaps</a>
+        <a class="secondary" href="https://github.com/maplibre/maplibre-gl-js" target="_blank" rel="noopener">GitHub ⭐</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>
+      <strong>Jin research · 2026-07-08</strong> · MapLibre GL JS v5.4 · OpenFreeMap · Demo runs entirely
+      in the browser. No backend, no API keys. Source: <a href="https://github.com/maplibre/maplibre-gl-js">GitHub</a>.
+    </p>
+  </div>
+</footer>
+
+<!-- ============================================================
+     The JavaScript — MapLibre + drone telemetry simulation
+     ============================================================ -->
+<script src="https://unpkg.com/maplibre-gl@5.4.0/dist/maplibre-gl.js"></script>
+<script>
+/* ============================================================
+   Synthetic drone fleet — 8 drones, SF grid
+   ============================================================ */
+const FLEET = [
+  { id: 'AC-7421', name: 'Mavic 3 · Pilot Reece',        lng: -122.4194, lat: 37.7749, alt: 120, batt: 87, spd: 28, status: 'flying' },
+  { id: 'AC-7422', name: 'Skydio 2+ · Pilot Priya',     lng: -122.4170, lat: 37.7755, alt: 88,  batt: 64, spd: 22, status: 'flying' },
+  { id: 'AC-7423', name: 'Arc Pro · Pilot Tomás',       lng: -122.4210, lat: 37.7740, alt: 145, batt: 92, spd: 32, status: 'flying' },
+  { id: 'AC-7424', name: 'Anafi USA · Pilot Aisha',     lng: -122.4180, lat: 37.7770, alt: 60,  batt: 41, spd: 18, status: 'low-batt' },
+  { id: 'AC-7425', name: 'Matrice 30 · Pilot Kwame',    lng: -122.4150, lat: 37.7745, alt: 35,  batt: 12, spd: 0,  status: 'critical' },
+  { id: 'AC-7426', name: 'EVO II · Pilot Lin',          lng: -122.4225, lat: 37.7765, alt: 200, batt: 76, spd: 45, status: 'flying' },
+  { id: 'AC-7427', name: 'Skydio X10 · Pilot Hana',     lng: -122.4195, lat: 37.7720, alt: 0,   batt: 100, spd: 0, status: 'armed' },
+  { id: 'AC-7428', name: 'EVO Nano+ · Pilot Diego',     lng: -122.4165, lat: 37.7785, alt: 110, batt: 78, spd: 26, status: 'flying' }
+];
+
+const STATUS_COLOR = {
+  'flying':   '#00e5a0',
+  'armed':    '#ffb84d',
+  'idle':     '#8b94a5',
+  'low-batt': '#ffb84d',
+  'critical': '#ff5577'
+};
+
+const STATUS_LABEL = {
+  'flying':   'Flying',
+  'armed':    'Armed',
+  'idle':     'Idle',
+  'low-batt': 'Low Batt',
+  'critical': 'Critical'
+};
+
+/* ============================================================
+   Map setup
+   ============================================================ */
+const fallback = document.getElementById('map-fallback');
+let map, fpsFrameCount = 0, fpsLast = performance.now();
+
+function removeFallback() {
+  if (fallback.parentNode) {
+    fallback.style.opacity = '0';
+    fallback.style.transition = 'opacity 0.4s';
+    setTimeout(() => fallback.remove(), 400);
+  }
+}
+
+function showFallback(msg) {
+  if (!fallback.parentNode) return;
+  fallback.innerHTML = `<div><h3>🗺️ Map unavailable</h3><p>${msg}<br/><br/><code>tiles.openfreemap.org</code> unreachable from this network.</p></div>`;
+  fallback.style.opacity = '1';
+}
+
+try {
+  map = new maplibregl.Map({
+    container: 'map',
+    style: 'https://tiles.openfreemap.org/styles/liberty',
+    center: [-122.4194, 37.7749],
+    zoom: 14.5,
+    pitch: 55,
+    bearing: -17,
+    antialias: true,
+    maxPitch: 70,
+    attributionControl: false
+  });
+
+  map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+
+  map.on('load', () => {
+    removeFallback();
+    setupLayers();
+    setupDrones();
+    setupNFZ();
+    tickDrones();
+    setInterval(updateFPS, 500);
+    document.getElementById('btn-3d').addEventListener('click', toggle3D);
+    document.getElementById('btn-fly').addEventListener('click', toggleAutoFly);
+    document.getElementById('btn-reset').addEventListener('click', resetView);
+    renderFleetList();
+    document.getElementById('fleet-search').addEventListener('input', updateSearchHighlights);
+  });
+
+  map.on('error', (e) => {
+    console.error('MapLibre error', e);
+  });
+
+} catch (e) {
+  console.error(e);
+  showFallback('Could not initialize MapLibre. The library may have failed to load.');
+}
+
+/* ============================================================
+   3D building layer toggle
+   ============================================================ */
+let buildingsVisible = true;
+let buildingLayerId = null;   /* Tracked by setupLayers() */
+
+function toggle3D(e) {
+  buildingsVisible = !buildingsVisible;
+  const v = buildingsVisible ? 'visible' : 'none';
+  if (map && buildingLayerId && map.getLayer(buildingLayerId)) {
+    map.setLayoutProperty(buildingLayerId, 'visibility', v);
+  }
+  if (e && e.currentTarget) e.currentTarget.setAttribute('aria-pressed', String(buildingsVisible));
+}
+
+/* ============================================================
+   Build the layers — look for an OpenMapTiles fill-extrusion building
+   layer already in the OpenFreeMap style; if found, restyle it.
+   Otherwise fall back to synthetic buildings with id '3d-buildings'.
+   ============================================================ */
+function setupLayers() {
+  const style = map.getStyle();
+  let candidateId = null;
+  /* OpenMapTiles puts buildings on source-layer 'building', fill-extrusion */
+  for (const layer of style.layers) {
+    if (layer.type === 'fill-extrusion' &&
+        (layer['source-layer'] === 'building' || /build(ing)?/i.test(layer.id))) {
+      candidateId = layer.id;
+      break;
+    }
+  }
+
+  if (candidateId) {
+    buildingLayerId = candidateId;
+    /* Force the extrusion range to start at zoom 13 so buildings appear at our viewing zoom 14.5 */
+    try { map.setLayerZoomRange(buildingLayerId, 13, 22); } catch (_) {}
+    try { map.setPaintProperty(buildingLayerId, 'fill-extrusion-opacity', 0.85); } catch (_) {}
+    try { map.setPaintProperty(buildingLayerId, 'fill-extrusion-color', '#a0b4d0'); } catch (_) {}
+  } else {
+    /* Fallback — synthesise 100 buildings so the demo has visible 3D even on minimalist styles */
+    map.addSource('synth-buildings', { type: 'geojson', data: synthBuildings() });
+    map.addLayer({
+      id: '3d-buildings',
+      type: 'fill-extrusion',
+      source: 'synth-buildings',
+      paint: {
+        'fill-extrusion-color': '#5a6f8a',
+        'fill-extrusion-height': ['get', 'height'],
+        'fill-extrusion-base': 0,
+        'fill-extrusion-opacity': 0.85
+      }
+    });
+    buildingLayerId = '3d-buildings';
+  }
+}
+
+function synthBuildings() {
+  const features = [];
+  for (let i = 0; i < 100; i++) {
+    const cx = -122.42 + Math.random() * 0.01;
+    const cy = 37.773 + Math.random() * 0.008;
+    const size = 0.0005 + Math.random() * 0.0015;
+    const height = 30 + Math.random() * 200;
+    features.push({
+      type: 'Feature',
+      properties: { height },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[
+          [cx - size, cy - size],
+          [cx + size, cy - size],
+          [cx + size, cy + size],
+          [cx - size, cy + size],
+          [cx - size, cy - size]
+        ]]
+      }
+    });
+  }
+  return { type: 'FeatureCollection', features };
+}
+
+/* ============================================================
+   NFZ — no-fly zone polygon overlay
+   ============================================================ */
+function setupNFZ() {
+  const nfz1 = {
+    type: 'Feature',
+    properties: { name: 'SFO Class B (5nm)' },
+    geometry: {
+      type: 'Polygon',
+      coordinates: [[
+        [-122.435, 37.770],
+        [-122.405, 37.770],
+        [-122.405, 37.785],
+        [-122.435, 37.785],
+        [-122.435, 37.770]
+      ]]
+    }
+  };
+  const nfz2 = {
+    type: 'Feature',
+    properties: { name: 'City Hall Temp RFZ' },
+    geometry: {
+      type: 'Polygon',
+      coordinates: [[
+        [-122.420, 37.778],
+        [-122.418, 37.778],
+        [-122.418, 37.781],
+        [-122.420, 37.781],
+        [-122.420, 37.778]
+      ]]
+    }
+  };
+
+  map.addSource('nfz', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [nfz1, nfz2] }
+  });
+
+  map.addLayer({
+    id: 'nfz-fill',
+    type: 'fill-extrusion',
+    source: 'nfz',
+    paint: {
+      'fill-extrusion-color': '#ff5577',
+      'fill-extrusion-opacity': 0.3,
+      'fill-extrusion-height': 122,
+      'fill-extrusion-base': 0
+    }
+  });
+
+  map.addLayer({
+    id: 'nfz-outline',
+    type: 'line',
+    source: 'nfz',
+    paint: {
+      'line-color': '#ff5577',
+      'line-width': 2,
+      'line-dasharray': [2, 2]
+    }
+  });
+}
+
+/* ============================================================
+   Drone markers + flight paths
+   ============================================================ */
+const droneMarkers = {};
+
+function droneMarkerHTML(d) {
+  const c = STATUS_COLOR[d.status];
+  const pulse = (d.status === 'critical') ? 'animation: drone-pulse 0.6s infinite;' : '';
+  return `<div class="drone-marker" style="
+    width: 18px; height: 18px;
+    background: ${c};
+    border-radius: 50%;
+    border: 2px solid #06080d;
+    box-shadow: 0 0 12px ${c}, 0 0 0 4px rgba(6,8,13,0.4);
+    cursor: pointer;
+    position: relative;
+    ${pulse}
+  " data-id="${d.id}"></div>`;
+}
+
+function setupDrones() {
+  /* Flight path polylines */
+  const pathFeatures = FLEET.map(d => ({
+    type: 'Feature',
+    properties: { id: d.id, color: STATUS_COLOR[d.status], status: d.status },
+    geometry: { type: 'LineString', coordinates: generatePath(d, 20) }
+  }));
+
+  map.addSource('flight-paths', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: pathFeatures }
+  });
+
+  map.addLayer({
+    id: 'flight-paths',
+    type: 'line',
+    source: 'flight-paths',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: {
+      'line-color': ['get', 'color'],
+      'line-width': 2.5,
+      'line-opacity': 0.85,
+      'line-dasharray': [3, 1.5]
+    }
+  });
+
+  /* Drone markers with custom DOM */
+  FLEET.forEach(d => {
+    const el = document.createElement('div');
+    el.innerHTML = droneMarkerHTML(d);
+    const markerEl = el.firstChild;
+    markerEl.addEventListener('click', () => focusDrone(d));
+
+    const marker = new maplibregl.Marker({ element: markerEl })
+      .setLngLat([d.lng, d.lat])
+      .setPopup(new maplibregl.Popup({ offset: 18, closeButton: true })
+        .setHTML(dronePopupHTML(d)))
+      .addTo(map);
+
+    droneMarkers[d.id] = marker;
+  });
+}
+
+function generatePath(d, points) {
+  const path = [];
+  let lng = d.lng, lat = d.lat;
+  for (let i = 0; i < points; i++) {
+    path.push([lng, lat]);
+    if (d.status === 'flying') {
+      lng += (Math.random() - 0.5) * 0.001;
+      lat += (Math.random() - 0.5) * 0.001;
+    }
+  }
+  /* Append current position */
+  path.push([d.lng, d.lat]);
+  return path;
+}
+
+function dronePopupHTML(d) {
+  return `<div class="drone-popup">
+    <h4>${d.name}</h4>
+    <div class="row"><b>${d.id}</b> · ${STATUS_LABEL[d.status]}</div>
+    <div class="row">Altitude: <b>${d.alt}m AGL</b></div>
+    <div class="row">Battery: <b>${d.batt}%</b></div>
+    <div class="row">Ground Speed: <b>${d.spd} m/s</b></div>
+  </div>`;
+}
+
+/* ============================================================
+   Sidebar fleet list — with Highlight API search
+   ============================================================ */
+let fleetListEl, searchHighlights = [];
+
+function renderFleetList() {
+  fleetListEl = document.getElementById('fleet-list');
+  fleetListEl.innerHTML = '';
+  FLEET.forEach(d => {
+    const row = document.createElement('div');
+    row.className = 'drone-row';
+    row.dataset.id = d.id;
+    row.innerHTML = `
+      <div class="row-top">
+        <span class="drone-name">${d.name}</span>
+        <span class="drone-pill ${d.status}">${STATUS_LABEL[d.status]}</span>
+      </div>
+      <div class="telemetry">
+        <div class="tlm"><div class="lbl">ALT</div><div class="val">${d.alt}<span style="color:var(--text-muted);font-size:10px;">m</span></div></div>
+        <div class="tlm"><div class="lbl">BATT</div><div class="val">${d.batt}<span style="color:var(--text-muted);font-size:10px;">%</span></div></div>
+        <div class="tlm"><div class="lbl">SPD</div><div class="val">${d.spd}<span style="color:var(--text-muted);font-size:10px;">m/s</span></div></div>
+      </div>
+      <div class="batt-bar"><div class="batt-fill" style="--batt: ${d.batt}%"></div></div>
+    `;
+    row.addEventListener('click', () => focusDrone(d));
+    fleetListEl.appendChild(row);
+  });
+}
+
+function updateSearchHighlights(e) {
+  /* Clear existing */
+  for (const hl of searchHighlights) {
+    CSS.highlights.delete(hl);
+  }
+  searchHighlights = [];
+
+  const term = e.target.value.trim();
+  if (!term) return;
+
+  /* Build new highlights for fleet list */
+  const hl = new Highlight();
+  walkTextNodes(fleetListEl, term, hl);
+  CSS.highlights.set('search', hl);
+  searchHighlights.push(hl);
+
+  /* Also mark drones with low battery — highlight the BATT cell text */
+  const lowBatt = new Highlight();
+  FLEET.forEach(d => {
+    if (d.batt < 50) {
+      const rows = document.querySelectorAll(`.drone-row[data-id="${d.id}"] .tlm .val`);
+      const battCell = rows && rows[1];
+      if (battCell) {
+        const range = new Range();
+        range.setStart(battCell, 0);
+        range.setEnd(battCell, battCell.childNodes.length);
+        lowBatt.add(range);
+      }
+    }
+  });
+  CSS.highlights.set('low-batt', lowBatt);
+  searchHighlights.push(lowBatt);
+}
+
+function walkTextNodes(root, term, hl) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+  const nodes = [];
+  let n;
+  while ((n = walker.nextNode())) {
+    if (n.nodeValue.trim()) nodes.push(n);
+  }
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(escaped, 'gi');
+  nodes.forEach(node => {
+    const matches = [...node.nodeValue.matchAll(re)];
+    /* Apply in reverse so ranges don't invalidate */
+    for (let i = matches.length - 1; i >= 0; i--) {
+      const m = matches[i];
+      const range = new Range();
+      range.setStart(node, m.index);
+      range.setEnd(node, m.index + m[0].length);
+      hl.add(range);
+    }
+  });
+}
+
+/* ============================================================
+   Drone tick — animate positions, drain batteries
+   ============================================================ */
+let autoFly = false;
+function tickDrones() {
+  setInterval(() => {
+    FLEET.forEach(d => {
+      if (d.status === 'flying' || d.status === 'low-batt') {
+        /* Wander */
+        d.lng += (Math.random() - 0.5) * 0.0006;
+        d.lat += (Math.random() - 0.5) * 0.0006;
+        d.alt = Math.max(30, Math.min(250, d.alt + (Math.random() - 0.5) * 4));
+        d.spd = Math.max(5, Math.min(50, d.spd + (Math.random() - 0.5) * 1.5));
+        d.batt = Math.max(0, d.batt - 0.05);
+        if (d.batt < 20 && d.status !== 'critical') {
+          d.status = 'critical';
+        } else if (d.batt < 50 && d.status === 'flying') {
+          d.status = 'low-batt';
+        }
+      }
+      /* Update marker */
+      const m = droneMarkers[d.id];
+      if (m) {
+        m.setLngLat([d.lng, d.lat]);
+        const popup = m.getPopup();
+        if (popup && popup.isOpen()) {
+          popup.setHTML(dronePopupHTML(d));
+        }
+      }
+    });
+
+    /* Update sidebar list (battery bars animated via @property) */
+    FLEET.forEach(d => {
+      const row = document.querySelector(`.drone-row[data-id="${d.id}"]`);
+      if (!row) return;
+      /* Update pill */
+      const pill = row.querySelector('.drone-pill');
+      pill.className = `drone-pill ${d.status}`;
+      pill.textContent = STATUS_LABEL[d.status];
+      /* Update telemetry */
+      const tel = row.querySelectorAll('.tlm .val');
+      if (tel[0]) tel[0].innerHTML = `${Math.round(d.alt)}<span style="color:var(--text-muted);font-size:10px;">m</span>`;
+      if (tel[1]) tel[1].innerHTML = `${Math.round(d.batt)}<span style="color:var(--text-muted);font-size:10px;">%</span>`;
+      if (tel[2]) tel[2].innerHTML = `${Math.round(d.spd)}<span style="color:var(--text-muted);font-size:10px;">m/s</span>`;
+      /* Animated batt bar via @property */
+      const fill = row.querySelector('.batt-fill');
+      if (fill) fill.style.setProperty('--batt', `${Math.round(d.batt)}%`);
+    });
+
+    /* Update polylines periodically */
+    if (Math.random() < 0.2) {
+      const data = {
+        type: 'FeatureCollection',
+        features: FLEET.map(d => ({
+          type: 'Feature',
+          properties: { id: d.id, color: STATUS_COLOR[d.status], status: d.status },
+          geometry: { type: 'LineString', coordinates: generatePath(d, 20) }
+        }))
+      };
+      const src = map.getSource('flight-paths');
+      if (src) src.setData(data);
+    }
+  }, 1000);
+}
+
+function toggleAutoFly(e) {
+  autoFly = !autoFly;
+  e.currentTarget.setAttribute('aria-pressed', String(autoFly));
+  if (autoFly) {
+    const fly = () => {
+      if (!autoFly) return;
+      map.easeTo({
+        center: [map.getCenter().lng - 0.0008, map.getCenter().lat - 0.0003],
+        pitch: 50 + Math.sin(Date.now() / 5000) * 10,
+        bearing: map.getBearing() + 0.05,
+        duration: 200,
+        easing: t => t
+      });
+      requestAnimationFrame(fly);
+    };
+    fly();
+  }
+}
+
+function resetView(e) {
+  map.easeTo({
+    center: [-122.4194, 37.7749],
+    zoom: 14.5,
+    pitch: 55,
+    bearing: -17,
+    duration: 1200
+  });
+}
+
+function focusDrone(d) {
+  /* Highlight row */
+  document.querySelectorAll('.drone-row.active').forEach(r => r.classList.remove('active'));
+  const row = document.querySelector(`.drone-row[data-id="${d.id}"]`);
+  if (row) row.classList.add('active');
+  /* Fly to */
+  map.easeTo({
+    center: [d.lng, d.lat],
+    zoom: 16.5,
+    pitch: 70,
+    bearing: 0,
+    duration: 1400,
+    essential: true
+  });
+  /* Open popup */
+  droneMarkers[d.id]?.togglePopup();
+}
+
+function updateFPS() {
+  const now = performance.now();
+  const elapsed = now - fpsLast;
+  if (elapsed > 0 && fpsFrameCount > 0) {
+    const fps = Math.round((fpsFrameCount * 1000) / elapsed);
+    const el = document.getElementById('fps-val');
+    if (el) {
+      el.textContent = fps;
+      el.className = 'val ' + (fps >= 50 ? 'ok' : fps >= 30 ? 'warn' : 'danger');
+    }
+  }
+  fpsFrameCount = 0;
+  fpsLast = now;
+  requestAnimationFrame(countFrame);
+}
+
+function countFrame() {
+  fpsFrameCount++;
+  requestAnimationFrame(countFrame);
+}
+requestAnimationFrame(countFrame);
+</script>
+
+<style>
+  /* MapLibre tweaks overlay (kept at end so they win) */
+  .maplibregl-ctrl-group {
+    background: rgba(11, 15, 23, 0.92) !important;
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border-2);
+  }
+  .maplibregl-ctrl-group button {
+    background-color: transparent !important;
+    color: var(--text) !important;
+    border: none !important;
+  }
+  .maplibregl-ctrl-group button:hover {
+    background-color: rgba(0, 212, 255, 0.1) !important;
+  }
+  .maplibregl-ctrl-group button + button {
+    border-top: 1px solid var(--border) !important;
+  }
+  .maplibregl-ctrl-zoom-in span,
+  .maplibregl-ctrl-zoom-out span,
+  .maplibregl-ctrl-compass span {
+    filter: invert(1);
+  }
+  @keyframes drone-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.4); }
+  }
+</style>
+
+</body>
+</html>
