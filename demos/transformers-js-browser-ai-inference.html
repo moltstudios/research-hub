@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transformers.js v4 + ONNX Runtime Web — Client-Side AI Inference (WebGPU)</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #14141f;
+    --surface-2: #1c1c2b;
+    --surface-3: #252538;
+    --border: #2a2a3d;
+    --border-strong: #3a3a52;
+    --text: #e8e8f0;
+    --text-dim: #8888a0;
+    --text-muted: #5a5a72;
+    --accent: #00d2ff;
+    --accent-glow: rgba(0, 210, 255, 0.3);
+    --accent-2: #74e0ff;
+    --green: #00cec9;
+    --orange: #fdcb6e;
+    --red: #ff6b6b;
+    --pink: #fd79a8;
+    --purple: #a29bfe;
+    --radius: 12px;
+    color-scheme: dark;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+    background:
+      radial-gradient(1200px 800px at 20% 0%, rgba(0, 210, 255, 0.12), transparent 60%),
+      radial-gradient(900px 700px at 90% 80%, rgba(162, 155, 254, 0.08), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 64px 24px 96px; }
+
+  /* ---------- Hero ---------- */
+  .hero { margin-bottom: 56px; }
+  .tag {
+    display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; padding: 6px 12px; border-radius: 999px;
+    background: var(--accent-glow); color: var(--accent-2);
+    border: 1px solid rgba(0, 210, 255, 0.4); margin-bottom: 20px;
+  }
+  h1 {
+    font-size: clamp(32px, 4.4vw, 46px); font-weight: 700; line-height: 1.1;
+    letter-spacing: -0.02em; margin-bottom: 16px;
+  }
+  h1 em { font-style: normal; color: var(--accent-2); }
+  .sub { font-size: 18px; color: var(--text-dim); max-width: 760px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; font-size: 13px; color: var(--text-muted); }
+  .meta-item {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--border);
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
+  .dot.warn { background: var(--orange); box-shadow: 0 0 10px var(--orange); }
+  .dot.bad  { background: var(--red); box-shadow: 0 0 10px var(--red); }
+
+  /* ---------- Section ---------- */
+  section { margin-bottom: 56px; }
+  h2 {
+    font-size: 22px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  h2 .num {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px;
+    color: var(--text-muted); background: var(--surface);
+    border: 1px solid var(--border); padding: 2px 8px; border-radius: 6px;
+  }
+  .lead { color: var(--text-dim); font-size: 15px; max-width: 720px; margin-bottom: 24px; }
+
+  /* ---------- Cards / surfaces ---------- */
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 24px; margin-bottom: 16px;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 16px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  /* ---------- Code blocks ---------- */
+  pre, code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px;
+  }
+  pre {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px; overflow-x: auto;
+    color: #d0d0e8; line-height: 1.55;
+  }
+  code { color: var(--accent-2); }
+  pre code { color: inherit; }
+  .kw { color: #c792ea; }
+  .str { color: #c3e88d; }
+  .fn { color: #82aaff; }
+  .cm { color: #6a737d; font-style: italic; }
+  .num-literal { color: #f78c6c; }
+
+  /* ---------- Buttons ---------- */
+  button, .btn {
+    background: var(--accent); color: #0a0a0f; border: none;
+    padding: 10px 18px; border-radius: 8px; font-weight: 600;
+    font-size: 14px; cursor: pointer; transition: all 0.15s ease;
+    font-family: inherit;
+  }
+  button:hover:not(:disabled), .btn:hover {
+    background: var(--accent-2); transform: translateY(-1px);
+    box-shadow: 0 4px 12px var(--accent-glow);
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-ghost {
+    background: transparent; color: var(--text-dim); border: 1px solid var(--border);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--surface-2); color: var(--text); border-color: var(--border-strong);
+  }
+
+  /* ---------- Inputs ---------- */
+  input[type="text"], textarea, select {
+    width: 100%; padding: 10px 12px; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-size: 14px; font-family: inherit;
+    transition: border 0.15s ease;
+  }
+  input[type="text"]:focus, textarea:focus, select:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+  textarea { min-height: 80px; resize: vertical; font-family: inherit; }
+
+  /* ---------- HUD ---------- */
+  .hud { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; font-size: 12px; }
+  .hud-item {
+    padding: 4px 10px; border-radius: 6px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text-dim); font-family: ui-monospace, monospace;
+  }
+  .hud-item strong { color: var(--accent-2); font-weight: 600; }
+
+  /* ---------- Output ---------- */
+  .output {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px; min-height: 80px;
+    font-family: ui-monospace, monospace; font-size: 13px;
+    color: var(--text); white-space: pre-wrap; word-break: break-word;
+    margin-top: 12px; line-height: 1.6;
+  }
+  .output.empty { color: var(--text-muted); font-style: italic; }
+
+  /* ---------- Status pill ---------- */
+  .status {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    font-size: 12px; color: var(--text-dim);
+  }
+  .status .pulse {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse 1.5s infinite;
+  }
+  .status.busy .pulse { background: var(--orange); box-shadow: 0 0 8px var(--orange); }
+  .status.error .pulse { background: var(--red); box-shadow: 0 0 8px var(--red); }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ---------- Embedding bar ---------- */
+  .embed-bar {
+    display: flex; align-items: center; gap: 6px;
+    font-family: ui-monospace, monospace; font-size: 11px;
+    padding: 4px 0; color: var(--text-dim);
+  }
+  .embed-bar .bar {
+    height: 14px; background: linear-gradient(90deg, var(--accent), var(--purple));
+    border-radius: 3px; min-width: 2px;
+  }
+  .embed-bar .label { width: 80px; flex-shrink: 0; color: var(--text); }
+  .embed-bar .val { width: 60px; text-align: right; color: var(--accent-2); }
+
+  /* ---------- Tables ---------- */
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  th {
+    color: var(--text-muted); font-weight: 600; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    background: var(--surface-2);
+  }
+  td { color: var(--text); }
+  td code { background: var(--surface-2); padding: 2px 6px; border-radius: 4px; }
+
+  /* ---------- Image classification grid ---------- */
+  .img-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+    margin-top: 12px;
+  }
+  @media (max-width: 720px) { .img-grid { grid-template-columns: repeat(2, 1fr); } }
+  .img-cell {
+    aspect-ratio: 1; background: var(--surface-2); border-radius: 8px;
+    border: 1px solid var(--border); overflow: hidden;
+    cursor: pointer; transition: all 0.15s ease; position: relative;
+  }
+  .img-cell:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .img-cell.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+  .img-cell img { width: 100%; height: 100%; object-fit: cover; }
+  .img-cell .label {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 4px 8px; background: rgba(10,10,15,0.85);
+    font-size: 10px; color: var(--text); text-align: center;
+  }
+
+  /* ---------- Tier cards ---------- */
+  .tier-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+    margin-top: 12px;
+  }
+  @media (max-width: 720px) { .tier-grid { grid-template-columns: 1fr; } }
+  .tier {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px;
+  }
+  .tier h3 {
+    font-size: 14px; font-weight: 700; color: var(--accent-2);
+    margin-bottom: 8px; display: flex; align-items: center; gap: 8px;
+  }
+  .tier p { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+  .tier .best { margin-top: 8px; font-size: 11px; color: var(--green); font-family: ui-monospace, monospace; }
+
+  /* ---------- Footer ---------- */
+  footer {
+    margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--border);
+    color: var(--text-muted); font-size: 12px; text-align: center;
+  }
+  footer a { color: var(--accent-2); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+
+  /* ---------- Spinner ---------- */
+  .spinner {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- Highlighted code in description ---------- */
+  .desc code {
+    background: var(--surface-2); padding: 2px 6px; border-radius: 4px;
+    font-size: 0.9em;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ===== HERO ===== -->
+  <header class="hero">
+    <span class="tag">⚡ Transformers.js v4 · ONNX Runtime Web · WebGPU · Interop 2026</span>
+    <h1>Client-Side AI Inference <em>Without a Server</em></h1>
+    <p class="sub">
+      Run state-of-the-art transformer models (text, vision, speech) directly in the browser,
+      accelerated by WebGPU when available. Zero backend. Zero per-request cost. Zero data leaving the device.
+      The production answer for embedded AI features on any web app.
+    </p>
+    <div class="meta">
+      <span class="meta-item"><span class="dot"></span> Baseline 2026 (WebGPU + ONNX Runtime Web)</span>
+      <span class="meta-item">Coverage ~82% WebGPU / ~99% WASM fallback</span>
+      <span class="meta-item">Models: 1B–20B params on-device</span>
+      <span class="meta-item">Priority: <strong style="color:var(--accent-2)">P2</strong></span>
+    </div>
+  </header>
+
+  <!-- ===== SECTION 1: LIVE TEXT EMBEDDINGS ===== -->
+  <section>
+    <h2><span class="num">01</span> Live Text Embeddings — The 5-Line Recipe</h2>
+    <p class="lead">
+      Compute semantic embeddings for any text using
+      <code>mixedbread-ai/mxbai-embed-xsmall-v1</code> (33M params, ~120MB quantized).
+      Runs in your browser via WebGPU. The same API your server would call to OpenAI,
+      minus the network round-trip, the API key, and the per-token bill.
+    </p>
+
+    <div class="card">
+      <div class="row" style="gap: 12px; align-items: flex-end;">
+        <div style="flex: 1; min-width: 240px;">
+          <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 6px;">Input text</label>
+          <input type="text" id="embed-input" value="Drone flying over a solar farm inspection site"
+                 placeholder="Type anything…">
+        </div>
+        <button id="embed-btn">Compute Embedding</button>
+      </div>
+
+      <div class="hud">
+        <span class="hud-item" id="embed-status">Ready</span>
+        <span class="hud-item">Device: <strong id="embed-device">detecting…</strong></span>
+        <span class="hud-item">Backend: <strong id="embed-backend">…</strong></span>
+        <span class="hud-item">Latency: <strong id="embed-latency">–</strong></span>
+        <span class="hud-item">Dim: <strong id="embed-dim">–</strong></span>
+      </div>
+
+      <div class="output empty" id="embed-output">Click "Compute Embedding" to run inference. First run downloads the model (~120MB) — cached afterward.</div>
+
+      <details style="margin-top: 16px;">
+        <summary style="cursor: pointer; color: var(--accent-2); font-size: 13px; font-family: ui-monospace, monospace;">Show source</summary>
+        <pre><code><span class="cm">// 5-line Transformers.js v4 recipe</span>
+<span class="kw">import</span> { pipeline } <span class="kw">from</span> <span class="str">"@huggingface/transformers"</span>;
+
+<span class="kw">const</span> extractor = <span class="kw">await</span> <span class="fn">pipeline</span>(
+  <span class="str">"feature-extraction"</span>,
+  <span class="str">"mixedbread-ai/mxbai-embed-xsmall-v1"</span>,
+  { <span class="kw">device</span>: <span class="str">"webgpu"</span> }       <span class="cm">// ← auto-falls back to wasm if no WebGPU</span>
+);
+
+<span class="kw">const</span> result = <span class="kw">await</span> <span class="fn">extractor</span>(
+  [<span class="str">"Hello world"</span>, <span class="str">"Goodbye world"</span>],
+  { pooling: <span class="str">"mean"</span>, normalize: <span class="kw">true</span> }
+);</code></pre>
+      </details>
+    </div>
+  </section>
+
+  <!-- ===== SECTION 2: LIVE SENTIMENT ANALYSIS ===== -->
+  <section>
+    <h2><span class="num">02</span> Live Sentiment Analysis — Zero-Shot Text Classification</h2>
+    <p class="lead">
+      Classify any text into positive / negative sentiment with
+      <code>distilbert-base-uncased-finetuned-sst-2-english</code> (67M params, ~130MB quantized).
+      Pairs naturally with Web Push cart-recovery (P1) — score every cart-abandonment message,
+      route negative sentiment to human follow-up.
+    </p>
+
+    <div class="card">
+      <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 6px;">Try a sentence</label>
+      <textarea id="sent-input">OpenDrones Mission Control is the most intuitive drone ops platform I've ever used. Battery telemetry is incredible.</textarea>
+
+      <div class="row" style="margin-top: 12px; gap: 8px;">
+        <button id="sent-btn">Classify Sentiment</button>
+        <button class="btn-ghost" id="sent-sample-1">Try positive sample</button>
+        <button class="btn-ghost" id="sent-sample-2">Try negative sample</button>
+        <button class="btn-ghost" id="sent-sample-3">Try mixed sample</button>
+      </div>
+
+      <div class="hud">
+        <span class="hud-item">Status: <strong id="sent-status">Ready</strong></span>
+        <span class="hud-item">Model: <strong>distilbert-sst2</strong></span>
+        <span class="hud-item">Latency: <strong id="sent-latency">–</strong></span>
+      </div>
+
+      <div class="output empty" id="sent-output">Sentiment scores will appear here.</div>
+    </div>
+  </section>
+
+  <!-- ===== SECTION 3: LIVE IMAGE CLASSIFICATION ===== -->
+  <section>
+    <h2><span class="num">03</span> Live Image Classification — MobileNetV4 on WebGPU</h2>
+    <p class="lead">
+      Run real-time object detection / classification on any image — perfect for OpenDrones
+      aerial footage triage (crack / corrosion / NFZ intrusion / vegetation encroachment).
+      <code>mobilenetv4_conv_small</code> (3.4M params, ~10MB quantized) runs on any device.
+    </p>
+
+    <div class="card">
+      <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 8px;">Click any sample to classify</label>
+      <div class="img-grid">
+        <div class="img-cell" data-img="cat">
+          <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:48px;">🐱</div>
+          <div class="label">Tabby cat (synthesized)</div>
+        </div>
+        <div class="img-cell" data-img="dog">
+          <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:48px;">🐕</div>
+          <div class="label">Golden retriever (synthesized)</div>
+        </div>
+        <div class="img-cell" data-img="car">
+          <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:48px;">🚗</div>
+          <div class="label">Sports car (synthesized)</div>
+        </div>
+        <div class="img-cell" data-img="drone">
+          <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:48px;">🛸</div>
+          <div class="label">Drone (synthesized)</div>
+        </div>
+      </div>
+
+      <div class="hud">
+        <span class="hud-item">Status: <strong id="img-status">Ready</strong></span>
+        <span class="hud-item">Model: <strong>mobilenetv4_conv_small</strong></span>
+        <span class="hud-item">Latency: <strong id="img-latency">–</strong></span>
+        <span class="hud-item">Size: <strong>3.4M params / ~10MB</strong></span>
+      </div>
+
+      <div class="output empty" id="img-output">Top-5 ImageNet predictions will appear here.</div>
+
+      <details style="margin-top: 16px;">
+        <summary style="cursor: pointer; color: var(--accent-2); font-size: 13px; font-family: ui-monospace, monospace;">Show source</summary>
+        <pre><code><span class="cm">// Image classification — also 5 lines</span>
+<span class="kw">const</span> classifier = <span class="kw">await</span> <span class="fn">pipeline</span>(
+  <span class="str">"image-classification"</span>,
+  <span class="str">"onnx-community/mobilenetv4_conv_small.e2400_r224_in1k"</span>,
+  { <span class="kw">device</span>: <span class="str">"webgpu"</span> }
+);
+
+<span class="kw">const</span> output = <span class="kw">await</span> <span class="fn">classifier</span>(imageElement);
+<span class="cm">// → [{ label: 'tabby cat', score: 0.614 }, { label: 'tiger cat', score: 0.302 }, ...]</span></code></pre>
+      </details>
+    </div>
+  </section>
+
+  <!-- ===== SECTION 4: ARCHITECTURE TIERS ===== -->
+  <section>
+    <h2><span class="num">04</span> The Inference Ladder — 5 Tiers From Embedded to Cloud</h2>
+    <p class="lead">
+      Browser AI runs on a continuous spectrum. The honest rule: keep models small (under 2B params)
+      for cross-device shipping, escalate to server GPU only when you need RAG, long-context, or 7B+ reasoning.
+    </p>
+
+    <div class="tier-grid">
+      <div class="tier">
+        <h3>🪶 Tier 1 · Tiny &lt;10M</h3>
+        <p>MobileNetV4, DistilBERT, embedding models. ~10MB downloads. Runs on phones, smart TVs, low-end Chromebooks.</p>
+        <div class="best">Best: classification · embeddings · on-device NER</div>
+      </div>
+      <div class="tier">
+        <h3>📱 Tier 2 · Small 10M–500M</h3>
+        <p>Whisper-tiny (39M), BERT-base, all-MiniLM. ~100-500MB. Modern phones and laptops handle these fine via WebGPU.</p>
+        <div class="best">Best: speech-to-text · sentiment · semantic search</div>
+      </div>
+      <div class="tier">
+        <h3>💻 Tier 3 · Medium 500M–2B</h3>
+        <p>Phi-3-mini (3.8B q4), Gemma-2-2B, Llama-3.2-1B. ~1-3GB. M-series Macs and discrete GPU laptops fly.</p>
+        <div class="best">Best: chat assistants · structured extraction · Q&amp;A</div>
+      </div>
+      <div class="tier">
+        <h3>🎮 Tier 4 · Large 2B–7B</h3>
+        <p>Llama-3-8B q4, Mistral-7B q4. ~4-8GB. Needs WebGPU on desktop with discrete GPU. Mobile drops to slow.</p>
+        <div class="best">Best: complex reasoning · code generation · long-form</div>
+      </div>
+      <div class="tier">
+        <h3>☁️ Tier 5 · XL 7B+</h3>
+        <p>70B+ models, GPT-4-class. Server GPU only. Use when client-side hardware can't fit the weights.</p>
+        <div class="best">Best: RAG · multi-step reasoning · vision-language</div>
+      </div>
+      <div class="tier">
+        <h3>🔀 Hybrid · Server fallback</h3>
+        <p>Detect device tier, route small models client-side and large models to your API. Best of both.</p>
+        <div class="best">Best: production chat · variable hardware fleet</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== SECTION 5: BROWSER SUPPORT ===== -->
+  <section>
+    <h2><span class="num">05</span> Browser Support &amp; The WASM Fallback</h2>
+    <p class="lead">
+      Transformers.js v4 runs the SAME model code on WASM and WebGPU. The fallback is automatic —
+      your app degrades to ~3-5× slower CPU inference on browsers without WebGPU.
+    </p>
+
+    <div class="card" style="overflow-x: auto;">
+      <table>
+        <thead>
+          <tr><th>Backend</th><th>Status</th><th>Browser coverage</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong style="color:var(--green)">WebGPU</strong></td><td>Primary path</td><td>~82% (Chrome 113+, Edge 113+, Safari 18+, Firefox 141+)</td><td>5-15× faster than WASM. Compute shaders via ONNX Runtime Web C++ rewrite.</td></tr>
+          <tr><td><strong style="color:var(--orange)">WASM (SIMD + threads)</strong></td><td>Universal fallback</td><td>~99% (every browser since 2019)</td><td>~3-5× slower than WebGPU but reliable. Same model file, same API.</td></tr>
+          <tr><td><strong style="color:var(--purple)">WebNN</strong></td><td>Experimental (2026)</td><td>Chrome 137+ behind flag, Edge 137+</td><td>Direct NPU/GPU access. Future native-OS acceleration. Not production-ready.</td></tr>
+          <tr><td><strong style="color:var(--accent-2)">Server GPU</strong></td><td>Always-available</td><td>100% (depends on your backend)</td><td>When model &gt;2B params, when RAG/long-context is needed, or mobile WebGPU is unreliable.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3 style="font-size: 14px; color: var(--text-dim); margin-bottom: 8px;">The device-selection one-liner</h3>
+      <pre><code><span class="cm">// Transformers.js v4: ask for WebGPU, accept whatever is offered</span>
+<span class="kw">import</span> { env } <span class="kw">from</span> <span class="str">"@huggingface/transformers"</span>;
+
+<span class="cm">// Prefer WebGPU when available, fall back to WASM silently</span>
+env.backends.onnx.wasm.proxy = <span class="kw">false</span>;          <span class="cm">// use the Web Worker proxy for large models</span>
+env.useWasmCache = <span class="kw">true</span>;                  <span class="cm">// survive offline reloads after first download</span>
+
+<span class="kw">const</span> pipe = <span class="kw">await</span> <span class="fn">pipeline</span>(<span class="str">"text-generation"</span>, <span class="str">"onnx-community/Llama-3.2-1B-Instruct"</span>, {
+  <span class="kw">device</span>: <span class="str">"webgpu"</span>,                       <span class="cm">// tries WebGPU first</span>
+  <span class="kw">dtype</span>: <span class="str">"q4f16"</span>                          <span class="cm">// 4-bit weights, 16-bit activations — ~800MB on disk</span>
+});</code></pre>
+    </div>
+  </section>
+
+  <!-- ===== SECTION 6: PRODUCTION COMPARISON ===== -->
+  <section>
+    <h2><span class="num">06</span> Server GPU vs Client GPU — When to Pick Each</h2>
+    <p class="lead">
+      The honest economic split. Most teams dramatically over-build their AI backend.
+      The browser can do more than you think.
+    </p>
+
+    <div class="card" style="overflow-x: auto;">
+      <table>
+        <thead>
+          <tr><th>Dimension</th><th style="color:var(--accent-2)">Client-side (Transformers.js)</th><th style="color:var(--purple)">Server-side (OpenAI / vLLM)</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Per-query cost</td><td><strong style="color:var(--green)">$0</strong> (user's GPU does the work)</td><td>~$0.0001–$0.01 per request</td></tr>
+          <tr><td>Latency</td><td><strong style="color:var(--green)">~50–200ms</strong> after model loads (no network)</td><td>~300–1500ms (network + queue + inference)</td></tr>
+          <tr><td>Privacy</td><td><strong style="color:var(--green)">100% on-device</strong> — input never leaves</td><td>Data sent to third party; SOC2/HIPAA concerns</td></tr>
+          <tr><td>Offline support</td><td><strong style="color:var(--green)">Yes</strong> after first cache (env.useWasmCache)</td><td>No — requires internet</td></tr>
+          <tr><td>Model size limit</td><td>~2B params for cross-device (8B+ on desktops)</td><td>Unlimited (server GPU scales)</td></tr>
+          <tr><td>Setup complexity</td><td><strong style="color:var(--green)">3 lines</strong> (pipeline + run)</td><td>API key, rate limits, billing, vendor lock-in</td></tr>
+          <tr><td>Maintenance</td><td><strong style="color:var(--green)">Zero</strong> (model + runtime pinned in npm)</td><td>Vendor deprecations, pricing changes, outages</td></tr>
+          <tr><td>Best for</td><td>Embeddings, classification, sentiment, NER, short Q&amp;A, semantic search, on-device triage</td><td>RAG, 70B+ reasoning, long-context, multi-modal agents, code generation</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" style="border-left: 3px solid var(--accent);">
+      <h3 style="font-size: 16px; color: var(--accent-2); margin-bottom: 8px;">💡 The hybrid pattern most teams miss</h3>
+      <p style="color: var(--text-dim); font-size: 14px; line-height: 1.6;">
+        Route small/fast inference client-side (classification, embeddings, NER) and large/slow inference server-side
+        (long-context RAG, complex reasoning). The result: <strong>5-10× cheaper inference bills</strong> at
+        <strong>better latency for 80% of queries</strong>. Most teams pay server GPU for what the browser could have
+        done in 100ms.
+      </p>
+    </div>
+  </section>
+
+  <!-- ===== SECTION 7: DIRECT APPLICATIONS — OPENDRONES ===== -->
+  <section>
+    <h2><span class="num">07</span> Direct Applications — OpenDrones Mission Control</h2>
+    <p class="lead">
+      Five production patterns where the browser does the inference that used to require a server.
+      All ship-today with Transformers.js v4 + WebGPU.
+    </p>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3 style="font-size: 16px; color: var(--accent-2); margin-bottom: 8px;">🚁 Aerial Footage Triage</h3>
+        <p style="color: var(--text-dim); font-size: 13px; line-height: 1.6;">
+          MobileNetV4 runs on each captured frame in a Web Worker.
+          Pilot uploads 4K flight video → client classifies every 5th frame → only anomaly frames go to human review.
+          <strong style="color:var(--green)">95% reduction</strong> in human-review time for tower / solar / pipeline inspections.
+        </p>
+      </div>
+      <div class="card">
+        <h3 style="font-size: 16px; color: var(--accent-2); margin-bottom: 8px;">⚡ Telemetry Anomaly Detection</h3>
+        <p style="color: var(--text-dim); font-size: 13px; line-height: 1.6;">
+          MiniLM or DistilBERT reads streaming telemetry as embedded tokens (battery, GPS, altitude, attitude).
+          Local anomaly score lights up red before the drone even hits a problem.
+          Pairs with the WebGPU airspace view (P2).
+        </p>
+      </div>
+      <div class="card">
+        <h3 style="font-size: 16px; color: var(--accent-2); margin-bottom: 8px;">🎙️ Pilot Voice Commands</h3>
+        <p style="color: var(--text-dim); font-size: 13px; line-height: 1.6;">
+          Whisper-tiny (~40MB) runs in the browser tab. Pilot says "Return to home" or "Pause mission".
+          No server round-trip, works in low-connectivity areas (rural inspections, search-and-rescue).
+        </p>
+      </div>
+      <div class="card">
+        <h3 style="font-size: 16px; color: var(--accent-2); margin-bottom: 8px;">🔍 Semantic Flight Log Search</h3>
+        <p style="color: var(--text-dim); font-size: 13px; line-height: 1.6;">
+          mxbai-embed-xsmall computes vectors for every flight log entry. Local cosine similarity search.
+          Pilot types "inspections near tower farm" → instantly returns the 3 most semantically similar flights.
+          Zero API cost, works offline.
+        </p>
+      </div>
+      <div class="card">
+        <h3 style="font-size: 16px; color: var(--accent-2); margin-bottom: 8px;">🤖 Compliance Report Drafting</h3>
+        <p style="color: var(--text-dim); font-size: 13px; line-height: 1.6;">
+          Phi-3-mini (3.8B q4) runs locally on desktop. Pilot hits "Draft Part 107 report" → model reads
+          flight telemetry + captured frames + weather data → outputs a structured compliance summary.
+          Pilot edits, doesn't write from scratch.
+        </p>
+      </div>
+      <div class="card">
+        <h3 style="font-size: 16px; color: var(--accent-2); margin-bottom: 8px;">📡 Offline-First Mission Planning</h3>
+        <p style="color: var(--text-dim); font-size: 13px; line-height: 1.6;">
+          PWA installs with the model cached. Pilot plans mission in airplane mode, syncs when online.
+          The same `env.useWasmCache = true` flag that runs ASR offline also runs flight planning offline.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== SECTION 8: DIRECT APPLICATIONS — MOLT STUDIOS ===== -->
+  <section>
+    <h2><span class="num">08</span> Direct Applications — Molt Studios Client Deliverables</h2>
+    <p class="lead">
+      Eight sellable client deliverables where browser AI replaces a $5-50k/year API bill.
+      Each one is a $3-15k build.
+    </p>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3 style="font-size: 14px; color: var(--accent-2); margin-bottom: 6px;">1. Semantic Site Search</h3>
+        <p style="color: var(--text-dim); font-size: 13px;">
+          Embed every page on a contractor / dental / law firm site. Users search "what's the difference between
+          a bridge and a crown" → returns the right blog post even when keywords don't match. Embedding stored in
+          IndexedDB, computed client-side, $0 API cost.
+        </p>
+      </div>
+      <div class="card">
+        <h3 style="font-size: 14px; color: var(--accent-2); margin-bottom: 6px;">2. Lead-Quality Sentiment Scoring</h3>
+        <p style="color: var(--text-dim); font-size: 13px;">
+          Form submissions get sentiment + intent classified locally before hitting the CRM.
+          "My roof is leaking and I need help" → hot lead, route to sales in 30s.
+          "Just browsing" → nurture sequence.
+        </p>
+      </div>
+      <div class="card">
+        <h3 style="font-size: 14px; color: var(--accent-2); margin-bottom: 6px;">3. On-Device Quote-Form Triage</h3>
+        <p style="color: var(--text-dim); font-size: 13px;">
+          Construction / contractor forms come in messy text. DistilBERT classifies project type, urgency, scope.
+          Sales rep gets a pre-tagged lead with the right template loaded.
+        </p>
+      </div>
+      <div class="card">
+        <h3 style="font-size: 14px; color: var(--accent-2); margin-bottom: 6px;">4. Portfolio Image Auto-Tagging</h3>
+        <p style="color: var(--text-dim); font-size: 13px;">
+          Photographer uploads 200 wedding photos. MobileNetV4 classifies each: "ceremony", "reception", "portrait",
+          "cake cutting". Auto-builds a searchable gallery. Pairs with Custom Highlight API (P1) for instant search.
+        </p>
+      </div>
+      <div class="card">
+        <h3 style="font-size: 14px; color: var(--accent-2); margin-bottom: 6px;">5. Real-Estate Listing Embeddings</h3>
+        <p style="color: var(--text-dim); font-size: 13px;">
+          Buyer types "cozy 2BR with backyard near good schools under 500k". Embedding similarity ranks every listing.
+          Zero API, runs entirely in the buyer's browser tab.
+        </p>
+      </div>
+      <div class="card">
+        <h3 style="font-size: 14px; color: var(--accent-2); margin-bottom: 6px;">6. Live Chat Onboarding</h3>
+        <p style="color: var(--text-dim); font-size: 13px;">
+          Phi-3-mini (3.8B q4) answers "how does pricing work?" with the company's own docs embedded nearby.
+          Falls back to "leave your email for a human" when confidence is low. $0 backend.
+        </p>
+      </div>
+      <div class="card">
+        <h3 style="font-size: 14px; color: var(--accent-2); margin-bottom: 6px;">7. Voice-Enabled Site Search</h3>
+        <p style="color: var(--text-dim); font-size: 13px;">
+          Whisper-tiny runs in the browser. User clicks the mic, says "do you do emergency roof repair",
+          search returns the right page. Accessibility win, mobile UX win, $0 API cost.
+        </p>
+      </div>
+      <div class="card">
+        <h3 style="font-size: 14px; color: var(--accent-2); margin-bottom: 6px;">8. Compliance-Grade Privacy Mode</h3>
+        <p style="color: var(--text-dim); font-size: 13px;">
+          Healthcare / legal / financial clients can ship "AI features" without sending PHI / privileged
+          documents to a third party. HIPAA / attorney-client privilege intact.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== SECTION 9: BROWSER SUPPORT GRID ===== -->
+  <section>
+    <h2><span class="num">09</span> Browser Support Grid (July 2026)</h2>
+    <div class="card" style="overflow-x: auto;">
+      <table>
+        <thead>
+          <tr><th>Feature</th><th>Chrome</th><th>Edge</th><th>Safari</th><th>Firefox</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>WebGPU</strong></td><td>113+ (May 2023)</td><td>113+</td><td>18+ (Sep 2024), 26+ full (2026)</td><td>141+ (Aug 2025)</td></tr>
+          <tr><td><strong>WASM SIMD + threads</strong></td><td>91+ (2021)</td><td>91+</td><td>16.4+ (2023)</td><td>89+ (2021)</td></tr>
+          <tr><td><strong>Transformers.js v4</strong></td><td>✓</td><td>✓</td><td>✓ (WebGPU 18+, WASM older)</td><td>✓ (WebGPU 141+, WASM older)</td></tr>
+          <tr><td><strong>ONNX Runtime Web 1.20+</strong></td><td>✓</td><td>✓</td><td>✓ (WebGPU 18+, WASM older)</td><td>✓</td></tr>
+          <tr><td><strong>WebNN</strong></td><td>137+ behind flag</td><td>137+ behind flag</td><td>—</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="color: var(--text-muted); font-size: 13px; margin-top: 12px;">
+      Practical coverage: <strong style="color:var(--accent-2)">~82% WebGPU</strong> · <strong style="color:var(--green)">~99% WASM</strong> · <strong style="color:var(--orange)">~95% Transformers.js v4 functional</strong>
+    </p>
+  </section>
+
+  <!-- ===== SECTION 10: THE 5-LINE RECIPE BOOK ===== -->
+  <section>
+    <h2><span class="num">10</span> The 5-Line Recipe Book — Every Task You'll Ever Ship</h2>
+    <p class="lead">
+      Transformers.js v4 covers 30+ tasks via the <code>pipeline()</code> API. Each is exactly this small.
+      Copy the pattern, swap the model name, ship.
+    </p>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3 style="font-size: 13px; color: var(--accent-2); margin-bottom: 8px;">📝 Text Classification</h3>
+        <pre style="font-size: 11px;"><code><span class="kw">const</span> c = <span class="kw">await</span> <span class="fn">pipeline</span>(<span class="str">"text-classification"</span>, <span class="str">"Xenova/distilbert-base-uncased-finetuned-sst-2-english"</span>, { <span class="kw">device</span>: <span class="str">"webgpu"</span> });
+<span class="kw">await</span> <span class="fn">c</span>(<span class="str">"This product is amazing"</span>);
+<span class="cm">// → [{ label: 'POSITIVE', score: 0.99 }]</span></code></pre>
+      </div>
+      <div class="card">
+        <h3 style="font-size: 13px; color: var(--accent-2); margin-bottom: 8px;">🖼️ Image Classification</h3>
+        <pre style="font-size: 11px;"><code><span class="kw">const</span> c = <span class="kw">await</span> <span class="fn">pipeline</span>(<span class="str">"image-classification"</span>, <span class="str">"onnx-community/mobilenetv4_conv_small.e2400_r224_in1k"</span>, { <span class="kw">device</span>: <span class="str">"webgpu"</span> });
+<span class="kw">await</span> <span class="fn">c</span>(imageElement);
+<span class="cm">// → [{ label: 'tabby cat', score: 0.61 }, ...]</span></code></pre>
+      </div>
+      <div class="card">
+        <h3 style="font-size: 13px; color: var(--accent-2); margin-bottom: 8px;">🎙️ Speech Recognition</h3>
+        <pre style="font-size: 11px;"><code><span class="kw">const</span> t = <span class="kw">await</span> <span class="fn">pipeline</span>(<span class="str">"automatic-speech-recognition"</span>, <span class="str">"onnx-community/whisper-tiny.en"</span>, { <span class="kw">device</span>: <span class="str">"webgpu"</span> });
+<span class="kw">await</span> <span class="fn">t</span>(audioUrl);
+<span class="cm">// → { text: 'And so my fellow Americans...' }</span></code></pre>
+      </div>
+      <div class="card">
+        <h3 style="font-size: 13px; color: var(--accent-2); margin-bottom: 8px;">🧮 Text Embeddings</h3>
+        <pre style="font-size: 11px;"><code><span class="kw">const</span> e = <span class="kw">await</span> <span class="fn">pipeline</span>(<span class="str">"feature-extraction"</span>, <span class="str">"mixedbread-ai/mxbai-embed-xsmall-v1"</span>, { <span class="kw">device</span>: <span class="str">"webgpu"</span> });
+<span class="kw">await</span> <span class="fn">e</span>(<span class="str">"hello"</span>, { pooling: <span class="str">"mean"</span>, normalize: <span class="kw">true</span> });
+<span class="cm">// → Tensor([...]) — 384-dim vector</span></code></pre>
+      </div>
+      <div class="card">
+        <h3 style="font-size: 13px; color: var(--accent-2); margin-bottom: 8px;">💬 Text Generation</h3>
+        <pre style="font-size: 11px;"><code><span class="kw">const</span> g = <span class="kw">await</span> <span class="fn">pipeline</span>(<span class="str">"text-generation"</span>, <span class="str">"onnx-community/Llama-3.2-1B-Instruct"</span>, { <span class="kw">device</span>: <span class="str">"webgpu"</span>, <span class="kw">dtype</span>: <span class="str">"q4f16"</span> });
+<span class="kw">await</span> <span class="fn">g</span>(<span class="str">"Explain drone NFZ in one sentence"</span>, { max_new_tokens: <span class="num-literal">64</span> });
+<span class="cm">// → [{ generated_text: '...' }]</span></code></pre>
+      </div>
+      <div class="card">
+        <h3 style="font-size: 13px; color: var(--accent-2); margin-bottom: 8px;">🌐 Translation</h3>
+        <pre style="font-size: 11px;"><code><span class="kw">const</span> tr = <span class="kw">await</span> <span class="fn">pipeline</span>(<span class="str">"translation"</span>, <span class="str">"Xenova/nllb-200-distilled-600M"</span>, { <span class="kw">device</span>: <span class="str">"webgpu"</span> });
+<span class="kw">await</span> <span class="fn">tr</span>(<span class="str">"Hello world"</span>, { src_lang: <span class="str">"eng_Latn"</span>, tgt_lang: <span class="str">"spa_Latn"</span> });
+<span class="cm">// → [{ translation_text: 'Hola mundo' }]</span></code></pre>
+      </div>
+      <div class="card">
+        <h3 style="font-size: 13px; color: var(--accent-2); margin-bottom: 8px;">🏷️ Named Entity Recognition</h3>
+        <pre style="font-size: 11px;"><code><span class="kw">const</span> n = <span class="kw">await</span> <span class="fn">pipeline</span>(<span class="str">"token-classification"</span>, <span class="str">"Xenova/bert-base-NER"</span>, { <span class="kw">device</span>: <span class="str">"webgpu"</span> });
+<span class="kw">await</span> <span class="fn">n</span>(<span class="str">"Apple is based in Cupertino"</span>);
+<span class="cm">// → [{ entity: 'ORG', word: 'Apple' }, { entity: 'LOC', word: 'Cupertino' }]</span></code></pre>
+      </div>
+      <div class="card">
+        <h3 style="font-size: 13px; color: var(--accent-2); margin-bottom: 8px;">❓ Zero-Shot Classification</h3>
+        <pre style="font-size: 11px;"><code><span class="kw">const</span> z = <span class="kw">await</span> <span class="fn">pipeline</span>(<span class="str">"zero-shot-classification"</span>, <span class="str">"Xenova/mobilebert-uncased-mnli"</span>, { <span class="kw">device</span>: <span class="str">"webgpu"</span> });
+<span class="kw">await</span> <span class="fn">z</span>(<span class="str">"I love this product"</span>, [<span class="str">"positive"</span>, <span class="str">"negative"</span>, <span class="str">"neutral"</span>]);
+<span class="cm">// → { sequence: '...', labels: ['positive', ...], scores: [0.95, ...] }</span></code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== SECTION 11: WHY P2 ===== -->
+  <section>
+    <h2><span class="num">11</span> Why P2 — And When To Promote To P1</h2>
+    <p class="lead">
+      This entry slots in at P2 alongside WebGPU (the foundation it depends on). Three triggers would move it to P1.
+    </p>
+
+    <div class="card">
+      <h3 style="font-size: 16px; color: var(--accent-2); margin-bottom: 12px;">Why P2 (not P1)</h3>
+      <ul style="color: var(--text-dim); font-size: 14px; line-height: 1.8; padding-left: 24px;">
+        <li>Depends on WebGPU (P2) and the modern CSS toolkit stack — ships through composition, not in isolation</li>
+        <li>Model downloads (~10-500MB) are still a UX barrier; teams need caching strategy</li>
+        <li>Most Molt clients don't ask for AI features yet — but every Molt client <em>will</em> ask in the next 12 months</li>
+        <li>Production deployment patterns are still emerging; Hugging Face v4 shipped March 2026, follow-ups ongoing</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3 style="font-size: 16px; color: var(--accent-2); margin-bottom: 12px;">Triggers to promote to P1</h3>
+      <ul style="color: var(--text-dim); font-size: 14px; line-height: 1.8; padding-left: 24px;">
+        <li>A Molt client asks for AI features on a production site (timing-driven)</li>
+        <li>OpenDrones adopts in-browser telemetry anomaly detection as the v2 default (planned for Q3 2026 sprint)</li>
+        <li>WebGPU exceeds 90% global coverage AND bundle size drops below 500KB for the smallest useful models</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ===== SECTION 12: RECAP ===== -->
+  <section>
+    <h2><span class="num">12</span> Recap &amp; How It Fits The Stack</h2>
+    <div class="card">
+      <p style="color: var(--text-dim); font-size: 15px; line-height: 1.7;">
+        <strong style="color:var(--accent-2)">Transformers.js v4</strong> + <strong style="color:var(--accent-2)">ONNX Runtime Web</strong> + <strong style="color:var(--accent-2)">WebGPU</strong> is the production answer
+        for "AI in the browser" in 2026. <strong>5-line API</strong>, <strong>30+ tasks</strong>, <strong>200+ model architectures</strong>, <strong>zero backend</strong>, <strong>100% privacy</strong>.
+        The model lives in the user's GPU, the inference happens in their tab, the result returns in milliseconds.
+      </p>
+      <p style="color: var(--text-dim); font-size: 15px; line-height: 1.7; margin-top: 12px;">
+        <strong style="color:var(--accent-2)">Pairs with:</strong> WebGPU (P2) for the compute substrate · WebTransport (P2) for streaming telemetry that feeds the models · MapLibre (P2) for geo-context ·
+        Custom Highlight API (P1) for surfacing classification results in-page · @property (P1) for animated model-status UI ·
+        Passkeys (P2) for token-gated AI features · PWA Installability (P2) for offline model caching.
+      </p>
+      <p style="color: var(--text-dim); font-size: 15px; line-height: 1.7; margin-top: 12px;">
+        <strong style="color:var(--accent-2)">Production disciplines:</strong> Pin the model version (Hugging Face quantizes &amp; re-exports frequently).
+        Set <code>env.useWasmCache = true</code> for offline. Detect device tier before deciding model size.
+        Compress models with <code>dtype: "q4"</code> or <code>"q4f16"</code> when shipping 1B+ param LLMs.
+        Pre-warm the pipeline on idle time so first-user-input latency is zero.
+      </p>
+    </div>
+  </section>
+
+  <footer>
+    <p>
+      Sources:
+      <a href="https://huggingface.co/docs/transformers.js" target="_blank" rel="noopener">Transformers.js docs</a> ·
+      <a href="https://huggingface.co/blog/transformersjs-v4" target="_blank" rel="noopener">v4 release notes</a> ·
+      <a href="https://huggingface.co/docs/transformers.js/guides/webgpu" target="_blank" rel="noopener">WebGPU guide</a> ·
+      <a href="https://onnxruntime.ai/docs/tutorials/web/ep-webgpu.html" target="_blank" rel="noopener">ONNX Runtime Web · WebGPU EP</a> ·
+      <a href="https://webllm.mlc.ai/" target="_blank" rel="noopener">WebLLM</a> ·
+      <a href="https://huggingface.co/docs/transformers.js/index" target="_blank" rel="noopener">Tasks &amp; models</a>
+    </p>
+    <p style="margin-top: 8px;">
+      <a href="https://molt-research.vercel.app/">← Back to Molt Research Hub</a>
+    </p>
+  </footer>
+</div>
+
+<script type="module">
+  // ===== Runtime configuration =====
+  import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@huggingface/[email protected]/dist/transformers.min.js";
+
+  // Configure ONNX Runtime Web
+  env.backends.onnx.wasm.proxy = false;          // workers off-main-thread for large models
+  env.allowLocalModels = false;                  // only remote (Hugging Face Hub) models
+  env.useWasmCache = true;                       // survive offline reloads after first download
+
+  // ===== Device detection =====
+  const deviceInfo = {
+    webgpu: !!(navigator.gpu),
+    webgpuAdapter: null,
+    isAppleSilicon: /Apple/.test(navigator.platform) || /Mac/.test(navigator.userAgent) && /Apple/.test(navigator.vendor || ''),
+    isMobile: /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent),
+  };
+  if (deviceInfo.webgpu) {
+    try {
+      const adapter = await navigator.gpu.requestAdapter();
+      deviceInfo.webgpuAdapter = adapter ? 'available' : 'unavailable';
+    } catch (e) {
+      deviceInfo.webgpuAdapter = 'error: ' + e.message;
+    }
+  }
+
+  function setDeviceHud() {
+    const device = deviceInfo.webgpu ? 'WebGPU' : 'WASM (CPU fallback)';
+    const backend = deviceInfo.webgpu ? 'GPU compute shaders' : 'CPU SIMD + threads';
+    document.querySelectorAll('[id$="-device"], [id$="-backend"]').forEach(el => {
+      if (el.id.endsWith('-device')) el.textContent = device;
+      if (el.id.endsWith('-backend')) el.textContent = backend;
+    });
+    console.log('[transformers.js] Device:', device, '| Adapter:', deviceInfo.webgpuAdapter);
+  }
+
+  setDeviceHud();
+
+  // ===== Helper: status indicator =====
+  function setStatus(prefix, status, busy) {
+    const el = document.getElementById(prefix + '-status');
+    if (el) {
+      el.textContent = status;
+      el.style.color = busy ? 'var(--orange)' : (status === 'Error' ? 'var(--red)' : 'var(--green)');
+    }
+  }
+
+  function setLatency(prefix, ms) {
+    const el = document.getElementById(prefix + '-latency');
+    if (el) el.textContent = ms.toFixed(0) + 'ms';
+  }
+
+  // ===== SECTION 1: Embeddings =====
+  const embedBtn = document.getElementById('embed-btn');
+  const embedInput = document.getElementById('embed-input');
+  const embedOutput = document.getElementById('embed-output');
+  const embedDim = document.getElementById('embed-dim');
+  let embedPipe = null;
+
+  embedBtn.addEventListener('click', async () => {
+    const text = embedInput.value.trim();
+    if (!text) return;
+
+    embedBtn.disabled = true;
+    embedOutput.classList.remove('empty');
+    embedOutput.textContent = 'Loading model (first run downloads ~120MB, cached afterward)…';
+    setStatus('embed', 'Loading…', true);
+
+    try {
+      const t0 = performance.now();
+      if (!embedPipe) {
+        embedPipe = await pipeline(
+          'feature-extraction',
+          'mixedbread-ai/mxbai-embed-xsmall-v1',
+          { device: deviceInfo.webgpu ? 'webgpu' : 'wasm' }
+        );
+      }
+      const tModelLoaded = performance.now();
+      console.log(`[embed] model loaded in ${(tModelLoaded - t0).toFixed(0)}ms`);
+
+      embedOutput.textContent = 'Computing embedding…';
+      const result = await embedPipe(text, { pooling: 'mean', normalize: true });
+      const t1 = performance.now();
+
+      const vec = Array.from(result.data);
+      const dim = vec.length;
+
+      // Display first 24 components as bars
+      let bars = '';
+      const max = Math.max(...vec.slice(0, 24).map(Math.abs));
+      for (let i = 0; i < 24 && i < dim; i++) {
+        const v = vec[i];
+        const pct = (Math.abs(v) / max) * 100;
+        const sign = v < 0 ? '-' : ' ';
+        bars += `<div class="embed-bar">
+          <span class="label">d[${String(i).padStart(2, '0')}]</span>
+          <span class="bar" style="width: ${pct.toFixed(1)}%; background: ${v < 0 ? 'var(--pink)' : 'linear-gradient(90deg, var(--accent), var(--purple))'}; opacity: ${(0.3 + Math.abs(v) / max * 0.7).toFixed(2)};"></span>
+          <span class="val">${sign}${Math.abs(v).toFixed(4)}</span>
+        </div>`;
+      }
+
+      embedOutput.innerHTML = `
+<div style="color: var(--accent-2); margin-bottom: 12px;">✓ Embedded "${text}" → ${dim}-dim vector (showing first 24 dims)</div>
+${bars}
+<div style="color: var(--text-muted); margin-top: 12px; font-size: 11px;">
+  Magnitude: ${Math.sqrt(vec.reduce((s, v) => s + v * v, 0)).toFixed(4)} (normalized = 1.0)
+  · Cosine similarity between two texts = dot product of their normalized vectors.
+</div>`;
+      embedDim.textContent = dim;
+      setStatus('embed', 'Ready', false);
+      setLatency('embed', t1 - tModelLoaded);
+    } catch (e) {
+      console.error('[embed] error:', e);
+      embedOutput.textContent = '✗ Error: ' + e.message + '\n\nFallback: try a smaller text or check console.';
+      setStatus('embed', 'Error', false);
+    } finally {
+      embedBtn.disabled = false;
+    }
+  });
+
+  // ===== SECTION 2: Sentiment =====
+  const sentBtn = document.getElementById('sent-btn');
+  const sentInput = document.getElementById('sent-input');
+  const sentOutput = document.getElementById('sent-output');
+  let sentPipe = null;
+
+  async function runSentiment(text) {
+    sentBtn.disabled = true;
+    sentOutput.classList.remove('empty');
+    sentOutput.textContent = 'Loading model (first run ~130MB)…';
+    setStatus('sent', 'Loading…', true);
+
+    try {
+      const t0 = performance.now();
+      if (!sentPipe) {
+        sentPipe = await pipeline(
+          'text-classification',
+          'Xenova/distilbert-base-uncased-finetuned-sst-2-english',
+          { device: deviceInfo.webgpu ? 'webgpu' : 'wasm' }
+        );
+      }
+      const tModelLoaded = performance.now();
+
+      sentOutput.textContent = 'Classifying…';
+      const result = await sentPipe(text);
+      const t1 = performance.now();
+
+      const [top] = result;
+      const isPositive = top.label === 'POSITIVE';
+      const color = isPositive ? 'var(--green)' : 'var(--red)';
+      const opposite = result.find(r => r.label !== top.label);
+
+      // Render bar chart
+      let bars = '';
+      for (const r of result) {
+        const pct = (r.score * 100).toFixed(1);
+        const c = r.label === 'POSITIVE' ? 'var(--green)' : 'var(--red)';
+        bars += `<div class="embed-bar">
+          <span class="label">${r.label}</span>
+          <span class="bar" style="width: ${pct}%; background: ${c};"></span>
+          <span class="val">${pct}%</span>
+        </div>`;
+      }
+
+      sentOutput.innerHTML = `
+<div style="color: ${color}; font-size: 18px; font-weight: 700; margin-bottom: 12px;">
+  ${isPositive ? '✓' : '✗'} ${top.label} (${(top.score * 100).toFixed(1)}%)
+</div>
+${bars}
+<div style="color: var(--text-muted); margin-top: 12px; font-size: 11px;">
+  Input: "${text.length > 80 ? text.slice(0, 80) + '…' : text}"
+</div>`;
+      setStatus('sent', 'Ready', false);
+      setLatency('sent', t1 - tModelLoaded);
+    } catch (e) {
+      console.error('[sent] error:', e);
+      sentOutput.textContent = '✗ Error: ' + e.message;
+      setStatus('sent', 'Error', false);
+    } finally {
+      sentBtn.disabled = false;
+    }
+  }
+
+  sentBtn.addEventListener('click', () => runSentiment(sentInput.value.trim()));
+
+  document.getElementById('sent-sample-1').addEventListener('click', () => {
+    sentInput.value = "OpenDrones Mission Control is the most intuitive drone ops platform I've ever used.";
+    runSentiment(sentInput.value);
+  });
+  document.getElementById('sent-sample-2').addEventListener('click', () => {
+    sentInput.value = "The battery dies after 10 minutes and the app crashes constantly. Total waste of money.";
+    runSentiment(sentInput.value);
+  });
+  document.getElementById('sent-sample-3').addEventListener('click', () => {
+    sentInput.value = "The drone itself is incredible, but the customer support has been really frustrating to deal with.";
+    runSentiment(sentInput.value);
+  });
+
+  // ===== SECTION 3: Image classification =====
+  const imgCells = document.querySelectorAll('.img-cell');
+  const imgOutput = document.getElementById('img-output');
+  let imgPipe = null;
+
+  // Synthesized ImageNet-style 224x224 RGB images
+  // (real demos would use actual photos; for offline-friendly demo we use emoji-rendered canvases)
+  function makeTestImage(emoji, bgColor) {
+    const c = document.createElement('canvas');
+    c.width = 224; c.height = 224;
+    const ctx = c.getContext('2d');
+    // Background
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, 224, 224);
+    // Emoji (textured)
+    ctx.font = '160px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(emoji, 112, 112);
+    return c;
+  }
+
+  const testImages = {
+    cat:   makeTestImage('🐱', '#4a3c28'),
+    dog:   makeTestImage('🐕', '#6b4f2e'),
+    car:   makeTestImage('🚗', '#2a4a6b'),
+    drone: makeTestImage('🛸', '#3a2a4a'),
+  };
+
+  // Note: synthesized emoji images won't classify as the actual labels with high confidence.
+  // This demonstrates the API + latency; real apps would use real photos via <img> src.
+  async function classifyImage(key) {
+    imgCells.forEach(c => c.classList.toggle('active', c.dataset.img === key));
+    imgOutput.classList.remove('empty');
+    imgOutput.textContent = 'Loading model (first run ~10MB)…';
+    setStatus('img', 'Loading…', true);
+
+    try {
+      const t0 = performance.now();
+      if (!imgPipe) {
+        imgPipe = await pipeline(
+          'image-classification',
+          'onnx-community/mobilenetv4_conv_small.e2400_r224_in1k',
+          { device: deviceInfo.webgpu ? 'webgpu' : 'wasm' }
+        );
+      }
+      const tModelLoaded = performance.now();
+
+      imgOutput.textContent = 'Classifying…';
+      const img = testImages[key];
+      const result = await imgPipe(img);
+      const t1 = performance.now();
+
+      let bars = '';
+      for (const r of result.slice(0, 5)) {
+        const pct = (r.score * 100).toFixed(1);
+        bars += `<div class="embed-bar">
+          <span class="label">${r.label.split(',')[0]}</span>
+          <span class="bar" style="width: ${pct}%;"></span>
+          <span class="val">${pct}%</span>
+        </div>`;
+      }
+
+      imgOutput.innerHTML = `
+<div style="color: var(--accent-2); margin-bottom: 12px;">✓ Top-5 predictions for ${key.toUpperCase()} sample:</div>
+${bars}
+<div style="color: var(--text-muted); margin-top: 12px; font-size: 11px;">
+  Note: synthesized emoji renders won't match real ImageNet classes with high confidence.
+  Real apps use actual photos via <code>pipe(document.querySelector('img'))</code> or <code>pipe(url)</code>.
+</div>`;
+      setStatus('img', 'Ready', false);
+      setLatency('img', t1 - tModelLoaded);
+    } catch (e) {
+      console.error('[img] error:', e);
+      imgOutput.textContent = '✗ Error: ' + e.message;
+      setStatus('img', 'Error', false);
+    }
+  }
+
+  imgCells.forEach(c => c.addEventListener('click', () => classifyImage(c.dataset.img)));
+
+  // ===== Console banner =====
+  console.log('%c⚡ Transformers.js v4 + ONNX Runtime Web Demo', 'color: #00d2ff; font-size: 18px; font-weight: bold;');
+  console.log('%cDevice:', 'color: #74e0ff', deviceInfo.webgpu ? 'WebGPU' : 'WASM (CPU fallback)');
+  console.log('%cAdapter:', 'color: #74e0ff', deviceInfo.webgpuAdapter || 'n/a');
+  console.log('%cClick any of the 3 demo buttons to start inference.', 'color: #8888a0');
+</script>
+</body>
+</html>
