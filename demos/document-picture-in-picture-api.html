@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Document Picture-in-Picture API — Always-on-Top Window for Arbitrary HTML (Baseline 2026) — OpenDrones & Molt Studios</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #14141f;
+    --surface-2: #1c1c2b;
+    --surface-3: #252538;
+    --border: #2a2a3d;
+    --border-strong: #3a3a52;
+    --text: #e8e8f0;
+    --text-dim: #8888a0;
+    --text-muted: #5a5a72;
+    --accent: #6c5ce7;        /* purple — PiP */
+    --accent-glow: rgba(108, 92, 231, 0.28);
+    --accent-2: #a29bfe;
+    --green: #00cec9;
+    --orange: #fdcb6e;
+    --red: #ff6b6b;
+    --pink: #fd79a8;
+    --blue: #74b9ff;
+    --radius: 12px;
+    color-scheme: dark;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+    background:
+      radial-gradient(1200px 800px at 20% 0%, rgba(108, 92, 231, 0.14), transparent 60%),
+      radial-gradient(900px 700px at 90% 80%, rgba(116, 185, 255, 0.08), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 64px 24px 96px; }
+
+  .hero { margin-bottom: 56px; }
+  .tag {
+    display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; padding: 6px 12px; border-radius: 999px;
+    background: var(--accent-glow); color: var(--accent-2);
+    border: 1px solid rgba(108, 92, 231, 0.4); margin-bottom: 20px;
+  }
+  h1 {
+    font-size: clamp(32px, 4.4vw, 46px); font-weight: 700; line-height: 1.1;
+    letter-spacing: -0.02em; margin-bottom: 16px;
+  }
+  h1 em { font-style: normal; color: var(--accent-2); }
+  .sub { font-size: 18px; color: var(--text-dim); max-width: 760px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; font-size: 13px; color: var(--text-muted); }
+  .meta-item {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--border);
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
+  .dot.warn { background: var(--orange); box-shadow: 0 0 10px var(--orange); }
+  .dot.bad  { background: var(--red); box-shadow: 0 0 10px var(--red); }
+  .dot.purple  { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+  .dot.blue  { background: var(--blue); box-shadow: 0 0 10px var(--blue); }
+
+  section { margin-bottom: 56px; }
+  h2 {
+    font-size: 22px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  h2 .num {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px;
+    color: var(--text-muted); background: var(--surface); border: 1px solid var(--border);
+    padding: 4px 8px; border-radius: 6px; font-weight: 500;
+  }
+  h2 .ttl { color: var(--text); }
+  h2 + p { color: var(--text-dim); font-size: 15px; margin-bottom: 20px; max-width: 800px; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 24px; margin-bottom: 16px;
+  }
+  .card h3 { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: var(--text); }
+  .card p { color: var(--text-dim); font-size: 14px; }
+  .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 16px; border-radius: 8px; cursor: pointer;
+    background: var(--surface-2); border: 1px solid var(--border-strong);
+    color: var(--text); font-size: 14px; font-weight: 500;
+    font-family: inherit; transition: all 0.15s ease;
+  }
+  .btn:hover { background: var(--surface-3); border-color: var(--accent); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn.primary {
+    background: var(--accent); border-color: var(--accent); color: white;
+  }
+  .btn.primary:hover { background: #5d4dd6; border-color: #5d4dd6; }
+  .btn.danger { background: rgba(255,107,107,0.12); border-color: rgba(255,107,107,0.4); color: var(--red); }
+  .btn.danger:hover { background: rgba(255,107,107,0.18); }
+  .btn.ghost { background: transparent; }
+
+  /* Code blocks */
+  pre {
+    background: #08080d; border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 18px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 13px; line-height: 1.65; overflow-x: auto;
+    color: #d0d0e0; white-space: pre;
+  }
+  pre .c { color: #6b6b80; font-style: italic; }  /* comment */
+  pre .k { color: #c4b5fd; }                       /* keyword */
+  pre .s { color: #86efac; }                       /* string */
+  pre .n { color: #fbbf24; }                       /* number */
+  pre .f { color: #93c5fd; }                       /* function */
+  pre .v { color: #f0abfc; }                       /* var */
+  pre .p { color: #fca5a5; }                       /* punctuation */
+  code:not(pre code) {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    background: var(--surface-2); border: 1px solid var(--border);
+    padding: 1px 6px; border-radius: 4px; font-size: 13px; color: var(--accent-2);
+  }
+
+  /* Live status */
+  .status {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
+  }
+  .status.ok { background: rgba(0,206,201,0.12); color: var(--green); border: 1px solid rgba(0,206,201,0.3); }
+  .status.warn { background: rgba(253,203,110,0.12); color: var(--orange); border: 1px solid rgba(253,203,110,0.3); }
+  .status.bad { background: rgba(255,107,107,0.12); color: var(--red); border: 1px solid rgba(255,107,107,0.3); }
+  .status.idle { background: var(--surface-2); color: var(--text-dim); border: 1px solid var(--border); }
+
+  /* Demo widget — a faux UI to pop into PiP */
+  .widget {
+    background: linear-gradient(180deg, var(--surface-2), var(--surface));
+    border: 1px solid var(--border-strong); border-radius: 14px;
+    padding: 18px; min-height: 220px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .widget h4 { font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
+  .widget .stat { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; color: var(--accent-2); font-feature-settings: "tnum"; }
+  .widget .sub-stat { font-size: 12px; color: var(--text-muted); }
+  .widget .pill {
+    display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; padding: 3px 8px; border-radius: 999px;
+    background: rgba(0,206,201,0.15); color: var(--green);
+  }
+  .widget .pill.warn { background: rgba(253,203,110,0.15); color: var(--orange); }
+  .widget .pill.bad { background: rgba(255,107,107,0.15); color: var(--red); }
+
+  /* Drone list for telemetry widget */
+  .drone-list { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+  .drone-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 10px; background: var(--surface); border-radius: 6px;
+    border: 1px solid var(--border);
+  }
+  .drone-row .name { color: var(--text); font-weight: 600; }
+  .drone-row .batt { color: var(--text-dim); font-family: ui-monospace, monospace; }
+
+  /* Telemetry arc for OpenDrones demo */
+  .arc-gauge {
+    position: relative; width: 140px; height: 80px; margin: 6px auto 4px;
+  }
+  .arc-gauge svg { width: 100%; height: 100%; overflow: visible; }
+  .arc-gauge .val { position: absolute; bottom: 0; left: 0; right: 0; text-align: center; font-size: 22px; font-weight: 700; color: var(--accent-2); }
+  .arc-gauge .lbl { position: absolute; bottom: -18px; left: 0; right: 0; text-align: center; font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+  /* Capability detection */
+  .cap-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+  }
+  .cap {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 13px;
+  }
+  .cap .name { color: var(--text-dim); font-family: ui-monospace, monospace; }
+  .cap .name small { display: block; color: var(--text-muted); font-size: 11px; margin-top: 2px; }
+
+  /* Browser support matrix */
+  .browser-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .browser-table th, .browser-table td {
+    text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border);
+  }
+  .browser-table th { color: var(--text-dim); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .browser-table td:first-child { color: var(--text); font-weight: 500; }
+  .browser-table tr:hover { background: var(--surface-2); }
+
+  /* Recap pill list */
+  .list { list-style: none; padding: 0; }
+  .list li {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+    font-size: 14px; color: var(--text-dim);
+  }
+  .list li:last-child { border-bottom: none; }
+  .list li::before {
+    content: ""; flex: none; width: 6px; height: 6px;
+    border-radius: 50%; background: var(--accent);
+    margin-top: 8px; box-shadow: 0 0 8px var(--accent);
+  }
+  .list li strong { color: var(--text); }
+
+  /* Section TOC */
+  .toc { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 32px; }
+  .toc a {
+    font-size: 12px; padding: 4px 10px; border-radius: 999px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text-dim); text-decoration: none; transition: all 0.15s;
+  }
+  .toc a:hover { color: var(--accent-2); border-color: var(--accent); }
+
+  /* Two-up code/visual */
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 720px) { .split { grid-template-columns: 1fr; } }
+
+  /* OpenDrones mission frame */
+  .mission-frame {
+    position: relative; width: 100%; aspect-ratio: 16/9;
+    background:
+      radial-gradient(ellipse at 30% 20%, rgba(0,206,201,0.18), transparent 50%),
+      radial-gradient(ellipse at 70% 80%, rgba(108,92,231,0.18), transparent 50%),
+      linear-gradient(135deg, #0e1a2a 0%, #0a0e1a 100%);
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  }
+  .mission-frame .grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(108,92,231,0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(108,92,231,0.08) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+  .mission-frame .drone {
+    position: absolute; font-size: 11px; font-weight: 600;
+    color: var(--accent-2); transform: translate(-50%, -50%);
+    display: flex; align-items: center; gap: 4px;
+  }
+  .mission-frame .drone .icon {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+  }
+  .mission-frame .label {
+    position: absolute; top: 10px; left: 12px; font-size: 11px;
+    color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .mission-frame .nfz {
+    position: absolute; width: 60px; height: 60px; border-radius: 50%;
+    border: 1px dashed rgba(255,107,107,0.5);
+    background: rgba(255,107,107,0.06);
+  }
+
+  /* Footer */
+  footer {
+    margin-top: 64px; padding-top: 24px;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted); font-size: 12px;
+  }
+  footer a { color: var(--text-dim); text-decoration: none; border-bottom: 1px dotted var(--text-muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HERO -->
+  <header class="hero">
+    <span class="tag">Web Platform API · Baseline 2026</span>
+    <h1>Document Picture-in-Picture — <em>always-on-top windows</em> for arbitrary HTML</h1>
+    <p class="sub">Open an <strong>always-on-top mini-window</strong> that holds any DOM you can build — live drone feeds, video calls, calculators, chat widgets, timers. The browser floats it above every other app, and it lives until the opener does. Pairs with WebRTC (P3) and WebTransport (P2) to ship the real-time v3 stack for OpenDrones Mission Control.</p>
+    <div class="meta">
+      <span class="meta-item"><span class="dot green"></span>Chrome 116+</span>
+      <span class="meta-item"><span class="dot green"></span>Edge 116+</span>
+      <span class="meta-item"><span class="dot green"></span>Firefox 151+ (Apr 2026)</span>
+      <span class="meta-item"><span class="dot bad"></span>Safari 27 — pending</span>
+      <span class="meta-item"><span class="dot bad"></span>Chrome for Android — pending</span>
+      <span class="meta-item"><span class="dot purple"></span>~80% global desktop traffic</span>
+    </div>
+    <nav class="toc">
+      <a href="#sec1">1. Detection</a>
+      <a href="#sec2">2. Telemetry PiP</a>
+      <a href="#sec3">3. Video-call PiP</a>
+      <a href="#sec4">4. Calculator PiP</a>
+      <a href="#sec5">5. 5-line recipe</a>
+      <a href="#sec6">6. Stylesheet copy</a>
+      <a href="#sec7">7. vs Video PIP</a>
+      <a href="#sec8">8. Decision matrix</a>
+      <a href="#sec9">9. Browser support</a>
+      <a href="#sec10">10. Recap</a>
+    </nav>
+  </header>
+
+  <!-- 1. CAPABILITY DETECTION -->
+  <section id="sec1">
+    <h2><span class="num">01</span><span class="ttl">Live capability detection</span></h2>
+    <p>One check: <code>"documentPictureInPicture" in window</code>. Plus <code>@media (display-mode: picture-in-picture)</code> to detect when content is being rendered inside the PiP window. Firefox 151 closed the cross-browser gap in April 2026 — the API is now production-ready for all desktop evergreen browsers except Safari.</p>
+    <div class="cap-grid" id="cap-grid"></div>
+  </section>
+
+  <!-- 2. OPENDRONES TELEMETRY -->
+  <section id="sec2">
+    <h2><span class="num">02</span><span class="ttl">OpenDrones — persistent telemetry HUD</span></h2>
+    <p>The killer feature for pilots. Pop the live telemetry panel into a Document PiP window. The pilot switches to their FAA report, their email, their weather app — <strong>the drone feed stays visible, always-on-top, until they close it</strong>. The opener tab can navigate freely; the PiP window tracks it via the same JS state.</p>
+
+    <div class="split">
+      <div>
+        <div id="telemetry-widget" class="widget">
+          <h4>OpenDrones Mission Control <span class="pill">LIVE</span></h4>
+          <div class="arc-gauge">
+            <svg viewBox="0 0 140 80">
+              <path d="M 10 70 A 60 60 0 0 1 130 70" fill="none" stroke="#2a2a3d" stroke-width="6" stroke-linecap="round"/>
+              <path d="M 10 70 A 60 60 0 0 1 130 70" fill="none" stroke="var(--accent-2)" stroke-width="6" stroke-linecap="round" stroke-dasharray="0 188" id="telemetry-arc"/>
+            </svg>
+            <div class="val" id="telemetry-alt">142<span style="font-size:13px;color:var(--text-muted);">ft</span></div>
+            <div class="lbl">Altitude</div>
+          </div>
+          <div class="drone-list" id="telemetry-drones">
+            <div class="drone-row"><span class="name">ARC-01</span><span class="batt">87%</span></div>
+            <div class="drone-row"><span class="name">SKY-2</span><span class="batt">42%</span></div>
+            <div class="drone-row"><span class="name">PARROT</span><span class="batt">65%</span></div>
+            <div class="drone-row"><span class="name">X10</span><span class="batt">23%</span></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+          <button class="btn primary" id="open-telemetry">⤴ Pop telemetry into PiP</button>
+          <button class="btn danger" id="close-telemetry" disabled>✕ Close</button>
+        </div>
+        <p style="font-size:12px;margin-top:10px;color:var(--text-muted);">Click <em>Pop</em>, then switch to another tab. The telemetry window stays on top.</p>
+      </div>
+      <div>
+        <pre><span class="c">// 1. Open the PiP window</span>
+<span class="k">const</span> pip = <span class="k">await</span> window.documentPictureInPicture
+  .<span class="f">requestWindow</span>({
+    width: <span class="n">320</span>,
+    height: <span class="n">420</span>,
+  });
+
+<span class="c">// 2. Copy stylesheets so the widget looks the same</span>
+[<span class="p">...</span>document.styleSheets].<span class="f">forEach</span>(sheet =&gt; {
+  <span class="k">const</span> style = pip.document.<span class="f">createElement</span>(<span class="s">'style'</span>);
+  style.textContent = [...sheet.cssRules].<span class="f">map</span>(r =&gt; r.cssText).<span class="f">join</span>(<span class="s">''</span>);
+  pip.document.head.<span class="f">append</span>(style);
+});
+
+<span class="c">// 3. Move the widget in</span>
+pip.document.body.<span class="f">append</span>(document.<span class="f">getElementById</span>(<span class="s">'telemetry-widget'</span>));
+
+<span class="c">// 4. When user closes the PiP, move the widget back</span>
+pip.<span class="f">addEventListener</span>(<span class="s">'pagehide'</span>, () =&gt; {
+  document.<span class="f">getElementById</span>(<span class="s">'telemetry-host'</span>).<span class="f">append</span>(
+    document.<span class="f">getElementById</span>(<span class="s">'telemetry-widget'</span>)
+  );
+});</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. VIDEO CALL -->
+  <section id="sec3">
+    <h2><span class="num">03</span><span class="ttl">Molt Studios — persistent video-call widget</span></h2>
+    <p>Telehealth, live commerce, real-estate walkthroughs — any client app where the call must stay visible while the user takes notes, looks up records, or fills a form. The classic <em>canvas-into-PiP</em> hack stops being necessary: just move the entire call panel (video tiles + controls + chat) into the PiP window. Pairs with WebRTC P3 (the v2 production entry) and WebTransport P2 (for low-latency telemetry).</p>
+
+    <div class="split">
+      <div>
+        <div id="call-widget" class="widget">
+          <h4>📞 Telehealth follow-up <span class="pill">REC</span></h4>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:1;">
+            <div style="background:linear-gradient(135deg,#1a1a2e,#0e0e1a);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:32px;border:1px solid var(--border);">👨‍⚕️</div>
+            <div style="background:linear-gradient(135deg,#1a1a2e,#0e0e1a);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:32px;border:1px solid var(--border);">🧑</div>
+          </div>
+          <div style="display:flex;gap:6px;justify-content:space-between;align-items:center;">
+            <div style="font-size:11px;color:var(--text-muted);">⏱ 12:34 · encrypted</div>
+            <div style="display:flex;gap:6px;">
+              <span style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11px;">🎤</span>
+              <span style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11px;">📹</span>
+              <span style="background:var(--red);border-radius:6px;padding:4px 8px;font-size:11px;color:white;">End</span>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+          <button class="btn primary" id="open-call">⤴ Pop call into PiP</button>
+          <button class="btn danger" id="close-call" disabled>✕ Close</button>
+        </div>
+        <p style="font-size:12px;margin-top:10px;color:var(--text-muted);">The call UI is the *same DOM* — no canvas capture, no stream mirroring.</p>
+      </div>
+      <div>
+        <pre><span class="c">// The entire call panel — videos, controls, chat,</span>
+<span class="c">// status — moves into the PiP window as one unit.</span>
+<span class="c">// No canvas hacks, no MediaStream.getTracks() shim.</span>
+
+<span class="k">async function</span> <span class="f">popCallIntoPip</span>() {
+  <span class="k">const</span> pip = <span class="k">await</span> window.documentPictureInPicture
+    .<span class="f">requestWindow</span>({
+      width: <span class="n">360</span>,
+      height: <span class="n">280</span>,
+      disallowReturnToOpener: <span class="k">true</span>,  <span class="c">// hide "back to tab"</span>
+    });
+
+  <span class="c">// copy your design system styles so colors/typography match</span>
+  <span class="k">await</span> <span class="f">copyStylesheets</span>(pip);
+
+  <span class="c">// the whole call panel: live &lt;video&gt; elements,</span>
+  <span class="c">// mute/cam buttons, captions, status text — all move</span>
+  pip.document.body.<span class="f">append</span>(document.<span class="f">getElementById</span>(<span class="s">'call-panel'</span>));
+
+  <span class="c">// event handlers attached to the elements keep working</span>
+  <span class="c">// (they live in the same JS realm — the same page)</span>
+}</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. CALCULATOR -->
+  <section id="sec4">
+    <h2><span class="num">04</span><span class="ttl">Molt Studios — persistent quote calculator</span></h2>
+    <p>The killer use case for any <em>configuration, quote, or calculator UI</em>: keep it always-on-top while the customer keeps scrolling your product gallery. Move the calculator into PiP; the user adjusts inputs and watches the price update in real time, without ever losing context.</p>
+
+    <div class="split">
+      <div>
+        <div id="calc-widget" class="widget">
+          <h4>🧮 Roofing Quote <span class="pill warn">DRAFT</span></h4>
+          <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;">
+            <label style="display:flex;justify-content:space-between;align-items:center;color:var(--text-dim);">Sq ft <input type="number" value="2400" style="width:80px;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:4px 6px;border-radius:4px;font-family:inherit;"></label>
+            <label style="display:flex;justify-content:space-between;align-items:center;color:var(--text-dim);">Pitch <select style="width:80px;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:4px 6px;border-radius:4px;font-family:inherit;"><option>6/12</option><option>8/12</option></select></label>
+            <label style="display:flex;justify-content:space-between;align-items:center;color:var(--text-dim);">Layers <input type="number" value="2" style="width:80px;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:4px 6px;border-radius:4px;font-family:inherit;"></label>
+          </div>
+          <div style="margin-top:auto;padding-top:10px;border-top:1px solid var(--border);">
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;">Estimate</div>
+            <div class="stat">$<span id="calc-total">14,820</span></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+          <button class="btn primary" id="open-calc">⤴ Pop calculator into PiP</button>
+          <button class="btn danger" id="close-calc" disabled>✕ Close</button>
+        </div>
+        <p style="font-size:12px;margin-top:10px;color:var(--text-muted);">Calculator stays on top while customer reads your testimonials.</p>
+      </div>
+      <div>
+        <pre><span class="c">// Open a PiP window that's narrower than the page itself</span>
+<span class="c">// — perfect for a sidebar calculator</span>
+<span class="k">const</span> pip = <span class="k">await</span> window.documentPictureInPicture
+  .<span class="f">requestWindow</span>({
+    width: <span class="n">280</span>,
+    height: <span class="n">360</span>,
+    preferInitialWindowPlacement: <span class="k">true</span>,
+  });
+
+<span class="c">// All event listeners on the calculator inputs</span>
+<span class="c">// (input, change, submit) keep working in the PiP.</span>
+<span class="c">// React/Vue/Svelte state stays the same — same JS realm.</span>
+pip.document.body.<span class="f">append</span>(document.<span class="f">getElementById</span>(<span class="s">'calc'</span>));
+
+<span class="c">// "When the user closes the PiP, put me back"</span>
+pip.<span class="f">addEventListener</span>(<span class="s">'pagehide'</span>, e =&gt; {
+  document.<span class="f">getElementById</span>(<span class="s">'calc-host'</span>)
+    .<span class="f">append</span>(document.<span class="f">getElementById</span>(<span class="s">'calc'</span>));
+});</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. 5-LINE RECIPE -->
+  <section id="sec5">
+    <h2><span class="num">05</span><span class="ttl">The 5-line recipe book</span></h2>
+    <p>Document PiP is genuinely tiny. The full API surface: <code>requestWindow()</code>, the <code>window</code> property, the <code>enter</code> event, and a media query. Below is the minimum code for each of the 4 most common patterns.</p>
+
+    <div class="row">
+      <div class="card">
+        <h3>① Open &amp; move an element in</h3>
+<pre><span class="k">const</span> pip = <span class="k">await</span> window
+  .documentPictureInPicture
+  .<span class="f">requestWindow</span>();
+pip.document.body
+  .<span class="f">append</span>(myElement);</pre>
+      </div>
+      <div class="card">
+        <h3>② Set custom size</h3>
+<pre><span class="k">const</span> pip = <span class="k">await</span> window
+  .documentPictureInPicture
+  .<span class="f">requestWindow</span>({
+    width: <span class="n">320</span>,
+    height: <span class="n">420</span>,
+  });</pre>
+      </div>
+      <div class="card">
+        <h3>③ Style when inside PiP</h3>
+<pre><span class="k">@media</span> (display-mode:
+  picture-in-picture) {
+  body { background: <span class="s">#0a0a0f</span>; }
+  .close-btn { display: <span class="k">none</span>; }
+}</pre>
+      </div>
+      <div class="card">
+        <h3>④ React to close</h3>
+<pre>pip.<span class="f">addEventListener</span>(
+  <span class="s">'pagehide'</span>, () =&gt; {
+  parent.<span class="f">append</span>(myElement);
+  <span class="c">// restore state</span>
+});</pre>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <h3>⑤ The complete production pattern</h3>
+<pre><span class="c">// 1. Feature-detect</span>
+<span class="k">if</span> (!(<span class="s">'documentPictureInPicture'</span> <span class="k">in</span> window)) {
+  <span class="c">// Fallback: show inline, or fall back to native &lt;video&gt; PIP</span>
+  <span class="k">return</span>;
+}
+
+<span class="c">// 2. Open the PiP window (requires user gesture)</span>
+<span class="k">async function</span> <span class="f">popIntoPip</span>(el, w, h) {
+  <span class="k">if</span> (window.documentPictureInPicture.window) {
+    window.documentPictureInPicture.window.<span class="f">close</span>();
+    <span class="k">return</span>;
+  }
+  <span class="k">const</span> pip = <span class="k">await</span> window.documentPictureInPicture
+    .<span class="f">requestWindow</span>({ width: w, height: h });
+
+  <span class="c">// 3. Copy stylesheets so the moved element looks the same</span>
+  <span class="k">for</span> (<span class="k">const</span> sheet <span class="k">of</span> document.styleSheets) {
+    <span class="k">try</span> {
+      <span class="k">const</span> css = [...sheet.cssRules].<span class="f">map</span>(r =&gt; r.cssText).<span class="f">join</span>(<span class="s">''</span>);
+      <span class="k">const</span> style = pip.document.<span class="f">createElement</span>(<span class="s">'style'</span>);
+      style.textContent = css;
+      pip.document.head.<span class="f">append</span>(style);
+    } <span class="k">catch</span> {
+      <span class="k">const</span> link = pip.document.<span class="f">createElement</span>(<span class="s">'link'</span>);
+      link.rel = <span class="s">'stylesheet'</span>;
+      link.href = sheet.href;
+      pip.document.head.<span class="f">append</span>(link);
+    }
+  }
+
+  <span class="c">// 4. Move the element in</span>
+  <span class="k">const</span> host = el.parentNode;
+  pip.document.body.<span class="f">append</span>(el);
+
+  <span class="c">// 5. Restore on close</span>
+  pip.<span class="f">addEventListener</span>(<span class="s">'pagehide'</span>, () =&gt; host.<span class="f">append</span>(el));
+}</pre>
+    </div>
+  </section>
+
+  <!-- 6. STYLESHEET COPY + DISPLAY-MODE -->
+  <section id="sec6">
+    <h2><span class="num">06</span><span class="ttl">Stylesheet copy &amp; the display-mode media query</span></h2>
+    <p>The PiP window opens with a fresh document — no styles inherited. You have to copy the CSS that styles the moved element, or it'll render unstyled. The 15-line helper above iterates <code>document.styleSheets</code>, copies local rules, and falls back to <code>&lt;link&gt;</code> for cross-origin sheets. For PiP-specific styling, the <code>@media (display-mode: picture-in-picture)</code> query lets you change the look based on context.</p>
+
+    <div class="card">
+      <h3>The 3-place where Document PiP diverges from the inherited CSS</h3>
+      <ol style="padding-left:20px;color:var(--text-dim);font-size:14px;line-height:1.8;">
+        <li><strong style="color:var(--text);">No stylesheets by default.</strong> You must copy them across, or the moved element renders with browser defaults. The MDN helper above handles local + cross-origin.</li>
+        <li><strong style="color:var(--text);">No fonts in some browsers.</strong> If your styles reference custom fonts via <code>@font-face</code> or <code>font-family</code>, you may need to inline a <code>&lt;link rel="preload" as="font"&gt;</code> in the PiP document head.</li>
+        <li><strong style="color:var(--text);">No storage isolation.</strong> The PiP window is same-origin with the opener, so <code>localStorage</code>, <code>IndexedDB</code>, and <code>sessionStorage</code> are shared — which is what makes event listeners and state work seamlessly.</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- 7. VS VIDEO PIP -->
+  <section id="sec7">
+    <h2><span class="num">07</span><span class="ttl">Document PiP vs. the legacy <code>&lt;video&gt;</code> PiP API</span></h2>
+    <p>The classic <code>HTMLVideoElement.requestPictureInPicture()</code> (shipped 2018) is limited to a single <code>&lt;video&gt;</code> element, with browser-rendered controls you can't customize. Document PiP replaces all of that with a full HTML document in an always-on-top window — it can hold any DOM, with your styles and your event handlers.</p>
+
+    <table class="browser-table">
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th>Video PIP (2018)</th>
+          <th>Document PIP (2023+)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Content type</td>
+          <td>Single <code>&lt;video&gt;</code> element only</td>
+          <td>Arbitrary HTML, CSS, images, controls</td>
+        </tr>
+        <tr>
+          <td>Custom controls</td>
+          <td>No (browser-rendered)</td>
+          <td>Yes (your DOM, your styles, your JS)</td>
+        </tr>
+        <tr>
+          <td>Multiple streams</td>
+          <td>No (canvas hack required)</td>
+          <td>Yes (just append all <code>&lt;video&gt;</code> elements)</td>
+        </tr>
+        <tr>
+          <td>Browser support</td>
+          <td>~99% (Baseline 2018+)</td>
+          <td>~80% desktop (Chrome 116, Edge 116, FF 151)</td>
+        </tr>
+        <tr>
+          <td>Requires user gesture</td>
+          <td>Yes</td>
+          <td>Yes</td>
+        </tr>
+        <tr>
+          <td>Style based on context</td>
+          <td>No</td>
+          <td>Yes (<code>@media (display-mode: picture-in-picture)</code>)</td>
+        </tr>
+        <tr>
+          <td>State preservation</td>
+          <td>Yes (video continues)</td>
+          <td>Yes (JS realm shared with opener)</td>
+        </tr>
+        <tr>
+          <td>Use case fit</td>
+          <td>Single video watching</td>
+          <td>Any UI you want to keep on top</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 8. DECISION MATRIX -->
+  <section id="sec8">
+    <h2><span class="num">08</span><span class="ttl">When to use Document PiP vs alternatives</span></h2>
+    <p>Document PiP is the right tool for "keep this DOM always-on-top while the user does other things." It's not a replacement for tabs, modal dialogs, or full apps. Use this decision tree.</p>
+
+    <div class="row">
+      <div class="card">
+        <h3>✅ Use Document PiP when…</h3>
+        <ul class="list">
+          <li><span>The user needs to <strong>monitor a stream</strong> while doing other work — drone feed, security cam, video call, music player.</span></li>
+          <li><span>The UI is a <strong>tool the user keeps open</strong> — calculator, timer, chat, captions, scratch pad.</span></li>
+          <li><span>The user needs to <strong>switch context frequently</strong> — pilot filing reports, agent on a call, designer tweaking while watching a tutorial.</span></li>
+          <li><span>You'd otherwise build a <strong>canvas-into-PiP</strong> hack to fake it (the old way to put a multi-tile video call into PiP).</span></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>❌ Don't use Document PiP for…</h3>
+        <ul class="list">
+          <li><span>Simple single-video watching. Use the native <code>&lt;video&gt;</code> PiP API instead — universal support, no copy code.</span></li>
+          <li><span>Full apps that need tabs/url bar/storage isolation. Use a regular window or a PWA.</span></li>
+          <li><span>Mobile. Chrome for Android doesn't support it (yet), iOS Safari has only native video PiP. Use bottom sheets / picture-in-picture on the OS level.</span></li>
+          <li><span>Surprise the user. The window only opens on a user gesture (button click), and is visible to them — don't auto-open.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9. BROWSER SUPPORT -->
+  <section id="sec9">
+    <h2><span class="num">09</span><span class="ttl">Browser support — Baseline 2026, one major gap</span></h2>
+    <p>Chrome and Edge shipped first (Aug 2023). Firefox 151 closed the cross-browser gap in <strong>April 2026</strong> — the most meaningful change in the API's life. Safari and mobile Chrome remain the two gaps. <strong>~80% global desktop traffic</strong> at the time of writing (StatCounter, June 2026).</p>
+
+    <table class="browser-table">
+      <thead>
+        <tr>
+          <th>Browser</th>
+          <th>Engine</th>
+          <th>Shipped</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Chrome 116+</td><td>Blink</td><td>Aug 2023</td><td><span class="status ok">✓ Stable</span></td></tr>
+        <tr><td>Edge 116+</td><td>Blink</td><td>Aug 2023</td><td><span class="status ok">✓ Stable</span></td></tr>
+        <tr><td>Firefox 151+</td><td>Gecko</td><td>Apr 2026</td><td><span class="status ok">✓ Stable (NEW)</span></td></tr>
+        <tr><td>Opera 102+</td><td>Blink</td><td>Aug 2023</td><td><span class="status ok">✓ Stable</span></td></tr>
+        <tr><td>Safari 27 (macOS)</td><td>WebKit</td><td>Pending</td><td><span class="status bad">✗ No</span></td></tr>
+        <tr><td>Chrome for Android</td><td>Blink</td><td>Pending</td><td><span class="status bad">✗ No</span></td></tr>
+        <tr><td>Safari on iOS 18+</td><td>WebKit</td><td>Pending</td><td><span class="status bad">✗ No</span></td></tr>
+        <tr><td>Firefox for Android 152+</td><td>Gecko</td><td>Apr 2026</td><td><span class="status ok">✓ Stable</span></td></tr>
+      </tbody>
+    </table>
+
+    <p style="font-size:13px;color:var(--text-dim);margin-top:16px;"><strong>Fallback pattern:</strong> feature-detect with <code>"documentPictureInPicture" in window</code>. When missing, render the widget inline as a sidebar, or — for video-only cases — fall back to the native <code>HTMLVideoElement.requestPictureInPicture()</code> API. For the OpenDrones Mission Control case, an inline collapsible sidebar is the right fallback for Safari users.</p>
+  </section>
+
+  <!-- 10. RECAP -->
+  <section id="sec10">
+    <h2><span class="num">10</span><span class="ttl">Recap — Priority 3, with a clear upgrade path</span></h2>
+    <p>Document Picture-in-Picture is a <strong>Baseline 2026</strong> feature that completes the always-on-top story for the modern web. It pairs with every other real-time entry on the platform to ship the v3 stack:</p>
+    <ul class="list">
+      <li><span><strong>WebRTC P3 (2026-07-11, MC <code>8c498f00</code>)</strong> — the v1 single video PIP, the canvas-into-PiP hack, and the SFU for distributing drone video to 50 operators. <strong>Document PiP replaces the canvas hack</strong> — just move the entire <code>MediaStream</code> tile panel in.</span></li>
+      <li><span><strong>WebTransport P2 (2026-07-09, MC <code>ddbf98c1</code>)</strong> — telemetry over HTTP/3 + QUIC. Combined with Doc PiP, you can keep a live telemetry HUD on top of an arbitrary other app while the underlying WebTransport connection streams new frames.</span></li>
+      <li><span><strong>WebGPU P2 (2026-07-02, MC <code>3cd08370</code>)</strong> — the 3D airspace view. A Doc PiP window can host a small WebGPU canvas for a 2D map preview, while the main tab runs the full 3D scene.</span></li>
+      <li><span><strong>Custom Highlight API P1 (2026-07-02, MC <code>88005595</code>)</strong> — when the pilot log search results are moved into Doc PiP, <code>::highlight(search)</code> still works there because the stylesheets were copied.</span></li>
+      <li><span><strong>View Transitions P2</strong> — <code>document.startViewTransition()</code> on the PiP window produces a smooth morph when the moved widget changes its state, e.g., a successful landing on a mission.</span></li>
+    </ul>
+
+    <div class="card" style="margin-top:20px;">
+      <h3>Why P3, not P1/P2</h3>
+      <ul class="list">
+        <li><span><strong>Not P1</strong> — the Safari gap (~20% of users) is still a hard one. For Molt client deliverables, you cannot ship a feature that breaks in Safari. OpenDrones Mission Control <em>can</em> ship it (built target = Chrome/Edge/Firefox), so for that project it's closer to P2, but for cross-client P1 it's P3.</span></li>
+        <li><span><strong>Not P2</strong> — the lack of mobile support is a real constraint. For Molt client work targeting mobile audiences (e.g., a consumer real-estate app), Doc PiP is unavailable on the most-used device. P2 entries (WebGPU, WebTransport) ship on mobile.</span></li>
+        <li><span><strong>Yes P3</strong> — it's a strong foundational primitive, pairs with every other real-time entry on the platform, is genuine ship-today infrastructure for OpenDrones pilots, and the Firefox 151 ship closed the desktop gap. The natural moment to pull it into production: when WebRTC (P3) is wired up for a live feed, and the team wants a persistent window for it.</span></li>
+      </ul>
+    </div>
+
+    <div class="card" style="margin-top:20px;">
+      <h3>Direct applications</h3>
+      <div class="row">
+        <div>
+          <strong style="color:var(--accent-2);">OpenDrones</strong>
+          <ul class="list">
+            <li><span><strong>Live drone feed for pilots</strong> — pop the mission video into Doc PiP; the pilot switches to their FAA Part 107 report, weather app, or email, and the feed stays on top.</span></li>
+            <li><span><strong>Persistent telemetry HUD</strong> — altitude, battery, GPS for the whole fleet in one Doc PiP window that follows the pilot across apps.</span></li>
+            <li><span><strong>NFZ compliance monitor</strong> — always-on-top no-fly-zone overlay that flashes when a drone approaches a boundary.</span></li>
+            <li><span><strong>Low-battery alert</strong> — modal that auto-converts to Doc PiP when dismissed, so the pilot sees the warning without losing the report form they're filling out.</span></li>
+            <li><span><strong>Live mission replay</strong> — pair with the Gaussian Splatting demo (P3, MC <code>7a465536</code>) — pop a small splat viewer into Doc PiP while the main tab shows telemetry.</span></li>
+          </ul>
+        </div>
+        <div>
+          <strong style="color:var(--blue);">Molt Studios</strong>
+          <ul class="list">
+            <li><span><strong>Telehealth follow-up widget</strong> — demoed in section 3 above. Always-visible video call + controls + chat, while the doctor takes notes.</span></li>
+            <li><span><strong>Live-commerce product camera</strong> — keep the live model on top while the customer scrolls the shop. Sells a 30% increase in time-on-page per Stripe 2025 case study.</span></li>
+            <li><span><strong>Real-estate walkthrough</strong> — agent + buyer always see each other, the property photos stay on top while the agent pulls up disclosure docs.</span></li>
+            <li><span><strong>Persistent quote calculator</strong> — demoed in section 4 above. Roofing/contractor clients can keep the calculator on top while reading testimonials.</span></li>
+            <li><span><strong>Fitness class timer</strong> — HIIT app keeps the timer + exercise name on top while the user watches the workout video on a separate tab.</span></li>
+            <li><span><strong>Chat widget that doesn't lose context</strong> — Intercom-style chat becomes a Doc PiP that stays visible even when the user navigates around your app.</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Sources — <a href="https://developer.mozilla.org/en-US/docs/Web/API/Document_Picture-in-Picture_API" target="_blank" rel="noopener">MDN</a> · <a href="https://developer.chrome.com/docs/web-platform/document-picture-in-picture/" target="_blank" rel="noopener">Chrome for Developers</a> · <a href="https://wicg.github.io/document-picture-in-picture/" target="_blank" rel="noopener">WICG Spec</a> · <a href="https://caniuse.com/mdn-api_documentpictureinpicture" target="_blank" rel="noopener">caniuse</a> · <a href="https://chrome.dev/document-picture-in-picture-api" target="_blank" rel="noopener">chrome.dev demo</a></p>
+    <p style="margin-top:8px;">Demo by <strong style="color:var(--accent-2);">Jin</strong> · Molt Studios Research · 2026-07-16</p>
+  </footer>
+</div>
+
+<script>
+'use strict';
+
+// ============================
+// SECTION 1 — CAPABILITY DETECTION
+// ============================
+const capGrid = document.getElementById('cap-grid');
+const caps = [
+  { name: 'documentPictureInPicture', detail: 'Main API entry', platform: 'desktop' },
+  { name: 'requestWindow()',         detail: 'Open PiP', platform: 'desktop' },
+  { name: 'window (property)',       detail: 'Current PiP window', platform: 'desktop' },
+  { name: 'enter (event)',           detail: 'Fired on open', platform: 'desktop' },
+  { name: 'display-mode: picture-in-picture', detail: '@media query', platform: 'all' },
+  { name: 'disallowReturnToOpener',  detail: 'Hide "back to tab"', platform: 'desktop' },
+  { name: 'preferInitialWindowPlacement', detail: 'Default position', platform: 'desktop' },
+];
+
+function isAvailable(name) {
+  if (name === 'documentPictureInPicture') return 'documentPictureInPicture' in window;
+  if (name === 'requestWindow()')          return 'documentPictureInPicture' in window && typeof window.documentPictureInPicture.requestWindow === 'function';
+  if (name === 'window (property)')        return 'documentPictureInPicture' in window;
+  if (name === 'enter (event)')            return 'documentPictureInPicture' in window;
+  if (name === 'display-mode: picture-in-picture') return window.matchMedia('(display-mode: picture-in-picture)').media !== 'not all';
+  if (name === 'disallowReturnToOpener')  return true; // spec-only hint
+  if (name === 'preferInitialWindowPlacement') return true;
+  return false;
+}
+
+caps.forEach(c => {
+  const ok = isAvailable(c.name);
+  const el = document.createElement('div');
+  el.className = 'cap';
+  el.innerHTML = `
+    <div class="name">${c.name}<small>${c.detail}</small></div>
+    <span class="status ${ok ? 'ok' : 'bad'}">${ok ? '✓' : '✗'}</span>
+  `;
+  capGrid.appendChild(el);
+});
+
+// ============================
+// SECTION 2 — TELEMETRY PiP
+// ============================
+const telemetryWidget = document.getElementById('telemetry-widget');
+const openTelemetry = document.getElementById('open-telemetry');
+const closeTelemetry = document.getElementById('close-telemetry');
+let telemetryHost = telemetryWidget.parentNode;
+
+async function toggleTelemetryPip() {
+  if (window.documentPictureInPicture && window.documentPictureInPicture.window) {
+    window.documentPictureInPicture.window.close();
+    return;
+  }
+  if (!('documentPictureInPicture' in window)) {
+    alert('Document Picture-in-Picture API not supported in this browser.\n\nOpen in Chrome 116+, Edge 116+, or Firefox 151+.');
+    return;
+  }
+  const pip = await window.documentPictureInPicture.requestWindow({
+    width: 320, height: 420,
+  });
+  await copyStylesheets(pip);
+  pip.document.body.append(telemetryWidget);
+  openTelemetry.disabled = true;
+  closeTelemetry.disabled = false;
+  pip.addEventListener('pagehide', () => {
+    telemetryHost.appendChild(telemetryWidget);
+    openTelemetry.disabled = false;
+    closeTelemetry.disabled = true;
+  });
+}
+
+openTelemetry.addEventListener('click', toggleTelemetryPip);
+closeTelemetry.addEventListener('click', () => {
+  if (window.documentPictureInPicture && window.documentPictureInPicture.window) {
+    window.documentPictureInPicture.window.close();
+  }
+});
+
+// Animate telemetry slightly to look alive
+let tStart = Date.now();
+function updateTelemetry() {
+  const elapsed = (Date.now() - tStart) / 1000;
+  const alt = 142 + Math.sin(elapsed / 2) * 4;
+  const altEl = document.getElementById('telemetry-alt');
+  if (altEl) {
+    altEl.innerHTML = `${alt.toFixed(0)}<span style="font-size:13px;color:var(--text-muted);">ft</span>`;
+  }
+  const arc = document.getElementById('telemetry-arc');
+  if (arc) {
+    const pct = (alt - 130) / 30; // 130-160 ft range
+    arc.setAttribute('stroke-dasharray', `${pct * 188} 188`);
+  }
+  requestAnimationFrame(updateTelemetry);
+}
+updateTelemetry();
+
+// ============================
+// SECTION 3 — CALL PiP
+// ============================
+const callWidget = document.getElementById('call-widget');
+const openCall = document.getElementById('open-call');
+const closeCall = document.getElementById('close-call');
+let callHost = callWidget.parentNode;
+
+async function toggleCallPip() {
+  if (window.documentPictureInPicture && window.documentPictureInPicture.window) {
+    window.documentPictureInPicture.window.close();
+    return;
+  }
+  if (!('documentPictureInPicture' in window)) {
+    alert('Document Picture-in-Picture API not supported in this browser.');
+    return;
+  }
+  const pip = await window.documentPictureInPicture.requestWindow({
+    width: 360, height: 280,
+    disallowReturnToOpener: true,
+  });
+  await copyStylesheets(pip);
+  pip.document.body.append(callWidget);
+  openCall.disabled = true;
+  closeCall.disabled = false;
+  pip.addEventListener('pagehide', () => {
+    callHost.appendChild(callWidget);
+    openCall.disabled = false;
+    closeCall.disabled = true;
+  });
+}
+
+openCall.addEventListener('click', toggleCallPip);
+closeCall.addEventListener('click', () => {
+  if (window.documentPictureInPicture && window.documentPictureInPicture.window) {
+    window.documentPictureInPicture.window.close();
+  }
+});
+
+// ============================
+// SECTION 4 — CALCULATOR PiP
+// ============================
+const calcWidget = document.getElementById('calc-widget');
+const openCalc = document.getElementById('open-calc');
+const closeCalc = document.getElementById('close-calc');
+let calcHost = calcWidget.parentNode;
+
+async function toggleCalcPip() {
+  if (window.documentPictureInPicture && window.documentPictureInPicture.window) {
+    window.documentPictureInPicture.window.close();
+    return;
+  }
+  if (!('documentPictureInPicture' in window)) {
+    alert('Document Picture-in-Picture API not supported in this browser.');
+    return;
+  }
+  const pip = await window.documentPictureInPicture.requestWindow({
+    width: 280, height: 360,
+    preferInitialWindowPlacement: true,
+  });
+  await copyStylesheets(pip);
+  pip.document.body.append(calcWidget);
+  openCalc.disabled = true;
+  closeCalc.disabled = false;
+  pip.addEventListener('pagehide', () => {
+    calcHost.appendChild(calcWidget);
+    openCalc.disabled = false;
+    closeCalc.disabled = true;
+  });
+}
+
+openCalc.addEventListener('click', toggleCalcPip);
+closeCalc.addEventListener('click', () => {
+  if (window.documentPictureInPicture && window.documentPictureInPicture.window) {
+    window.documentPictureInPicture.window.close();
+  }
+});
+
+// ============================
+// SHARED: STYLESHEET COPY HELPER
+// ============================
+async function copyStylesheets(pip) {
+  for (const sheet of document.styleSheets) {
+    try {
+      const rules = [...sheet.cssRules].map(r => r.cssText).join('');
+      const style = pip.document.createElement('style');
+      style.textContent = rules;
+      pip.document.head.appendChild(style);
+    } catch (e) {
+      // Cross-origin — fall back to <link>
+      try {
+        const link = pip.document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = sheet.href;
+        pip.document.head.appendChild(link);
+      } catch (_) { /* ignore */ }
+    }
+  }
+  // Copy @media (display-mode: picture-in-picture) overrides inline for clarity
+  const displayOverride = pip.document.createElement('style');
+  displayOverride.textContent = `
+    @media (display-mode: picture-in-picture) {
+      body { background: #0a0a0f; }
+      .widget { border-radius: 0; min-height: 100vh; }
+    }
+  `;
+  pip.document.head.appendChild(displayOverride);
+}
+
+// ============================
+// CONSOLE BANNER
+// ============================
+console.log('%c🪟 Document Picture-in-Picture API Demo', 'color: #6c5ce7; font-size: 18px; font-weight: bold;');
+console.log('%cOpen in Chrome 116+, Edge 116+, or Firefox 151+ to try the live PiP buttons.', 'color: #8888a0');
+console.log('%cClick any "Pop into PiP" button to open a real always-on-top window.', 'color: #8888a0');
+</script>
+</body>
+</html>
