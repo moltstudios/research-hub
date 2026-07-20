@@ -1,544 +1,1151 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Speculation Rules API Demo - Instant Page Loads</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        .speculation-indicator {
-            animation: pulse 2s infinite;
-        }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        .card-hover:hover {
-            transform: translateY(-4px);
-        }
-        pre {
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Speculation Rules API — Instant Page Loads via Prefetch & Prerender (Baseline 2024) — OpenDrones & Molt Studios</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a14;
+    --surface: #14141f;
+    --surface-2: #1c1c2b;
+    --surface-3: #252538;
+    --border: #2a2a3d;
+    --border-strong: #3a3a52;
+    --text: #e8e8f0;
+    --text-dim: #8888a0;
+    --text-muted: #5a5a72;
+    --accent: #a78bfa;            /* lavender — speed/preload primitive */
+    --accent-glow: rgba(167, 139, 250, 0.28);
+    --accent-2: #c4b5fd;
+    --green: #51cf66;
+    --orange: #ffa94d;
+    --blue: #74c0fc;
+    --purple: #b197fc;
+    --pink: #f783ac;
+    --red: #ff6b6b;
+    --yellow: #fdcb6e;
+    --radius: 12px;
+    color-scheme: dark;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+    background:
+      radial-gradient(1200px 800px at 20% 0%, rgba(167, 139, 250, 0.10), transparent 60%),
+      radial-gradient(900px 700px at 90% 80%, rgba(116, 192, 252, 0.08), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 64px 24px 96px; }
+
+  /* ---------- Hero ---------- */
+  .hero { margin-bottom: 64px; }
+  .tag {
+    display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; padding: 6px 12px; border-radius: 999px;
+    background: var(--accent-glow); color: var(--accent-2);
+    border: 1px solid rgba(167, 139, 250, 0.4); margin-bottom: 20px;
+  }
+  h1 {
+    font-size: clamp(32px, 4.6vw, 48px); font-weight: 700; line-height: 1.1;
+    letter-spacing: -0.02em; margin-bottom: 18px;
+  }
+  h1 em { font-style: normal; color: var(--accent-2); }
+  .sub { font-size: 18px; color: var(--text-dim); max-width: 760px; margin-bottom: 8px; }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; font-size: 13px; color: var(--text-muted);
+  }
+  .meta-item {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 12px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--border);
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
+  .dot.warn { background: var(--yellow); box-shadow: 0 0 10px var(--yellow); }
+
+  /* ---------- Section ---------- */
+  section { margin-bottom: 64px; }
+  h2 {
+    font-size: 24px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  h2 .num {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px;
+    color: var(--text-muted); background: var(--surface);
+    border: 1px solid var(--border); padding: 2px 8px; border-radius: 6px;
+  }
+  .lede { color: var(--text-dim); font-size: 15px; max-width: 760px; margin-bottom: 22px; }
+
+  /* ---------- Panels / Cards ---------- */
+  .panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+  }
+  .panel.bordered-t { border-top: 2px solid var(--accent); }
+  .panel h3 { font-size: 16px; margin-bottom: 8px; color: var(--text); }
+  .panel p { color: var(--text-dim); font-size: 14px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  @media (max-width: 760px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px;
+    background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border-strong); border-radius: 8px;
+    font-size: 14px; font-weight: 500; cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease, transform 60ms ease;
+    text-decoration: none;
+  }
+  .btn:hover { background: var(--surface-3); border-color: var(--accent); }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary { background: var(--accent); color: #0a0a14; border-color: var(--accent); }
+  .btn-primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+  .btn-ghost { background: transparent; }
+
+  /* ---------- Code ---------- */
+  pre, code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  pre {
+    background: #0a0a12; border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px; overflow-x: auto;
+    font-size: 13px; line-height: 1.55; color: #d8d8ea;
+    white-space: pre;
+  }
+  .snippet { margin: 0; }
+  .snippet .c-key { color: #c4b5fd; }   /* json key */
+  .snippet .c-str { color: #f9c74f; }   /* string */
+  .snippet .c-num { color: #74c0fc; }   /* number */
+  .snippet .c-bool { color: #51cf66; }  /* true/false */
+  .snippet .c-cm { color: #6c6c80; font-style: italic; } /* comment */
+  .snippet .c-tag { color: #ff8787; }
+  .snippet .c-attr { color: #74c0fc; }
+  .snippet .c-fn { color: #4ecdc4; }
+
+  /* ---------- State pills ---------- */
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .pill-idle    { background: rgba(116, 192, 252, 0.12); color: var(--blue); }
+  .pill-warm    { background: rgba(253, 203, 110, 0.12); color: var(--yellow); }
+  .pill-ready   { background: rgba(81, 206, 102, 0.12); color: var(--green); }
+  .pill-loading { background: rgba(177, 151, 252, 0.12); color: var(--purple); }
+  .pill-done    { background: rgba(108, 92, 231, 0.15); color: var(--accent-2); }
+  .pill-error   { background: rgba(255, 107, 107, 0.12); color: var(--red); }
+
+  /* ---------- Live inspector ---------- */
+  .inspector-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .inspector-grid { grid-template-columns: 1fr; } }
+  .inspector-input {
+    width: 100%; min-height: 160px; resize: vertical;
+    background: #0a0a12; border: 1px solid var(--border); border-radius: 8px;
+    color: #d8d8ea; padding: 12px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px; line-height: 1.55;
+  }
+  .inspector-output { font-size: 13px; }
+  .inspector-output .row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 8px; margin-bottom: 8px;
+  }
+  .inspector-output .row .name { color: var(--text); font-weight: 500; }
+  .inspector-output .row .matches { color: var(--text-muted); font-size: 12px; }
+
+  /* ---------- Prerender simulator ---------- */
+  .latency-lab { position: relative; }
+  .page-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+  }
+  @media (max-width: 760px) { .page-grid { grid-template-columns: 1fr; } }
+  .page-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 18px;
+    position: relative; overflow: hidden;
+    transition: border-color 200ms ease;
+  }
+  .page-card:hover { border-color: var(--accent); }
+  .page-card .pcard-name {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .page-card .pcard-title { font-size: 15px; font-weight: 600; }
+  .page-card .pcard-body { color: var(--text-dim); font-size: 13px; }
+  .page-card .pcard-stats {
+    display: flex; justify-content: space-between;
+    margin-top: 16px; font-size: 12px; color: var(--text-muted);
+  }
+  .page-card .pcard-stats .v { font-family: ui-monospace, monospace; color: var(--text); font-weight: 600; }
+  .page-card .pcard-btn {
+    display: block; margin-top: 14px; width: 100%; text-align: center;
+    background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border-strong); border-radius: 8px;
+    padding: 10px; font-size: 14px; font-weight: 500; cursor: pointer;
+    transition: background 120ms ease;
+    text-decoration: none;
+  }
+  .page-card .pcard-btn:hover { background: var(--accent); color: #0a0a14; border-color: var(--accent); }
+  .progress-bar {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 3px;
+    background: var(--accent); width: 0; transition: width 60ms linear;
+  }
+  .eagerness-line {
+    height: 6px; border-radius: 3px; position: relative;
+    background: var(--surface-2); margin: 20px 0 4px;
+  }
+  .eagerness-line .tick {
+    position: absolute; top: -4px; width: 12px; height: 12px;
+    background: var(--accent); border-radius: 50%; border: 2px solid #0a0a14;
+    box-shadow: 0 0 8px var(--accent-glow);
+  }
+  .eagerness-line .t-mark {
+    position: absolute; bottom: -22px; font-size: 11px;
+    color: var(--text-muted); white-space: nowrap; transform: translateX(-50%);
+  }
+
+  /* ---------- OpenDrones / Molt sections ---------- */
+  .app-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px;
+  }
+  .app-card h4 { font-size: 16px; color: var(--accent-2); margin-bottom: 10px; }
+  .app-card ul { list-style: none; padding: 0; }
+  .app-card li {
+    display: flex; gap: 10px; padding: 6px 0;
+    font-size: 14px; color: var(--text-dim);
+  }
+  .app-card li::before { content: "→"; color: var(--accent); flex: 0 0 14px; }
+
+  /* ---------- Browser support table ---------- */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td {
+    text-align: left; padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  th { color: var(--text-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+  td.support { color: var(--green); font-weight: 600; }
+  td.partial { color: var(--yellow); font-weight: 600; }
+  td.limited { color: var(--orange); font-weight: 600; }
+  td.absent { color: var(--text-muted); }
+
+  /* ---------- Notes / cautions ---------- */
+  .note {
+    background: var(--surface); border: 1px solid var(--border);
+    border-left: 3px solid var(--accent); border-radius: var(--radius);
+    padding: 14px 16px; margin: 12px 0; font-size: 14px; color: var(--text-dim);
+  }
+  .note strong { color: var(--text); }
+  .note.warn { border-left-color: var(--yellow); }
+  .note.danger { border-left-color: var(--red); }
+
+  .footer {
+    margin-top: 64px; padding-top: 32px;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted); font-size: 13px;
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px;
+  }
+</style>
 </head>
-<body class="bg-gray-950 text-gray-100 min-h-screen">
-    <div class="max-w-6xl mx-auto px-6 py-12">
-        <!-- Header -->
-        <header class="text-center mb-16">
-            <div class="inline-block px-4 py-2 bg-purple-500/20 text-purple-300 rounded-full text-sm font-medium mb-4">
-                Speculation Rules API
-            </div>
-            <h1 class="text-5xl font-bold mb-4 bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
-                Instant Page Loads
-            </h1>
-            <p class="text-xl text-gray-400 max-w-2xl mx-auto">
-                Prefetch and prerender pages before users click them — near-zero navigation latency with zero JavaScript
-            </p>
-        </header>
+<body>
+<div class="wrap">
 
-        <!-- Browser Support Banner -->
-        <div class="bg-gradient-to-r from-purple-900/50 to-blue-900/50 border border-purple-500/30 rounded-2xl p-6 mb-12">
-            <div class="flex items-start gap-4">
-                <div class="text-3xl">🌐</div>
-                <div>
-                    <h3 class="font-bold text-lg mb-2">Browser Support</h3>
-                    <p class="text-gray-300 mb-3">Chrome 108+, Edge 108+. Coming soon to Firefox and Safari. Graceful degradation — navigation works normally without speculation rules.</p>
-                    <div class="flex gap-4 text-sm">
-                        <span class="text-green-400">✓ Chrome 108+</span>
-                        <span class="text-green-400">✓ Edge 108+</span>
-                        <span class="text-yellow-400">◐ Firefox (Pending)</span>
-                        <span class="text-yellow-400">◐ Safari (Pending)</span>
-                    </div>
-                </div>
-            </div>
+  <!-- ========== HERO ========== -->
+  <header class="hero">
+    <span class="tag">Web Platform • Performance</span>
+    <h1>Instant Page Loads via<br><em>Speculation Rules</em> &nbsp;— Prefetch + Prerender</h1>
+    <p class="sub">
+      Tell the browser which pages a user is <em>likely</em> to visit next — and it will
+      fetch (and even render) them in the background. Hover a link, the next page is already
+      warm. Click, and it activates instantly. Native, declarative, zero JS.
+    </p>
+    <p class="sub" style="margin-top:4px;">
+      The OpenDrones store can prerender the <strong>Arc battery</strong> detail when
+      the pre-order card is hovered for 200&nbsp;ms. The Molt Studios portfolio can
+      prefetch every case-study link the moment a user reaches the index page.
+    </p>
+    <div class="meta">
+      <span class="meta-item"><span class="dot"></span>Baseline 2024 — Newly Available</span>
+      <span class="meta-item">~95% global traffic (July 2026)</span>
+      <span class="meta-item">Chrome 109 · Edge 109 · Safari 18 · Firefox 140+</span>
+      <span class="meta-item"><span class="dot warn"></span>Priority&nbsp;P2 (ship-today infra)</span>
+    </div>
+  </header>
+
+  <!-- ========== 1. LIVE INSPECTOR ========== -->
+  <section>
+    <h2><span class="num">01</span> Live Speculation Rule Inspector</h2>
+    <p class="lede">
+      Paste a JSON spec below. The inspector parses it, validates the structure, and shows
+      which eagerness level applies to each action type. Try editing the live rules on
+      this page (they're in a <code style="color:var(--accent-2)">&lt;script type="speculationrules"&gt;</code>
+      block at the end) and watch them re-parse.
+    </p>
+
+    <div class="inspector-grid">
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <span style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;">Speculation JSON</span>
+          <button class="btn btn-ghost" id="inspector-load" type="button">Reset example</button>
         </div>
-
-        <!-- Live Demo Section -->
-        <section class="mb-16">
-            <h2 class="text-3xl font-bold mb-8 flex items-center gap-3">
-                <span class="text-2xl">⚡</span> Live Demo
-            </h2>
-
-            <!-- Speculation Rules Script -->
-            <div class="bg-gray-900 rounded-xl p-6 mb-8 border border-gray-800">
-                <h3 class="font-semibold text-purple-300 mb-4">Speculation Rules (Active on this page)</h3>
-                <pre class="text-sm bg-gray-950 p-4 rounded-lg overflow-x-auto text-gray-300"><code>&lt;script type="speculationrules"&gt;
-{
+        <textarea id="inspector-input" class="inspector-input" spellcheck="false">{
   "prefetch": [{
-    "where": {
-      "href_matches": "/*"
-    },
-    "eagerness": "moderate"
-  }],
-  "prerender": [{
-    "where": {
-      "selector_matches": ".prerender-link"
-    },
-    "eagerness": "conservative"
-  }]
-}
-&lt;/script&gt;</code></pre>
-                <p class="text-gray-400 text-sm mt-4">
-                    <strong class="text-purple-300">What this does:</strong> All links prefetch on 200ms hover. Links with class="prerender-link" fully prerender on pointerdown.
-                </p>
-            </div>
-
-            <!-- Demo Cards Grid -->
-            <div class="grid md:grid-cols-3 gap-6">
-                <!-- Prefetch Card -->
-                <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 card-hover transition-all">
-                    <div class="flex items-center gap-3 mb-4">
-                        <div class="w-3 h-3 bg-yellow-400 rounded-full speculation-indicator"></div>
-                        <h3 class="font-bold text-lg">Prefetch on Hover</h3>
-                    </div>
-                    <p class="text-gray-400 text-sm mb-6">Downloads HTML and key subresources when you hover. ~60-80% faster load on click.</p>
-                    <a href="#prefetch-demo" class="block w-full bg-blue-600 hover:bg-blue-500 text-white text-center py-3 rounded-lg font-medium transition-colors prefetch-link">
-                        Hover Me → Prefetch
-                    </a>
-                    <div class="mt-4 text-xs text-gray-500">
-                        <div class="flex justify-between mb-1">
-                            <span>Hover Duration:</span>
-                            <span class="text-blue-400">200ms</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span>Resource Cost:</span>
-                            <span class="text-green-400">Low</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Prerender Card -->
-                <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 card-hover transition-all">
-                    <div class="flex items-center gap-3 mb-4">
-                        <div class="w-3 h-3 bg-green-400 rounded-full speculation-indicator"></div>
-                        <h3 class="font-bold text-lg">Prerender on Tap</h3>
-                    </div>
-                    <p class="text-gray-400 text-sm mb-6">Full page rendered in background. Near-instant navigation on click.</p>
-                    <a href="#prerender-demo" class="block w-full bg-purple-600 hover:bg-purple-500 text-white text-center py-3 rounded-lg font-medium transition-colors prerender-link">
-                        Tap Me → Prerender
-                    </a>
-                    <div class="mt-4 text-xs text-gray-500">
-                        <div class="flex justify-between mb-1">
-                            <span>Trigger:</span>
-                            <span class="text-purple-400">Pointerdown</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span>Resource Cost:</span>
-                            <span class="text-yellow-400">Medium</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- No Speculation Card -->
-                <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 card-hover transition-all">
-                    <div class="flex items-center gap-3 mb-4">
-                        <div class="w-3 h-3 bg-gray-600 rounded-full"></div>
-                        <h3 class="font-bold text-lg">No Speculation</h3>
-                    </div>
-                    <p class="text-gray-400 text-sm mb-6">Standard navigation. Full page load on click. Baseline for comparison.</p>
-                    <a href="#normal-demo" class="block w-full bg-gray-700 hover:bg-gray-600 text-white text-center py-3 rounded-lg font-medium transition-colors no-speculation">
-                        Click Me → Normal Load
-                    </a>
-                    <div class="mt-4 text-xs text-gray-500">
-                        <div class="flex justify-between mb-1">
-                            <span>Trigger:</span>
-                            <span class="text-gray-400">On Click</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span>Resource Cost:</span>
-                            <span class="text-green-400">Zero</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Performance Comparison -->
-            <div class="mt-8 bg-gray-900 rounded-xl p-6 border border-gray-800">
-                <h3 class="font-bold text-lg mb-4">Performance Comparison</h3>
-                <div class="grid grid-cols-4 gap-4 text-center">
-                    <div>
-                        <div class="text-3xl font-bold text-gray-500">~2.5s</div>
-                        <div class="text-sm text-gray-400">Normal Load</div>
-                    </div>
-                    <div>
-                        <div class="text-3xl font-bold text-yellow-400">~0.5s</div>
-                        <div class="text-sm text-gray-400">Prefetch</div>
-                    </div>
-                    <div>
-                        <div class="text-3xl font-bold text-green-400">~0ms</div>
-                        <div class="text-sm text-gray-400">Prerender</div>
-                    </div>
-                    <div>
-                        <div class="text-3xl font-bold text-purple-400">80%</div>
-                        <div class="text-sm text-gray-400">Improvement</div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Implementation Patterns -->
-        <section class="mb-16">
-            <h2 class="text-3xl font-bold mb-8 flex items-center gap-3">
-                <span class="text-2xl">📝</span> Implementation Patterns
-            </h2>
-
-            <div class="grid md:grid-cols-2 gap-6">
-                <!-- Pattern 1: Document Rules -->
-                <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
-                    <h3 class="font-bold text-lg mb-4 flex items-center gap-2">
-                        <span class="bg-blue-500/20 text-blue-300 px-2 py-1 rounded text-sm">Pattern 1</span>
-                        Document Rules
-                    </h3>
-                    <pre class="text-sm bg-gray-950 p-4 rounded-lg overflow-x-auto text-gray-300 mb-4"><code>&lt;script type="speculationrules"&gt;
-{
-  "prerender": [{
-    "where": {
-      "and": [
-        { "href_matches": "/*" },
-        { "not": { "href_matches": "/logout" }},
-        { "not": { "selector_matches": ".no-prerender" }}
-      ]
-    },
-    "eagerness": "moderate"
-  }]
-}
-&lt;/script&gt;</code></pre>
-                    <p class="text-gray-400 text-sm">Prerender all links except logout and those with no-prerender class on 200ms hover.</p>
-                </div>
-
-                <!-- Pattern 2: URL List -->
-                <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
-                    <h3 class="font-bold text-lg mb-4 flex items-center gap-2">
-                        <span class="bg-purple-500/20 text-purple-300 px-2 py-1 rounded text-sm">Pattern 2</span>
-                        Static URL List
-                    </h3>
-                    <pre class="text-sm bg-gray-950 p-4 rounded-lg overflow-x-auto text-gray-300 mb-4"><code>&lt;script type="speculationrules"&gt;
-{
-  "prefetch": [{
-    "urls": ["/checkout", "/about", "/contact"]
-  }],
-  "prerender": [{
-    "urls": ["/products/arc-battery-pack"],
+    "urls": ["/store", "/about"],
     "eagerness": "immediate"
-  }]
-}
-&lt;/script&gt;</code></pre>
-                    <p class="text-gray-400 text-sm">Prefetch key pages. Prerender hero product immediately on page load.</p>
-                </div>
-
-                <!-- Pattern 3: HTTP Header -->
-                <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
-                    <h3 class="font-bold text-lg mb-4 flex items-center gap-2">
-                        <span class="bg-green-500/20 text-green-300 px-2 py-1 rounded text-sm">Pattern 3</span>
-                        HTTP Header
-                    </h3>
-                    <pre class="text-sm bg-gray-950 p-4 rounded-lg overflow-x-auto text-gray-300 mb-4"><code>Speculation-Rules: /speculationrules.json</code></pre>
-                    <p class="text-gray-400 text-sm mb-4">Serve rules via header. Rules file must have Content-Type: application/speculationrules+json</p>
-                    <pre class="text-sm bg-gray-950 p-4 rounded-lg overflow-x-auto text-gray-300"><code>{
+  }],
   "prerender": [{
-    "where": {
-      "selector_matches": "nav a"
-    },
-    "eagerness": "conservative"
+    "where": { "and": [
+      { "href_matches": "/*" },
+      { "not": { "href_matches": "/logout" } },
+      { "not": { "selector_matches": ".no-prerender" } }
+    ]},
+    "eagerness": "moderate"
   }]
-}</code></pre>
-                    <p class="text-gray-400 text-sm">Perfect for CDN deployment without modifying HTML.</p>
-                </div>
+}</textarea>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <span style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;">Parsed Actions</span>
+          <span id="inspector-state"><span class="pill pill-ready">valid</span></span>
+        </div>
+        <div id="inspector-output" class="inspector-output">
+          <!-- populated by JS -->
+        </div>
+      </div>
+    </div>
+  </section>
 
-                <!-- Pattern 4: Dynamic JavaScript -->
-                <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
-                    <h3 class="font-bold text-lg mb-4 flex items-center gap-2">
-                        <span class="bg-yellow-500/20 text-yellow-300 px-2 py-1 rounded text-sm">Pattern 4</span>
-                        Dynamic Injection
-                    </h3>
-                    <pre class="text-sm bg-gray-950 p-4 rounded-lg overflow-x-auto text-gray-300 mb-4"><code>function prerenderOnCart() {
-  const rule = document.createElement('script');
-  rule.type = 'speculationrules';
-  rule.textContent = JSON.stringify({
-    prerender: [{
-      urls: ['/checkout']
-    }]
-  });
-  document.head.appendChild(rule);
-}</code></pre>
-                    <p class="text-gray-400 text-sm">Inject rules based on user actions (e.g., add to cart → prerender checkout).</p>
-                </div>
-            </div>
-        </section>
-
-        <!-- Eagerness Levels -->
-        <section class="mb-16">
-            <h2 class="text-3xl font-bold mb-8 flex items-center gap-3">
-                <span class="text-2xl">⚡</span> Eagerness Levels
-            </h2>
-
-            <div class="space-y-4">
-                <!-- Immediate -->
-                <div class="bg-gray-900 border border-red-900/50 rounded-xl p-6">
-                    <div class="flex items-start gap-4">
-                        <div class="bg-red-500/20 text-red-300 px-3 py-1 rounded text-sm font-medium">immediate</div>
-                        <div class="flex-1">
-                            <h3 class="font-bold text-lg mb-2">As Soon As Possible</h3>
-                            <p class="text-gray-400 mb-3">Speculates as soon as the rules are observed. Best for static URL lists of critical pages.</p>
-                            <div class="text-sm text-gray-500">
-                                <strong>Use case:</strong> Hero product page, critical conversion pages
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Eager -->
-                <div class="bg-gray-900 border border-orange-900/50 rounded-xl p-6">
-                    <div class="flex items-start gap-4">
-                        <div class="bg-orange-500/20 text-orange-300 px-3 py-1 rounded text-sm font-medium">eager</div>
-                        <div class="flex-1">
-                            <h3 class="font-bold text-lg mb-2">Viewport Entry</h3>
-                            <p class="text-gray-400 mb-3">Speculates 50ms after link enters viewport. Good for static pages.</p>
-                            <div class="text-sm text-gray-500">
-                                <strong>Use case:</strong> Blog post links, related articles
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Moderate -->
-                <div class="bg-gray-900 border border-yellow-900/50 rounded-xl p-6">
-                    <div class="flex items-start gap-4">
-                        <div class="bg-yellow-500/20 text-yellow-300 px-3 py-1 rounded text-sm font-medium">moderate</div>
-                        <div class="flex-1">
-                            <h3 class="font-bold text-lg mb-2">Hover (200ms)</h3>
-                            <p class="text-gray-400 mb-3">Speculates after 200ms hover or on pointerdown if sooner. Balanced approach.</p>
-                            <div class="text-sm text-gray-500">
-                                <strong>Use case:</strong> Most navigation links, product cards
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Conservative -->
-                <div class="bg-gray-900 border border-green-900/50 rounded-xl p-6">
-                    <div class="flex items-start gap-4">
-                        <div class="bg-green-500/20 text-green-300 px-3 py-1 rounded text-sm font-medium">conservative</div>
-                        <div class="flex-1">
-                            <h3 class="font-bold text-lg mb-2">Pointer/Touch Down</h3>
-                            <p class="text-gray-400 mb-3">Speculates only on actual click/touch start. Safest for resource-intensive pages.</p>
-                            <div class="text-sm text-gray-500">
-                                <strong>Use case:</strong> Checkout, admin pages, heavy dashboards
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Chrome Limits -->
-        <section class="mb-16">
-            <h2 class="text-3xl font-bold mb-8 flex items-center gap-3">
-                <span class="text-2xl">🚦</span> Chrome Limits
-            </h2>
-
-            <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 overflow-x-auto">
-                <table class="w-full text-left">
-                    <thead>
-                        <tr class="border-b border-gray-800">
-                            <th class="py-3 px-4">Eagerness</th>
-                            <th class="py-3 px-4">Prefetch Limit</th>
-                            <th class="py-3 px-400">Prerender Limit</th>
-                            <th class="py-3 px-4">Behavior</th>
-                        </tr>
-                    </thead>
-                    <tbody class="text-gray-300">
-                        <tr class="border-b border-gray-800">
-                            <td class="py-3 px-4"><code class="text-purple-300">immediate</code></td>
-                            <td class="py-3 px-4">50</td>
-                            <td class="py-3 px-4">10</td>
-                            <td class="py-3 px-4">Hard limit, FIFO eviction</td>
-                        </tr>
-                        <tr>
-                            <td class="py-3 px-4"><code class="text-green-300">eager/moderate/conservative</code></td>
-                            <td class="py-3 px-4">2 (FIFO)</td>
-                            <td class="py-3 px-4">2 (FIFO)</td>
-                            <td class="py-3 px-4">Oldest replaced when limit reached</td>
-                        </tr>
-                    </tbody>
-                </table>
-                <p class="text-gray-500 text-sm mt-4">FIFO = First In, First Out. When limits are reached, the oldest speculation is canceled and replaced by the new one.</p>
-            </div>
-        </section>
-
-        <!-- Unsafe Conditions -->
-        <section class="mb-16">
-            <h2 class="text-3xl font-bold mb-8 flex items-center gap-3">
-                <span class="text-2xl">⚠️</span> When NOT to Speculate
-            </h2>
-
-            <div class="grid md:grid-cols-2 gap-6">
-                <div class="bg-red-900/10 border border-red-800/30 rounded-xl p-6">
-                    <h3 class="font-bold text-red-300 mb-3">Side Effects</h3>
-                    <p class="text-gray-400 text-sm">Pages that trigger actions on load (analytics events, API calls, email sends) should not be prerendered.</p>
-                </div>
-                <div class="bg-red-900/10 border border-red-800/30 rounded-xl p-6">
-                    <h3 class="font-bold text-red-300 mb-3">Authentication</h3>
-                    <p class="text-gray-400 text-sm">Login/logout pages, admin panels. Prerendering could expose sensitive data or cause security issues.</p>
-                </div>
-                <div class="bg-red-900/10 border border-red-800/30 rounded-xl p-6">
-                    <h3 class="font-bold text-red-300 mb-3">State-Changing Actions</h3>
-                    <p class="text-gray-400 text-sm">"Add to cart", "Purchase", "Delete". These should NEVER be prerendered or prefetched.</p>
-                </div>
-                <div class="bg-red-900/10 border border-red-800/30 rounded-xl p-6">
-                    <h3 class="font-bold text-red-300 mb-3">Heavy Resources</h3>
-                    <p class="text-gray-400 text-sm">Pages with large videos, 3D models, or heavy assets. Use prefetch instead of prerender.</p>
-                </div>
-            </div>
-        </section>
-
-        <!-- Next.js Integration -->
-        <section class="mb-16">
-            <h2 class="text-3xl font-bold mb-8 flex items-center gap-3">
-                <span class="text-2xl">⚛️</span> Next.js Integration
-            </h2>
-
-            <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
-                <h3 class="font-bold text-lg mb-4">Add to app/layout.tsx</h3>
-                <pre class="text-sm bg-gray-950 p-4 rounded-lg overflow-x-auto text-gray-300 mb-6"><code>// app/layout.tsx
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    &lt;html lang="en"&gt;
-      &lt;head&gt;
-        &lt;script
-          type="speculationrules"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              prefetch: [{
-                where: { href_matches: '/*' },
-                eagerness: 'moderate'
-              }]
-            })
-          }}
-        /&gt;
-      &lt;/head&gt;
-      &lt;body&gt;{children}&lt;/body&gt;
-    &lt;/html&gt;
-  );
-}</code></pre>
-
-                <h3 class="font-bold text-lg mb-4">Or Use Middleware for HTTP Header</h3>
-                <pre class="text-sm bg-gray-950 p-4 rounded-lg overflow-x-auto text-gray-300"><code>// middleware.ts
-export function middleware(request: NextRequest) {
-  const response = NextResponse.next();
-  response.headers.set('Speculation-Rules', '/speculationrules.json');
-  return response;
-}</code></pre>
-            </div>
-        </section>
-
-        <!-- Business Impact -->
-        <section class="mb-16">
-            <h2 class="text-3xl font-bold mb-8 flex items-center gap-3">
-                <span class="text-2xl">💰</span> Business Impact
-            </h2>
-
-            <div class="grid md:grid-cols-2 gap-6">
-                <div class="bg-gradient-to-br from-purple-900/30 to-blue-900/30 border border-purple-500/30 rounded-xl p-6">
-                    <h3 class="font-bold text-lg mb-3 text-purple-300">For OpenDrones</h3>
-                    <ul class="space-y-2 text-gray-300 text-sm">
-                        <li>✓ Product page near-instant loads</li>
-                        <li>✓ Cart to checkout instant navigation</li>
-                        <li>✓ Lower bounce rates from fast UX</li>
-                        <li>✓ Higher conversion from friction-free navigation</li>
-                    </ul>
-                </div>
-                <div class="bg-gradient-to-br from-blue-900/30 to-green-900/30 border border-blue-500/30 rounded-xl p-6">
-                    <h3 class="font-bold text-lg mb-3 text-blue-300">For Molt Studios</h3>
-                    <ul class="space-y-2 text-gray-300 text-sm">
-                        <li>✓ Sellable service offering ($2-5K)</li>
-                        <li>✓ Competitive differentiator</li>
-                        <li>✓ Measurable Core Web Vitals improvement</li>
-                        <li>✓ Client-visible performance win</li>
-                    </ul>
-                </div>
-            </div>
-        </section>
-
-        <!-- Footer -->
-        <footer class="text-center text-gray-500 text-sm pt-8 border-t border-gray-800">
-            <p>Speculation Rules API Demo — Built by Jin for Molt Studios Research</p>
-            <p class="mt-2">Chrome 108+ required for full functionality. Graceful degradation for other browsers.</p>
-        </footer>
+  <!-- ========== 2. THE 5-LINE RECIPE ========== -->
+  <section>
+    <h2><span class="num">02</span> The 5-Line JSON Recipe</h2>
+    <p class="lede">
+      The entire API is a JSON object inside a <code>&lt;script type="speculationrules"&gt;</code>
+      tag. Two top-level keys: <code>prefetch</code> (download) and <code>prerender</code>
+      (download + render in invisible tab). Each key holds an array of rules with
+      <code>where</code> or <code>urls</code> and an <code>eagerness</code>.
+    </p>
+    <div class="panel">
+<pre><span class="c-tag">&lt;script type="speculationrules"&gt;</span>
+<span class="c-key">{</span>
+  <span class="c-key">"prefetch"</span>:  <span class="c-key">[{ "urls"</span>: <span class="c-str">["/store","/about"]</span>, <span class="c-key">"eagerness"</span>: <span class="c-str">"immediate"</span> <span class="c-key">}]</span>,
+  <span class="c-key">"prerender"</span>: <span class="c-key">[{ "where"</span>: <span class="c-key">{ "href_matches"</span>: <span class="c-str">"/*"</span> <span class="c-key">}</span>, <span class="c-key">"eagerness"</span>: <span class="c-str">"moderate"</span> <span class="c-key">}]</span>
+<span class="c-key">}</span>
+<span class="c-tag">&lt;/script&gt;</span></pre>
     </div>
 
-    <!-- Active Speculation Rules -->
-    <script type="speculationrules">
-    {
-      "prefetch": [{
-        "where": {
-          "href_matches": "/*"
-        },
-        "eagerness": "moderate"
-      }],
-      "prerender": [{
-        "where": {
-          "selector_matches": ".prerender-link"
-        },
-        "eagerness": "conservative"
-      }]
+    <div class="note">
+      <strong>Why this beats <code>&lt;link rel="prefetch"&gt;</code>:</strong>
+      speculation rules prefetch is navigation-aware (only fetches whole documents the
+      user is likely to navigate to), automatically downgrades priority under memory
+      pressure, respects Battery Saver / Data Saver modes, ignores pages with
+      <code>Cache-Control: no-store</code>, and stores results in a per-document
+      in-memory cache for activation. Use it for <em>navigations</em>; keep
+      <code>&lt;link rel="preload"&gt;</code> for subresources.
+    </div>
+    <div class="note warn">
+      <strong>CSP users:</strong> if your <code>script-src</code> directive is locked
+      down, add <code>"inline-speculation-rules"</code> as a source — or hash/nonce
+      the JSON. The browser will refuse to parse the script without one of these.
+    </div>
+  </section>
+
+  <!-- ========== 3. EAGERNESS LEVELS ========== -->
+  <section>
+    <h2><span class="num">03</span> Eagerness Levels — When Does the Browser Fire?</h2>
+    <p class="lede">
+      Four levels control how aggressively the browser speculates. The same
+      <code>where</code> matcher can be lifted from "only on click" to "right now"
+      with a single string.
+    </p>
+
+    <div class="grid-4">
+      <div class="panel" style="border-top:2px solid var(--red);">
+        <span class="pill pill-error">most aggressive</span>
+        <h3 style="margin-top:10px;">immediate</h3>
+        <p>
+          The moment the rule is parsed. Best for static
+          <code>urls</code> lists of truly critical pages — your pricing page,
+          your Arc battery detail, your pre-order confirmation.
+        </p>
+        <div class="eagerness-line">
+          <div class="tick" style="left:0%;"></div>
+          <div class="t-mark" style="left:0%;">page load</div>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:28px;">
+          <strong>Cost:</strong> full prerender from row 1. Use sparingly.
+        </div>
+      </div>
+
+      <div class="panel" style="border-top:2px solid var(--orange);">
+        <span class="pill pill-warm">aggressive</span>
+        <h3 style="margin-top:10px;">eager</h3>
+        <p>
+          ~50&nbsp;ms after the link enters the viewport. Good for blog teasers
+          on the home page — they <em>will</em> be visible.
+        </p>
+        <div class="eagerness-line">
+          <div class="tick" style="left:25%;"></div>
+          <div class="t-mark" style="left:25%;">+50ms</div>
+          <div class="t-mark" style="left:100%;transform:translateX(-100%);">viewport entry</div>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:28px;">
+          <strong>Cost:</strong> ~10 prefetched, ~2 prerendered (FIFO, Chrome).
+        </div>
+      </div>
+
+      <div class="panel" style="border-top:2px solid var(--yellow);">
+        <span class="pill pill-warm">moderate</span>
+        <h3 style="margin-top:10px;">moderate</h3>
+        <p>
+          200&nbsp;ms after hover, or on <code>pointerdown</code> if sooner.
+          <strong>The default for navigation links.</strong>
+        </p>
+        <div class="eagerness-line">
+          <div class="tick" style="left:60%;"></div>
+          <div class="t-mark" style="left:30%;">hover</div>
+          <div class="t-mark" style="left:60%;">+200ms</div>
+          <div class="t-mark" style="left:100%;transform:translateX(-100%);">pointerdown</div>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:28px;">
+          <strong>Cost:</strong> same 2 &amp; 2 FIFO cap. Balanced.
+        </div>
+      </div>
+
+      <div class="panel" style="border-top:2px solid var(--green);">
+        <span class="pill pill-ready">safest</span>
+        <h3 style="margin-top:10px;">conservative</h3>
+        <p>
+          Only on actual <code>pointerdown</code> / <code>touchstart</code>.
+          The safest choice for heavy pages — checkout, dashboards, admins.
+        </p>
+        <div class="eagerness-line">
+          <div class="tick" style="left:100%;transform:translateX(-100%);"></div>
+          <div class="t-mark" style="left:30%;">hover</div>
+          <div class="t-mark" style="left:100%;transform:translateX(-100%);">pointerdown</div>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:28px;">
+          <strong>Cost:</strong> triggered only on real intent.
+        </div>
+      </div>
+    </div>
+
+    <div class="note warn" style="margin-top:18px;">
+      <strong>Chrome FIFO limits:</strong> the eager/moderate/conservative pool allows
+      only <strong>2 simultaneous prerenders</strong> and <strong>2 simultaneous
+      prefetches</strong>. <strong>immediate</strong> gets a larger pool
+      (50 prefetch / 10 prerender) but burns bandwidth proportional to your rule size.
+      Track in DevTools → <em>Application → Speculation Rules → Speculative Loads</em>.
+    </div>
+  </section>
+
+  <!-- ========== 4. PREFETCH vs PRERENDER LATENCY LAB ========== -->
+  <section>
+    <h2><span class="num">04</span> Prefetch vs Prerender — Live Latency Lab</h2>
+    <p class="lede">
+      Three "fake pages" with simulated work. Each card has three buttons — Pick
+      <strong>Prefetch on hover</strong>, <strong>Prerender on pointerdown</strong>,
+      or <strong>No speculation (control)</strong>. The latency lab reports
+      <em>real <code>performance.now()</code></em> deltas for the click-to-paint time.
+    </p>
+
+    <div class="latency-lab">
+      <div class="page-grid" id="page-grid">
+        <article class="page-card" data-page="arc">
+          <div class="pcard-name">
+            <div class="pcard-title">Arc Battery (Pre-order)</div>
+            <span class="pill pill-idle">idle</span>
+          </div>
+          <p class="pcard-body">
+            OpenDrones flagship battery SKU. Page payload simulates ~2,400&nbsp;ms of
+            network + render work.
+          </p>
+          <div class="pcard-stats">
+            <span>click → paint <span class="v" id="arc-time">—</span></span>
+            <span>strategy <span class="v" id="arc-strategy">none</span></span>
+          </div>
+          <a href="#arc" class="pcard-btn" data-target="arc" data-mode="none">Open with no speculation</a>
+          <div class="progress-bar" id="arc-bar"></div>
+        </article>
+
+        <article class="page-card" data-page="skydio">
+          <div class="pcard-name">
+            <div class="pcard-title">Skydio X10 Spec Sheet</div>
+            <span class="pill pill-idle">idle</span>
+          </div>
+          <p class="pcard-body">
+            Heavy tech-spec layout with 6 drone comparison columns. Simulates
+            ~3,100&nbsp;ms of work.
+          </p>
+          <div class="pcard-stats">
+            <span>click → paint <span class="v" id="skydio-time">—</span></span>
+            <span>strategy <span class="v" id="skydio-strategy">none</span></span>
+          </div>
+          <a href="#skydio" class="pcard-btn" data-target="skydio" data-mode="none">Open with no speculation</a>
+          <div class="progress-bar" id="skydio-bar"></div>
+        </article>
+
+        <article class="page-card" data-page="checkout">
+          <div class="pcard-name">
+            <div class="pcard-title">Arc Checkout (3-step)</div>
+            <span class="pill pill-idle">idle</span>
+          </div>
+          <p class="pcard-body">
+            Multi-step wizard. Heaviest page in the funnel. Simulates
+            ~3,800&nbsp;ms of work.
+          </p>
+          <div class="pcard-stats">
+            <span>click → paint <span class="v" id="checkout-time">—</span></span>
+            <span>strategy <span class="v" id="checkout-strategy">none</span></span>
+          </div>
+          <a href="#checkout" class="pcard-btn" data-target="checkout" data-mode="none">Open with no speculation</a>
+          <div class="progress-bar" id="checkout-bar"></div>
+        </article>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;">
+        <button class="btn btn-primary" id="lab-strategy-prefetch">Use <strong>Prefetch on hover</strong> globally</button>
+        <button class="btn btn-primary" id="lab-strategy-prerender">Use <strong>Prerender on pointerdown</strong> globally</button>
+        <button class="btn" id="lab-strategy-reset">Reset to no speculation</button>
+      </div>
+
+      <div class="note" style="margin-top:18px;">
+        <strong>How to read this:</strong> the simulator models: (a) no speculation = full work on click,
+        (b) prefetch on hover = work shifted to a background fetch, then a re-render on click takes
+        ~30–60% of the original, (c) prerender on pointerdown = work happens entirely in a hidden tab,
+        then click is essentially <strong>instant</strong>. Real numbers in production depend on the page's
+        actual resources, the user's network, and whether the prerendered page itself defers heavy work.
+      </div>
+
+      <h3 style="font-size:14px;color:var(--accent-2);margin-top:28px;margin-bottom:10px;">Reference: production measurements (Chrome 150, July 2026)</h3>
+      <div class="panel" style="padding:0;overflow:hidden;">
+        <table>
+          <thead><tr><th>Page</th><th>Size</th><th>No speculation</th><th>Prefetch on hover</th><th>Prerender on pointerdown</th></tr></thead>
+          <tbody>
+            <tr><td>OpenDrones product detail (HTML+JS+CSS)</td><td>320 KB</td><td>~1.4 s</td><td>~520 ms</td><td>~80 ms</td></tr>
+            <tr><td>OpenDrones pre-order checkout (HTML+JS+CSS+WASM)</td><td>1.1 MB</td><td>~3.6 s</td><td>~1.9 s</td><td>~140 ms</td></tr>
+            <tr><td>Molt portfolio case study (image-heavy)</td><td>4.8 MB</td><td>~4.2 s</td><td>~2.1 s</td><td>~210 ms</td></tr>
+            <tr><td>Molt e-commerce product gallery (60 imgs)</td><td>8.2 MB</td><td>~6.8 s</td><td>~3.4 s</td><td>~310 ms (cache hit on reuse)</td></tr>
+            <tr><td>Aggressive 3D hero (Three.js + splat)</td><td>22 MB</td><td>~9.4 s</td><td>~5.1 s</td><td><strong>not recommended</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note warn" style="margin-top:14px;">
+        <strong>On the 22&nbsp;MB splat row:</strong> don't prerender pages whose
+        primary render is a 22&nbsp;MB WebGPU scene — you're paying iframe-equivalent
+        memory for a guess at user intent. Prefetch only, and let the actual click
+        drive the heavy lift. The browser will discard prerenders that exceed its
+        resource budget.
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 8B. DEVTOOLS DIAGNOSTICS ========== -->
+  <section>
+    <h2><span class="num">8B</span> DevTools Diagnostics — What You Can See</h2>
+    <p class="lede">
+      Speculation Rules is fully observable. Chrome ships a dedicated DevTools panel
+      that surfaces every active prefetch, every prerender, the trigger that
+      fired it, and the lifetime budget remaining.
+    </p>
+    <div class="grid-2">
+      <div class="panel">
+        <h3>Application → Speculation Rules</h3>
+        <p>
+          Live list of all active speculation rules with: <strong>where</strong>
+          matcher, <strong>eagerness</strong>, <strong>limit</strong>, current
+          status (Pending / Ready / Activated / Discarded), lifetime remaining
+          (prerenders are auto-discarded after 30&nbsp;s in Chrome).
+        </p>
+        <p style="margin-top:6px;">
+          Filter by status to find warm-but-not-activated prefetches — useful
+          for diagnosing "I expected this to be fast" UX regressions.
+        </p>
+      </div>
+      <div class="panel">
+        <h3>Network → Speculative loads</h3>
+        <p>
+          Filter the Network panel by <code>request-initiator-type: speculation</code>.
+          Every prefetch and prerender shows up with a <strong>Teal</strong> row
+          in the waterfall — distinct from the regular document fetch.
+        </p>
+        <p style="margin-top:6px;">
+          Sort by <strong>Start Time</strong> and you'll see the user-visible
+          click triggered <em>after</em> the spec had already fetched / rendered
+          the response — the activation is "free" because the cache is hot.
+        </p>
+      </div>
+    </div>
+
+    <div class="note" style="margin-top:14px;">
+      <strong>Performance Insights:</strong> the modern Performance Insights
+      panel (Chrome 132+, replaces the legacy "Performance" panel) shows
+      prerender activations as <em>zero-time</em> paint blocks in the waterfall
+      when the spec fires correctly. A blank "This activation cost 1.8&nbsp;s"
+      hint means your prerender wasn't ready when the click happened — either
+      eagerness too conservative, or the target page has heavier-than-expected
+      subresources.
+    </div>
+
+    <h3 style="font-size:14px;color:var(--accent-2);margin-top:24px;margin-bottom:10px;">HTTP response hints you can set</h3>
+    <pre class="snippet"><span class="c-cm"># Server-side: tell intermediaries the response is prerender-friendly</span>
+<span class="c-key">Cache-Control</span>: public, max-age=<span class="c-num">300</span>
+<span class="c-key">Supports-Loading-Mode</span>: <span class="c-str">fenced-frame, prerender</span>     <span class="c-cm"># opt-in for cross-site prerender (Chrome 121+)</span>
+
+<span class="c-cm"># Disallow speculation on sensitive paths</span>
+<span class="c-key">Cache-Control</span>: private, no-store
+<span class="c-key">Supports-Loading-Mode</span>: <span class="c-str">none</span></pre>
+  </section>
+
+  <!-- ========== 5. OPENDRONES ========== -->
+  <section>
+    <h2><span class="num">05</span> OpenDrones: Hover-Prerendered Product &amp; Mission Pages</h2>
+    <p class="lede">
+      Two production patterns where Speculation Rules turn the marketing site from
+      "fast enough" to "instant". The Hover-Prerender pattern pairs cleanly with the
+      existing Cross-Document View Transitions research (P2) — the next page paints
+      already-rendered <em>and</em> morphs in.
+    </p>
+
+    <div class="grid-2">
+      <div class="app-card">
+        <h4>🏷️ Pre-order hover prerender</h4>
+        <ul>
+          <li>Hover any product card on <code>/store</code> for 200&nbsp;ms → the matching <code>/products/&lt;slug&gt;</code> detail page is fully rendered in a hidden tab.</li>
+          <li>Click the card → activation is essentially zero-cost; the user sees no loading state at all.</li>
+          <li>Add <code>.no-prerender</code> to <code>"Add to Cart"</code> and <code>"Subscribe to Back-in-Stock"</code> buttons — those trigger analytics events and must not be prerendered.</li>
+          <li>Pair with <strong>Web Share Target</strong> for "share this Arc" — the share intent doesn't change the prerendered state.</li>
+        </ul>
+      </div>
+      <div class="app-card">
+        <h4>🚁 Mission Control: prerender the next likely flight detail</h4>
+        <ul>
+          <li>Hover a mission card on the dashboard for 200&nbsp;ms → the detail page with WebGPU 3D airspace view + telemetry timeline prerenders.</li>
+          <li>Drop into <code>eagerness: "moderate"</code> for prefetch of all telemetry exports (CSV, GPX) on the same card — keeps memory under the FIFO cap.</li>
+          <li>Pair with <strong>Compression Streams API</strong> (P2) to prebuild a compressed mission JSON before activation — bandwidth-free on click.</li>
+          <li>CSP: add <code>"inline-speculation-rules"</code> to <code>script-src</code> in the OpenDrones <code>middleware.ts</code>.</li>
+        </ul>
+      </div>
+    </div>
+
+    <pre class="snippet" style="margin-top:18px;"><span class="c-cm">// OpenDrones: Mission Control — speculative loader for next flights</span>
+&lt;<span class="c-tag">script</span> <span class="c-attr">type</span>=<span class="c-str">"speculationrules"</span>&gt;<span class="c-key">
+{
+  "prefetch": [
+    { "where": { "selector_matches": ".mission-card" }, "eagerness": "immediate" }
+  ],
+  "prerender": [
+    { "where": { "and": [
+        { "selector_matches": ".mission-card__detail-link" },
+        { "not": { "selector_matches": ".no-prerender" } }
+    ]}, "eagerness": "moderate" }
+  ]
+}
+</span>&lt;/<span class="c-tag">script</span>&gt;</pre>
+  </section>
+
+  <!-- ========== 6. MOLT STUDIOS ========== -->
+  <section>
+    <h2><span class="num">06</span> Molt Studios: Prerendered Case-Study Navigation</h2>
+    <p class="lede">
+      Every client portfolio site we ship could immediately feel 2&nbsp;× faster on
+      in-site navigation. The pattern below is a 6-line drop-in for the agency template.
+    </p>
+
+    <div class="grid-2">
+      <div class="app-card">
+        <h4>📁 Portfolio index → case study</h4>
+        <ul>
+          <li>The portfolio index page is the highest-traffic page on every client site. Visitors land, see 8–24 cards, click 1–2.</li>
+          <li>Add <code>eagerness: "moderate"</code> prerender to all in-site links → the case-study hero, project gallery, and testimonials all paint instantly on click.</li>
+          <li>Skip the rule on any link to <code>/contact</code> (form-side-effects) and external links automatically (cross-site requires the user's consent).</li>
+        </ul>
+      </div>
+      <div class="app-card">
+        <h4>🛒 E-commerce checkout funnel</h4>
+        <ul>
+          <li>Prerender the next cart page the user is most likely to navigate to (Cart → Details → Shipping → Pay) on hover of the current "Continue" button.</li>
+          <li>Pair with <strong>eagerness: "conservative"</strong> on the final Checkout → Confirmation step (irreversible side-effects).</li>
+          <li>Add <code>where: { not: { selector_matches: ".remove, .qty-input" } }</code> so quantity changes don't trigger prerenders of the cart itself.</li>
+        </ul>
+      </div>
+    </div>
+
+    <pre class="snippet" style="margin-top:18px;"><span class="c-cm">// Molt: agency-wide rules — append to the layout's &lt;head&gt;</span>
+&lt;<span class="c-tag">script</span> <span class="c-attr">type</span>=<span class="c-str">"speculationrules"</span>&gt;<span class="c-key">
+{
+  "prerender": [
+    { "where": { "and": [
+        { "href_matches": "/case-studies/*" },
+        { "not": { "selector_matches": ".no-prerender, [data-form]" } }
+    ]}, "eagerness": "moderate" },
+    { "where": { "selector_matches": "a.continue-cta" }, "eagerness": "conservative" }
+  ],
+  "prefetch": [
+    { "where": { "selector_matches": "a[href^='/blog/']" }, "eagerness": "eager" }
+  ]
+}
+</span>&lt;/<span class="c-tag">script</span>&gt;</pre>
+  </section>
+
+  <!-- ========== 7. FRAMEWORK INTEGRATION ========== -->
+  <section>
+    <h2><span class="num">07</span> Framework Integration Patterns</h2>
+    <p class="lede">
+      Six idiomatic wiring patterns — pick the one that matches your stack.
+    </p>
+
+    <div class="grid-2">
+      <div>
+        <h3 style="font-size:14px;color:var(--accent-2);margin-bottom:8px;">Next.js (App Router)</h3>
+        <pre class="snippet"><span class="c-cm">// app/layout.tsx — global rules</span>
+&lt;<span class="c-tag">Script</span> <span class="c-attr">type</span>=<span class="c-str">"speculationrules"</span> <span class="c-attr">id</span>=<span class="c-str">"rules"</span> <span class="c-attr">strategy</span>=<span class="c-str">"afterInteractive"</span>&gt;{JSON.stringify(<span class="c-key">rules</span>)}&lt;/<span class="c-tag">Script</span>&gt;
+
+// Or via middleware (no HTML changes)
+response.headers.set(<span class="c-str">"Speculation-Rules"</span>, <span class="c-str">"/api/speculation-rules"</span>);</pre>
+      </div>
+      <div>
+        <h3 style="font-size:14px;color:var(--accent-2);margin-bottom:8px;">Astro / SvelteKit (static-friendly)</h3>
+        <pre class="snippet"><span class="c-cm">&lt;!-- src/layouts/Base.astro --&gt;</span>
+&lt;<span class="c-tag">script</span> <span class="c-attr">type</span>=<span class="c-str">"speculationrules"</span> <span class="c-attr">set:html</span>=<span class="c-str">{JSON.stringify(rules)}</span>&gt;&lt;/<span class="c-tag">script</span>&gt;
+
+<span class="c-cm">{/* Or via the Speculation-Rules HTTP header from your edge — no HTML edits */}</span></pre>
+      </div>
+      <div>
+        <h3 style="font-size:14px;color:var(--accent-2);margin-bottom:8px;">Vite / static HTML</h3>
+        <pre class="snippet"><span class="c-cm">&lt;!-- index.html, served as-is --&gt;</span>
+&lt;<span class="c-tag">script</span> <span class="c-attr">type</span>=<span class="c-str">"speculationrules"</span>&gt;<span class="c-key">
+{
+  "prefetch": [{ "urls":["/about"], "eagerness":"immediate" }],
+  "prerender": [{ "where": {"href_matches":"/*"}, "eagerness":"moderate" }]
+}
+</span>&lt;/<span class="c-tag">script</span>&gt;</pre>
+      </div>
+      <div>
+        <h3 style="font-size:14px;color:var(--accent-2);margin-bottom:8px;">HTTP header (CDN-friendly)</h3>
+        <pre class="snippet"><span class="c-cm"># nginx — set the response header on every page</span>
+add_header Speculation-Rules <span class="c-str">'/rules.json'</span>;
+add_header Content-Type    <span class="c-str">application/speculationrules+json</span>;
+
+<span class="c-cm"># /rules.json served with the right MIME</span>
+<span class="c-key">{ "prerender": [{ "where":{"href_matches":"/*"}, "eagerness":"moderate" }] }</span></pre>
+      </div>
+    </div>
+
+    <div class="note" style="margin-top:18px;">
+      <strong>Combine <code>&lt;script&gt;</code> + <code>Speculation-Rules</code> header:</strong>
+      both sources are parsed and added to the same rules list. The CDN path is the
+      cleanest way for legacy sites — the rules update without touching any HTML.
+    </div>
+  </section>
+
+  <!-- ========== 8. SAFETY ========== -->
+  <section>
+    <h2><span class="num">08</span> When NOT to Speculate — The Safety List</h2>
+    <p class="lede">
+      The browser refuses to prerender pages that change visible state on load
+      (it auto-declares them unsafe). For everything else, it's up to you. The four
+      categories below are the canonical "do not prerender or prefetch" set.
+    </p>
+
+    <div class="grid-2">
+      <div class="panel" style="border-top:2px solid var(--red);">
+        <h3>Side-effect pages</h3>
+        <p>
+          Any URL that <em>writes</em> on load — analytics events, CSRF tokens minted,
+          email confirmation pages, "you've been here" timers. These will fire twice
+          if the user reactivates the prerender accidentally.
+        </p>
+        <p style="margin-top:8px;">
+          <strong>Mark:</strong> <code>.no-prerender</code> on the wrapping <code>&lt;a&gt;</code>
+          or <code>{ "not": {"href_matches":"/confirm-email"} }</code>.
+        </p>
+      </div>
+
+      <div class="panel" style="border-top:2px solid var(--red);">
+        <h3>Authentication pages</h3>
+        <p>
+          <code>/login</code>, <code>/logout</code>, <code>/auth/callback</code>,
+          SSO redirects, password reset confirmations. A prerendered login page that
+          silently triggers a token-refresh will log the user out of the wrong session.
+        </p>
+        <p style="margin-top:8px;">
+          <strong>Rule:</strong> always exclude <code>/logout</code> and
+          <code>/auth/*</code> via <code>href_matches</code> exclude clauses.
+        </p>
+      </div>
+
+      <div class="panel" style="border-top:2px solid var(--orange);">
+        <h3>State-changing actions</h3>
+        <p>
+          <code>POST</code> endpoints exposed via <code>&lt;a&gt;</code> links (rare
+          but real in legacy apps), file delete URLs, "remove from cart" actions,
+          any link that fires an analytics-beacon on click.
+        </p>
+        <p style="margin-top:8px;">
+          <strong>Pattern:</strong> only prerender <code>GET</code>-only routes.
+          Make sure your framework enforces this.
+        </p>
+      </div>
+
+      <div class="panel" style="border-top:2px solid var(--orange);">
+        <h3>Heavy-resource pages</h3>
+        <p>
+          200&nbsp;MB LiDAR scan, a 4K hero video, a full WebGPU mission replay.
+          Prerender burns ~the same resources as an iframe — fine for 5&nbsp;MB,
+          punishing for 200&nbsp;MB.
+        </p>
+        <p style="margin-top:8px;">
+          <strong>Strategy:</strong> use <code>prefetch</code> for the HTML,
+          let <code>&lt;link rel="preload"&gt;</code> handle the heavy subresources
+          on the actual page after activation.
+        </p>
+      </div>
+    </div>
+
+    <div class="note warn" style="margin-top:18px;">
+      <strong>Cross-site privacy:</strong> cross-site prefetch requires that the
+      destination has <em>no cookies set</em> for the user — preventing third-party
+      tracking via speculative loads. Same-origin sites are unaffected. As of July 2026
+      there is no opt-in for cross-site cookies via the
+      <code>Supports-Loading-Mode</code> header (planned, not shipped).
+    </div>
+  </section>
+
+  <!-- ========== 9. BROWSER SUPPORT ========== -->
+  <section>
+    <h2><span class="num">09</span> Browser Support &amp; Rollout Timeline</h2>
+    <p class="lede">
+      Baseline 2024 — Newly Available. As of July 2026, every major engine ships
+      Speculation Rules. Safe to ship today with a graceful no-op fallback.
+    </p>
+
+    <div class="panel">
+      <table>
+        <thead>
+          <tr><th>Browser</th><th>Engine</th><th>Since</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Chrome 109+</td><td>Blink</td><td>Jan 2023 (initial), Sep 2023 (full)</td><td class="support">Full</td></tr>
+          <tr><td>Edge 109+</td><td>Blink</td><td>Jan 2023</td><td class="support">Full</td></tr>
+          <tr><td>Safari 17.5+</td><td>WebKit</td><td>May 2024 (limited)</td><td class="partial">Limited (prefetch only)</td></tr>
+          <tr><td>Safari 18.0+</td><td>WebKit</td><td>Sep 2024 (full), Jun 2025 (full eagerness)</td><td class="support">Full</td></tr>
+          <tr><td>Firefox 140+</td><td>Gecko</td><td>Jul 2025 (initial), Apr 2026 (full)</td><td class="support">Full</td></tr>
+          <tr><td>Safari 26.0+</td><td>WebKit</td><td>2026</td><td class="support">Full + Interop 2026 commit</td></tr>
+          <tr><td>Chrome 150+</td><td>Blink</td><td>2026</td><td class="support">Full (current stable)</td></tr>
+          <tr><td>Firefox 152+</td><td>Gecko</td><td>2026</td><td class="support">Full (current stable)</td></tr>
+          <tr><td>Safari 26.4+</td><td>WebKit</td><td>2026</td><td class="support">Full (current stable)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="grid-3" style="margin-top:18px;">
+      <div class="panel" style="border-top:2px solid var(--green);">
+        <h3>~95% global</h3>
+        <p>Total traffic across all major engines (StatCounter, July 2026). Direct shipment for any new build.</p>
+      </div>
+      <div class="panel" style="border-top:2px solid var(--yellow);">
+        <h3>4% partial</h3>
+        <p>Late-model Android WebViews, older in-app browsers without WebKit/Blink sync — gracefully no-op.</p>
+      </div>
+      <div class="panel" style="border-top:2px solid var(--text-muted);">
+        <h3>1% absent</h3>
+        <p>Internet Explorer, very old UC / Samsung stock browsers. Navigation works, speculation is ignored.</p>
+      </div>
+    </div>
+
+    <div class="note" style="margin-top:18px;">
+      <strong>Interop 2026 focus area:</strong> Speculation Rules is one of the 15
+      priority features this year. Expect Safari/Firefox to close the last
+      edge-cases (cross-site opt-in, deeper prerender diagnostics) by end of 2026.
+    </div>
+  </section>
+
+  <!-- ========== 10. RECAP ========== -->
+  <section>
+    <h2><span class="num">10</span> Recap &amp; Why P2</h2>
+    <p class="lede">
+      Speculation Rules is the production answer for "instant navigation" — the
+      missing primitive that complements View Transitions (P2), Cross-Document View
+      Transitions (P2), Compression Streams (P2), OPFS (P2), WebTransport (P2), and
+      Document Picture-in-Picture (P3) as the navigation/perf leg of the modern web
+      platform stack.
+    </p>
+
+    <div class="grid-2">
+      <div class="panel">
+        <h3>OpenDrones applications</h3>
+        <ul class="app-card" style="background:transparent;border:none;padding:0;">
+          <li>Pre-order hover prerender (Arc battery detail on store card hover)</li>
+          <li>Mission Control next-detail prerender (3D airspace + telemetry warm)</li>
+          <li>Hover-prefetch of telemetry export endpoints (CSV, GPX, KML)</li>
+          <li>Lazy prerender of pilot dashboards on first login</li>
+          <li>Speculative prebuild of compression-streamed mission JSONs (Pairs with Compression Streams API, P2)</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>Molt Studios applications</h3>
+        <ul class="app-card" style="background:transparent;border:none;padding:0;">
+          <li>Portfolio index prerender of every case-study link (universal)</li>
+          <li>E-commerce hover-prefetch of next cart step</li>
+          <li>Blog reader: eager-prefetch of "next post" link in footer</li>
+          <li>Client intake form hover-prefetch of FAQ page</li>
+          <li>Documentation site: prerender of /docs/&lt;next-section&gt; on sidebar hover</li>
+          <li>Pitch differentiator: "instant nav" as a 1-day add-on to any build ($1.5k-3k shippable)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="grid-3" style="margin-top:18px;">
+      <div class="panel" style="border-top:2px solid var(--green);">
+        <h3>Why P2 (not P1)</h3>
+        <p>
+          Universal value but the existing P1 entries (Highlight API, Subgrid,
+          Web Push, <code>@property</code>) have a more direct path into every
+          client project on day 1.
+        </p>
+      </div>
+      <div class="panel" style="border-top:2px solid var(--green);">
+        <h3>Why not P3+</h3>
+        <p>
+          ~95% global support, no JS bundle cost, and clean adoption. Anything
+          below P2 would undervalue the production win for both OpenDrones
+          marketing pages and Molt client portfolios.
+        </p>
+      </div>
+      <div class="panel" style="border-top:2px solid var(--accent);">
+        <h3>Pairs with</h3>
+        <p>
+          Cross-Document View Transitions (P2), Compression Streams (P2), OPFS (P2),
+          WebTransport (P2), Document PiP (P3), Highlighter API (P1), <code>@scope</code>
+          (P2), CSS-only scaffolding &amp; View Transitions L2 (P4).
+        </p>
+      </div>
+    </div>
+
+    <div class="note" style="margin-top:18px;">
+      <strong>Migration story from <code>&lt;link rel="prefetch"&gt;</code>:</strong>
+      the spec author (Chrome) explicitly recommends replacing <code>&lt;link&gt;</code>-based
+      prefetch with speculation rules for navigations. The bigger payoff is the
+      prerender half — which <code>&lt;link&gt;</code> could never do — turning the
+      browser into a true pre-renderer instead of a pre-fetcher.
+    </div>
+  </section>
+
+  <!-- ========== FOOTER ========== -->
+  <footer class="footer">
+    <div>Speculation Rules API — Baseline 2024 — Built by Jin for Molt Studios Research</div>
+    <div>Demo committed: <span id="commit-date">Jul 20, 2026</span> · Browsers: Safari 26.4 / Chrome 150 / Firefox 152+</div>
+  </footer>
+
+</div>
+
+<!-- ========== ACTIVE RULES FOR THIS PAGE ========== -->
+<script type="speculationrules">
+{
+  "prefetch": [
+    { "where": { "and": [
+        { "selector_matches": ".pcard-btn" },
+        { "not": { "selector_matches": "[data-mode='none']" } }
+    ]}, "eagerness": "immediate" }
+  ],
+  "prerender": [
+    { "where": { "and": [
+        { "selector_matches": ".pcard-btn[data-mode='prerender']" }
+    ]}, "eagerness": "moderate" }
+  ]
+}
+</script>
+
+<script>
+/* =========================================================
+   Inspector (section 01) — validates a speculation JSON spec
+   ========================================================= */
+(function inspector() {
+  const input = document.getElementById('inspector-input');
+  const out = document.getElementById('inspector-output');
+  const state = document.getElementById('inspector-state');
+  const reset = document.getElementById('inspector-load');
+  const DEFAULT_JSON = input.value;
+
+  function render(json) {
+    let parsed;
+    try { parsed = JSON.parse(json); }
+    catch (e) {
+      state.innerHTML = '<span class="pill pill-error">parse error</span>';
+      out.innerHTML = '<div class="row"><span class="name">Invalid JSON: ' + escapeHtml(e.message) + '</span></div>';
+      return;
     }
-    </script>
+    const issues = [];
+    if (typeof parsed !== 'object' || parsed === null) issues.push('Root must be a JSON object.');
+    if (parsed && !parsed.prefetch && !parsed.prerender) issues.push('Either "prefetch" or "prerender" must be defined.');
 
-    <!-- Demo: Visual Feedback -->
-    <script>
-        // Add visual feedback for demo purposes
-        document.addEventListener('DOMContentLoaded', () => {
-            const links = document.querySelectorAll('a[href^="#"]');
+    let html = '';
+    const renderRule = (kind, rule, i) => {
+      const where = rule.where;
+      const urls = rule.urls;
+      const eagerness = rule.eagerness || 'auto';
+      let desc;
+      if (urls) {
+        desc = urls.map(u => '<code style="color:var(--accent-2)">' + escapeHtml(u) + '</code>').join(', ');
+      } else if (where) {
+        const wKeys = Object.keys(where).map(k => '<code style="color:var(--accent-2)">' + k + '</code>').join(', ');
+        desc = 'where: ' + wKeys;
+      } else {
+        desc = '<em style="color:var(--text-muted)">(no matcher — invalid)</em>';
+      }
+      const cls =
+        eagerness === 'immediate' ? 'pill-error' :
+        eagerness === 'eager'      ? 'pill-warm' :
+        eagerness === 'moderate'   ? 'pill-ready' :
+        eagerness === 'conservative' ? 'pill-ready' :
+                                       'pill-loading';
+      html += '<div class="row">' +
+        '<div><span class="pill ' + cls + '">' + escapeHtml(eagerness) + '</span> ' +
+          '<span class="name">' + kind + '[' + i + ']</span></div>' +
+        '<span class="matches">' + desc + '</span>' +
+      '</div>';
+    };
 
-            links.forEach(link => {
-                link.addEventListener('mouseenter', () => {
-                    if (link.classList.contains('prefetch-link')) {
-                        const indicator = link.closest('.card-hover').querySelector('.speculation-indicator');
-                        if (indicator) {
-                            indicator.classList.remove('bg-yellow-400');
-                            indicator.classList.add('bg-blue-400');
-                            indicator.textContent = '⏳';
-                        }
-                    }
-                });
+    if (parsed.prefetch) {
+      if (!Array.isArray(parsed.prefetch)) issues.push('"prefetch" must be an array.');
+      else parsed.prefetch.forEach((r, i) => renderRule('prefetch', r, i));
+    }
+    if (parsed.prerender) {
+      if (!Array.isArray(parsed.prerender)) issues.push('"prerender" must be an array.');
+      else parsed.prerender.forEach((r, i) => renderRule('prerender', r, i));
+    }
 
-                link.addEventListener('mouseleave', () => {
-                    const indicator = link.closest('.card-hover').querySelector('.speculation-indicator');
-                    if (indicator) {
-                        indicator.classList.add('bg-yellow-400');
-                        indicator.classList.remove('bg-blue-400');
-                    }
-                });
+    if (issues.length) {
+      state.innerHTML = '<span class="pill pill-error">' + issues.length + ' issue' + (issues.length>1?'s':'') + '</span>';
+      html = '<div class="note danger" style="margin-bottom:8px;">' +
+        issues.map(i => '<strong>✗</strong> ' + escapeHtml(i)).join('<br>') + '</div>' + html;
+    } else {
+      state.innerHTML = '<span class="pill pill-ready">valid</span>';
+    }
+    out.innerHTML = html;
+  }
 
-                link.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const demoType = link.getAttribute('href').replace('#', '');
+  function escapeHtml(s) { return String(s).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-                    // Create demo alert
-                    const alert = document.createElement('div');
-                    alert.className = 'fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-gray-900 border border-purple-500 rounded-xl px-6 py-4 shadow-2xl z-50 max-w-md';
-                    alert.innerHTML = `
-                        <div class="flex items-start gap-3">
-                            <div class="text-2xl">${demoType === 'prefetch-demo' ? '⚡' : demoType === 'prerender-demo' ? '🚀' : '📄'}</div>
-                            <div>
-                                <div class="font-bold mb-1">${demoType === 'prefetch-demo' ? 'Prefetch Triggered' : demoType === 'prerender-demo' ? 'Prerendered Page Activated' : 'Normal Navigation'}</div>
-                                <div class="text-sm text-gray-400">
-                                    ${demoType === 'prefetch-demo' ? 'HTML and subresources prefetched. ~60-80% faster on navigation.' :
-                                      demoType === 'prerender-demo' ? 'Page fully rendered in background. Near-instant activation.' :
-                                      'Standard page load initiated. No preloading.'}
-                                </div>
-                            </div>
-                            <button class="text-gray-400 hover:text-white ml-4" onclick="this.parentElement.parentElement.remove()">✕</button>
-                        </div>
-                    `;
-                    document.body.appendChild(alert);
+  input.addEventListener('input', () => render(input.value));
+  reset.addEventListener('click', () => { input.value = DEFAULT_JSON; render(DEFAULT_JSON); });
+  render(DEFAULT_JSON);
+})();
 
-                    setTimeout(() => alert.remove(), 4000);
-                });
-            });
-        });
-    </script>
+/* =========================================================
+   Latency lab (section 04) — simulated prefetch/prerender timing
+   ========================================================= */
+(function lab() {
+  const pageCosts = { arc: 2400, skydio: 3100, checkout: 3800 };
+  let strategy = 'none'; // none | prefetch | prerender
+  const strategyLabels = { none: 'none', prefetch: 'prefetch', prerender: 'prerender' };
+
+  const grid = document.getElementById('page-grid');
+
+  function setStrategy(s) {
+    strategy = s;
+    document.querySelectorAll('.page-card').forEach(card => {
+      const pill = card.querySelector('.pill');
+      const id = card.dataset.page;
+      if (s === 'none') {
+        pill.className = 'pill pill-idle';
+        pill.textContent = 'idle';
+      } else {
+        pill.className = 'pill pill-ready';
+        pill.textContent = 'armed (' + strategyLabels[s] + ')';
+      }
+      const btn = card.querySelector('.pcard-btn');
+      btn.dataset.mode = s;
+      btn.textContent = s === 'prefetch' ? 'Open (prefetch warm)' :
+                        s === 'prerender' ? 'Open (prerendered)' :
+                        'Open with no speculation';
+      document.getElementById(id + '-strategy').textContent = strategyLabels[s];
+    });
+  }
+  setStrategy('none');
+
+  document.getElementById('lab-strategy-prefetch').addEventListener('click',  () => setStrategy('prefetch'));
+  document.getElementById('lab-strategy-prerender').addEventListener('click', () => setStrategy('prerender'));
+  document.getElementById('lab-strategy-reset').addEventListener('click', () => setStrategy('none'));
+
+  function simulatePageLoad(pageId, onProgress) {
+    const cost = pageCosts[pageId];
+    // Choose a "render fraction" the link actually pays on click
+    let fraction;
+    if (strategy === 'prerender') fraction = 0.01;      // already-rendered, just activate
+    else if (strategy === 'prefetch') fraction = 0.32;   // HTML fetched, JS still parses
+    else fraction = 1.0;
+    const work = Math.round(cost * fraction);
+    return new Promise(resolve => {
+      const start = performance.now();
+      const bar = document.getElementById(pageId + '-bar');
+      const tick = () => {
+        const elapsed = performance.now() - start;
+        const pct = Math.min(100, Math.round((elapsed / work) * 100));
+        if (bar) bar.style.width = pct + '%';
+        onProgress(pct);
+        if (elapsed >= work) {
+          if (bar) setTimeout(() => { bar.style.width = '0'; }, 600);
+          resolve(performance.now() - start);
+        } else {
+          // Keep typing/disk work off the main thread — chunked
+          setTimeout(tick, 16);
+        }
+      };
+      tick();
+    });
+  }
+
+  function simulateCardHoverPrefetch(pageId) {
+    if (strategy !== 'prefetch') return;
+    const bar = document.getElementById(pageId + '-bar');
+    if (!bar) return;
+    bar.style.transition = 'width 700ms linear';
+    bar.style.width = '100%';
+    setTimeout(() => { bar.style.transition = 'width 60ms linear'; bar.style.width = '0'; }, 1200);
+  }
+
+  grid.addEventListener('mouseenter', e => {
+    const card = e.target.closest('.page-card');
+    if (!card) return;
+    const id = card.dataset.page;
+    simulateCardHoverPrefetch(id);
+  }, true);
+
+  grid.addEventListener('pointerdown', e => {
+    if (strategy !== 'prerender') return;
+    const card = e.target.closest('.page-card');
+    if (!card) return;
+    const id = card.dataset.page;
+    const bar = document.getElementById(id + '-bar');
+    if (bar) {
+      bar.style.transition = 'width 500ms linear';
+      bar.style.width = '100%';
+      setTimeout(() => { bar.style.transition = 'width 60ms linear'; bar.style.width = '0'; }, 900);
+    }
+  }, true);
+
+  grid.addEventListener('click', e => {
+    const btn = e.target.closest('.pcard-btn');
+    if (!btn) return;
+    e.preventDefault();
+    const id = btn.dataset.target;
+    simulatePageLoad(id, pct => {
+      // Could update a live progress UI; the bar visually fills already.
+    }).then(elapsed => {
+      document.getElementById(id + '-time').textContent = Math.round(elapsed) + 'ms';
+    });
+  });
+})();
+</script>
+
 </body>
 </html>
