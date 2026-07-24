@@ -1,0 +1,1227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Web Serial API — Direct Hardware Communication from the Browser</title>
+<style>
+  :root {
+    --bg: #0a0a14;
+    --bg-card: #12121f;
+    --bg-elevated: #1a1a2e;
+    --accent: #00d9ff;
+    --accent-dim: #0099bb;
+    --accent-glow: rgba(0, 217, 255, 0.15);
+    --green: #00ff9d;
+    --amber: #ffb800;
+    --red: #ff4757;
+    --purple: #a29bfe;
+    --text: #e8e8f0;
+    --text-dim: #8888a0;
+    --text-faint: #555568;
+    --border: rgba(255, 255, 255, 0.06);
+    --border-bright: rgba(0, 217, 255, 0.2);
+    --radius: 16px;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif;
+    --mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    line-height: 1.6;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Background orbs */
+  body::before {
+    content: ''; position: fixed; top: -10%; left: -5%;
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(0,217,255,0.08) 0%, transparent 70%);
+    pointer-events: none; z-index: 0;
+  }
+  body::after {
+    content: ''; position: fixed; bottom: -10%; right: -5%;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(162,155,254,0.06) 0%, transparent 70%);
+    pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 920px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  /* Hero */
+  .hero {
+    padding: 80px 0 48px; text-align: center;
+  }
+  .hero-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 16px; border-radius: 100px;
+    background: var(--accent-glow); border: 1px solid var(--border-bright);
+    font-size: 12px; font-weight: 600; color: var(--accent);
+    letter-spacing: 0.5px; text-transform: uppercase;
+    margin-bottom: 24px;
+  }
+  .hero-badge .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green); box-shadow: 0 0 8px var(--green);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .hero h1 {
+    font-size: 38px; font-weight: 800; line-height: 1.15;
+    margin-bottom: 16px; letter-spacing: -0.02em;
+  }
+  .hero h1 .hl { color: var(--accent); }
+  .hero p {
+    font-size: 16px; color: var(--text-dim); max-width: 640px; margin: 0 auto;
+  }
+  .hero-meta {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 12px;
+    margin-top: 32px;
+  }
+  .hero-meta-item {
+    padding: 8px 16px; border-radius: 10px;
+    background: var(--bg-card); border: 1px solid var(--border);
+    font-size: 13px; color: var(--text-dim);
+  }
+  .hero-meta-item strong { color: var(--text); font-weight: 600; }
+  .hero-meta-item .priority-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 700; margin-left: 4px;
+  }
+  .priority-3 { background: rgba(0,217,255,0.15); color: var(--accent); }
+
+  /* Sections */
+  section { padding: 48px 0; border-top: 1px solid var(--border); }
+  .section-num {
+    font-size: 12px; font-weight: 700; color: var(--accent);
+    letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px;
+  }
+  .section-title {
+    font-size: 26px; font-weight: 700; margin-bottom: 16px; letter-spacing: -0.01em;
+  }
+  .section-sub {
+    font-size: 15px; color: var(--text-dim); margin-bottom: 24px;
+  }
+
+  /* Cards */
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 24px; margin-bottom: 16px;
+  }
+  .card-highlight { border-color: var(--border-bright); }
+
+  /* Code */
+  pre {
+    background: var(--bg-elevated); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; overflow-x: auto;
+    font-family: var(--mono); font-size: 13px; line-height: 1.55;
+    margin: 16px 0;
+  }
+  pre .kw { color: var(--purple); }
+  pre .str { color: var(--green); }
+  pre .com { color: var(--text-faint); font-style: italic; }
+  pre .fn { color: var(--accent); }
+  pre .num { color: var(--amber); }
+  pre .var { color: var(--text); }
+  pre .op { color: var(--text-dim); }
+
+  /* Browser support grid */
+  .browser-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px; margin: 20px 0;
+  }
+  .browser-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px; text-align: center;
+  }
+  .browser-card .name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .browser-card .version { font-size: 12px; color: var(--text-dim); }
+  .browser-card .status {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600; margin-top: 8px;
+  }
+  .status-yes { background: rgba(0,255,157,0.12); color: var(--green); }
+  .status-no { background: rgba(255,71,87,0.12); color: var(--red); }
+  .status-partial { background: rgba(255,184,0,0.12); color: var(--amber); }
+
+  /* Tables */
+  table {
+    width: 100%; border-collapse: collapse; margin: 16px 0;
+    font-size: 13px;
+  }
+  th, td {
+    text-align: left; padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  th { font-weight: 600; color: var(--text-dim); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  td code { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+
+  /* Feature grid */
+  .feature-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px; margin: 20px 0;
+  }
+  .feature-item {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px;
+  }
+  .feature-item .icon { font-size: 24px; margin-bottom: 12px; }
+  .feature-item h4 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+  .feature-item p { font-size: 13px; color: var(--text-dim); }
+
+  /* Capability detector */
+  .detector {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 28px; margin: 20px 0;
+    text-align: center;
+  }
+  .detector-status {
+    font-size: 42px; font-weight: 800; margin: 12px 0;
+  }
+  .detector-status.available { color: var(--green); }
+  .detector-status.unavailable { color: var(--red); }
+  .detector-detail {
+    font-size: 13px; color: var(--text-dim); margin-top: 8px;
+    font-family: var(--mono);
+  }
+
+  /* Terminal */
+  .terminal {
+    background: #060610; border: 1px solid var(--border-bright);
+    border-radius: 12px; overflow: hidden; margin: 16px 0;
+  }
+  .terminal-header {
+    background: var(--bg-elevated); padding: 10px 16px;
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .terminal-dot {
+    width: 12px; height: 12px; border-radius: 50%;
+  }
+  .terminal-dot.red { background: #ff5f56; }
+  .terminal-dot.yellow { background: #ffbd2e; }
+  .terminal-dot.green { background: #27c93f; }
+  .terminal-title { font-size: 12px; color: var(--text-dim); margin-left: 8px; }
+  .terminal-body {
+    padding: 16px; font-family: var(--mono); font-size: 12.5px;
+    line-height: 1.6; max-height: 380px; overflow-y: auto;
+    text-align: left;
+  }
+  .terminal-body .line { white-space: pre-wrap; word-break: break-all; }
+  .terminal-body .rx { color: var(--green); }
+  .terminal-body .tx { color: var(--accent); }
+  .terminal-body .sys { color: var(--text-faint); }
+  .terminal-body .warn { color: var(--amber); }
+  .terminal-body .err { color: var(--red); }
+  .terminal-controls {
+    display: flex; gap: 8px; padding: 12px 16px;
+    background: var(--bg-elevated); border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .btn {
+    padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg-card); color: var(--text);
+    font-family: var(--font); font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .btn:hover { border-color: var(--border-bright); background: var(--bg-elevated); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary {
+    background: var(--accent-glow); border-color: var(--accent-dim); color: var(--accent);
+  }
+  .btn-primary:hover { background: rgba(0,217,255,0.2); }
+  .btn-danger {
+    background: rgba(255,71,87,0.1); border-color: rgba(255,71,87,0.3); color: var(--red);
+  }
+
+  /* MAVLink visualizer */
+  .mavlink-viz {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0;
+  }
+  @media (max-width: 640px) { .mavlink-viz { grid-template-columns: 1fr; } }
+  .telemetry-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px;
+  }
+  .telemetry-label { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 1px; }
+  .telemetry-value { font-size: 28px; font-weight: 700; font-family: var(--mono); }
+  .telemetry-unit { font-size: 14px; color: var(--text-dim); font-weight: 400; }
+  .telemetry-bar {
+    height: 4px; border-radius: 2px; background: var(--border); margin-top: 8px; overflow: hidden;
+  }
+  .telemetry-bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+
+  /* Comparison cards */
+  .api-comparison {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px; margin: 20px 0;
+  }
+  .api-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px;
+  }
+  .api-card h4 { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  .api-card .coverage { font-size: 22px; font-weight: 700; margin: 8px 0; }
+  .api-card p { font-size: 12px; color: var(--text-dim); }
+  .api-card.web-serial { border-color: var(--border-bright); }
+  .api-card.web-serial .coverage { color: var(--accent); }
+
+  /* App cards */
+  .app-card {
+    display: flex; gap: 16px; padding: 20px;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; margin-bottom: 12px;
+  }
+  .app-card .app-icon { font-size: 28px; flex-shrink: 0; }
+  .app-card .app-content h4 { font-size: 15px; margin-bottom: 4px; }
+  .app-card .app-content p { font-size: 13px; color: var(--text-dim); }
+
+  /* Callout */
+  .callout {
+    background: var(--accent-glow); border: 1px solid var(--border-bright);
+    border-radius: 12px; padding: 20px; margin: 20px 0;
+  }
+  .callout-title { font-size: 14px; font-weight: 700; color: var(--accent); margin-bottom: 8px; }
+  .callout p { font-size: 14px; color: var(--text-dim); }
+
+  /* Recap */
+  .recap-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px; margin: 20px 0;
+  }
+  .recap-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px;
+  }
+  .recap-card h4 {
+    font-size: 14px; font-weight: 600; margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .recap-card ul { list-style: none; padding: 0; }
+  .recap-card li {
+    font-size: 13px; color: var(--text-dim); padding: 4px 0;
+    padding-left: 20px; position: relative;
+  }
+  .recap-card li::before {
+    content: '→'; position: absolute; left: 0; color: var(--accent);
+  }
+
+  /* Footer */
+  .footer {
+    padding: 40px 0; text-align: center; border-top: 1px solid var(--border);
+  }
+  .footer p { font-size: 12px; color: var(--text-faint); }
+
+  @media (max-width: 640px) {
+    .hero h1 { font-size: 28px; }
+    .container { padding: 0 16px; }
+    pre { font-size: 12px; padding: 14px; }
+    .telemetry-value { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ HERO ============ -->
+<div class="container">
+  <div class="hero">
+    <div class="hero-badge">
+      <span class="dot"></span>
+      Web Platform API · Hardware Access
+    </div>
+    <h1>Web Serial API — <span class="hl">Direct Hardware Communication</span><br>from the Browser</h1>
+    <p>Read and write to serial devices over USB, Bluetooth, and RS-232 — no native app required. Firefox 151 joined Chrome in May 2026, making browser-native flight controller communication a reality for OpenDrones Mission Control.</p>
+    <div class="hero-meta">
+      <div class="hero-meta-item"><strong>Priority</strong> <span class="priority-badge priority-3">P3</span></div>
+      <div class="hero-meta-item"><strong>Baseline</strong> Not yet (WICG → WHATWG)</div>
+      <div class="hero-meta-item"><strong>Global support</strong> ~72% desktop</div>
+      <div class="hero-meta-item"><strong>Date</strong> July 24, 2026</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SECTION 1: Capability Detection ============ -->
+<div class="container">
+<section>
+  <div class="section-num">Section 1</div>
+  <h2 class="section-title">Live Capability Detection</h2>
+  <p class="section-sub">Check your browser right now. Web Serial requires an explicit user gesture to connect — no silent enumeration.</p>
+
+  <div class="detector" id="detector">
+    <div style="font-size: 13px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px;">Web Serial API</div>
+    <div class="detector-status" id="serial-status">Checking...</div>
+    <div class="detector-detail" id="serial-detail"></div>
+  </div>
+
+  <div class="card">
+    <h4 style="font-size: 15px; margin-bottom: 12px;">Your Environment</h4>
+    <div id="env-info" style="font-family: var(--mono); font-size: 13px; color: var(--text-dim); line-height: 2;"></div>
+  </div>
+</section>
+</div>
+
+<!-- ============ SECTION 2: The API in 5 Lines ============ -->
+<div class="container">
+<section>
+  <div class="section-num">Section 2</div>
+  <h2 class="section-title">The Core API — Connect, Read, Write</h2>
+  <p class="section-sub">Three steps: request a port, open it at the right baud rate, and read/write via standard streams.</p>
+
+  <pre><span class="com">// 1. Request a port (requires user gesture — click, tap, keypress)</span>
+<span class="kw">const</span> port = <span class="kw">await</span> navigator.serial.<span class="fn">requestPort</span>({
+  filters: [{ usbVendorId: <span class="num">0x2DAE</span> }]  <span class="com">// ArduPilot / Pixhawk vendor ID</span>
+});
+<span class="kw">await</span> port.<span class="fn">open</span>({ baudRate: <span class="num">115200</span> });
+
+<span class="com">// 2. Read from the port (ReadableStream)</span>
+<span class="kw">const</span> reader = port.readable.<span class="fn">getReader</span>();
+<span class="kw">while</span> (<span class="kw">true</span>) {
+  <span class="kw">const</span> { value, done } = <span class="kw">await</span> reader.<span class="fn">read</span>();
+  <span class="kw">if</span> (done) <span class="kw">break</span>;
+  <span class="kw">const</span> bytes = <span class="kw">new</span> <span class="fn">Uint8Array</span>(value);
+  <span class="fn">console</span>.<span class="fn">log</span>(<span class="str">`RX ${</span>bytes<span class="str">.length} bytes`</span>, bytes);
+}
+
+<span class="com">// 3. Write to the port (WritableStream)</span>
+<span class="kw">const</span> writer = port.writable.<span class="fn">getWriter</span>();
+<span class="kw">const</span> cmd = <span class="kw">new</span> <span class="fn">Uint8Array</span>([<span class="num">0xFE</span>, <span class="num">0x09</span>, <span class="num">0x00</span>, <span class="num">0x16</span>, <span class="num">0x00</span>, <span class="num">0x00</span>, <span class="num">0x00</span>, <span class="num">0x00</span>, <span class="num">0x00</span>, <span class="num">0x00</span>]);
+<span class="kw">await</span> writer.<span class="fn">write</span>(cmd);  <span class="com">// MAVLink HEARTBEAT request</span></pre>
+
+  <div class="card">
+    <h4 style="font-size: 15px; margin-bottom: 12px;">Stream-based I/O — the key design decision</h4>
+    <p style="font-size: 14px; color: var(--text-dim);">Both <code style="color: var(--accent); font-family: var(--mono);">port.readable</code> and <code style="color: var(--accent); font-family: var(--mono);">port.writable</code> are standard <strong style="color: var(--text);">Streams API</strong> objects. That means you can pipe them through <code style="color: var(--accent); font-family: var(--mono);">TransformStream</code>s to decode text, parse binary protocols, or frame MAVLink packets — all without manual buffering:</p>
+    <pre><span class="com">// Decode ASCII + parse line-by-line via TransformStream</span>
+<span class="kw">const</span> decoder = <span class="kw">new</span> <span class="fn">TextDecoderStream</span>();
+<span class="kw">const</span> lineStream = <span class="kw">new</span> <span class="fn">TransformStream</span>({
+  buffer: <span class="str">''</span>,
+  transform(chunk, controller) {
+    <span class="kw">this</span>.buffer += chunk;
+    <span class="kw">const</span> lines = <span class="kw">this</span>.buffer.<span class="fn">split</span>(<span class="str">'\n'</span>);
+    <span class="kw">this</span>.buffer = lines.<span class="fn">pop</span>();
+    lines.<span class="fn">forEach</span>(line =&gt; controller.<span class="fn">enqueue</span>(line));
+  }
+});
+
+port.readable
+  .<span class="fn">pipeThrough</span>(<span class="kw">new</span> <span class="fn">TextDecoderStream</span>())
+  .<span class="fn">pipeThrough</span>(lineStream)
+  .<span class="fn">pipeTo</span>(<span class="kw">new</span> <span class="fn">WritableStream</span>({
+    write(line) { <span class="fn">console</span>.<span class="fn">log</span>(<span class="str">`&gt; ${</span>line<span class="str">}`</span>); }
+  }));</pre>
+  </div>
+
+  <div class="feature-grid">
+    <div class="feature-item">
+      <div class="icon">🔌</div>
+      <h4>navigator.serial.requestPort()</h4>
+      <p>Opens a system device chooser filtered by USB vendor/product ID. Requires user activation — the user picks the device.</p>
+    </div>
+    <div class="feature-item">
+      <div class="icon">📋</div>
+      <h4>navigator.serial.getPorts()</h4>
+      <p>Returns ports the user already approved for this origin. No popup — reconnect on page load.</p>
+    </div>
+    <div class="feature-item">
+      <div class="icon">📊</div>
+      <h4>ReadableStream + WritableStream</h4>
+      <p>Standard Streams API. Pipe through TransformStreams for protocol decoding, text parsing, or framing.</p>
+    </div>
+    <div class="feature-item">
+      <div class="icon">🎛️</div>
+      <h4>setSignals / getSignals</h4>
+      <p>Drive DTR, RTS control lines and read DSR, CD, RI. For hardware flow control and reset-to-bootloader.</p>
+    </div>
+    <div class="feature-item">
+      <div class="icon">📡</div>
+      <h4>connect / disconnect events</h4>
+      <p>Fire on navigator.serial when approved devices are plugged/unplugged. No polling needed.</p>
+    </div>
+    <div class="feature-item">
+      <div class="icon">🗑️</div>
+      <h4>port.forget()</h4>
+      <p>Revokes the origin's permission for that port. Chrome 103+. Clean disconnect for shared kiosks.</p>
+    </div>
+  </div>
+</section>
+</div>
+
+<!-- ============ SECTION 3: Simulated Serial Terminal ============ -->
+<div class="container">
+<section>
+  <div class="section-num">Section 3</div>
+  <h2 class="section-title">Simulated MAVLink Serial Terminal</h2>
+  <p class="section-sub">Can't plug in a real drone? This simulates a MAVLink heartbeat stream as if you connected a Pixhawk flight controller at 115200 baud.</p>
+
+  <div class="terminal">
+    <div class="terminal-header">
+      <span class="terminal-dot red"></span>
+      <span class="terminal-dot yellow"></span>
+      <span class="terminal-dot green"></span>
+      <span class="terminal-title" id="term-title">serial-monitor.js — not connected</span>
+    </div>
+    <div class="terminal-body" id="term-body">
+      <div class="line sys">--- Web Serial MAVLink Monitor ---</div>
+      <div class="line sys">--- Click "Connect" to simulate a drone ---</div>
+    </div>
+    <div class="terminal-controls">
+      <button class="btn btn-primary" id="btn-connect">🔗 Connect Port</button>
+      <button class="btn" id="btn-arm" disabled>🚀 Send ARM</button>
+      <button class="btn" id="btn-mode" disabled>📋 Cycle Mode</button>
+      <button class="btn" id="btn-mission" disabled>📍 Request Mission</button>
+      <button class="btn btn-danger" id="btn-disconnect" disabled>⚡ Disconnect</button>
+    </div>
+  </div>
+
+  <div class="mavlink-viz">
+    <div class="telemetry-card">
+      <div class="telemetry-label">Battery</div>
+      <div class="telemetry-value" id="bat-val">--<span class="telemetry-unit">%</span></div>
+      <div class="telemetry-bar"><div class="telemetry-bar-fill" id="bat-bar" style="width:0%; background: var(--green);"></div></div>
+    </div>
+    <div class="telemetry-card">
+      <div class="telemetry-label">Altitude</div>
+      <div class="telemetry-value" id="alt-val">--<span class="telemetry-unit"> m</span></div>
+      <div class="telemetry-bar"><div class="telemetry-bar-fill" id="alt-bar" style="width:0%; background: var(--accent);"></div></div>
+    </div>
+    <div class="telemetry-card">
+      <div class="telemetry-label">Ground Speed</div>
+      <div class="telemetry-value" id="spd-val">--<span class="telemetry-unit"> m/s</span></div>
+      <div class="telemetry-bar"><div class="telemetry-bar-fill" id="spd-bar" style="width:0%; background: var(--purple);"></div></div>
+    </div>
+    <div class="telemetry-card">
+      <div class="telemetry-label">Satellites</div>
+      <div class="telemetry-value" id="sat-val">--<span class="telemetry-unit"> sats</span></div>
+      <div class="telemetry-bar"><div class="telemetry-bar-fill" id="sat-bar" style="width:0%; background: var(--amber);"></div></div>
+    </div>
+  </div>
+</section>
+</div>
+
+<!-- ============ SECTION 4: Browser Support ============ -->
+<div class="container">
+<section>
+  <div class="section-num">Section 4</div>
+  <h2 class="section-title">Browser Support (July 2026)</h2>
+  <p class="section-sub">Chrome shipped it in 2021. Firefox joined in May 2026. Safari remains opposed. The landscape shifted.</p>
+
+  <div class="browser-grid">
+    <div class="browser-card">
+      <div class="name">Chrome</div>
+      <div class="version">89+ (Mar 2021)</div>
+      <div class="version" style="margin-top:4px;">Android: 148+ (Apr 2026)</div>
+      <div class="status status-yes">✓ Ship</div>
+    </div>
+    <div class="browser-card">
+      <div class="name">Edge</div>
+      <div class="version">89+ (Mar 2021)</div>
+      <div class="status status-yes">✓ Ship</div>
+    </div>
+    <div class="browser-card">
+      <div class="name">Firefox</div>
+      <div class="version">151+ (May 2026)</div>
+      <div class="version" style="margin-top:4px; font-size: 11px; color: var(--amber);">Add-on gated</div>
+      <div class="status status-partial">~ New</div>
+    </div>
+    <div class="browser-card">
+      <div class="name">Opera</div>
+      <div class="version">76+ (Apr 2021)</div>
+      <div class="status status-yes">✓ Ship</div>
+    </div>
+    <div class="browser-card">
+      <div class="name">Safari</div>
+      <div class="version">Not supported</div>
+      <div class="version" style="margin-top:4px; font-size: 11px; color: var(--red);">WebKit opposed</div>
+      <div class="status status-no">✗ None</div>
+    </div>
+    <div class="browser-card">
+      <div class="name">Samsung</div>
+      <div class="version">Disabled</div>
+      <div class="status status-no">✗ Disabled</div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <div class="callout-title">⚖️ The Firefox Shift — Why It Matters</div>
+    <p>Mozilla reversed its "harmful" position on Web Serial in 2026, shipping it in Firefox 151 (May 2026) with add-on gating for first-time use. This ended a 13-year standards debate. Mozilla is now pursuing WHATWG standardization. For OpenDrones Mission Control, this means Firefox is now a supported target alongside Chrome — covering ~72% of desktop traffic. Safari's opposition (fingerprinting concerns) means no iOS support yet; use a Trusted Web Activity wrapper for Android field deployment.</p>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Feature</th>
+        <th>Chrome</th>
+        <th>Firefox</th>
+        <th>Safari</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td><code>navigator.serial</code></td><td>89+</td><td>151+</td><td>—</td><td>Main entry point</td></tr>
+      <tr><td><code>requestPort()</code></td><td>89+</td><td>151+</td><td>—</td><td>Requires user gesture</td></tr>
+      <tr><td><code>getPorts()</code></td><td>89+</td><td>151+</td><td>—</td><td>Pre-approved ports only</td></tr>
+      <tr><td><code>SerialPort.open()</code></td><td>89+</td><td>151+</td><td>—</td><td>baudRate + options</td></tr>
+      <tr><td>BYOB readers</td><td>106+</td><td>151+</td><td>—</td><td>Reuse Uint8Array buffer</td></tr>
+      <tr><td><code>port.forget()</code></td><td>103+</td><td>151+</td><td>—</td><td>Revoke permission</td></tr>
+      <tr><td>Worker support</td><td>✓</td><td>✓</td><td>—</td><td><code>WorkerNavigator.serial</code></td></tr>
+      <tr><td>Android</td><td>148+</td><td>—</td><td>—</td><td>Chrome only, Apr 2026</td></tr>
+    </tbody>
+  </table>
+</section>
+</div>
+
+<!-- ============ SECTION 5: Web Serial vs Other Hardware APIs ============ -->
+<div class="container">
+<section>
+  <div class="section-num">Section 5</div>
+  <h2 class="section-title">Web Serial vs WebUSB vs WebHID vs Web Bluetooth</h2>
+  <p class="section-sub">Four hardware-access APIs, different abstraction levels. Pick the one that matches your device's protocol.</p>
+
+  <div class="api-comparison">
+    <div class="api-card web-serial">
+      <h4>📡 Web Serial</h4>
+      <div class="coverage">~72%</div>
+      <p><strong>Level:</strong> Serial byte stream (virtual COM port)<br><strong>Best for:</strong> Drones (MAVLink/MSP/CRSF), 3D printers (G-code), microcontrollers (Arduino/ESP32), industrial sensors<br><strong>Device appears as:</strong> /dev/tty* or COM*</p>
+    </div>
+    <div class="api-card">
+      <h4>🔌 WebUSB</h4>
+      <div class="coverage">~70%</div>
+      <p><strong>Level:</strong> Raw USB endpoints (control/bulk/interrupt)<br><strong>Best for:</strong> Devices with custom USB protocols not exposed as serial. Flashing firmware, raw device control.<br><strong>Device appears as:</strong> USB vendor/product IDs</p>
+    </div>
+    <div class="api-card">
+      <h4>⌨️ WebHID</h4>
+      <div class="coverage">~70%</div>
+      <p><strong>Level:</strong> HID reports + collections<br><strong>Best for:</strong> Game controllers, joysticks, custom input devices, drone RC transmitters with HID mode<br><strong>Device appears as:</strong> HID descriptor</p>
+    </div>
+    <div class="api-card">
+      <h4>🔵 Web Bluetooth</h4>
+      <div class="coverage">~72%</div>
+      <p><strong>Level:</strong> BLE GATT services/characteristics<br><strong>Best for:</strong> Wireless sensors, BLE beacons, Bluetooth drone telemetry, fitness devices<br><strong>Device appears as:</strong> GATT service UUIDs</p>
+    </div>
+  </div>
+
+  <div class="card card-highlight">
+    <h4 style="font-size: 15px; margin-bottom: 12px;">When to use Web Serial (vs WebUSB)</h4>
+    <p style="font-size: 14px; color: var(--text-dim); margin-bottom: 12px;">Most drone flight controllers (Pixhawk, ArduPilot, PX4, Betaflight, INAV) expose a <strong style="color: var(--text);">USB CDC-ACM virtual serial port</strong>. The OS assigns it a COM port (Windows) or /dev/ttyACM* (Linux/macOS). Web Serial is the natural interface — you get a clean byte stream at a configured baud rate.</p>
+    <p style="font-size: 14px; color: var(--text-dim);">Use <strong style="color: var(--text);">WebUSB</strong> only when the device has a custom USB protocol that does NOT appear as a serial port (e.g., flashing raw firmware to an STM32 bootloader in DFU mode). For OpenDrones: <strong style="color: var(--accent);">Web Serial for telemetry/mission/params, WebUSB for firmware flashing</strong>.</p>
+  </div>
+</section>
+</div>
+
+<!-- ============ SECTION 6: OpenDrones Mission Control ============ -->
+<div class="container">
+<section>
+  <div class="section-num">Section 6</div>
+  <h2 class="section-title">OpenDrones Mission Control — Browser-Direct Flight Control</h2>
+  <p class="section-sub">The production pattern: plug a Pixhawk via USB → browser connects via Web Serial → MAVLink telemetry streams with zero backend.</p>
+
+  <pre><span class="com">// Production MAVLink-over-WebSerial wrapper</span>
+<span class="kw">class</span> <span class="fn">MAVLinkConnection</span> {
+  <span class="fn">constructor</span>(port, baudRate = <span class="num">115200</span>) {
+    <span class="kw">this</span>.port = port;
+    <span class="kw">this</span>.baudRate = baudRate;
+    <span class="kw">this</span>.sequence = <span class="num">0</span>;
+    <span class="kw">this</span>.handlers = <span class="kw">new</span> <span class="fn">Map</span>();
+  }
+
+  <span class="kw">async</span> <span class="fn">connect</span>() {
+    <span class="kw">await</span> <span class="kw">this</span>.port.<span class="fn">open</span>({ baudRate: <span class="kw">this</span>.baudRate });
+    <span class="kw">this</span>._startReader();
+    <span class="kw">this</span>._startWriter();
+  }
+
+  <span class="kw">async</span> <span class="fn">_startReader</span>() {
+    <span class="kw">const</span> reader = <span class="kw">this</span>.port.readable.<span class="fn">getReader</span>();
+    <span class="kw">let</span> buffer = <span class="kw">new</span> <span class="fn">Uint8Array</span>(<span class="num">0</span>);
+
+    <span class="kw">while</span> (<span class="kw">true</span>) {
+      <span class="kw">const</span> { value, done } = <span class="kw">await</span> reader.<span class="fn">read</span>();
+      <span class="kw">if</span> (done) <span class="kw">break</span>;
+
+      <span class="com">// Append to buffer and parse MAVLink frames</span>
+      <span class="kw">const</span> merged = <span class="kw">new</span> <span class="fn">Uint8Array</span>(buffer.length + value.length);
+      merged.<span class="fn">set</span>(buffer); merged.<span class="fn">set</span>(value, buffer.length);
+
+      <span class="kw">const</span> { messages, remaining } = <span class="kw">this</span>.<span class="fn">_parseFrames</span>(merged);
+      buffer = remaining;
+      messages.<span class="fn">forEach</span>(msg =&gt; <span class="kw">this</span>.<span class="fn">_dispatch</span>(msg));
+    }
+  }
+
+  <span class="fn">on</span>(messageId, handler) {
+    <span class="kw">if</span> (!<span class="kw">this</span>.handlers.<span class="fn">has</span>(messageId))
+      <span class="kw">this</span>.handlers.<span class="fn">set</span>(messageId, []);
+    <span class="kw">this</span>.handlers.<span class="fn">get</span>(messageId).<span class="fn">push</span>(handler);
+  }
+
+  <span class="fn">_dispatch</span>(msg) {
+    <span class="kw">const</span> handlers = <span class="kw">this</span>.handlers.<span class="fn">get</span>(msg.msgId) || [];
+    handlers.<span class="fn">forEach</span>(h =&gt; <span class="fn">h</span>(msg));
+  }
+
+  <span class="kw">async</span> <span class="fn">send</span>(msgId, payload) {
+    <span class="kw">const</span> frame = <span class="kw">this</span>.<span class="fn">_encodeFrame</span>(msgId, payload);
+    <span class="kw">await</span> <span class="kw">this</span>.writer.<span class="fn">write</span>(frame);
+  }
+
+  <span class="com">// MAVLink v2 frame: [STX][LEN][INCOMPAT_FLAGS][COMPAT_FLAGS][SEQ][SYSID][COMPID][MSGID...][PAYLOAD][CRC]</span>
+  <span class="fn">_encodeFrame</span>(msgId, payload, sysId=<span class="num">255</span>, compId=<span class="num">1</span>) {
+    <span class="kw">const</span> stx = <span class="num">0xFD</span>;
+    <span class="kw">const</span> len = payload.length;
+    <span class="kw">const</span> header = [<span class="num">stx</span>, len, <span class="num">0</span>, <span class="num">0</span>, <span class="kw">this</span>.sequence++, sysId, compId,
+                    msgId &amp; <span class="num">0xFF</span>, (msgId &gt;&gt; <span class="num">8</span>) &amp; <span class="num">0xFF</span>, (msgId &gt;&gt; <span class="num">16</span>) &amp; <span class="num">0xFF</span>];
+    <span class="kw">const</span> crc = <span class="kw">this</span>.<span class="fn">_crc16</span>([...header.slice(<span class="num">2</span>), ...payload]);
+    <span class="kw">return</span> <span class="kw">new</span> <span class="fn">Uint8Array</span>([...header, ...payload, crc &amp; <span class="num">0xFF</span>, (crc &gt;&gt; <span class="num">8</span>) &amp; <span class="num">0xFF</span>]);
+  }
+}
+
+<span class="com">// Usage — 5 lines to live telemetry</span>
+<span class="kw">const</span> port = <span class="kw">await</span> navigator.serial.<span class="fn">requestPort</span>({ filters: [{ usbVendorId: <span class="num">0x2DAE</span> }] });
+<span class="kw">const</span> drone = <span class="kw">new</span> <span class="fn">MAVLinkConnection</span>(port);
+<span class="kw">await</span> drone.<span class="fn">connect</span>();
+drone.<span class="fn">on</span>(<span class="num">0</span>, msg =&gt; <span class="fn">console</span>.<span class="fn">log</span>(<span class="str">'HEARTBEAT'</span>, msg));     <span class="com">// #0</span>
+drone.<span class="fn">on</span>(<span class="num">33</span>, msg =&gt; <span class="fn">updateUI</span>(msg));                    <span class="com">// #33 GLOBAL_POSITION_INT</span></pre>
+
+  <div class="card">
+    <h4 style="font-size: 15px; margin-bottom: 12px;">📋 The MAVLink Message Cheat Sheet (OpenDrones essentials)</h4>
+    <table>
+      <thead>
+        <tr><th>MSG ID</th><th>Name</th><th>Key Fields</th><th>Rate</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>0</code></td><td>HEARTBEAT</td><td>type, autopilot, base_mode, custom_mode</td><td>1 Hz</td></tr>
+        <tr><td><code>1</code></td><td>SYS_STATUS</td><td>battery_remaining, voltage, current</td><td>1 Hz</td></tr>
+        <tr><td><code>24</code></td><td>GPS_RAW_INT</td><td>lat, lon, alt, sat_visible, fix_type</td><td>1 Hz</td></tr>
+        <tr><td><code>30</code></td><td>ATTITUDE</td><td>roll, pitch, yaw (radians)</td><td>10 Hz</td></tr>
+        <tr><td><code>33</code></td><td>GLOBAL_POSITION_INT</td><td>lat, lon, alt, relative_alt, vx, vy, vz</td><td>5 Hz</td></tr>
+        <tr><td><code>74</code></td><td>VFR_HUD</td><td>airspeed, groundspeed, heading, throttle, alt, climb</td><td>2 Hz</td></tr>
+        <tr><td><code>76</code></td><td>COMMAND_LONG</td><td>Target command (arm, mode, RTL, mission)</td><td>On-demand</td></tr>
+        <tr><td><code>147</code></td><td>BATTERY_STATUS</td><td>voltages, currents, remaining, temperature</td><td>0.5 Hz</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <div class="callout-title">🚀 Real-World Production: Argus GCS</div>
+    <p><a href="https://github.com/L-X-Yao/argus" style="color: var(--accent);">Argus</a> is an open-source web-based ground control station that uses Web Serial for browser-direct MAVLink communication with ArduPilot drones. It includes a pure-TypeScript MAVLink v2 codec, dual-transport (WebSocket backend OR WebSerial direct), 10-language i18n, mission upload/download, calibration wizards, and NTRIP RTK — all in the browser. Production-tested on ArduPilot. This IS the reference architecture for OpenDrones Mission Control.</p>
+  </div>
+</section>
+</div>
+
+<!-- ============ SECTION 7: Security Model ============ -->
+<div class="container">
+<section>
+  <div class="section-num">Section 7</div>
+  <h2 class="section-title">Security Model — User-Gated, Per-Site, Per-Port</h2>
+  <p class="section-sub">The web doesn't get silent access to hardware. Every connection requires explicit user consent.</p>
+
+  <div class="feature-grid">
+    <div class="feature-item">
+      <div class="icon">🔐</div>
+      <h4>User Activation Required</h4>
+      <p><code>requestPort()</code> must be called from a user gesture (click, tap, keypress). No auto-connecting on page load.</p>
+    </div>
+    <div class="feature-item">
+      <div class="icon">👁️</div>
+      <h4>No Device Enumeration</h4>
+      <p>The page cannot list connected serial devices. <code>getPorts()</code> only returns ports the user already approved.</p>
+    </div>
+    <div class="feature-item">
+      <div class="icon">🎯</div>
+      <h4>Per-Site, Per-Port</h4>
+      <p>Permission is scoped to the origin AND the specific port. No blanket hardware access.</p>
+    </div>
+    <div class="feature-item">
+      <div class="icon">🚫</div>
+      <h4>Zero Fingerprinting</h4>
+      <p>The browser chooser shows all serial devices, not just matching ones. No device list leaks to the page.</p>
+    </div>
+    <div class="feature-item">
+      <div class="icon">🔄</div>
+      <h4>Revocable</h4>
+      <p><code>port.forget()</code> (Chrome 103+) lets the page proactively drop access. User can also revoke via browser settings.</p>
+    </div>
+    <div class="feature-item">
+      <div class="icon">🏗️</div>
+      <h4>Permissions-Policy</h4>
+      <p>The <code>serial</code> Permissions-Policy directive controls which contexts can use the API. Block in iframes by default.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h4 style="font-size: 15px; margin-bottom: 12px;">Firefox Add-On Gating — the extra layer</h4>
+    <p style="font-size: 14px; color: var(--text-dim);">Firefox 151 adds an additional consent step: the first time a site requests serial access, Firefox shows an "add-on gating" prompt explaining what's being allowed before the port chooser appears. This is more informative than Chrome's approach and addresses the fingerprinting concerns that delayed Mozilla's implementation for 13 years. Enterprise admins can control access via the <code style="color: var(--accent); font-family: var(--mono);">DefaultSerialGuardSetting</code> policy.</p>
+  </div>
+</section>
+</div>
+
+<!-- ============ SECTION 8: Molt Studios Client Applications ============ -->
+<div class="container">
+<section>
+  <div class="section-num">Section 8</div>
+  <h2 class="section-title">Molt Studios — Sellable Client Applications</h2>
+  <p class="section-sub">Beyond drones: Web Serial opens a new category of browser-native hardware products.</p>
+
+  <div class="app-card">
+    <div class="app-icon">🏭</div>
+    <div class="app-content">
+      <h4>Industrial IoT Dashboard — $8-15k</h4>
+      <p>Browser-native control panel for factory equipment (PLCs, sensors, CNC machines). Real-time data visualization, no native installer. The pitch: "Your operators open a URL, plug in the machine, and start monitoring. No IT ticket, no software deployment."</p>
+    </div>
+  </div>
+
+  <div class="app-card">
+    <div class="app-icon">🖨️</div>
+    <div class="app-content">
+      <h4>3D Printer Controller — $4-8k</h4>
+      <p>Web-based G-code sender, temperature monitor, and print manager. The OctoPrint replacement that runs in a browser tab. ESP32 + printer community is already building these (Adafruit's WebSerial ESPTool has 500k+ users).</p>
+    </div>
+  </div>
+
+  <div class="app-card">
+    <div class="app-icon">⚡</div>
+    <div class="app-content">
+      <h4>Energy Monitor Dashboard — $3-6k</h4>
+      <p>USB power meter integration (AVHzY C3, Joy-IT TC66C) for real-time energy consumption visualization. Mozilla's own Florian Quèze built <a href="https://serial.combien-consomme.fr/" style="color: var(--accent);">a production example</a> that exports to Firefox Profiler.</p>
+    </div>
+  </div>
+
+  <div class="app-card">
+    <div class="app-icon">🏠</div>
+    <div class="app-content">
+      <h4>Smart Home Flash Tool — $3-5k</h4>
+      <p>ESPHome/Home Assistant firmware flasher. The user opens a URL, plugs in their ESP32, and clicks "Install." No Python, no drivers, no command line. Adafruit and ESPHome already serve thousands of users this way.</p>
+    </div>
+  </div>
+
+  <div class="app-card">
+    <div class="app-icon">🔬</div>
+    <div class="app-content">
+      <h4>Laboratory Equipment Interface — $6-12k</h4>
+      <p>Oscilloscopes, multimeters, spectrometers — all typically have serial interfaces. A web-based data logger / visualization tool that reads directly from lab equipment. Strong pitch for university and research clients.</p>
+    </div>
+  </div>
+
+  <div class="app-card">
+    <div class="app-icon">🎮</div>
+    <div class="app-content">
+      <h4>Custom Controller Configurator — $4-7k</h4>
+      <p>Web-based configuration tool for custom hardware (RC transmitters, gaming controllers, MIDI devices). The Betaflight configurator pattern — but for any USB serial device. White-label for hardware manufacturers.</p>
+    </div>
+  </div>
+</section>
+</div>
+
+<!-- ============ SECTION 9: Decision Matrix ============ -->
+<div class="container">
+<section>
+  <div class="section-num">Section 9</div>
+  <h2 class="section-title">Decision Matrix — When to Use Web Serial</h2>
+  <p class="section-sub">Match the hardware-access API to the device protocol, not the other way around.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Use Case</th>
+        <th>Best API</th>
+        <th>Why</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Drone telemetry (MAVLink/MSP/CRSF)</td>
+        <td><code>Web Serial</code></td>
+        <td>FC exposes virtual COM port. Byte stream + custom framing.</td>
+      </tr>
+      <tr>
+        <td>3D printer control (G-code)</td>
+        <td><code>Web Serial</code></td>
+        <td>Printers use AT-command-style serial protocol.</td>
+      </tr>
+      <tr>
+        <td>Microcontroller programming (Arduino/ESP32)</td>
+        <td><code>Web Serial</code> + <code>WebUSB</code></td>
+        <td>Serial for REPL/monitor, WebUSB for DFU/bootloader flash.</td>
+      </tr>
+      <tr>
+        <td>Firmware flashing (STM32 DFU)</td>
+        <td><code>WebUSB</code></td>
+        <td>DFU mode uses raw USB bulk endpoints, not serial.</td>
+      </tr>
+      <tr>
+        <td>BLE wireless telemetry</td>
+        <td><code>Web Bluetooth</code></td>
+        <td>BLE devices expose GATT services, not serial ports.</td>
+      </tr>
+      <tr>
+        <td>RC transmitter joystick input</td>
+        <td><code>WebHID</code></td>
+        <td>HID mode gives joystick data without serial overhead.</td>
+      </tr>
+      <tr>
+        <td>Power meter data logging</td>
+        <td><code>Web Serial</code></td>
+        <td>USB power meters (AVHzY, Joy-IT) expose CDC-ACM serial.</td>
+      </tr>
+      <tr>
+        <td>Field device config (no USB)</td>
+        <td><code>Web Bluetooth</code></td>
+        <td>Wireless config without physical connection.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="card card-highlight">
+    <h4 style="font-size: 15px; margin-bottom: 12px;">The OpenDrones Hardware Access Stack</h4>
+    <table>
+      <thead>
+        <tr><th>Layer</th><th>API</th><th>MC Priority</th><th>Use</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Telemetry &amp; commands</td><td><strong>Web Serial</strong></td><td><span class="priority-badge priority-3">P3 (this entry)</span></td><td>MAVLink v2 over USB CDC-ACM</td></tr>
+        <tr><td>Live video feed</td><td>WebRTC + WebCodecs</td><td>P3 ✓ Documented</td><td>Live drone video + ML inspection</td></tr>
+        <tr><td>Real-time transport</td><td>WebTransport</td><td>P2 ✓ Documented</td><td>HTTP/3+QUIC telemetry relay</td></tr>
+        <tr><td>3D airspace render</td><td>WebGPU</td><td>P2 ✓ Documented</td><td>Compute shaders for 10K+ mesh</td></tr>
+        <tr><td>3D map base</td><td>MapLibre GL</td><td>P2 ✓ Documented</td><td>Open-source 3D terrain map</td></tr>
+        <tr><td>Offline storage</td><td>OPFS</td><td>P2 ✓ Documented</td><td>Telemetry buffer + mission cache</td></tr>
+        <tr><td>Firmware flashing</td><td>WebUSB</td><td>Future</td><td>STM32 DFU mode, raw bulk endpoints</td></tr>
+        <tr><td>Wireless field config</td><td>Web Bluetooth</td><td>Future</td><td>BLE device config without USB</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+
+<!-- ============ SECTION 10: Recap ============ -->
+<div class="container">
+<section>
+  <div class="section-num">Section 10</div>
+  <h2 class="section-title">Recap &amp; Applications</h2>
+  <p class="section-sub">Why P3 — and how Web Serial fits into the documented research stack.</p>
+
+  <div class="recap-grid">
+    <div class="recap-card">
+      <h4>🚁 OpenDrones — 5 Production Patterns</h4>
+      <ul>
+        <li>Browser-direct MAVLink telemetry (no backend)</li>
+        <li>Mission upload/download via Web Serial</li>
+        <li>Parameter read/write + calibration wizards</li>
+        <li>Fleet dashboard with multi-vehicle Web Serial</li>
+        <li>Field deployment via TWA on Android Chrome 148+</li>
+      </ul>
+    </div>
+    <div class="recap-card">
+      <h4>🎨 Molt Studios — 6 Sellable Deliverables</h4>
+      <ul>
+        <li>Industrial IoT dashboard ($8-15k)</li>
+        <li>3D printer controller ($4-8k)</li>
+        <li>Energy monitor ($3-6k)</li>
+        <li>Smart home flash tool ($3-5k)</li>
+        <li>Lab equipment interface ($6-12k)</li>
+        <li>Custom controller configurator ($4-7k)</li>
+      </ul>
+    </div>
+    <div class="recap-card">
+      <h4>📊 Why P3 — Priority Reasoning</h4>
+      <ul>
+        <li><strong>Not P1/P2</strong> — no Safari, no Samsung Internet. ~72% desktop only.</li>
+        <li><strong>Not P4+</strong> — production-ready today for Chrome+Firefox targets.</li>
+        <li>For OpenDrones (Chrome target), effectively P2.</li>
+        <li>Firefox 151 (May 2026) was the tipping point — ended 13-year debate.</li>
+        <li>Pairs with WebRTC P3 + WebTransport P2 + WebGPU P2 for full Mission Control stack.</li>
+      </ul>
+    </div>
+    <div class="recap-card">
+      <h4>🔗 Composability</h4>
+      <ul>
+        <li>Web Serial + WebGPU → real-time telemetry on 3D airspace</li>
+        <li>Web Serial + OPFS → offline mission buffer</li>
+        <li>Web Serial + WebRTC → SFU relay to remote operators</li>
+        <li>Web Serial + Chrome Built-in AI → on-device log analysis</li>
+        <li>Web Serial + Web Bluetooth → wired + wireless redundancy</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout">
+    <div class="callout-title">📡 The 13-Year Story</div>
+    <p>Web Serial was first proposed in 2013. Chrome shipped it in 2021 (Chrome 89). Mozilla debated it for 13 years — citing security, fingerprinting, and the concern that "the web shouldn't talk to hardware." In May 2026, Firefox 151 finally shipped support with add-on gating, reversing the "harmful" position. The W3C WICG spec is now moving to WHATWG for formal standardization. Apple/WebKit remains opposed. The web platform can now talk to the physical world — and for OpenDrones, that means Mission Control runs entirely in a browser tab.</p>
+  </div>
+</section>
+</div>
+
+<!-- ============ FOOTER ============ -->
+<div class="container">
+  <div class="footer">
+    <p>Research by Jin · Molt Studios · July 24, 2026 · <a href="https://molt-research.vercel.app" style="color: var(--text-dim);">molt-research.vercel.app</a></p>
+    <p style="margin-top: 8px;">Sources: MDN · Mozilla Hacks · web.dev · Chrome Platform Status · GitHub (Argus GCS) · MAVLink.dev</p>
+  </div>
+</div>
+
+<script>
+// ============ Capability Detection ============
+(function() {
+  const statusEl = document.getElementById('serial-status');
+  const detailEl = document.getElementById('serial-detail');
+  const envEl = document.getElementById('env-info');
+
+  const ua = navigator.userAgent;
+  let browser = 'Unknown', version = '?';
+  if (/Chrome\/(\d+)/.test(ua) && !/Edg/.test(ua) && !/OPR/.test(ua)) {
+    browser = 'Chrome'; version = RegExp.$1;
+  } else if (/Firefox\/(\d+)/.test(ua)) {
+    browser = 'Firefox'; version = RegExp.$1;
+  } else if (/Edg\/(\d+)/.test(ua)) {
+    browser = 'Edge'; version = RegExp.$1;
+  } else if (/Safari\/(\d+)/.test(ua) && !/Chrome/.test(ua)) {
+    browser = 'Safari'; version = RegExp.$1;
+  }
+
+  const cores = navigator.hardwareConcurrency || '?';
+  const mem = navigator.deviceMemory ? navigator.deviceMemory + ' GB' : 'N/A';
+  const platform = navigator.platform || 'Unknown';
+
+  envEl.innerHTML = `
+    Browser: <span style="color: var(--accent);">${browser} ${version}</span><br>
+    Platform: <span style="color: var(--accent);">${platform}</span><br>
+    CPU cores: <span style="color: var(--accent);">${cores}</span><br>
+    Device memory: <span style="color: var(--accent);">${mem}</span><br>
+    User agent: <span style="color: var(--text-faint); font-size: 11px;">${ua.substring(0, 80)}...</span>
+  `;
+
+  if ('serial' in navigator) {
+    statusEl.textContent = '✓ Available';
+    statusEl.className = 'detector-status available';
+    detailEl.textContent = `navigator.serial is present — ${browser} ${version} supports Web Serial API`;
+
+    navigator.serial.getPorts().then(ports => {
+      if (ports.length > 0) {
+        detailEl.textContent += ` · ${ports.length} pre-approved port(s)`;
+      } else {
+        detailEl.textContent += ' · No pre-approved ports (click Connect to request one)';
+      }
+    }).catch(() => {});
+  } else {
+    statusEl.textContent = '✗ Not Available';
+    statusEl.className = 'detector-status unavailable';
+    detailEl.textContent = `navigator.serial is NOT present in ${browser} ${version}`;
+  }
+})();
+
+// ============ Simulated Serial Terminal ============
+(function() {
+  const termBody = document.getElementById('term-body');
+  const termTitle = document.getElementById('term-title');
+  const btnConnect = document.getElementById('btn-connect');
+  const btnArm = document.getElementById('btn-arm');
+  const btnMode = document.getElementById('btn-mode');
+  const btnMission = document.getElementById('btn-mission');
+  const btnDisconnect = document.getElementById('btn-disconnect');
+
+  let connected = false;
+  let telemetryTimer = null;
+  let mode = 0;
+  const modes = ['STABILIZE', 'ALT_HOLD', 'LOITER', 'GUIDED', 'RTL', 'AUTO'];
+  let battery = 87;
+  let altitude = 0;
+  let speed = 0;
+  let sats = 14;
+  let armed = false;
+  let tickCount = 0;
+
+  function addLine(text, cls = '') {
+    const line = document.createElement('div');
+    line.className = 'line ' + cls;
+    line.textContent = text;
+    termBody.appendChild(line);
+    termBody.scrollTop = termBody.scrollHeight;
+  }
+
+  function hex(bytes) {
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+  }
+
+  function mavlog(msgId, name, fields) {
+    const ts = new Date().toLocaleTimeString('en-US', { hour12: false }) + '.' + String(Date.now() % 1000).padStart(3, '0');
+    addLine(`[${ts}] RX MAVLink #${msgId} ${name}`, 'rx');
+    Object.entries(fields).forEach(([k, v]) => {
+      addLine(`  ${k}: ${v}`, 'sys');
+    });
+  }
+
+  function updateTelemetry() {
+    tickCount++;
+    if (armed) {
+      altitude = Math.min(altitude + Math.random() * 2, 120);
+      speed = 8 + Math.random() * 6;
+      battery = Math.max(battery - 0.05, 0);
+    } else {
+      altitude = Math.max(0, altitude - Math.random() * 1);
+      speed = Math.random() * 0.5;
+    }
+    sats = 12 + Math.floor(Math.random() * 4);
+
+    // Update UI
+    document.getElementById('bat-val').innerHTML = Math.round(battery) + '<span class="telemetry-unit">%</span>';
+    const batBar = document.getElementById('bat-bar');
+    batBar.style.width = battery + '%';
+    batBar.style.background = battery > 50 ? 'var(--green)' : battery > 20 ? 'var(--amber)' : 'var(--red)';
+
+    document.getElementById('alt-val').innerHTML = altitude.toFixed(1) + '<span class="telemetry-unit"> m</span>';
+    document.getElementById('alt-bar').style.width = Math.min(altitude / 1.5, 100) + '%';
+
+    document.getElementById('spd-val').innerHTML = speed.toFixed(1) + '<span class="telemetry-unit"> m/s</span>';
+    document.getElementById('spd-bar').style.width = Math.min(speed * 6, 100) + '%';
+
+    document.getElementById('sat-val').innerHTML = sats + '<span class="telemetry-unit"> sats</span>';
+    document.getElementById('sat-bar').style.width = Math.min(sats * 5, 100) + '%';
+
+    // Periodic MAVLink log
+    if (tickCount % 5 === 0) {
+      mavlog(33, 'GLOBAL_POSITION_INT', {
+        lat: (426000000 + Math.random() * 50000).toFixed(0),
+        lon: (-711000000 + Math.random() * 50000).toFixed(0),
+        alt: (altitude * 1000).toFixed(0) + ' mm',
+        relative_alt: (altitude * 1000).toFixed(0) + ' mm',
+        vx: (speed * 100).toFixed(0),
+        vy: '0',
+        vz: (Math.random() * 20 - 10).toFixed(0),
+        hdg: Math.floor(Math.random() * 36000)
+      });
+    }
+    if (tickCount % 10 === 0) {
+      mavlog(1, 'SYS_STATUS', {
+        battery_remaining: Math.round(battery) + '%',
+        voltage_battery: '15700 mV',
+        current_battery: (armed ? '-18500' : '-120') + ' cA',
+        drop_rate_comm: '0%'
+      });
+    }
+  }
+
+  btnConnect.addEventListener('click', () => {
+    if (connected) return;
+    connected = true;
+    termBody.innerHTML = '';
+    addLine('--- Opening port at 115200 baud ---', 'sys');
+    addLine('--- Filtering: usbVendorId=0x2DAE (ArduPilot) ---', 'sys');
+
+    setTimeout(() => {
+      addLine('[CONNECTED] Pixhawk FMUv6 on COM3 (/dev/ttyACM0)', 'rx');
+      addLine('TX: FE 09 00 00 00 FF BE 00 00 00 63 0C 00 00 00 00 00 00 00 D7 02', 'tx');
+      addLine('    → MAVLink HEARTBEAT request (msg #76)', 'sys');
+      termTitle.textContent = 'serial-monitor.js — CONNECTED @ 115200 baud';
+    }, 400);
+
+    setTimeout(() => {
+      addLine('RX: FD 09 00 00 00 01 01 00 00 00 06 08 00 00 00 00 00 00 00 4B 01', 'rx');
+      mavlog(0, 'HEARTBEAT', {
+        type: '6 (MAV_TYPE_QUADROTOR)',
+        autopilot: '8 (MAV_AUTOPILOT_ARDUPILOTMEGA)',
+        base_mode: '0 (MAV_MODE_PREFLIGHT)',
+        custom_mode: '0 (STABILIZE)',
+        system_status: '3 (MAV_STATE_STANDBY)'
+      });
+    }, 900);
+
+    setTimeout(() => {
+      mavlog(24, 'GPS_RAW_INT', {
+        fix_type: '3 (GPS_FIX_FIX_3D)',
+        lat: '426014320',
+        lon: '-710998740',
+        alt: '89200 mm',
+        sat_visible: sats
+      });
+      updateTelemetry();
+    }, 1400);
+
+    // Start telemetry stream
+    telemetryTimer = setInterval(updateTelemetry, 1000);
+
+    btnConnect.disabled = true;
+    btnArm.disabled = false;
+    btnMode.disabled = false;
+    btnMission.disabled = false;
+    btnDisconnect.disabled = false;
+  });
+
+  btnArm.addEventListener('click', () => {
+    if (!connected) return;
+    armed = !armed;
+    if (armed) {
+      addLine('TX: FE 21 00 00 01 FF BE 4C 00 00 00 00 00 BF 00 00 00 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 93 01', 'tx');
+      addLine('    → COMMAND_LONG: MAV_CMD_COMPONENT_ARM_DISARM = 1 (ARM)', 'sys');
+      setTimeout(() => {
+        addLine('RX: Command ACK: MAV_RESULT_ACCEPTED', 'rx');
+        mavlog(0, 'HEARTBEAT', {
+          base_mode: '128 (MAV_MODE_FLAG_SAFETY_ARMED)',
+          custom_mode: mode + ' (' + modes[mode] + ')'
+        });
+      }, 300);
+      btnArm.textContent = '🛑 Send DISARM';
+    } else {
+      addLine('TX: COMMAND_LONG: MAV_CMD_COMPONENT_ARM_DISARM = 0 (DISARM)', 'tx');
+      setTimeout(() => {
+        addLine('RX: Command ACK: MAV_RESULT_ACCEPTED', 'rx');
+      }, 300);
+      btnArm.textContent = '🚀 Send ARM';
+    }
+  });
+
+  btnMode.addEventListener('click', () => {
+    if (!connected) return;
+    mode = (mode + 1) % modes.length;
+    addLine(`TX: COMMAND_LONG: MAV_CMD_DO_SET_MODE → ${modes[mode]} (${mode})`, 'tx');
+    setTimeout(() => {
+      addLine(`RX: Command ACK: MAV_RESULT_ACCEPTED — mode set to ${modes[mode]}`, 'rx');
+    }, 300);
+  });
+
+  btnMission.addEventListener('click', () => {
+    if (!connected) return;
+    addLine('TX: REQUEST_MESSAGE: MISSION_COUNT (#43)', 'tx');
+    setTimeout(() => {
+      mavlog(44, 'MISSION_COUNT', { count: '5 waypoints' });
+      addLine('--- Requesting individual waypoints ---', 'sys');
+    }, 300);
+    setTimeout(() => {
+      mavlog(39, 'MISSION_ITEM_INT', {
+        seq: '0', command: '16 (MAV_CMD_NAV_WAYPOINT)',
+        x: '426014500', y: '-710999000', z: '5000 (5m alt)'
+      });
+    }, 600);
+    setTimeout(() => {
+      mavlog(39, 'MISSION_ITEM_INT', {
+        seq: '1', command: '16 (MAV_CMD_NAV_WAYPOINT)',
+        x: '426015000', y: '-711000000', z: '15000 (15m alt)'
+      });
+    }, 900);
+    setTimeout(() => {
+      mavlog(39, 'MISSION_ITEM_INT', {
+        seq: '4', command: '20 (MAV_CMD_NAV_RETURN_TO_LAUNCH)',
+        x: '0', y: '0', z: '0'
+      });
+      addLine('--- Mission received: 5 waypoints ---', 'sys');
+    }, 1200);
+  });
+
+  btnDisconnect.addEventListener('click', () => {
+    if (!connected) return;
+    connected = false;
+    armed = false;
+    clearInterval(telemetryTimer);
+    addLine('--- Port closed ---', 'warn');
+    termTitle.textContent = 'serial-monitor.js — not connected';
+    btnConnect.disabled = false;
+    btnArm.disabled = true;
+    btnMode.disabled = true;
+    btnMission.disabled = true;
+    btnDisconnect.disabled = true;
+    btnArm.textContent = '🚀 Send ARM';
+  });
+})();
+</script>
+
+</body>
+</html>
