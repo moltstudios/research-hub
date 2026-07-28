@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compute Pressure API — Adaptive Performance for Real-Time Web Apps</title>
+<style>
+:root {
+  --bg: #0a0a0f;
+  --bg-elev: #13131c;
+  --bg-card: #1a1a28;
+  --bg-card-hover: #20202f;
+  --text: #e8e8f0;
+  --text-muted: #8888a0;
+  --text-dim: #55556a;
+  --accent: #7c5cff;
+  --accent-glow: rgba(124, 92, 255, 0.15);
+  --border: #25253a;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
+  --sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --nominal: #22c55e;
+  --fair: #84cc16;
+  --serious: #f59e0b;
+  --critical: #ef4444;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+body::before {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(ellipse 600px 400px at 20% 0%, rgba(124, 92, 255, 0.08), transparent),
+    radial-gradient(ellipse 500px 300px at 80% 100%, rgba(34, 197, 94, 0.04), transparent);
+}
+.wrap { max-width: 640px; margin: 0 auto; padding: 0 20px; position: relative; z-index: 1; }
+
+/* Hero */
+.hero { padding: 56px 0 40px; text-align: center; }
+.hero-badge {
+  display: inline-block; padding: 6px 14px; border-radius: 100px;
+  background: var(--accent-glow); border: 1px solid rgba(124, 92, 255, 0.3);
+  font-size: 12px; font-weight: 600; color: var(--accent); margin-bottom: 16px;
+  letter-spacing: 0.5px; text-transform: uppercase;
+}
+.hero h1 { font-size: 38px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 12px; line-height: 1.15; }
+.hero p { font-size: 16px; color: var(--text-muted); max-width: 480px; margin: 0 auto; }
+
+/* Sections */
+.section { padding: 40px 0; border-top: 1px solid var(--border); }
+.section-num { font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 6px; letter-spacing: 1px; }
+.section h2 { font-size: 24px; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.01em; }
+.section > p { color: var(--text-muted); margin-bottom: 20px; font-size: 14px; }
+
+/* Cards */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 20px; margin-bottom: 16px; transition: border-color 0.2s;
+}
+.card:hover { border-color: rgba(124, 92, 255, 0.3); }
+.card h3 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+
+/* Code */
+pre, code {
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
+}
+pre {
+  background: #0d0d14; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 16px; overflow-x: auto; margin: 12px 0; white-space: pre;
+}
+pre code { background: none; padding: 0; color: #c8c8e0; }
+code { background: rgba(124, 92, 255, 0.1); padding: 2px 6px; border-radius: 4px; color: #a78bfa; }
+.comment { color: #555570; }
+.string { color: #7dd3fc; }
+.keyword { color: #c084fc; }
+.number { color: #fbbf24; }
+
+/* Gauge */
+.gauge-container {
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+  padding: 32px 20px; background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); margin-bottom: 16px;
+}
+.gauge {
+  width: 180px; height: 180px; border-radius: 50%; position: relative;
+  display: flex; align-items: center; justify-content: center;
+  background: conic-gradient(var(--nominal) 0deg, var(--nominal) 25deg, var(--fair) 25deg, var(--fair) 115deg, var(--serious) 115deg, var(--serious) 200deg, var(--critical) 200deg, var(--critical) 360deg);
+  opacity: 0.15; transition: opacity 0.4s;
+}
+.gauge.active { opacity: 0.9; }
+.gauge-inner {
+  width: 140px; height: 140px; border-radius: 50%; background: var(--bg-card);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border: 1px solid var(--border);
+}
+.gauge-icon { font-size: 32px; margin-bottom: 4px; }
+.gauge-label { font-size: 14px; font-weight: 700; text-transform: capitalize; }
+.gauge-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* Pressure states grid */
+.states-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+.state-card {
+  padding: 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--bg-card); position: relative; overflow: hidden;
+}
+.state-card::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+}
+.state-card.nominal::before { background: var(--nominal); }
+.state-card.fair::before { background: var(--fair); }
+.state-card.serious::before { background: var(--serious); }
+.state-card.critical::before { background: var(--critical); }
+.state-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.state-dot { width: 8px; height: 8px; border-radius: 50%; }
+.state-card.nominal .state-dot { background: var(--nominal); }
+.state-card.fair .state-dot { background: var(--fair); }
+.state-card.serious .state-dot { background: var(--serious); }
+.state-card.critical .state-dot { background: var(--critical); }
+.state-name { font-size: 14px; font-weight: 700; }
+.state-desc { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+
+/* Simulator */
+.simulator {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 24px; margin-bottom: 16px;
+}
+.sim-controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.sim-btn {
+  padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--bg-elev); color: var(--text); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s; font-family: var(--sans);
+}
+.sim-btn:hover { border-color: var(--accent); background: var(--bg-card-hover); }
+.sim-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.sim-btn.nominal.active { background: var(--nominal); border-color: var(--nominal); }
+.sim-btn.fair.active { background: var(--fair); border-color: var(--fair); }
+.sim-btn.serious.active { background: var(--serious); border-color: var(--serious); }
+.sim-btn.critical.active { background: var(--critical); border-color: var(--critical); }
+
+.sim-status {
+  display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+  background: var(--bg-elev); border-radius: var(--radius-sm); margin-bottom: 12px;
+}
+.sim-status-dot { width: 10px; height: 10px; border-radius: 50%; transition: background 0.3s; }
+.sim-status-text { font-size: 13px; font-weight: 600; }
+.sim-log {
+  max-height: 160px; overflow-y: auto; font-family: var(--mono); font-size: 11.5px;
+  background: #0d0d14; border-radius: var(--radius-sm); padding: 12px; line-height: 1.6;
+  color: var(--text-muted);
+}
+.sim-log-entry { padding: 2px 0; }
+.sim-log-entry .ts { color: var(--text-dim); }
+.sim-log-entry .state-nominal { color: var(--nominal); }
+.sim-log-entry .state-fair { color: var(--fair); }
+.sim-log-entry .state-serious { color: var(--serious); }
+.sim-log-entry .state-critical { color: var(--critical); }
+
+/* Degradation ladder */
+.ladder { display: flex; flex-direction: column; gap: 2px; }
+.rung {
+  display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+  background: var(--bg-card); border-radius: 8px; font-size: 13px;
+  border-left: 4px solid transparent; transition: all 0.3s;
+}
+.rung.active { background: var(--bg-card-hover); }
+.rung.nominal { border-left-color: var(--nominal); }
+.rung.fair { border-left-color: var(--fair); }
+.rung.serious { border-left-color: var(--serious); }
+.rung.critical { border-left-color: var(--critical); }
+.rung-icon { font-size: 18px; }
+.rung-text { flex: 1; }
+.rung-actions { font-size: 11px; color: var(--text-muted); }
+
+/* Browser support */
+.browser-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+.browser-table th, .browser-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+.browser-table th { font-weight: 600; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+.browser-yes { color: var(--nominal); font-weight: 600; }
+.browser-no { color: var(--text-dim); }
+.browser-partial { color: var(--serious); font-weight: 600; }
+
+/* Tag */
+.tag {
+  display: inline-block; padding: 3px 10px; border-radius: 100px; font-size: 11px;
+  font-weight: 600; margin-right: 4px; margin-bottom: 4px;
+}
+.tag-purple { background: rgba(124, 92, 255, 0.15); color: var(--accent); }
+.tag-green { background: rgba(34, 197, 94, 0.12); color: var(--nominal); }
+.tag-orange { background: rgba(245, 158, 11, 0.12); color: var(--serious); }
+.tag-red { background: rgba(239, 68, 68, 0.12); color: var(--critical); }
+
+/* App card */
+.app-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 20px; margin-bottom: 12px;
+}
+.app-card h3 { font-size: 14px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.app-card .app-icon { font-size: 18px; }
+.app-card ul { list-style: none; padding: 0; }
+.app-card li { padding: 4px 0; font-size: 13px; color: var(--text-muted); padding-left: 16px; position: relative; }
+.app-card li::before { content: '→'; position: absolute; left: 0; color: var(--accent); }
+
+/* Decision matrix */
+.matrix { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 12.5px; }
+.matrix th, .matrix td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+.matrix th { font-weight: 600; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+.matrix td code { font-size: 11px; }
+
+/* Support banner */
+.support-banner {
+  display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-radius: var(--radius);
+  margin-bottom: 16px; font-size: 13px; font-weight: 600;
+}
+.support-banner.warn { background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); color: var(--serious); }
+.support-banner.ok { background: rgba(34, 197, 94, 0.08); border: 1px solid rgba(34, 197, 94, 0.2); color: var(--nominal); }
+.support-banner.info { background: var(--accent-glow); border: 1px solid rgba(124, 92, 255, 0.2); color: var(--accent); }
+
+/* Stats */
+.stats-row { display: flex; gap: 12px; margin: 16px 0; }
+.stat { flex: 1; text-align: center; padding: 16px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.stat-value { font-size: 22px; font-weight: 800; color: var(--accent); }
+.stat-label { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+/* Feature detection output */
+.detected {
+  padding: 16px; background: #0d0d14; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); font-family: var(--mono); font-size: 12px;
+  line-height: 1.7; color: var(--text-muted);
+}
+.detected .yes { color: var(--nominal); }
+.detected .no { color: var(--text-dim); }
+.detected .key { color: #a78bfa; }
+
+/* Recompose chart */
+.recompose-chart {
+  display: grid; grid-template-columns: 1fr; gap: 8px; margin: 16px 0;
+}
+.recompose-row {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  background: var(--bg-card); border-radius: 8px; font-size: 12px;
+}
+.recompose-layer { width: 100px; font-weight: 600; color: var(--text); font-size: 11.5px; }
+.recompose-bar { flex: 1; height: 8px; border-radius: 4px; background: var(--bg-elev); overflow: hidden; position: relative; }
+.recompose-fill { height: 100%; border-radius: 4px; transition: width 0.4s, background 0.4s; }
+.recompose-label { font-size: 10.5px; color: var(--text-muted); width: 80px; text-align: right; }
+
+/* Footer */
+.footer { padding: 32px 0; text-align: center; color: var(--text-dim); font-size: 12px; border-top: 1px solid var(--border); }
+.footer a { color: var(--accent); text-decoration: none; }
+
+/* Responsive */
+@media (max-width: 540px) {
+  .hero h1 { font-size: 28px; }
+  .states-grid { grid-template-columns: 1fr; }
+  .stats-row { flex-direction: column; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-badge">W3C Compute Pressure Level 1 · Chrome 125+</div>
+  <h1>Compute Pressure API</h1>
+  <p>Know when the device is melting. Gracefully degrade real-time web apps before the user suffers. The missing observability layer for OpenDrones Mission Control and performance-heavy Molt Studios builds.</p>
+</div>
+
+<!-- 1. LIVE CAPABILITY DETECTION -->
+<div class="section">
+  <div class="section-num">01 — DETECTION</div>
+  <h2>Is it available right now?</h2>
+  <p>The API requires a secure context (HTTPS). Feature detection checks <code>'PressureObserver' in globalThis</code>, but that only tells you the interface exists — not whether the underlying hardware provides telemetry. You must call <code>observe()</code> and catch <code>NotSupportedError</code> to be sure.</p>
+  <div class="detected" id="detection-output">Checking…</div>
+</div>
+
+<!-- 2. THE 4 STATES -->
+<div class="section">
+  <div class="section-num">02 — PRESSURE STATES</div>
+  <h2>Four states, one signal</h2>
+  <p>The API reports high-level pressure states — not raw CPU percentages. This is intentional: the browser fuses hardware counters (CPU utilization, thermal sensors, frequency scaling) into a single semantic value that maps directly to user-facing impact.</p>
+  <div class="states-grid">
+    <div class="state-card nominal">
+      <div class="state-header"><div class="state-dot"></div><div class="state-name">⚪ Nominal</div></div>
+      <div class="state-desc">Acceptable level. No adverse effects. Device can take on more work.</div>
+    </div>
+    <div class="state-card fair">
+      <div class="state-header"><div class="state-dot"></div><div class="state-name">🟢 Fair</div></div>
+      <div class="state-desc">Slightly elevated. Fans may become audible. Battery life reduced. System running flawlessly.</div>
+    </div>
+    <div class="state-card serious">
+      <div class="state-header"><div class="state-dot"></div><div class="state-name">🟡 Serious</div></div>
+      <div class="state-desc">Consistently highly elevated. System may be throttling to reduce thermals.</div>
+    </div>
+    <div class="state-card critical">
+      <div class="state-header"><div class="state-dot"></div><div class="state-name">🔴 Critical</div></div>
+      <div class="state-desc">Significantly elevated temperature. System needs to cool down to avoid damage.</div>
+    </div>
+  </div>
+</div>
+
+<!-- 3. THE 5-LINE RECIPE -->
+<div class="section">
+  <div class="section-num">03 — THE RECIPE</div>
+  <h2>Observe in 5 lines</h2>
+  <p>The entire API surface is two interfaces: <code>PressureObserver</code> (the watcher) and <code>PressureRecord</code> (a single reading). Create, observe, react.</p>
+<pre><code><span class="comment">// 1. Create — callback fires on state transitions</span>
+<span class="keyword">const</span> observer = <span class="keyword">new</span> <span class="keyword">PressureObserver</span>((records) => {
+  <span class="keyword">const</span> r = records.at(-<span class="number">1</span>);
+  console.log(<span class="string">`CPU: ${r.state} at ${r.time}`</span>);
+  adaptPerformance(r.state); <span class="comment">// your function</span>
+});
+
+<span class="comment">// 2. Observe — sample at most every 1000ms</span>
+<span class="keyword">await</span> observer.observe(<span class="string">"cpu"</span>, { sampleInterval: <span class="number">1000</span> });
+
+<span class="comment">// 3. Stop when done</span>
+observer.disconnect();</code></pre>
+  <div class="card">
+    <h3>📋 PressureRecord properties</h3>
+    <table class="matrix">
+      <tr><th>Property</th><th>Type</th><th>Example</th></tr>
+      <tr><td><code>source</code></td><td>string</td><td><code>"cpu"</code></td></tr>
+      <tr><td><code>state</code></td><td>string</td><td><code>"nominal" | "fair" | "serious" | "critical"</code></td></tr>
+      <tr><td><code>time</code></td><td>number</td><td><code>DOMHighResTimeStamp</code></td></tr>
+      <tr><td><code>toJSON()</code></td><td>method</td><td>Serializes record</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- 4. LIVE GAUGE + SIMULATOR -->
+<div class="section">
+  <div class="section-num">04 — LIVE OBSERVER</div>
+  <h2>Real-time pressure gauge</h2>
+  <p>If your browser supports the Compute Pressure API, the gauge below shows <strong>actual system pressure</strong> updated every second. If unsupported, use the simulator buttons to see how the UI responds.</p>
+
+  <div class="gauge-container">
+    <div class="gauge" id="pressure-gauge">
+      <div class="gauge-inner">
+        <div class="gauge-icon" id="gauge-icon">⏳</div>
+        <div class="gauge-label" id="gauge-label">Checking…</div>
+        <div class="gauge-sub" id="gauge-sub">Waiting for first sample</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="support-banner" id="support-banner"></div>
+
+  <h3 style="font-size:14px;font-weight:700;margin:20px 0 12px;">🖥️ Simulator (if API unavailable)</h3>
+  <div class="simulator">
+    <div class="sim-controls">
+      <button class="sim-btn nominal" onclick="simulateState('nominal')">⚪ Nominal</button>
+      <button class="sim-btn fair" onclick="simulateState('fair')">🟢 Fair</button>
+      <button class="sim-btn serious" onclick="simulateState('serious')">🟡 Serious</button>
+      <button class="sim-btn critical" onclick="simulateState('critical')">🔴 Critical</button>
+      <button class="sim-btn" onclick="stopSimulation()" style="margin-left:auto;">Stop</button>
+    </div>
+    <div class="sim-log" id="sim-log"></div>
+  </div>
+</div>
+
+<!-- 5. GRACEFUL DEGRADATION LADDER -->
+<div class="section">
+  <div class="section-num">05 — DEGRADATION LADDER</div>
+  <h2>The OpenDrones adaptation matrix</h2>
+  <p>When the system pressure changes, the Mission Control UI must react instantly. This is the degradation ladder — features disabled in reverse order of criticality.</p>
+
+  <div class="ladder" id="degradation-ladder">
+    <div class="rung nominal" data-state="nominal">
+      <span class="rung-icon">✅</span>
+      <div class="rung-text"><strong>Nominal</strong> — Full Mission Control</div>
+      <div class="rung-actions">4K video feeds · WebGPU particles · ML inspection · All features</div>
+    </div>
+    <div class="rung fair" data-state="fair">
+      <span class="rung-icon">🔄</span>
+      <div class="rung-text"><strong>Fair</strong> — Shed non-essential effects</div>
+      <div class="rung-actions">Drop to 1080p · Reduce particle density · Keep ML + all feeds</div>
+    </div>
+    <div class="rung serious" data-state="serious">
+      <span class="rung-icon">⚠️</span>
+      <div class="rung-text"><strong>Serious</strong> — Core ops only</div>
+      <div class="rung-actions">2 primary feeds @ 720p · Freeze 3D view · Pause ML inference</div>
+    </div>
+    <div class="rung critical" data-state="critical">
+      <span class="rung-icon">🚨</span>
+      <div class="rung-text"><strong>Critical</strong> — Survival mode</div>
+      <div class="rung-actions">1 feed @ 480p · Telemetry text only · Disable WebGPU · Emergency landing prompt</div>
+    </div>
+  </div>
+
+  <pre><code><span class="comment">// The degradation function — called from PressureObserver</span>
+<span class="keyword">function</span> <span class="keyword">adaptPerformance</span>(state) {
+  <span class="keyword">const</span> modes = {
+    <span class="string">'nominal'</span>:  { videoFeeds: <span class="number">4</span>, resolution: <span class="string">'4K'</span>,  mlEnabled: <span class="keyword">true</span>,  particles: <span class="number">5000</span>  },
+    <span class="string">'fair'</span>:     { videoFeeds: <span class="number">4</span>, resolution: <span class="string">'1080p'</span>, mlEnabled: <span class="keyword">true</span>,  particles: <span class="number">1000</span>  },
+    <span class="string">'serious'</span>:  { videoFeeds: <span class="number">2</span>, resolution: <span class="string">'720p'</span>,  mlEnabled: <span class="keyword">false</span>, particles: <span class="number">0</span>     },
+    <span class="string">'critical'</span>: { videoFeeds: <span class="number">1</span>, resolution: <span class="string">'480p'</span>,  mlEnabled: <span class="keyword">false</span>, particles: <span class="number">0</span>     },
+  };
+  applyMode(modes[state] ?? modes.nominal);
+}</code></pre>
+</div>
+
+<!-- 6. OPENDRONES STACK COMPOSABILITY -->
+<div class="section">
+  <div class="section-num">06 — STACK COMPOSABILITY</div>
+  <h2>Where it fits in the v2 stack</h2>
+  <p>Compute Pressure is the <strong>observability layer</strong> that governs all other real-time subsystems. When pressure rises, each subsystem has a pre-defined degradation path.</p>
+
+  <div class="recompose-chart">
+    <div class="recompose-row">
+      <div class="recompose-layer">WebGPU</div>
+      <div class="recompose-bar"><div class="recompose-fill" style="width:100%;background:var(--nominal);"></div></div>
+      <div class="recompose-label" id="layer-webgpu">Full · 60fps</div>
+    </div>
+    <div class="recompose-row">
+      <div class="recompose-layer">WebRTC Feeds</div>
+      <div class="recompose-bar"><div class="recompose-fill" style="width:100%;background:var(--nominal);"></div></div>
+      <div class="recompose-label" id="layer-webrtc">4 × 4K</div>
+    </div>
+    <div class="recompose-row">
+      <div class="recompose-layer">WebCodecs</div>
+      <div class="recompose-bar"><div class="recompose-fill" style="width:100%;background:var(--nominal);"></div></div>
+      <div class="recompose-label" id="layer-webcodecs">Encoding H.265</div>
+    </div>
+    <div class="recompose-row">
+      <div class="recompose-layer">On-Device AI</div>
+      <div class="recompose-bar"><div class="recompose-fill" style="width:100%;background:var(--nominal);"></div></div>
+      <div class="recompose-label" id="layer-ai">Gemini Nano</div>
+    </div>
+    <div class="recompose-row">
+      <div class="recompose-layer">OPFS Worker</div>
+      <div class="recompose-bar"><div class="recompose-fill" style="width:100%;background:var(--nominal);"></div></div>
+      <div class="recompose-label" id="layer-opfs">Writing 30Hz</div>
+    </div>
+    <div class="recompose-row">
+      <div class="recompose-layer">MapLibre 3D</div>
+      <div class="recompose-bar"><div class="recompose-fill" style="width:100%;background:var(--nominal);"></div></div>
+      <div class="recompose-label" id="layer-maplibre">Full detail</div>
+    </div>
+  </div>
+  <p style="font-size:12px;color:var(--text-muted);margin-top:8px;">Bars shrink and shift color as pressure increases — each subsystem has a pre-defined degradation budget.</p>
+</div>
+
+<!-- 7. WORKER INTEGRATION -->
+<div class="section">
+  <div class="section-num">07 — WORKER INTEGRATION</div>
+  <h2>Observe from a Dedicated Worker</h2>
+  <p>The Compute Pressure API runs in <code>Window</code>, <code>DedicatedWorker</code>, and <code>SharedWorker</code>. For the OpenDrones v2 stack, the observer lives inside the same Worker that manages WebTransport telemetry and OPFS writes — so pressure adaptation happens at the data layer, not just the UI layer.</p>
+<pre><code><span class="comment">// worker.js — the "Mission Control Worker"</span>
+<span class="keyword">let</span> pressureState = <span class="string">'nominal'</span>;
+
+<span class="keyword">const</span> observer = <span class="keyword">new</span> <span class="keyword">PressureObserver</span>((records) => {
+  <span class="keyword">const</span> r = records.at(-<span class="number">1</span>);
+  pressureState = r.state;
+
+  <span class="comment">// Broadcast to main thread for UI adaptation</span>
+  self.postMessage({ type: <span class="string">'pressure'</span>, state: r.state });
+
+  <span class="comment">// Adapt THIS worker's workload immediately</span>
+  <span class="keyword">if</span> (r.state === <span class="string">'serious'</span> || r.state === <span class="string">'critical'</span>) {
+    <span class="comment">// Reduce OPFS write frequency from 30Hz to 10Hz</span>
+    opfsWriteInterval = <span class="number">100</span>;
+    <span class="comment">// Skip ML frame inspection</span>
+    skipMLInference = <span class="keyword">true</span>;
+  } <span class="keyword">else</span> {
+    opfsWriteInterval = <span class="number">33</span>;
+    skipMLInference = <span class="keyword">false</span>;
+  }
+});
+
+<span class="keyword">await</span> observer.observe(<span class="string">"cpu"</span>, { sampleInterval: <span class="number">1000</span> });
+
+<span class="comment">// Meanwhile, the main thread also runs its own observer</span>
+<span class="comment">// for UI-level decisions (which feeds to show, particle count, etc.)</span></code></pre>
+</div>
+
+<!-- 8. BROWSER SUPPORT -->
+<div class="section">
+  <div class="section-num">08 — BROWSER SUPPORT</div>
+  <h2>Chrome / Edge only (July 2026)</h2>
+  <p>The Compute Pressure API is a Chromium-first feature. Shipped in Chrome 125 (May 2024). <strong>Not Baseline</strong> as of July 2026 because Safari and Firefox have not shipped it. This makes it a progressive-enhancement play — detect, adapt, and fall back to conservative defaults.</p>
+
+  <table class="browser-table">
+    <tr><th>Browser</th><th>Status</th><th>Since</th></tr>
+    <tr><td>Chrome</td><td class="browser-yes">✅ Shipped</td><td>125 (May 2024)</td></tr>
+    <tr><td>Edge</td><td class="browser-yes">✅ Shipped</td><td>125 (May 2024)</td></tr>
+    <tr><td>Samsung Internet</td><td class="browser-yes">✅ Shipped</td><td>27+ (2024)</td></tr>
+    <tr><td>Safari / iOS Safari</td><td class="browser-no">❌ Opposed</td><td>WebKit position: opposed</td></tr>
+    <tr><td>Firefox</td><td class="browser-no">❌ Under consideration</td><td>Mozilla position: pending</td></tr>
+  </table>
+
+  <div class="stats-row">
+    <div class="stat">
+      <div class="stat-value">~45%</div>
+      <div class="stat-label">Global traffic (Chrome + Edge desktop)</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">Chrome 125+</div>
+      <div class="stat-label">First shipped</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">HTTPS</div>
+      <div class="stat-label">Secure context required</div>
+    </div>
+  </div>
+
+  <div class="support-banner warn">
+    ⚠️ <strong>Not Baseline.</strong> Use progressive enhancement: detect the API, use it when available, fall back to conservative resource settings when not. OpenDrones Mission Control targets Chrome/Edge, so this API is production-ready for that build target.
+  </div>
+
+  <h3 style="font-size:14px;font-weight:700;margin:20px 0 12px;">The safe fallback pattern</h3>
+<pre><code><span class="comment">// Safe adaptation — works everywhere</span>
+<span class="keyword">function</span> <span class="keyword">setupAdaptivePerformance</span>() {
+  <span class="keyword">if</span> (!(<span class="string">'PressureObserver'</span> <span class="keyword">in</span> globalThis)) {
+    <span class="comment">// No API → conservative defaults</span>
+    applyMode({
+      videoFeeds: <span class="number">2</span>, resolution: <span class="string">'1080p'</span>,
+      mlEnabled: <span class="keyword">false</span>, particles: <span class="number">500</span>,
+    });
+    <span class="keyword">return</span>;
+  }
+  <span class="comment">// API available → start aggressive, degrade on pressure</span>
+  applyMode(MODE_NOMINAL);
+  <span class="keyword">const</span> obs = <span class="keyword">new</span> <span class="keyword">PressureObserver</span>((records) => {
+    adaptPerformance(records.at(-<span class="number">1</span>).state);
+  });
+  obs.observe(<span class="string">"cpu"</span>, { sampleInterval: <span class="number">1000</span> });
+}</code></pre>
+</div>
+
+<!-- 9. DECISION MATRIX & APPLICATIONS -->
+<div class="section">
+  <div class="section-num">09 — APPLICATIONS</div>
+  <h2>When to use it, when to skip it</h2>
+
+  <table class="matrix">
+    <tr><th>Scenario</th><th>Use it?</th><th>Why</th></tr>
+    <tr><td>Multi-feed video conferencing</td><td><span class="tag tag-green">YES</span></td><td>Primary use case from the spec</td></tr>
+    <tr><td>Heavy 3D visualization (WebGPU/Three.js)</td><td><span class="tag tag-green">YES</span></td><td>Degraded rendering beats frozen tab</td></tr>
+    <tr><td>On-device AI inference loops</td><td><span class="tag tag-green">YES</span></td><td>ML is CPU/GPU intensive — pause on critical</td></tr>
+    <tr><td>Real-time data pipelines (Worker + OPFS)</td><td><span class="tag tag-green">YES</span></td><td>Reduce write frequency under load</td></tr>
+    <tr><td>Static marketing site</td><td><span class="tag tag-red">NO</span></td><td>Not enough load to matter</td></tr>
+    <tr><td>Form-heavy admin dashboard</td><td><span class="tag tag-red">NO</span></td><td>CPU rarely spikes from forms</td></tr>
+    <tr><td>Cross-browser consumer app</td><td><span class="tag tag-orange">PROGRESSIVE</span></td><td>Enhance on Chrome, skip elsewhere</td></tr>
+  </table>
+
+  <div class="app-card">
+    <h3><span class="app-icon">🚁</span> OpenDrones Mission Control (5 patterns)</h3>
+    <ul>
+      <li>Reduce video feed count and resolution per pressure state</li>
+      <li>Pause WebCodecs ML frame inspection on serious/critical</li>
+      <li>Throttle OPFS telemetry writes from 30Hz to 10Hz under thermal stress</li>
+      <li>Simplify WebGPU airspace rendering (drop particles, reduce LOD)</li>
+      <li>Trigger emergency landing prompt on sustained critical pressure</li>
+    </ul>
+  </div>
+
+  <div class="app-card">
+    <h3><span class="app-icon">🎨</span> Molt Studios (6 deliverables)</h3>
+    <ul>
+      <li>3D product configurators — reduce texture LOD, disable reflections</li>
+      <li>Animation-heavy landing pages — skip non-critical Framer Motion effects</li>
+      <li>Live commerce video — reduce stream quality, hide filter effects</li>
+      <li>Interactive maps — simplify tile layers, disable fly-over animations</li>
+      <li>Real-time dashboards — switch from live charts to periodic snapshots</li>
+      <li>PWA media apps — pre-cache lower-quality variants under pressure</li>
+    </ul>
+  </div>
+</div>
+
+<!-- 10. COMPARISON & RECAP -->
+<div class="section">
+  <div class="section-num">10 — COMPARISON</div>
+  <h2>API surface vs alternatives</h2>
+
+  <table class="matrix">
+    <tr><th>Signal</th><th>What it tells you</th><th>Latency</th></tr>
+    <tr><td><code>PressureObserver</code></td><td>System-level CPU/thermal state</td><td>Proactive (before jank)</td></tr>
+    <tr><td><code>requestAnimationFrame</code> FPS</td><td>Render pipeline frame timing</td><td>Reactive (after jank)</td></tr>
+    <tr><td><code>PerformanceLongTaskTiming</code></td><td>Tasks >50ms on main thread</td><td>Reactive (after stall)</td></tr>
+    <tr><td><code>PerformanceObserver</code></td><td>Arbitrary performance metrics</td><td>Reactive (post-hoc)</td></tr>
+    <tr><td>Manual throttling (setTimeout)</td><td>Nothing — guessing</td><td>Static</td></tr>
+  </table>
+
+  <div class="support-banner info">
+    💡 <strong>The key insight:</strong> Compute Pressure is the only API that tells you the system is <em>heading</em> toward a bad state <em>before</em> the user sees jank. Every other signal fires <em>after</em> the damage is visible.
+  </div>
+
+  <div style="margin-top:24px;">
+    <h3 style="font-size:14px;font-weight:700;margin-bottom:12px;">Priority reasoning: P3</h3>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      <span class="tag tag-orange">P3 — Chrome/Edge only (~45% traffic)</span>
+      <span class="tag tag-purple">Not Baseline (Safari opposed)</span>
+      <span class="tag tag-green">Ship-today for OpenDrones (Chrome target)</span>
+      <span class="tag tag-purple">Progressive enhancement for Molt</span>
+    </div>
+    <p style="font-size:13px;color:var(--text-muted);margin-top:12px;">
+      Ranked P3 alongside Chrome Built-in AI and WebRTC — another Chromium-first API that's production-ready for OpenDrones Mission Control (Chrome build target) but requires fallback for general Molt Studios client work. Pairs with WebGPU (P2), WebRTC (P3), OPFS (P2), and Chrome Built-in AI (P3) as the observability layer of the v2 stack.
+    </p>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <p>Research by Jin 🎨 · <a href="https://developer.mozilla.org/en-US/docs/Web/API/Compute_Pressure_API">MDN</a> · <a href="https://developer.chrome.com/docs/web-platform/compute-pressure">Chrome Docs</a> · <a href="https://w3c.github.io/compute-pressure/">W3C Spec</a></p>
+</div>
+
+</div>
+
+<script>
+// ===== DETECTION =====
+(function detect() {
+  const out = document.getElementById('detection-output');
+  const items = [];
+
+  items.push(`<span class="key">PressureObserver</span>: ${'PressureObserver' in globalThis ? '<span class="yes">✓ available</span>' : '<span class="no">✗ not available</span>'}`);
+
+  if ('PressureObserver' in globalThis) {
+    const known = PressureObserver.knownSources;
+    items.push(`<span class="key">knownSources</span>: ${known.length ? known.map(s => `<span class="yes">${s}</span>`).join(', ') : '<span class="no">none</span>'}`);
+  }
+
+  items.push(`<span class="key">crossOriginIsolated</span>: ${crossOriginIsolated ? '<span class="yes">true</span>' : '<span class="no">false</span>'}`);
+  items.push(`<span class="key">Secure context</span>: ${window.isSecureContext ? '<span class="yes">✓ HTTPS</span>' : '<span class="no">✗ insecure</span>'}`);
+  items.push(`<span class="key">User Agent</span>: ${navigator.userAgent.split(' ').slice(-2).join(' ')}`);
+  items.push(`<span class="key">Hardware concurrency</span>: ${navigator.hardwareConcurrency || '?'} cores`);
+
+  out.innerHTML = items.join('<br>');
+})();
+
+// ===== LIVE OBSERVER =====
+let liveObserver = null;
+let simState = 'nominal';
+let simInterval = null;
+const log = document.getElementById('sim-log');
+
+function addLog(state, source) {
+  const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+  const entry = document.createElement('div');
+  entry.className = 'sim-log-entry';
+  entry.innerHTML = `<span class="ts">[${time}]</span> state: <span class="state-${state}">${state.toUpperCase()}</span> · source: ${source}`;
+  log.prepend(entry);
+  while (log.children.length > 20) log.lastChild.remove();
+}
+
+function updateGauge(state, source) {
+  const gauge = document.getElementById('pressure-gauge');
+  const icon = document.getElementById('gauge-icon');
+  const label = document.getElementById('gauge-label');
+  const sub = document.getElementById('gauge-sub');
+
+  const icons = { nominal: '⚪', fair: '🟢', serious: '🟡', critical: '🔴' };
+  const colors = { nominal: '#22c55e', fair: '#84cc16', serious: '#f59e0b', critical: '#ef4444' };
+
+  icon.textContent = icons[state] || '❓';
+  label.textContent = state;
+  label.style.color = colors[state];
+  sub.textContent = source;
+  gauge.classList.add('active');
+}
+
+function updateDegradation(state) {
+  const rungs = document.querySelectorAll('.rung');
+  rungs.forEach(r => {
+    r.classList.toggle('active', r.dataset.state === state);
+  });
+
+  // Update stack composability bars
+  const configs = {
+    nominal:  { webgpu: [100, 'Full · 60fps', '#22c55e'], webrtc: [100, '4 × 4K', '#22c55e'], webcodecs: [100, 'H.265', '#22c55e'], ai: [100, 'Active', '#22c55e'], opfs: [100, '30Hz', '#22c55e'], maplibre: [100, 'Full', '#22c55e'] },
+    fair:     { webgpu: [75, 'Reduced', '#84cc16'], webrtc: [75, '4 × 1080p', '#84cc16'], webcodecs: [100, 'H.264', '#84cc16'], ai: [100, 'Active', '#22c55e'], opfs: [100, '30Hz', '#22c55e'], maplibre: [75, 'Reduced', '#84cc16'] },
+    serious:  { webgpu: [30, 'Frozen', '#f59e0b'], webrtc: [50, '2 × 720p', '#f59e0b'], webcodecs: [50, 'Paused', '#f59e0b'], ai: [0, 'Disabled', '#f59e0b'], opfs: [33, '10Hz', '#f59e0b'], maplibre: [50, 'LOD only', '#f59e0b'] },
+    critical: { webgpu: [0, 'Disabled', '#ef4444'], webrtc: [25, '1 × 480p', '#ef4444'], webcodecs: [0, 'Off', '#ef4444'], ai: [0, 'Off', '#ef4444'], opfs: [15, '5Hz', '#ef4444'], maplibre: [25, 'Minimal', '#ef4444'] },
+  };
+
+  const cfg = configs[state] || configs.nominal;
+  const ids = ['webgpu', 'webrtc', 'webcodecs', 'ai', 'opfs', 'maplibre'];
+  ids.forEach(id => {
+    const [width, text, color] = cfg[id];
+    const bar = document.querySelector(`#layer-${id}`);
+    if (bar) {
+      const fill = bar.previousElementSibling.querySelector('.recompose-fill');
+      const fillEl = bar.closest('.recompose-row').querySelector('.recompose-fill');
+      if (fillEl) {
+        fillEl.style.width = width + '%';
+        fillEl.style.background = color;
+      }
+      bar.textContent = text;
+    }
+  });
+}
+
+// Try real observer
+async function startRealObserver() {
+  const banner = document.getElementById('support-banner');
+
+  if (!('PressureObserver' in globalThis)) {
+    banner.className = 'support-banner warn';
+    banner.innerHTML = '⚠️ <strong>Compute Pressure API not available.</strong> Your browser does not support it. Use the simulator below to explore the behavior. <a href="https://developer.mozilla.org/en-US/docs/Web/API/Compute_Pressure_API#browser_compatibility" style="color:inherit;text-decoration:underline;">Browser support</a>';
+    return false;
+  }
+
+  try {
+    liveObserver = new PressureObserver((records) => {
+      const r = records.at(-1);
+      updateGauge(r.state, `Real CPU telemetry · ${r.source}`);
+      addLog(r.state, r.source);
+      updateDegradation(r.state);
+    });
+    await liveObserver.observe('cpu', { sampleInterval: 1000 });
+
+    banner.className = 'support-banner ok';
+    banner.innerHTML = '✅ <strong>Live CPU pressure monitoring active!</strong> This gauge shows real system pressure from your device hardware. Open a heavy task (video encode, 3D render) to watch it change.';
+    return true;
+  } catch (err) {
+    banner.className = 'support-banner warn';
+    banner.innerHTML = `⚠️ <strong>PressureObserver exists but observe() failed:</strong> ${err.name}: ${err.message}. The underlying hardware may not expose CPU telemetry. Use the simulator below.`;
+    return false;
+  }
+}
+
+// Simulator
+function simulateState(state) {
+  simState = state;
+  stopSimulation();
+  document.querySelectorAll('.sim-btn').forEach(b => b.classList.remove('active'));
+  event?.target?.classList?.add('active');
+
+  updateGauge(state, 'Simulated (user-triggered)');
+  addLog(state, 'simulator');
+  updateDegradation(state);
+
+  simInterval = setInterval(() => {
+    addLog(state, 'simulator (periodic)');
+  }, 2000);
+}
+
+function stopSimulation() {
+  if (simInterval) {
+    clearInterval(simInterval);
+    simInterval = null;
+  }
+  document.querySelectorAll('.sim-btn').forEach(b => b.classList.remove('active'));
+}
+
+// Init
+startRealObserver().then((ok) => {
+  if (!ok) {
+    updateGauge('nominal', 'Simulated — API unavailable');
+    updateDegradation('nominal');
+  }
+});
+
+// Click rungs to see degradation states
+document.querySelectorAll('.rung').forEach(rung => {
+  rung.addEventListener('click', () => {
+    simulateState(rung.dataset.state);
+  });
+});
+</script>
+</body>
+</html>

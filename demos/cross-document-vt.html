@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cross-Document View Transitions — MPA Native Page Morphing (2026)</title>
+<style>
+  /* Enable cross-document view transitions on EVERY link out of this document */
+  @view-transition { navigation: auto; }
+
+  /* Default cross-fade for everything */
+  ::view-transition-old(root),
+  ::view-transition-new(root) { animation-duration: 0.35s; }
+
+  *,*::before,*::after { box-sizing: border-box; }
+  :root {
+    --bg: #0a0a12;
+    --surface: #14141f;
+    --surface-2: #1c1c2c;
+    --border: rgba(255,255,255,0.08);
+    --text: #e8e8f2;
+    --muted: rgba(232,232,242,0.6);
+    --accent: #a78bfa;
+    --accent-2: #60a5fa;
+    --ok: #34d399;
+    --warn: #fbbf24;
+    --code-bg: #0d0d18;
+  }
+  html,body { margin:0; padding:0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+    background:
+      radial-gradient(800px 600px at 12% -10%, rgba(167,139,250,0.18), transparent 60%),
+      radial-gradient(700px 500px at 92% 8%, rgba(96,165,250,0.14), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 56px 24px 80px; }
+  .pill {
+    display:inline-flex; align-items:center; gap:8px;
+    padding:6px 14px; border-radius:999px;
+    background: rgba(167,139,250,0.12);
+    border:1px solid rgba(167,139,250,0.3);
+    color: var(--accent);
+    font-size:12px; font-weight:600; letter-spacing:0.4px;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+  .pill .dot { width:7px; height:7px; border-radius:50%; background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+  h1 {
+    font-size: clamp(32px, 5vw, 48px);
+    font-weight: 800;
+    margin: 0 0 16px;
+    background: linear-gradient(135deg, #fff 0%, #a78bfa 60%, #60a5fa 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -1px;
+    line-height: 1.1;
+  }
+  .lede { font-size: 18px; color: var(--muted); margin: 0 0 40px; max-width: 640px; }
+  .stats {
+    display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap:12px; margin: 0 0 48px;
+  }
+  .stat {
+    background: var(--surface);
+    border:1px solid var(--border);
+    border-radius:16px;
+    padding:20px;
+  }
+  .stat .n { font-size: 28px; font-weight: 800; color: var(--accent); display:block; }
+  .stat .l { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  section { margin: 56px 0; }
+  h2 {
+    font-size: 22px; font-weight: 700; margin: 0 0 12px;
+    display:flex; align-items:center; gap:10px;
+  }
+  h2::before {
+    content:""; width:6px; height:24px; border-radius:3px;
+    background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  }
+  h3 { font-size: 16px; font-weight: 700; margin: 24px 0 8px; color: #fff; }
+  p { margin: 0 0 14px; color: var(--muted); }
+  code, pre { font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; }
+  code {
+    background: rgba(167,139,250,0.12);
+    color: #c4b5fd;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  pre {
+    background: var(--code-bg);
+    border:1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    overflow-x: auto;
+    margin: 0 0 18px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  pre code { background:none; color:#e8e8f2; padding:0; font-size:13px; }
+  .kw { color: #c084fc; }
+  .str { color: #86efac; }
+  .num { color: #fbbf24; }
+  .com { color: #6b7280; font-style: italic; }
+  .acc { color: #60a5fa; }
+  /* Card grid for live demo links */
+  .grid {
+    display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px; margin: 24px 0 8px;
+  }
+  .card {
+    background: var(--surface);
+    border:1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    text-decoration: none;
+    color: inherit;
+    display:block;
+    transition: transform 0.2s, border-color 0.2s, background 0.2s;
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(167,139,250,0.5);
+    background: var(--surface-2);
+  }
+  .card .ico { font-size: 28px; margin-bottom: 12px; }
+  .card h4 { margin: 0 0 6px; font-size: 16px; font-weight: 700; color: #fff; }
+  .card p { margin: 0; font-size: 13px; color: var(--muted); }
+  .card .arrow { display:inline-block; margin-top: 12px; color: var(--accent); font-weight: 600; font-size: 13px; }
+
+  /* Big demo box for the cross-doc navigation */
+  .demo {
+    background: var(--surface);
+    border:1px solid var(--border);
+    border-radius: 20px;
+    padding: 32px;
+    margin: 32px 0;
+  }
+  .demo h3 { margin-top: 0; }
+  .demo-row {
+    display:flex; flex-wrap:wrap; gap:12px; margin-top:16px;
+  }
+  .btn {
+    display:inline-flex; align-items:center; gap:8px;
+    padding: 12px 20px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #0a0a12;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 14px;
+    border:none; cursor:pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(167,139,250,0.3); }
+  .btn.ghost {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+
+  table { width:100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+  th, td { text-align:left; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); font-weight: 600; }
+  .ok-cell { color: var(--ok); font-weight: 700; }
+  .no-cell { color: #f87171; font-weight: 700; }
+
+  .callout {
+    background: linear-gradient(135deg, rgba(96,165,250,0.08), rgba(167,139,250,0.06));
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 20px 0;
+  }
+  .callout strong { color: #fff; }
+  .footer {
+    margin-top: 80px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 13px;
+    display:flex; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+  }
+  .footer a { color: var(--accent); text-decoration: none; }
+  @media (max-width: 600px) {
+    .wrap { padding: 36px 18px 60px; }
+    pre { font-size: 12px; padding: 14px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="pill"><span class="dot"></span>Baseline 2026 · 3-Browser Consensus</span>
+  <h1>Cross-Document View Transitions</h1>
+  <p class="lede">Native browser morphing between <strong>separate HTML pages</strong> — no SPA router, no client-side JS, no animation library. Hard navigation with soft transitions. This is the single biggest shift in how multi-page apps feel since the dawn of jQuery.</p>
+
+  <div class="stats">
+    <div class="stat"><span class="n">~95%</span><span class="l">Browser support</span></div>
+    <div class="stat"><span class="n">0 KB</span><span class="l">JavaScript added</span></div>
+    <div class="stat"><span class="n">1 rule</span><span class="l">CSS to enable</span></div>
+    <div class="stat"><span class="n">~350ms</span><span class="l">Default cross-fade</span></div>
+  </div>
+
+  <section>
+    <h2>Try the Live Demo</h2>
+    <p>Click below. The browser will <strong>navigate to a different document</strong> on a different URL — and morph shared elements between them using only CSS.</p>
+    <div class="demo">
+      <h3>OpenDrones Arc · Shop → Product Detail</h3>
+      <p>These two pages share the product hero image via <code>view-transition-name: arc-hero</code>. On navigation, the browser auto-calculates position/scale delta and animates the image between the grid cell and the full hero position. Pure CSS.</p>
+      <div class="demo-row">
+        <a class="btn" href="./cdvt-shop.html">→ Open Shop Page</a>
+        <a class="btn ghost" href="./cdvt-product.html">→ Open Product Detail</a>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What It Is</h2>
+    <p>Cross-document view transitions (the MPA variant) extend the View Transitions API to work across <strong>separate page loads</strong>. Both pages opt in via a single CSS at-rule. When the user clicks a same-origin link, the browser:</p>
+    <ol style="color: var(--muted); padding-left: 22px; margin: 12px 0;">
+      <li style="margin-bottom: 6px;">Snapshots elements with matching <code>view-transition-name</code> values on the old page</li>
+      <li style="margin-bottom: 6px;">Loads the new document, snapshots the same-named elements on the new page</li>
+      <li style="margin-bottom: 6px;">Animates position, size, and styling between the two snapshots via CSS pseudo-elements</li>
+      <li style="margin-bottom: 6px;">Resolves at compositor-thread speed (no main-thread blocking)</li>
+    </ol>
+    <div class="callout">
+      <strong>The killer feature:</strong> This is the first time in web history you can build a multi-page app that <em>feels</em> like a SPA without writing any router, hydration logic, or animation code. Just CSS.
+    </div>
+  </section>
+
+  <section>
+    <h2>The One-Rule Setup</h2>
+    <p>Add this to <code>global.css</code> in your Next.js root layout, or to any stylesheet that ships on every page:</p>
+<pre><code><span class="com">/* Enable cross-document transitions between same-origin pages */</span>
+<span class="kw">@view-transition</span> {
+  <span class="acc">navigation</span>: auto;
+}
+
+<span class="com">/* That's it. Browser now cross-fades between pages by default. */</span></code></pre>
+
+    <p>The <code>navigation: auto</code> value opts in for these navigations:</p>
+    <ul style="color: var(--muted); padding-left: 22px;">
+      <li><strong>traverse</strong> — back/forward (your history)</li>
+      <li><strong>push</strong> — link clicks, programmatic history.pushState</li>
+      <li><strong>replace</strong> — when not initiated by browser chrome (e.g. not from address bar)</li>
+    </ul>
+    <p>Excluded by design: address-bar typing, bookmarks, reloads, form-submitted GETs. The user always controls when a transition fires.</p>
+  </section>
+
+  <section>
+    <h2>Shared Element Morphing</h2>
+    <p>The real magic. Assign the same <code>view-transition-name</code> to elements on both pages and the browser auto-animates between them:</p>
+
+<pre><code><span class="com">/* shop.html — product grid card */</span>
+&lt;img <span class="acc">class</span>=<span class="str">"thumb"</span>
+     <span class="acc">src</span>=<span class="str">"/img/arc.jpg"</span>
+     <span class="acc">style</span>=<span class="str">"view-transition-name: arc-hero"</span>&gt;
+
+<span class="com">/* product.html — full hero image */</span>
+&lt;img <span class="acc">class</span>=<span class="str">"hero"</span>
+     <span class="acc">src</span>=<span class="str">"/img/arc.jpg"</span>
+     <span class="acc">style</span>=<span class="str">"view-transition-name: arc-hero"</span>&gt;
+
+<span class="com">/* That's it. Click the thumb → image morphs from grid cell → full hero */</span></code></pre>
+
+    <h3>Customize the morph</h3>
+<pre><code><span class="com">/* Old image: zoom in slightly as it fades */</span>
+<span class="kw">::view-transition-old</span>(arc-hero) {
+  <span class="acc">animation</span>: <span class="num">350ms</span> ease-out both fade-out, shrink-out;
+}
+<span class="kw">::view-transition-new</span>(arc-hero) {
+  <span class="acc">animation</span>: <span class="num">350ms</span> ease-out both fade-in, grow-in;
+}
+
+<span class="kw">@keyframes</span> shrink-out { to { transform: scale(<span class="num">0.92</span>); } }
+<span class="kw">@keyframes</span> grow-in   { from { transform: scale(<span class="num">1.08</span>); } }</code></pre>
+  </section>
+
+  <section>
+    <h2>Dynamic Control: pageswap &amp; pagereveal</h2>
+    <p>Two new lifecycle events let you customize per-navigation. The killer use case: change which element is "shared" depending on which link was clicked, even though the destination page only knows its own structure.</p>
+
+<pre><code><span class="com">// On source page (shop.html) — set the active shared element</span>
+window.<span class="acc">addEventListener</span>(<span class="str">'pageswap'</span>, (e) => {
+  <span class="kw">if</span> (e.activation?.entry) {
+    <span class="kw">const</span> url = <span class="kw">new</span> URL(e.activation.entry.url);
+    <span class="com">// Find which thumb was clicked</span>
+    <span class="kw">const</span> id = document.querySelector(<span class="str">'a[href$="'</span> + url.pathname + <span class="str">'"]'</span>)
+                      ?.dataset.vtId;
+
+    <span class="com">// Tell the destination which name to use</span>
+    e.activation.entry.url = <span class="kw">new</span> URL(
+      url.pathname + <span class="str">'?vt='</span> + encodeURIComponent(id), url
+    );
+  }
+});
+
+<span class="com">// On destination page (product.html) — read it and rename</span>
+window.<span class="acc">addEventListener</span>(<span class="str">'pagereveal'</span>, (e) => {
+  <span class="kw">const</span> id = <span class="kw">new</span> URL(location.href).searchParams.<span class="acc">get</span>(<span class="str">'vt'</span>);
+  <span class="kw">if</span> (id) {
+    document.querySelector(<span class="str">'.hero img'</span>)
+      .style.viewTransitionName = id;
+  }
+});</code></pre>
+    <p>This is the pattern that lets you have <strong>one</strong> product detail template that morphs in <em>whichever</em> product card was clicked — without needing per-product pages with hardcoded names.</p>
+  </section>
+
+  <section>
+    <h2>Browser Support (June 2026)</h2>
+    <table>
+      <thead>
+        <tr><th>Browser</th><th>Version</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Chrome / Edge</td><td>126+</td><td class="ok-cell">✓ Full support</td></tr>
+        <tr><td>Safari</td><td>18.2+</td><td class="ok-cell">✓ Full support (shipped Dec 2024)</td></tr>
+        <tr><td>Firefox</td><td>146+</td><td class="ok-cell">✓ Shipped (April 2026)</td></tr>
+        <tr><td>Mobile Safari</td><td>iOS 18.2+</td><td class="ok-cell">✓ Full support</td></tr>
+        <tr><td>Total global</td><td>~95%</td><td class="ok-cell">Baseline 2026</td></tr>
+      </tbody>
+    </table>
+    <p><strong>The Safari 18.2 release (Dec 2024)</strong> is what unblocked cross-document view transitions for production. Without it, MPAs couldn't ship — Chrome supported it alone for over a year.</p>
+  </section>
+
+  <section>
+    <h2>Graceful Degradation</h2>
+    <p>If a browser doesn't support cross-doc view transitions, the navigation just works as a normal hard page load — no error, no flicker, no broken layout. Users on old browsers see the same old instant page swap. Users on new browsers get the smooth morph. Same code path, same HTML.</p>
+    <pre><code><span class="com">/* Always ship. Worst case: instant navigation. */</span>
+<span class="kw">@view-transition</span> { <span class="acc">navigation</span>: auto; }
+
+<span class="com">/* Optional: opt individual links OUT (e.g. logout, admin) */</span>
+&lt;a <span class="acc">href</span>=<span class="str">"/logout"</span> <span class="acc">class</span>=<span class="str">"no-vt"</span>&gt;Log out&lt;/a&gt;
+
+.no-vt { <span class="acc">view-transition-name</span>: none; }</code></pre>
+  </section>
+
+  <section>
+    <h2>Accessibility: Reduced Motion</h2>
+    <p>Wrap your transition animations in a reduced-motion guard. Users with vestibular disorders should get an instant cut, not a 350ms morph.</p>
+<pre><code><span class="kw">::view-transition-old</span>(root),
+<span class="kw">::view-transition-new</span>(root) {
+  <span class="acc">animation-duration</span>: <span class="num">0.35s</span>;
+}
+
+<span class="kw">@media</span> (prefers-reduced-motion: reduce) {
+  <span class="kw">::view-transition-old</span>(root),
+  <span class="kw">::view-transition-new</span>(root) {
+    <span class="acc">animation-duration</span>: <span class="num">0.001s</span>; <span class="com">/* instant */</span>
+  }
+}</code></pre>
+  </section>
+
+  <section>
+    <h2>Direct Applications</h2>
+    <h3>OpenDrones (E-commerce, multi-page)</h3>
+    <ul style="color: var(--muted); padding-left: 22px;">
+      <li><strong>Shop → Product detail</strong>: product thumb morphs to hero image. Already demoed above.</li>
+      <li><strong>Cart drawer → Checkout</strong>: cart icon expands into full cart page. Use <code>view-transition-name: cart-icon</code> on both.</li>
+      <li><strong>Search overlay → Results page</strong>: the search input morphs to the search header. Native, no JS router needed.</li>
+      <li><strong>Blog index → Article</strong>: article card image morphs to hero. 4-5 line config per page.</li>
+    </ul>
+    <h3>Molt Studios (Agency, client sites)</h3>
+    <ul style="color: var(--muted); padding-left: 22px;">
+      <li><strong>Portfolio grid → Case study</strong>: project thumbnail becomes full hero. Premium feel without React Router.</li>
+      <li><strong>Service page → Pricing page</strong>: pricing card morphs from feature grid to detail layout.</li>
+      <li><strong>Contact form</strong>: hero CTA morphs into form panel for conversion-focused sites.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Same-Doc vs Cross-Doc</h2>
+    <table>
+      <thead>
+        <tr><th>Aspect</th><th>Same-Doc (SPA)</th><th>Cross-Doc (MPA)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Trigger</td><td><code>document.startViewTransition()</code></td><td>Same-origin link click</td></tr>
+        <tr><td>URL changes?</td><td>Optional</td><td>Always (it's a real navigation)</td></tr>
+        <tr><td>JavaScript required?</td><td>Yes — to call startViewTransition</td><td><strong>No — pure CSS opt-in</strong></td></tr>
+        <tr><td>Best for</td><td>SPA route changes, in-page state swaps</td><td>Multi-page sites, marketing pages, e-commerce</td></tr>
+        <tr><td>Pages can be statically prerendered?</td><td>No — SPA shell</td><td><strong>Yes — full CDN caching</strong></td></tr>
+        <tr><td>React/Next.js integration</td><td><code>&lt;ViewTransition&gt;</code> in React 19.2</td><td>Plain <code>@view-transition</code> in global.css</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Next.js 16 Implementation</h2>
+    <p>Next.js 16 has first-class support. Add the at-rule in your root layout's stylesheet and you're done — no component wrappers needed for the MPA variant:</p>
+<pre><code><span class="com">// app/globals.css</span>
+<span class="kw">@view-transition</span> {
+  <span class="acc">navigation</span>: auto;
+}
+
+<span class="com">/* Customize the default cross-fade */</span>
+<span class="kw">::view-transition-old</span>(root) { <span class="acc">animation</span>: fade-out <span class="num">0.3s</span> ease-out; }
+<span class="kw">::view-transition-new</span>(root) { <span class="acc">animation</span>: fade-in  <span class="num">0.3s</span> ease-out; }
+
+<span class="kw">@keyframes</span> fade-out { to { opacity: <span class="num">0</span>; } }
+<span class="kw">@keyframes</span> fade-in  { from { opacity: <span class="num">0</span>; } }</code></pre>
+
+    <p>Then just give any element a <code>view-transition-name</code> on both source and destination pages. No React component changes. No router config. Just CSS.</p>
+  </section>
+
+  <section>
+    <h2>Gotchas</h2>
+    <ul style="color: var(--muted); padding-left: 22px;">
+      <li><strong>Same-origin only.</strong> Won't transition across different domains (security boundary). The browser respects this for you.</li>
+      <li><strong>4-second timeout.</strong> If the new page takes longer than 4s, the transition is skipped and you get a normal load. This is intentional.</li>
+      <li><strong>Unique names per page.</strong> If you give the same <code>view-transition-name</code> to multiple elements on one page, only the last one in DOM order participates. Use unique names per logical element.</li>
+      <li><strong>Server-side rendering required</strong> for the source HTML to be available when the transition begins. With Next.js static export, the old DOM is already in memory when navigation starts.</li>
+      <li><strong>Form submissions don't trigger transitions</strong> unless you wrap them in <code>history.pushState</code> + manual handling. The default is to skip for predictable behavior.</li>
+    </ul>
+  </section>
+
+  <div class="footer">
+    <div>Cross-Document View Transitions · Baseline 2026 · ~95% support</div>
+    <div><a href="https://developer.chrome.com/docs/web-platform/view-transitions/cross-document">→ chrome.dev reference</a></div>
+  </div>
+</div>
+</body>
+</html>
