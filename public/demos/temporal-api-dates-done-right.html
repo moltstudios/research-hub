@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Temporal API — JavaScript Dates, Finally Done Right (Stage 4 · ES2026)</title>
+<meta name="description" content="The Temporal API reached TC39 Stage 4 and ships in ECMAScript 2026. Chrome 144+, Firefox 139+, Node 26. Interactive playground, DST arithmetic, ZonedDateTime, Duration, disambiguation, migration guide.">
+<style>
+  :root {
+    --bg: #faf9f7;
+    --surface: #ffffff;
+    --ink: #1a1a1f;
+    --muted: #6b6b76;
+    --accent: #2f6fed;
+    --accent-soft: #e9f0fe;
+    --line: #e9e6e1;
+    --code-bg: #1e1e26;
+    --code-ink: #e8e6e3;
+    --ok: #1f8a5d;
+    --warn: #b3742a;
+    --bad: #c2453a;
+    --radius: 16px;
+    --shadow: 0 1px 2px rgba(26,26,31,.05), 0 8px 24px rgba(26,26,31,.06);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg); color: var(--ink); font-size: 16px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  .orb { position: fixed; border-radius: 50%; filter: blur(90px); opacity: .15; pointer-events: none; z-index: 0; }
+  .orb-1 { width: 420px; height: 420px; background: var(--accent); top: -120px; right: -100px; }
+  .orb-2 { width: 340px; height: 340px; background: #7c6cf0; top: 40%; left: -160px; }
+  main { position: relative; z-index: 1; }
+
+  header.hero { padding: 72px 0 40px; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent-soft); color: var(--accent);
+    font-size: 12.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+    padding: 6px 14px; border-radius: 999px; margin-bottom: 20px;
+  }
+  h1 { font-size: clamp(34px, 5vw, 52px); line-height: 1.12; letter-spacing: -.02em; font-weight: 800; max-width: 840px; }
+  h1 em { font-style: normal; color: var(--accent); }
+  .lede { font-size: 18px; color: var(--muted); max-width: 740px; margin-top: 18px; }
+
+  .cap {
+    margin-top: 28px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 16px 20px; box-shadow: var(--shadow); font-size: 14px;
+  }
+  .cap .pill { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 999px; font-weight: 600; font-size: 12.5px; }
+  .pill.ok { background: #e7f4ec; color: var(--ok); }
+  .pill.warn { background: #fbf0dd; color: var(--warn); }
+  .pill.bad { background: #fceae7; color: var(--bad); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .cap .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12.5px; color: var(--muted); }
+
+  section { padding: 44px 0; border-top: 1px solid var(--line); }
+  .step { display: flex; align-items: baseline; gap: 14px; margin-bottom: 8px; }
+  .step .n {
+    font-size: 12.5px; font-weight: 700; color: var(--accent); background: var(--accent-soft);
+    border-radius: 8px; padding: 3px 9px; letter-spacing: .04em; white-space: nowrap;
+  }
+  h2 { font-size: clamp(24px, 3.4vw, 32px); letter-spacing: -.015em; font-weight: 750; line-height: 1.2; }
+  .sub { color: var(--muted); max-width: 760px; margin: 10px 0 24px; font-size: 15.5px; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); margin-bottom: 18px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .grid2 > *, .grid3 > *, .grid4 > * { min-width: 0; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  @media (max-width: 860px) { .grid2, .grid3, .grid4 { grid-template-columns: 1fr; } }
+
+  h3 { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+  .card p { color: var(--muted); font-size: 14.5px; }
+  .card .tag { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 10px; display: inline-block; padding: 3px 9px; border-radius: 6px; }
+  .tag.date-bug { background: #fceae7; color: var(--bad); }
+  .tag.temporal-win { background: #e7f4ec; color: var(--ok); }
+
+  pre {
+    background: var(--code-bg); color: var(--code-ink); border-radius: 12px; padding: 18px;
+    overflow-x: auto; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 13px;
+    line-height: 1.6; margin: 12px 0;
+  }
+  pre .cm { color: #7f7f95; }
+  pre .kw { color: #8ab8ff; }
+  pre .st { color: #a8d08d; }
+  code.inl { background: #eef0f4; border-radius: 6px; padding: 1.5px 7px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12.8px; color: #33415e; }
+
+  .out { background: #f4f7fd; border: 1px solid #dde7fb; border-radius: 12px; padding: 14px 16px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 13px; line-height: 1.7; overflow-x: auto; }
+  .out b { color: var(--accent); }
+  .out .err { color: var(--bad); }
+  .out .okc { color: var(--ok); }
+
+  button, select, input {
+    font: inherit; border-radius: 10px; border: 1px solid var(--line); background: var(--surface);
+    padding: 8px 14px; cursor: pointer; color: var(--ink);
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button:hover { border-color: #c9c4bb; }
+  button.primary:hover { background: #245cd0; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 12px 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+  td .y { color: var(--ok); font-weight: 600; }
+  td .n2 { color: var(--bad); font-weight: 600; }
+
+  .quiz-opt { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .quiz-opt button { font-size: 13px; padding: 6px 12px; }
+  .quiz-opt button.chosen { outline: 2px solid var(--accent); }
+  .feedback { margin-top: 10px; font-size: 13.5px; border-radius: 10px; padding: 10px 14px; display: none; }
+  .feedback.right { display: block; background: #e7f4ec; color: var(--ok); }
+  .feedback.wrong { display: block; background: #fceae7; color: var(--bad); }
+
+  .clock { text-align: center; padding: 18px 10px; }
+  .clock .city { font-weight: 700; font-size: 14px; }
+  .clock .time { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 24px; font-weight: 600; margin: 6px 0 2px; font-variant-numeric: tabular-nums; }
+  .clock .meta { font-size: 12px; color: var(--muted); font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
+  .clock .dst { font-size: 11px; font-weight: 700; border-radius: 999px; padding: 2px 9px; display: inline-block; margin-top: 7px; }
+  .dst.on { background: #fbf0dd; color: var(--warn); }
+  .dst.off { background: #eef0f4; color: var(--muted); }
+
+  .anatomy { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: clamp(15px, 2.6vw, 21px); font-weight: 600; text-align: center; padding: 18px 10px; letter-spacing: .01em; overflow-x: auto; white-space: nowrap; }
+  .a-date { color: #b3541e; } .a-t { color: #6d5bd0; } .a-off { color: #1f8a5d; } .a-zone { color: #2f6fed; } .a-cal { color: #b3742a; }
+  .anatomy-legend { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+  .anatomy-legend span::before { content: '■ '; }
+
+  .verdict { border-left: 4px solid var(--accent); background: var(--accent-soft); border-radius: 0 12px 12px 0; padding: 14px 18px; font-size: 14.5px; }
+  .verdict b { color: var(--accent); }
+
+  ul.clean { list-style: none; }
+  ul.clean li { padding: 7px 0 7px 26px; position: relative; color: var(--muted); font-size: 14.5px; }
+  ul.clean li::before { content: '→'; position: absolute; left: 4px; color: var(--accent); font-weight: 700; }
+  ul.clean li b { color: var(--ink); }
+
+  footer { padding: 56px 0 64px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13.5px; }
+  .flow-demo { display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch; margin-top: 12px; }
+  .flow-box { flex: 1; min-width: 200px; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: #fcfbf9; font-size: 13px; }
+  .flow-box b { display: block; font-size: 13px; margin-bottom: 4px; }
+  .flow-box .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; color: var(--muted); }
+  .flow-arrow { align-self: center; color: var(--accent); font-weight: 800; font-size: 18px; }
+  .note { font-size: 13px; color: var(--muted); background: #f6f4f0; border-radius: 10px; padding: 10px 14px; margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<main class="wrap">
+
+<!-- ============ HERO ============ -->
+<header class="hero">
+  <span class="eyebrow">⏱ JavaScript Platform · TC39 Stage 4 · ES2026</span>
+  <h1>Temporal — JavaScript dates, <em>finally done right</em></h1>
+  <p class="lede">After 9 years of design work, the Temporal API replaced the 1995-vintage <code class="inl">Date</code> object with immutable types, first-class time zones, explicit calendars, and arithmetic that survives daylight-saving transitions. It shipped in Chrome 144, Firefox 139, and Node 26 — here's what it fixes and how to adopt it before Safari catches up.</p>
+  <div class="cap" id="cap">
+    <span class="pill warn"><span class="dot"></span><span id="cap-impl">Checking Temporal support…</span></span>
+    <span class="mono" id="cap-now"></span>
+    <span class="mono" id="cap-ua"></span>
+  </div>
+</header>
+
+<!-- ============ 1. WHY DATE BROKE ============ -->
+<section id="s1">
+  <div class="step"><span class="n">SECTION 01</span><h2>Date's five original sins — reproduced live in your browser</h2></div>
+  <p class="sub">The <code class="inl">Date</code> object was ported from Java 1.0 in 1995 and frozen into ECMAScript 1. Every defect became permanent, because the web never breaks backwards compatibility. These five bugs are why Moment, Luxon, and date-fns exist.</p>
+
+  <div class="grid2">
+    <div class="card">
+      <span class="tag date-bug">Sin #1 — Months are zero-indexed</span>
+      <pre>new Date(2026, 0, 1)<span class="cm">  // month 0 = January 🤦</span></pre>
+      <div class="out" id="out-month"></div>
+      <p>Thirty years of off-by-one bugs. Temporal: <code class="inl">Temporal.PlainDate.from('2026-01-01')</code> — what you write is what you get.</p>
+    </div>
+    <div class="card">
+      <span class="tag date-bug">Sin #2 — Dates are mutable</span>
+      <pre><span class="kw">const</span> d = <span class="kw">new</span> Date(<span class="st">'2026-08-15T12:00:00Z'</span>);
+addDayHack(d); <span class="cm">// mutates d in place!</span></pre>
+      <div class="out" id="out-mut"></div>
+      <p>Pass a Date to any function and it can silently rewrite your value. Every Temporal method returns a <b>new</b> object.</p>
+    </div>
+    <div class="card">
+      <span class="tag date-bug">Sin #3 — String parsing is ambiguous</span>
+      <pre><span class="kw">new</span> Date(<span class="st">'2/3/2026'</span>)
+<span class="cm">// Feb 3 or Mar 2? Depends where it runs.</span></pre>
+      <div class="out" id="out-parse"></div>
+      <p>Locale-dependent parsing produces values that differ between your laptop, your build server, and your user in Berlin. Temporal parses ISO 8601 only — one answer, everywhere.</p>
+    </div>
+    <div class="card">
+      <span class="tag date-bug">Sin #4 — Date knows exactly two zones</span>
+      <pre><span class="cm">// UTC, and whatever the host machine is set to.</span>
+<span class="cm">// "What time is it in Dublin?" = library territory.</span></pre>
+      <div class="out" id="out-zone"></div>
+      <p>Your server's ambient zone leaks into every value it touches. Temporal attaches the zone to the value: <code class="inl">'2026-10-25T01:30:00[Europe/Dublin]'</code>.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="tag date-bug">Sin #5 — Arithmetic drifts across DST (the expensive one)</span>
+    <p>Add "one day" to a timestamp the classic way — <code class="inl">getTime() + 24*3600*1000</code> — and you get <b>25 or 23 wall-clock hours</b> whenever daylight saving flips in between. Double bookings, renewal periods that don't line up, "why is the invoice date wrong" tickets. <b>Section 6 shows Temporal's answer live.</b></p>
+    <div class="verdict">The business case isn't developer comfort — it's eliminating a recurring <b>class of production defect</b> (billing periods, renewals, bookings, reporting windows) that <code class="inl">Date</code> is structurally incapable of preventing.</div>
+  </div>
+</section>
+
+<!-- ============ 2. TYPE SYSTEM ============ -->
+<section id="s2">
+  <div class="step"><span class="n">SECTION 02</span><h2>The mental model: Plain · Instant · ZonedDateTime</h2></div>
+  <p class="sub">Most date bugs in real codebases are <b>category errors</b> — a value that is conceptually a calendar date, stored and compared as an exact moment, picking up a spurious conversion on every hop. Temporal gives each concept its own type. Get the type right and half your timezone bugs become unrepresentable.</p>
+
+  <div class="grid3">
+    <div class="card">
+      <span class="tag temporal-win">Temporal.PlainDate / PlainDateTime / PlainTime</span>
+      <h3>A date on a calendar — no zone, no time</h3>
+      <p>Invoice dates, dates of birth, sale dates, hotel check-in <i>day</i>. "August 15, 2026" means the same thing to every human who reads it. No conversions, no drift.</p>
+      <pre>Temporal.PlainDate.from(<span class="st">'2026-08-15'</span>)</pre>
+    </div>
+    <div class="card">
+      <span class="tag temporal-win">Temporal.Instant</span>
+      <h3>An exact point on the world timeline</h3>
+      <p>Flight-log timestamps, event ordering, SLA clocks, "when did the server receive it." Two Instants compare unambiguously anywhere on Earth. UTC-natured, zone-free.</p>
+      <pre>Temporal.Instant.from(<span class="st">'2026-08-15T22:00:00Z'</span>)</pre>
+    </div>
+    <div class="card">
+      <span class="tag temporal-win">Temporal.ZonedDateTime</span>
+      <h3>A wall-clock time, in a specific place</h3>
+      <p>"The appointment is at 9:00 in Dublin" — the meeting that must stay at 9:00 local even when DST rules change. Carries date + time + offset + zone + calendar.</p>
+      <pre>Temporal.ZonedDateTime.from(
+  <span class="st">'2026-10-25T01:30[Europe/Dublin]'</span>)</pre>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>🎮 Quiz: which type is it? (click your answer)</h3>
+    <div id="quiz"></div>
+  </div>
+</section>
+
+<!-- ============ 3. PLAYGROUND ============ -->
+<section id="s3">
+  <div class="step"><span class="n">SECTION 03</span><h2>Live Temporal playground</h2></div>
+  <p class="sub">Run real expressions against <b id="pg-impl">Temporal</b> in this page — native if your browser ships it, the official polyfill otherwise. Pick a preset or type your own expression (the <code class="inl">Temporal</code> global is in scope).</p>
+  <div class="card">
+    <div class="row">
+      <select id="pg-presets"></select>
+      <button class="primary" id="pg-run">Run ▶</button>
+    </div>
+    <pre id="pg-code" contenteditable="true" spellcheck="false" style="min-height:52px"></pre>
+    <div class="out" id="pg-out">Output appears here.</div>
+    <div class="note">Editable — click into the code box and modify the expression, then Run. Errors print in red (e.g. try a <code class="inl">disambiguation: 'reject'</code> parse on an ambiguous time — Section 7).</div>
+  </div>
+</section>
+
+<!-- ============ 4. ISO ANATOMY ============ -->
+<section id="s4">
+  <div class="step"><span class="n">SECTION 04</span><h2>Anatomy of a Temporal string — the zone is part of the value</h2></div>
+  <p class="sub">A fully-resolved <code class="inl">ZonedDateTime.toString()</code> is a complete, self-describing record. No ambient state, no "it depends on the server."</p>
+  <div class="card">
+    <div class="anatomy"><span class="a-date">2026-10-25</span><span class="a-t">T01:30:00</span><span class="a-off">+01:00</span><span class="a-zone">[Europe/Dublin]</span><span class="a-cal">[u-ca=iso8601]</span></div>
+    <div class="anatomy-legend">
+      <span class="a-date">ISO calendar date</span>
+      <span class="a-t">wall-clock time</span>
+      <span class="a-off">UTC offset (computed)</span>
+      <span class="a-zone">named zone (the identity)</span>
+      <span class="a-cal">calendar system</span>
+    </div>
+    <p style="margin-top:16px">The named zone is the identity; the offset is derived from it. That's what lets <code class="inl">.add()</code> do the <i>right</i> thing across a DST transition — the value knows where it lives.</p>
+    <div class="row"><select id="zone-pick"></select></div>
+    <div class="out" id="zone-out"></div>
+  </div>
+</section>
+
+<!-- ============ 5. IMMUTABILITY ============ -->
+<section id="s5">
+  <div class="step"><span class="n">SECTION 05</span><h2>Immutable by default — every operation returns a new value</h2></div>
+  <p class="sub">No setters anywhere in the API. Data flows through your app without defensive copies.</p>
+  <div class="card">
+    <pre><span class="kw">const</span> launch = Temporal.PlainDate.from(<span class="st">'2026-08-15'</span>);
+<span class="kw">const</span> scrub   = launch.add({ days: <span class="st">7</span> });   <span class="cm">// new value</span>
+launch.toString(); <span class="cm">// still 2026-08-15 — unchanged</span>
+launch.with({ month: <span class="st">9</span> });            <span class="cm">// 2026-09-15 — also a new value</span></pre>
+    <div class="out" id="out-immutable"></div>
+  </div>
+</section>
+
+<!-- ============ 6. DST ARITHMETIC ============ -->
+<section id="s6">
+  <div class="step"><span class="n">SECTION 06</span><h2>The killer demo: arithmetic across a DST transition</h2></div>
+  <p class="sub">US clocks spring forward on <b>Sun March 8, 2026</b> (02:00→03:00). Starting from Saturday noon in New York, "add one day" and "add 24 hours" disagree — and only Temporal lets you say which one you <i>mean</i>.</p>
+  <div class="card">
+    <div class="row">
+      <select id="dst-zone">
+        <option value="America/New_York">America/New_York (spring fwd Mar 8, 2026)</option>
+        <option value="Europe/Dublin">Europe/Dublin (spring fwd Mar 29, 2026)</option>
+        <option value="Australia/Sydney">Australia/Sydney (fwd Oct 4, 2026 / back Apr 5, 2026)</option>
+        <option value="Asia/Tokyo">Asia/Tokyo (no DST — control group)</option>
+      </select>
+      <button class="primary" id="dst-run">Compute both answers</button>
+    </div>
+    <div class="flow-demo">
+      <div class="flow-box"><b>Start (noon Saturday)</b><div class="mono" id="dst-start">—</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box"><b>add({ days: 1 }) — calendar day</b><div class="mono" id="dst-day">—</div><div class="mono" id="dst-day-note"></div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box"><b>add({ hours: 24 }) — exact duration</b><div class="mono" id="dst-hour">—</div><div class="mono" id="dst-hour-note"></div></div>
+    </div>
+    <pre><span class="cm">// With Date, the classic hack silently picks ONE of these for you:</span>
+start.getTime() + <span class="st">24</span>*<span class="st">3600</span>*<span class="st">1000</span>  <span class="cm">// = exact 24h. Wall clock shifts to 13:00. Was that intended?</span></pre>
+    <div class="verdict">Neither answer is "wrong" — <b>they mean different things</b>. Temporal's superpower is that the difference becomes <b>explicit in your code</b> instead of implicit in your bugs. Bookings want <code class="inl">days: 1</code>; SLA clocks want <code class="inl">hours: 24</code>.</div>
+  </div>
+</section>
+
+<!-- ============ 7. AMBIGUITY ============ -->
+<section id="s7">
+  <div class="step"><span class="n">SECTION 07</span><h2>Ambiguous &amp; nonexistent times — refuse to guess</h2></div>
+  <p class="sub">Twice a year, some local times don't exist (spring forward) or happen twice (fall back). <code class="inl">Date</code> picks an answer silently. Temporal lets you <b>choose the policy</b> — including throwing at the system boundary, where a loud exception at write time is enormously cheaper than a wrong invoice in month three.</p>
+  <div class="card">
+    <div class="row">
+      <select id="amb-case">
+        <option value="amb">2026-11-01T01:30:00[America/New_York] — ambiguous (occurs twice)</option>
+        <option value="none">2026-03-08T02:30:00[America/New_York] — nonexistent (skipped by spring-forward)</option>
+        <option value="amb-eu">2026-10-25T01:30:00[Europe/Dublin] — ambiguous (EU fall-back)</option>
+      </select>
+      <select id="amb-mode">
+        <option value="compatible">disambiguation: 'compatible' (default)</option>
+        <option value="earlier">disambiguation: 'earlier'</option>
+        <option value="later">disambiguation: 'later'</option>
+        <option value="reject">disambiguation: 'reject' (throw)</option>
+      </select>
+      <button class="primary" id="amb-run">Parse it</button>
+    </div>
+    <pre id="amb-code"></pre>
+    <div class="out" id="amb-out"></div>
+    <p style="margin-top:12px"><b>Result meaning:</b> an epoch timestamp for each disambiguation shows the two candidate instants are genuinely different points in time (3600s apart). For billing and audit systems, <code class="inl">reject</code> at the input boundary + explicit resolution downstream is the pattern that pays for itself.</p>
+  </div>
+</section>
+
+<!-- ============ 8. DURATION ============ -->
+<section id="s8">
+  <div class="step"><span class="n">SECTION 08</span><h2>Duration — flight-time math for Mission Control</h2></div>
+  <p class="sub"><code class="inl">Temporal.Duration</code> handles both exact durations (90 minutes) and calendar durations ("2 months, 3 days"). Differences come from <code class="inl">since()</code> / <code class="inl">until()</code>, rounded to the units you ask for.</p>
+  <div class="card">
+    <h3>🚁 OpenDrones flight log — exact flight duration</h3>
+    <div class="row">
+      <label style="font-size:13px;color:var(--muted)">Launch (local)</label>
+      <input type="datetime-local" id="fl-launch" value="2026-08-15T14:30">
+      <label style="font-size:13px;color:var(--muted)">Land (local)</label>
+      <input type="datetime-local" id="fl-land" value="2026-08-15T16:05">
+      <select id="fl-zone">
+        <option>America/New_York</option>
+        <option>America/Chicago</option>
+        <option>America/Los_Angeles</option>
+        <option>Europe/Dublin</option>
+        <option>Asia/Tokyo</option>
+      </select>
+      <button class="primary" id="fl-run">Compute</button>
+    </div>
+    <div class="out" id="fl-out"></div>
+    <pre><span class="kw">const</span> flight = launch.toInstant().until(land.toInstant());
+flight.round({ largestUnit: <span class="st">'hour'</span>, smallestUnit: <span class="st">'minute'</span> });
+flight.total({ unit: <span class="st">'minutes'</span> }); <span class="cm">// billable minutes</span></pre>
+    <p style="margin-top:10px">The launch/land <i>Instants</i> give exact airborne time (what the FAA log wants); the <i>ZonedDateTimes</i> preserve the local wall-clock story for the pilot's report. One value each, no conversion soup.</p>
+  </div>
+</section>
+
+<!-- ============ 9. WORLD CLOCK ============ -->
+<section id="s9">
+  <div class="step"><span class="n">SECTION 09</span><h2>Distributed fleet ops — live world clock, DST-aware</h2></div>
+  <p class="sub">Four operating regions, ticking once per second. Each clock is a real <code class="inl">Temporal.Now.zonedDateTimeISO(zone)</code> — the UTC offset is computed from the <i>current</i> DST state of the zone, not a fixed offset table. This is the Mission Control sidebar, done in one line per city.</p>
+  <div class="grid4" id="worldclock"></div>
+  <div class="card" style="margin-top:18px">
+    <pre><span class="kw">const</span> now = Temporal.Now.zonedDateTimeISO(<span class="st">'Asia/Tokyo'</span>);
+now.hour;            <span class="cm">// local wall-clock hour — DST-correct right now</span>
+now.offset;          <span class="cm">// '+09:00' — derived, always in sync with the zone</span>
+now.timeZoneId;      <span class="cm">// 'Asia/Tokyo'</span></pre>
+  </div>
+</section>
+
+<!-- ============ 10. CALENDARS ============ -->
+<section id="s10">
+  <div class="step"><span class="n">SECTION 10</span><h2>Calendars, YearMonth &amp; MonthDay — the types Date never had</h2></div>
+  <p class="sub">Temporal is calendar-aware via Intl's full calendar inventory, and ships the two "partial" types every billing and scheduling system eventually reinvents badly.</p>
+  <div class="grid2">
+    <div class="card">
+      <span class="tag temporal-win">Calendar systems</span>
+      <pre>Temporal.PlainDate.from(<span class="st">'2026-08-15[u-ca=hebrew]'</span>)
+  .toLocaleString(<span class="st">'en-u-ca-hebrew'</span>,
+    { dateStyle: <span class="st">'full'</span> })</pre>
+      <div class="out" id="out-cal"></div>
+      <p>Hebrew, Islamic, Japanese, Chinese, Persian, Buddhist, Indian — first-class, not a plugin. Operations stay calendar-correct (adding a month in the Hebrew calendar is a Hebrew-calendar month).</p>
+    </div>
+    <div class="card">
+      <span class="tag temporal-win">PlainYearMonth &amp; PlainMonthDay</span>
+      <pre>Temporal.PlainYearMonth.from(<span class="st">'2026-08'</span>)
+Temporal.PlainMonthDay.from(<span class="st">'--08-15'</span>)
+<span class="cm">// recurring date with no year: birthdays, anniversaries</span></pre>
+      <div class="out" id="out-ym"></div>
+      <p>Billing periods, lease months, fiscal quarters, "same time next month" — modeled directly instead of Date + convention.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 11. ADOPTION ============ -->
+<section id="s11">
+  <div class="step"><span class="n">SECTION 11</span><h2>Adoption strategy for August 2026 — asymmetric, on purpose</h2></div>
+  <p class="sub">Support is uneven: backend done, browsers two-thirds done, iOS the holdout. Treat server and client as separate decisions.</p>
+  <div class="grid2">
+    <div class="card">
+      <h3>✅ Do now</h3>
+      <ul class="clean">
+        <li><b>Node 26 backends:</b> Temporal is unflagged (V8 14.6) — no new scheduling, billing, or reporting logic should start on <code class="inl">Date</code>.</li>
+        <li><b>Audit before migrating:</b> grep <code class="inl">new Date(</code>, <code class="inl">getMonth</code>, <code class="inl">setHours</code>, date-lib imports; classify each site as Plain / Instant / Zoned. The audit alone finds bugs.</li>
+        <li><b>Fix storage semantics first:</b> exact moments → <code class="inl">timestamptz</code>; calendar dates → <code class="inl">date</code>. Wrong at the DB = guesswork above it.</li>
+        <li><b>CI in a non-UTC zone:</b> run one job in an aggressive-DST zone — most date bugs are invisible in UTC, which is exactly how they reach production.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>🧩 Frontend, deliberately</h3>
+      <pre><span class="kw">if</span> (!(<span class="st">'Temporal'</span> <span class="kw">in</span> globalThis)) {
+  <span class="kw">await</span> import(<span class="st">'temporal-polyfill'</span>);
+}</pre>
+      <ul class="clean">
+        <li><b>Polyfill economics are unusually good:</b> the FullCalendar temporal-polyfill is &lt;20&nbsp;kB min+gzip, tree-shakeable per-function — smaller than the date library it usually replaces, with a <i>known removal date</i>.</li>
+        <li><b>Boundary rule:</b> parse external input with <code class="inl">disambiguation: 'reject'</code>; fail loudly at entry, not plausibly in the ledger.</li>
+        <li><b>Measure hot loops:</b> Chrome's Temporal date arithmetic is currently slower than Date (parsing is faster); Firefox is near-parity. Don't migrate a hot loop on faith.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 12. SUPPORT + APPLICATIONS ============ -->
+<section id="s12">
+  <div class="step"><span class="n">SECTION 12</span><h2>Support, applications &amp; the bottom line</h2></div>
+  <div class="card">
+    <table>
+      <tr><th>Runtime</th><th>Status (Aug 2026)</th><th>Notes</th></tr>
+      <tr><td><b>Chrome / Edge 144+</b></td><td><span class="y">● Stable</span></td><td>First stable V8 browser shipment; ISO parsing fast, arithmetic still maturing</td></tr>
+      <tr><td><b>Firefox 139+</b></td><td><span class="y">● Stable</span></td><td>Near-parity performance with Date</td></tr>
+      <tr><td><b>Node.js 26+</b></td><td><span class="y">● Stable, unflagged</span></td><td>Ships on V8 14.6 (May 2026); TypeScript 6.0 ships the types</td></tr>
+      <tr><td><b>Safari / iOS (all WebKit browsers)</b></td><td><span class="n2">● Not shipped</span></td><td>JSC has implemented since Nov 2021; disabled by default even in STP; Safari 26.6 (Jul 27, 2026) shipped without it</td></tr>
+      <tr><td><b>Global traffic</b></td><td>~69%</td><td>Not Baseline — the WebKit gap is the whole remainder. iOS = total gap (every iOS browser is WebKit)</td></tr>
+    </table>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3>🚁 OpenDrones Mission Control</h3>
+      <ul class="clean">
+        <li><b>Telemetry timestamps as Instants</b> — unambiguous event ordering for flight logs; ZonedDateTime only at the display edge ("pilot-local 14:30").</li>
+        <li><b>Flight duration + battery cycles</b> — <code class="inl">since()</code> durations, billable minutes via <code class="inl">total()</code>.</li>
+        <li><b>Mission scheduling across regions</b> — 9:00 Dublin means 9:00 Dublin: <code class="inl">ZonedDateTime</code> keeps wall-clock appointments stable across DST rule changes.</li>
+        <li><b>Compliance windows</b> — reporting periods as PlainYearMonth; no more rollups that don't reconcile against finance.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>🎨 Molt Studios client work</h3>
+      <ul class="clean">
+        <li><b>Booking &amp; scheduling UIs</b> — the #1 date-bug habitat; DST-stable slot math without shipping a date library.</li>
+        <li><b>E-commerce</b> — subscription renewal periods, sale windows (PlainDate), countdown timers (exact Instants).</li>
+        <li><b>Event sites</b> — world clocks, timezone-correct itineraries, [u-ca] calendar awareness for international audiences.</li>
+        <li><b>Audit &amp; migration service</b> — the "classify every new Date() call" audit is a sellable deliverable that finds bugs before any migration.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card">
+    <div class="verdict"><b>Bottom line:</b> Stage 4 in the ES2026 spec, native in Node 26 today, ~69% of browsers with a &lt;20&nbsp;kB exit-ramp for the rest. The correct move is asymmetric — <b>adopt fully server-side now, deliberately client-side behind a polyfill you intend to delete</b>, and treat the pre-migration audit as the highest-value part of the exercise.</div>
+    <p class="note">Sources: TC39 proposal-temporal (tc39.es), MDN Temporal docs, reptile.haus adoption analysis (Aug 2026), Socket.dev Chrome 144 coverage, WebKit bug 320164 (JSC Temporal status). Demo: Jin / Molt Studios research.</p>
+  </div>
+</section>
+
+<footer>
+  <b>Temporal API — Dates Done Right</b> · Research demo by Jin (Molt Studios) · August 2026 ·
+  Native Temporal where available, <code class="inl">@js-temporal/polyfill</code> otherwise — the page tells you which it's running.
+</footer>
+</main>
+
+<script type="module">
+/* ---------- boot: native or polyfill ---------- */
+let T = null, implName = 'not loaded';
+const $ = id => document.getElementById(id);
+
+async function boot() {
+  if ('Temporal' in globalThis) {
+    T = globalThis.Temporal;
+    implName = 'Native Temporal (browser built-in)';
+  } else {
+    try {
+      const mod = await import('https://esm.sh/@js-temporal/polyfill@0.5.1');
+      T = mod.Temporal; implName = 'Polyfill: @js-temporal/polyfill via esm.sh';
+    } catch (e1) {
+      try {
+        const mod = await import('https://cdn.jsdelivr.net/npm/@js-temporal/polyfill@0.5.1/+esm');
+        T = mod.Temporal; implName = 'Polyfill: @js-temporal/polyfill via jsDelivr';
+      } catch (e2) {
+        implName = 'unavailable (native missing + polyfill CDN blocked)';
+      }
+    }
+  }
+  $('cap-impl').textContent = implName;
+  const pill = $('cap-impl').parentElement;
+  if (T) { pill.className = 'pill ok'; } else { pill.className = 'pill bad'; }
+  $('cap-ua').textContent = navigator.userAgent.slice(0, 110);
+  if (!T) { $('cap-now').textContent = 'Interactive sections disabled.'; return; }
+  $('cap-now').textContent = 'Now: ' + T.Now.zonedDateTimeISO().toString();
+  initAll();
+}
+
+function fmtDur(d) {
+  const parts = [];
+  [['years','y'],['months','mo'],['weeks','w'],['days','d'],['hours','h'],['minutes','m'],['seconds','s']].forEach(([u,l]) => { if (d[u]) parts.push(d[u] + l); });
+  return parts.join(' ') || '0s';
+}
+function show(el, html) { el.innerHTML = html; }
+function run(fn) { try { return { ok: String(fn()) }; } catch (e) { return { err: e.name + ': ' + e.message }; } }
+function render(el, r) { show(el, r.ok ? '<b>→</b> ' + r.ok : '<span class="err">✗ ' + r.err + '</span>'); }
+
+function initAll() {
+  /* ---- S1: Date's sins ---- */
+  render($('out-month'), run(() => new Date(2026, 0, 1).toDateString() + '  ← month 0 = January'));
+  (function mutDemo() {
+    const d = new Date('2026-08-15T12:00:00Z');
+    const before = d.toISOString();
+    d.setDate(d.getDate() + 7); // any helper can do this to your value
+    show($('out-mut'), 'before: <b>' + before + '</b><br>same object after addDayHack(): <b>' + d.toISOString() + '</b>');
+  })();
+  render($('out-parse'), run(() => {
+    const d = new Date('2/3/2026');
+    return d.toDateString() + '  ← on THIS machine (another locale gets the other answer)';
+  }));
+  show($('out-zone'), 'Date has no answer to "what time is it in Dublin?" —<br>Temporal: <b>' + run(() => T.Now.zonedDateTimeISO('Europe/Dublin').toString()).ok + '</b>');
+  render($('out-immutable'), run(() => {
+    const launch = T.PlainDate.from('2026-08-15');
+    const scrub = launch.add({ days: 7 });
+    return 'launch still ' + launch.toString() + ' · scrub = ' + scrub.toString() + ' · with({month:9}) = ' + launch.with({ month: 9 }).toString();
+  }));
+
+  /* ---- S2 quiz ---- */
+  const QUIZ = [
+    { q: 'An invoice is due on the 1st of the month', a: 'PlainDate', why: 'A calendar date with no time or zone. "Sept 1" means the same thing everywhere — no conversions allowed.' },
+    { q: 'A telemetry packet arrives — "when exactly did the drone cross the geofence?"', a: 'Instant', why: 'Event ordering needs one unambiguous point on the world timeline. Instants compare safely across any server/locale.' },
+    { q: 'A maintenance appointment: "Tuesday 9:00 AM at the Dublin hangar"', a: 'ZonedDateTime', why: 'A wall-clock time that must stay 9:00 in Dublin even if DST rules change. Zone is part of the meaning.' },
+    { q: 'Customer date of birth on a signup form', a: 'PlainDate', why: 'No time, no zone, no conversions. Storing DOB as an instant is the classic category error that shifts birthdays by a day.' },
+    { q: 'SLA: "respond within 24 hours of the alert firing"', a: 'Instant', why: 'An exact-duration comparison between two points on the timeline. (And across DST, 24h ≠ "same time tomorrow" — Section 6.)' },
+    { q: 'The billing period "August 2026"', a: 'PlainYearMonth', why: 'Temporal has a dedicated type — no more Date-on-the-first-plus-convention hacks.' },
+  ];
+  const qWrap = $('quiz');
+  QUIZ.forEach((item, i) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.margin = '10px 0';
+    const opts = ['PlainDate', 'Instant', 'ZonedDateTime', 'PlainYearMonth'].map(t =>
+      '<button data-t="' + t + '">' + (t === 'PlainYearMonth' ? 'PlainYearMonth' : t) + '</button>').join('');
+    card.innerHTML = '<p style="color:var(--ink);font-size:15px"><b>' + (i + 1) + '.</b> ' + item.q + '</p><div class="quiz-opt">' + opts + '</div><div class="feedback"></div>';
+    qWrap.appendChild(card);
+    card.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => {
+      const fb = card.querySelector('.feedback');
+      card.querySelectorAll('button').forEach(b => b.classList.remove('chosen'));
+      btn.classList.add('chosen');
+      if (btn.dataset.t === item.a) { fb.className = 'feedback right'; fb.innerHTML = '✔ Correct — ' + item.why; }
+      else { fb.className = 'feedback wrong'; fb.innerHTML = '✘ Not quite. ' + item.a + ' — ' + item.why; }
+    }));
+  });
+
+  /* ---- S3 playground ---- */
+  $('pg-impl').textContent = implName;
+  const PRESETS = [
+    ['Right now, as an Instant (UTC)', "Temporal.Now.instant().toString()"],
+    ['Right now, wall clock in Tokyo', "Temporal.Now.zonedDateTimeISO('Asia/Tokyo').toString()"],
+    ['Add a calendar month', "Temporal.PlainDate.from('2026-08-31').add({ months: 1 }).toString()  // ← day overflow → constrain"],
+    ['Exact vs calendar difference', "Temporal.PlainDate.from('2026-01-01').until('2026-03-01', { largestUnit: 'months' }).toString()"],
+    ['Duration: 90 minutes → normalized', "Temporal.Duration.from({ minutes: 90 }).round({ largestUnit: 'hour' }).toString()"],
+    ['Compare two instants', "Temporal.Instant.compare(Temporal.Instant.from('2026-01-01T00:00Z'), Temporal.Instant.from('2026-12-25T00:00Z'))"],
+    ['Billing period months', "Temporal.PlainYearMonth.from('2026-08').until('2026-12').months"],
+    ['A birthday, no year', "Temporal.PlainMonthDay.from('--08-15').toString()"],
+    ['Ambiguous time, keep the LATER instant', "Temporal.ZonedDateTime.from('2026-10-25T01:30:00[Europe/Dublin]', { disambiguation: 'later' }).toString()"],
+    ['Ambiguous time, REFUSE to guess', "Temporal.ZonedDateTime.from('2026-10-25T01:30:00[Europe/Dublin]', { disambiguation: 'reject' }).toString()"],
+  ];
+  const sel = $('pg-presets');
+  PRESETS.forEach(([label], i) => { const o = document.createElement('option'); o.value = i; o.textContent = (i + 1) + '. ' + label; sel.appendChild(o); });
+  $('pg-code').textContent = PRESETS[0][1];
+  sel.addEventListener('change', () => { $('pg-code').textContent = PRESETS[sel.value][1]; runPg(); });
+  function runPg() {
+    const expr = $('pg-code').textContent.trim();
+    try {
+      const val = Function('Temporal', 'return (' + expr + ')')(T);
+      show($('pg-out'), '<b>→</b> ' + String(val));
+    } catch (e) { show($('pg-out'), '<span class="err">✗ ' + e.name + ': ' + e.message + '</span>'); }
+  }
+  $('pg-run').addEventListener('click', runPg);
+  runPg();
+
+  /* ---- S4 zone converter ---- */
+  const ZONES = ['UTC', 'America/Los_Angeles', 'America/Mexico_City', 'America/New_York', 'Europe/Dublin', 'Europe/Berlin', 'Africa/Lagos', 'Asia/Dubai', 'Asia/Tokyo', 'Australia/Sydney'];
+  const zp = $('zone-pick');
+  ZONES.forEach(z => { const o = document.createElement('option'); o.value = z; o.textContent = z; zp.appendChild(o); });
+  zp.value = 'Europe/Dublin';
+  function zoneShow() {
+    const zdt = T.Now.zonedDateTimeISO(zp.value);
+    show($('zone-out'),
+      '<b>' + zp.value + '</b> — ' + zdt.toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'long' }) +
+      '<br>toString(): <b>' + zdt.toString() + '</b>');
+  }
+  zp.addEventListener('change', zoneShow); zoneShow();
+
+  /* ---- S6 DST arithmetic ---- */
+  const STARTS = {
+    'America/New_York': { s: '2026-03-07', label: 'Sat Mar 7 → Sun Mar 8, 2026 (US spring forward)' },
+    'Europe/Dublin': { s: '2026-03-28', label: 'Sat Mar 28 → Sun Mar 29, 2026 (EU spring forward)' },
+    'Australia/Sydney': { s: '2026-10-03', label: 'Sat Oct 3 → Sun Oct 4, 2026 (AU spring forward)' },
+    'Asia/Tokyo': { s: '2026-03-07', label: 'No DST in Japan — control group' },
+  };
+  $('dst-run').addEventListener('click', () => {
+    const z = $('dst-zone').value, s = STARTS[z].s;
+    const noon = T.PlainDateTime.from(s + 'T12:00:00').toZonedDateTime(z);
+    const byDay = noon.add({ days: 1 });
+    const by24h = noon.add({ hours: 24 });
+    const elapsed = noon.toInstant().until(byDay.toInstant(), { largestUnit: 'hours' });
+    show($('dst-start'), noon.toString());
+    show($('dst-day'), byDay.toString());
+    show($('dst-hour'), by24h.toString());
+    show($('dst-day-note'), 'actual elapsed: ' + fmtDur(elapsed) + (elapsed.hours !== 24 ? ' 🐑 DST-aware' : ' (no transition)'));
+    show($('dst-hour-note'), 'wall clock: ' + by24h.toPlainTime().toString() + (elapsed.hours === 24 && by24h.toPlainTime().toString() !== byDay.toPlainTime().toString() ? ' ⚠ shifted vs calendar answer' : ''));
+  });
+  $('dst-run').click();
+
+  /* ---- S7 ambiguity ---- */
+  const AMB = {
+    amb: { str: "2026-11-01T01:30:00[America/New_York]", note: '01:30 occurs TWICE (02:00→01:00 fall-back). Earlier vs later = 3600s apart.' },
+    none: { str: "2026-03-08T02:30:00[America/New_York]", note: '02:30 never happens (02:00→03:00 spring-forward). Compatible pushes it forward to 03:30.' },
+    'amb-eu': { str: "2026-10-25T01:30:00[Europe/Dublin]", note: 'Irish fall-back — the exact example class EU booking systems hit every October.' },
+  };
+  function ambRun() {
+    const c = AMB[$('amb-case').value], mode = $('amb-mode').value;
+    $('amb-code').textContent = "Temporal.ZonedDateTime.from('" + c.str + "', { disambiguation: '" + mode + "' }).toString()";
+    const r = run(() => T.ZonedDateTime.from(c.str, { disambiguation: mode }).toString());
+    render($('amb-out'), r);
+    $('amb-out').innerHTML += '<br><span class="okc">' + c.note + '</span>';
+  }
+  $('amb-run').addEventListener('click', ambRun);
+  $('amb-case').addEventListener('change', ambRun);
+  $('amb-mode').addEventListener('change', ambRun);
+  ambRun();
+
+  /* ---- S8 flight ---- */
+  $('fl-run').addEventListener('click', () => {
+    const z = $('fl-zone').value;
+    const l = T.PlainDateTime.from($('fl-launch').value).toZonedDateTime(z);
+    const n = T.PlainDateTime.from($('fl-land').value).toZonedDateTime(z);
+    const d = l.toInstant().until(n.toInstant(), { largestUnit: 'hours' });
+    const bill = Math.round(l.toInstant().until(n.toInstant()).total({ unit: 'minutes' }));
+    show($('fl-out'),
+      'launch (zoned): <b>' + l.toString() + '</b><br>' +
+      'land   (zoned): <b>' + n.toString() + '</b><br>' +
+      'airborne duration: <b>' + fmtDur(d.round({ largestUnit: 'hour', smallestUnit: 'minute' })) + '</b>' +
+      ' · billable: <b>' + bill + ' min</b> (' + (bill / 60).toFixed(2) + ' h)');
+  });
+  $('fl-run').click();
+
+  /* ---- S9 world clock ---- */
+  const CITIES = [
+    ['Los Angeles', 'America/Los_Angeles'], ['Mexico City', 'America/Mexico_City'],
+    ['Dublin', 'Europe/Dublin'], ['Tokyo', 'Asia/Tokyo'],
+  ];
+  const wc = $('worldclock');
+  const cells = CITIES.map(([city, zone]) => {
+    const div = document.createElement('div'); div.className = 'card clock';
+    div.innerHTML = '<div class="city">' + city + '</div><div class="time">--:--:--</div><div class="meta"></div><span class="dst off"></span>';
+    wc.appendChild(div);
+    return { zone, time: div.querySelector('.time'), meta: div.querySelector('.meta'), dst: div.querySelector('.dst') };
+  });
+  function offMin(o) { const sign = o[0] === '-' ? -1 : 1; const [h, m] = o.slice(1).split(':').map(Number); return sign * (h * 60 + m); }
+  function dstState(zone) {
+    const now = T.Now.zonedDateTimeISO(zone);
+    const jan = offMin(T.ZonedDateTime.from({ year: now.year, month: 1, day: 15, hour: 12, timeZone: zone }).offset);
+    const jul = offMin(T.ZonedDateTime.from({ year: now.year, month: 7, day: 15, hour: 12, timeZone: zone }).offset);
+    const observes = jan !== jul;
+    const summer = Math.max(jan, jul);
+    return { now, inDst: observes && offMin(now.offset) === summer, observes };
+  }
+  function tick() {
+    cells.forEach(c => {
+      const { now, inDst, observes } = dstState(c.zone);
+      c.time.textContent = String(now.hour).padStart(2, '0') + ':' + String(now.minute).padStart(2, '0') + ':' + String(now.second).padStart(2, '0');
+      c.meta.textContent = now.offset + ' · ' + ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][now.dayOfWeek];
+      c.dst.className = 'dst ' + (observes ? (inDst ? 'on' : 'off') : 'off');
+      c.dst.textContent = !observes ? 'no DST' : (inDst ? 'in DST now' : 'standard time');
+    });
+  }
+  tick(); setInterval(tick, 1000);
+
+  /* ---- S10 calendars ---- */
+  render($('out-cal'), run(() => {
+    const lines = ['hebrew', 'islamic-umalqura', 'japanese', 'chinese'].map(ca =>
+      T.PlainDate.from('2026-08-15').withCalendar(ca).toLocaleString('en-u-ca-' + ca, { dateStyle: 'full' }));
+    return '2026-08-15 in →<br>' + lines.join('<br>');
+  }));
+  render($('out-ym'), run(() => {
+    const ym = T.PlainYearMonth.from('2026-08');
+    const md = T.PlainMonthDay.from('--08-15');
+    const d2027 = (() => { try { return md.toPlainDate({ year: 2027 }).toString(); } catch (e) { return md.toPlainDate(T.PlainYearMonth.from('2027-01')).toString(); } })();
+    return 'PlainYearMonth: ' + ym.toString() + ' · next quarter start: ' + ym.add({ months: 4 }).toString() +
+      '<br>PlainMonthDay (no year): ' + md.toString() + ' → in 2027: ' + d2027;
+  }));
+}
+
+boot();
+</script>
+</body>
+</html>
