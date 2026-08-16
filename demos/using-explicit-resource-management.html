@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Explicit Resource Management — the `using` Keyword (Stage 4 · ES2026)</title>
+<meta name="description" content="JavaScript's using and await using declarations reached TC39 Stage 4 / ES2026. Chrome 134+, Firefox 134+, Node native, WebKit STP 250. Live DisposableStack playground, LIFO teardown visualizer, SuppressedError, Mission Control teardown pattern, React interplay, adoption matrix.">
+<style>
+  :root {
+    --bg: #faf9f7;
+    --surface: #ffffff;
+    --ink: #1a1a1f;
+    --muted: #6b6b76;
+    --accent: #0e7f6f;
+    --accent-soft: #e3f3ef;
+    --line: #e9e6e1;
+    --code-bg: #1e1e26;
+    --code-ink: #e8e6e3;
+    --ok: #1f8a5d;
+    --warn: #b3742a;
+    --bad: #c2453a;
+    --radius: 16px;
+    --shadow: 0 1px 2px rgba(26,26,31,.05), 0 8px 24px rgba(26,26,31,.06);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg); color: var(--ink); font-size: 16px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  .orb { position: fixed; border-radius: 50%; filter: blur(90px); opacity: .15; pointer-events: none; z-index: 0; }
+  .orb-1 { width: 420px; height: 420px; background: var(--accent); top: -120px; right: -100px; }
+  .orb-2 { width: 340px; height: 340px; background: #6c8ff0; top: 40%; left: -160px; }
+  main { position: relative; z-index: 1; }
+
+  header.hero { padding: 72px 0 40px; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent-soft); color: var(--accent);
+    font-size: 12.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+    padding: 6px 14px; border-radius: 999px; margin-bottom: 20px;
+  }
+  h1 { font-size: clamp(34px, 5vw, 52px); line-height: 1.12; letter-spacing: -.02em; font-weight: 800; max-width: 860px; }
+  h1 em { font-style: normal; color: var(--accent); }
+  .lede { font-size: 18px; color: var(--muted); max-width: 760px; margin-top: 18px; }
+
+  .cap {
+    margin-top: 28px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 16px 20px; box-shadow: var(--shadow); font-size: 14px;
+  }
+  .cap .pill { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 999px; font-weight: 600; font-size: 12.5px; }
+  .pill.ok { background: #e7f4ec; color: var(--ok); }
+  .pill.warn { background: #fbf0dd; color: var(--warn); }
+  .pill.bad { background: #fceae7; color: var(--bad); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .cap .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12.5px; color: var(--muted); }
+
+  section { padding: 44px 0; border-top: 1px solid var(--line); }
+  .step { display: flex; align-items: baseline; gap: 14px; margin-bottom: 8px; }
+  .step .n {
+    font-size: 12.5px; font-weight: 700; color: var(--accent); background: var(--accent-soft);
+    border-radius: 8px; padding: 3px 9px; letter-spacing: .04em; white-space: nowrap;
+  }
+  h2 { font-size: clamp(24px, 3.4vw, 32px); letter-spacing: -.015em; font-weight: 750; line-height: 1.2; }
+  .sub { color: var(--muted); max-width: 780px; margin: 10px 0 24px; font-size: 15.5px; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); margin-bottom: 18px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .grid2 > *, .grid3 > *, .grid4 > * { min-width: 0; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  @media (max-width: 860px) { .grid2, .grid3, .grid4 { grid-template-columns: 1fr; } }
+
+  h3 { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+  .card p { color: var(--muted); font-size: 14.5px; }
+  .card .tag { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 10px; display: inline-block; padding: 3px 9px; border-radius: 6px; }
+  .tag.leak { background: #fceae7; color: var(--bad); }
+  .tag.win { background: #e7f4ec; color: var(--ok); }
+  .tag.note { background: #fbf0dd; color: var(--warn); }
+
+  pre {
+    background: var(--code-bg); color: var(--code-ink); border-radius: 12px; padding: 18px;
+    overflow-x: auto; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 13px;
+    line-height: 1.6; margin: 12px 0; white-space: pre;
+  }
+  pre .cm { color: #7f7f95; }
+  pre .kw { color: #8ab8ff; }
+  pre .st { color: #a8d08d; }
+  pre .us { color: #7ee0c0; font-weight: 600; }
+  code.inl { background: #eef0f4; border-radius: 6px; padding: 1.5px 7px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12.8px; color: #33415e; }
+
+  .out { background: #f2f8f6; border: 1px solid #d9ece6; border-radius: 12px; padding: 14px 16px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 13px; line-height: 1.75; overflow-x: auto; max-height: 420px; overflow-y: auto; }
+  .out b { color: var(--accent); }
+  .out .err { color: var(--bad); }
+  .out .okc { color: var(--ok); }
+  .out .dim { color: #9aa5a1; }
+
+  button, select, input {
+    font: inherit; border-radius: 10px; border: 1px solid var(--line); background: var(--surface);
+    padding: 8px 14px; cursor: pointer; color: var(--ink);
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button:hover { border-color: #c9c4bb; }
+  button.primary:hover { background: #0a6356; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 12px 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+  td .y { color: var(--ok); font-weight: 600; }
+  td .n2 { color: var(--bad); font-weight: 600; }
+  td .w2 { color: var(--warn); font-weight: 600; }
+
+  .log-line { opacity: 0; transform: translateY(4px); transition: all .3s ease; }
+  .log-line.in { opacity: 1; transform: none; }
+
+  .lifo-lane { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 14px 0; }
+  .res {
+    padding: 10px 16px; border-radius: 12px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 13px;
+    border: 1.5px solid var(--line); background: var(--surface); transition: all .35s ease; font-weight: 600;
+  }
+  .res.acquired { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .res.disposed { border-color: var(--bad); background: #fceae7; color: var(--bad); text-decoration: line-through; opacity: .85; }
+
+  .panel-demo { border: 1.5px solid var(--line); border-radius: 14px; padding: 18px; background: #fcfbf9; }
+  .panel-demo .statusbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .statusbar span { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11.5px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); }
+  .statusbar span.on { background: #e7f4ec; color: var(--ok); border-color: #bfe3d0; }
+  .statusbar span.off { background: #f5f4f2; color: #a9a9b2; }
+
+  .feedback { margin-top: 10px; font-size: 13.5px; border-radius: 10px; padding: 10px 14px; display: none; }
+  .feedback.show { display: block; background: var(--accent-soft); color: var(--accent); }
+
+  footer { padding: 40px 0 60px; color: var(--muted); font-size: 13.5px; border-top: 1px solid var(--line); }
+  footer a { color: var(--accent); text-decoration: none; font-weight: 600; }
+  .nav-toc { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+  .nav-toc a { font-size: 12.5px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); text-decoration: none; background: var(--surface); }
+  .nav-toc a:hover { border-color: var(--accent); color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<main class="wrap">
+
+<header class="hero">
+  <div class="eyebrow">TC39 Stage 4 · ES2026 · All three engines</div>
+  <h1>Cleanup becomes a <em>language feature</em>: <code style="font-size:.8em">using</code> and <code style="font-size:.8em">await using</code></h1>
+  <p class="lede">Explicit Resource Management ties a resource's cleanup to its block scope. The engine calls <code class="inl">[Symbol.dispose]()</code> on every exit path — return, throw, break — so the <code class="inl">try/finally</code> tax and the leak it guards against disappear. Finalized in ES2026; running natively in Chrome 134+, Firefox 134+, and Node; WebKit shipped it in Safari Technology Preview 250 on August 13, 2026 — the last engine to come online.</p>
+  <div class="cap" id="cap">
+    <span class="pill ok"><span class="dot"></span>checking your browser…</span>
+    <span class="mono" id="cap-ua"></span>
+  </div>
+  <nav class="nav-toc">
+    <a href="#problem">The leak epidemic</a>
+    <a href="#syntax">using in 60s</a>
+    <a href="#async">await using</a>
+    <a href="#stream">Live: locked stream</a>
+    <a href="#stack">DisposableStack</a>
+    <a href="#lifo">LIFO visualizer</a>
+    <a href="#move">move()</a>
+    <a href="#suppressed">SuppressedError</a>
+    <a href="#mission">Mission Control</a>
+    <a href="#react">React &amp; Next.js</a>
+    <a href="#support">Support &amp; adoption</a>
+  </nav>
+</header>
+
+<!-- ============================ 1. CAPABILITY ============================ -->
+<section id="cap-section">
+  <div class="step"><span class="n">01</span><h2>Live capability detection</h2></div>
+  <p class="sub">What this page just detected in <em>your</em> browser. Every playground below adapts: native syntax runs when your engine supports it; a faithful mini-polyfill takes over otherwise — which is exactly the progressive-enhancement posture this feature needs in production.</p>
+  <div class="card">
+    <div id="cap-grid" class="grid2"></div>
+    <p style="margin-top:14px" class="dim" id="cap-note"></p>
+  </div>
+</section>
+
+<!-- ============================ 2. THE PROBLEM ============================ -->
+<section id="problem">
+  <div class="step"><span class="n">02</span><h2>JavaScript's silent leak epidemic</h2></div>
+  <p class="sub">JavaScript has garbage collection, but GC only reclaims <em>memory</em>. It knows nothing about the resources behind the memory: OS file handles, WebSocket connections, stream locks, GPU buffers, event listeners, timers, advisory locks. Every one of those needs an explicit release call — and the language has never had a standard way to guarantee it happens.</p>
+  <div class="grid3">
+    <div class="card"><span class="tag leak">Leak pattern</span><h3>The forgotten finally</h3><p>Code acquires a resource, work throws before the cleanup line runs. Without <code class="inl">try/finally</code>, the cleanup is skipped entirely. Reviewers see the happy path; the error path leaks.</p></div>
+    <div class="card"><span class="tag leak">Leak pattern</span><h3>The locked stream</h3><p><code class="inl">response.body.getReader()</code> takes a lock. If reading throws before <code class="inl">releaseLock()</code>, the stream is stuck locked — nobody else can ever read it again. A classic in fetch pipelines.</p></div>
+    <div class="card"><span class="tag leak">Leak pattern</span><h3>Listener accumulation</h3><p>SPAs that re-render panels add <code class="inl">window</code> listeners on every mount and remove them on a manual teardown path that one early <code class="inl">return</code> skips. Memory grows across navigation.</p></div>
+    <div class="card"><span class="tag leak">Leak pattern</span><h3>Half-torn-down setups</h3><p>Setup acquires A, B, C. C fails. Cleanup code that only knows how to tear down all three (or none) leaves A and B orphaned. Correct partial-rollback needs LIFO discipline — handwritten every time.</p></div>
+    <div class="card"><span class="tag leak">Leak pattern</span><h3>The masked error</h3><p>Body throws <em>E1</em>, then <code class="inl">finally</code> throws <em>E2</em>. E2 replaces E1 — you debug the cleanup failure while the real bug (E1) vanishes. The language had no way to carry both.</p></div>
+    <div class="card"><span class="tag win">The fix</span><h3>One protocol, every exit path</h3><p><code class="inl">using</code> makes cleanup a <strong>language guarantee</strong> instead of a code-review discipline. Every pattern above is one declaration away from impossible.</p></div>
+  </div>
+  <div class="card">
+    <p><strong>The prior art:</strong> C# <code class="inl">using</code>, Python <code class="inl">with</code>, Java try-with-resources, C++ RAII. JavaScript is the last major language to standardize scoped cleanup — and the design that landed is clean: two declarations, two symbols, two stack classes, one error type.</p>
+  </div>
+</section>
+
+<!-- ============================ 3. SYNTAX ============================ -->
+<section id="syntax">
+  <div class="step"><span class="n">03</span><h2><code>using</code> in 60 seconds</h2></div>
+  <p class="sub">Declare a resource with <code class="inl">using</code> instead of <code class="inl">const</code>. When the block exits — normal return, thrown exception, <code class="inl">break</code>, <code class="inl">continue</code> — the engine calls <code class="inl">[Symbol.dispose]()</code> on it. Multiple <code class="inl">using</code> declarations dispose in reverse order (LIFO), like nested scopes.</p>
+  <div class="grid2">
+    <div class="card">
+      <span class="tag leak">Before — 7 lines, 2 failure modes</span>
+<pre><span class="kw">const</span> conn = pool.<span class="st">acquire</span>();
+<span class="kw">try</span> {
+  <span class="kw">return</span> conn.<span class="st">query</span>(sql);
+} <span class="kw">finally</span> {
+  pool.<span class="st">release</span>(conn); <span class="cm">// forget this once = leak</span>
+}</pre>
+      <p>Works — until someone refactors the function, adds an early return, or the release itself throws and masks the query error.</p>
+    </div>
+    <div class="card">
+      <span class="tag win">After — the scope owns the cleanup</span>
+<pre><span class="kw">function</span> <span class="st">getUser</span>(id) {
+  <span class="us">using</span> conn = pool.<span class="st">acquire</span>();  <span class="cm">// disposable</span>
+  <span class="kw">return</span> conn.<span class="st">query</span>(sql);
+} <span class="cm">// release runs here — always, LIFO, error-safe</span></pre>
+      <p>Any object with a <code class="inl">[Symbol.dispose]()</code> method is a disposable. That's the entire contract.</p>
+    </div>
+  </div>
+  <div class="card">
+    <h3>The rules that matter</h3>
+    <table>
+      <tr><th>Rule</th><th>Detail</th></tr>
+      <tr><td><code class="inl">using</code> is block-scoped only</td><td>Must appear inside a block, function body, loop body, or class static block. Top-level <code class="inl">using</code> is a syntax error — wrap it in a block or an IIFE.</td></tr>
+      <tr><td>Disposal is LIFO</td><td>Three <code class="inl">using</code> in one block dispose in reverse declaration order — dependencies acquired first are released last, which is the correct teardown order.</td></tr>
+      <tr><td><code class="inl">null</code> / <code class="inl">undefined</code> are legal</td><td><code class="inl">using x = maybeNull;</code> is fine — disposal skips nullish values. Conditional resources need no wrapper dance.</td></tr>
+      <tr><td>Value must be disposable</td><td>Anything else throws a <code class="inl">TypeError</code> at the declaration — loud, immediate, not at block exit.</td></tr>
+      <tr><td>Disposal is synchronous</td><td><code class="inl">using</code> calls <code class="inl">[Symbol.dispose]()</code> and does not await it. For promises, use <code class="inl">await using</code>.</td></tr>
+      <tr><td><code class="inl">const</code>-like binding</td><td>Reassignment is a syntax error, exactly like <code class="inl">const</code>.</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h3>Making your own disposables</h3>
+<pre><span class="cm">// Any object with the well-known symbol method qualifies</span>
+<span class="kw">const</span> timer = <span class="st">setInterval</span>(tick, <span class="st">1000</span>);
+<span class="kw">const</span> disposableTimer = {
+  timer,
+  [<span class="us">Symbol.dispose</span>]() { <span class="st">clearInterval</span>(<span class="kw">this</span>.timer); }
+};
+
+{
+  <span class="us">using</span> t = disposableTimer;
+  <span class="cm">// ... tick loop running ...</span>
+} <span class="cm">// interval cleared, guaranteed</span></pre>
+    <p style="margin-top:10px">Until web APIs grow native <code class="inl">[Symbol.dispose]</code> methods (streams and readers are the leading candidates), a one-line wrapper object is the whole integration cost.</p>
+  </div>
+</section>
+
+<!-- ============================ 4. AWAIT USING ============================ -->
+<section id="async">
+  <div class="step"><span class="n">04</span><h2><code>await using</code> — async cleanup without lying</h2></div>
+  <p class="sub">Most real resources clean up asynchronously: database connections release with a round-trip, sockets flush before close, file handles fsync. <code class="inl">await using</code> declares an async-disposable and <em>awaits</em> its <code class="inl">[Symbol.asyncDispose]()</code> at scope exit — the block's promise doesn't settle until cleanup finishes.</p>
+  <div class="grid2">
+    <div class="card">
+      <span class="tag leak">Before — silent, un-awaited release</span>
+<pre><span class="kw">const</span> conn = <span class="kw">await</span> pool.<span class="st">acquire</span>();
+<span class="kw">try</span> {
+  <span class="kw">return</span> <span class="kw">await</span> conn.<span class="st">query</span>(sql);
+} <span class="kw">finally</span> {
+  pool.<span class="st">release</span>(conn); <span class="cm">// floating promise —</span>
+  <span class="cm">// server may not have it back yet</span>
+}</pre>
+    </div>
+    <div class="card">
+      <span class="tag win">After — cleanup completes before the caller resumes</span>
+<pre><span class="kw">class</span> PooledConn {
+  <span class="st">constructor</span>(conn, pool) { <span class="kw">this</span>.conn = conn; <span class="kw">this</span>.pool = pool; }
+  <span class="kw">async</span> [<span class="us">Symbol.asyncDispose</span>]() {
+    <span class="kw">await</span> <span class="kw">this</span>.pool.<span class="st">release</span>(<span class="kw">this</span>.conn);
+  }
+}
+
+<span class="kw">async function</span> <span class="st">getUser</span>(id) {
+  <span class="us">await using</span> conn = <span class="kw">new</span> <span class="st">PooledConn</span>(<span class="kw">await</span> pool.<span class="st">acquire</span>(), pool);
+  <span class="kw">return</span> conn.conn.<span class="st">query</span>(sql);
+}</pre>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Fine print</h3>
+    <p>• <code class="inl">await using</code> prefers <code class="inl">[Symbol.asyncDispose]()</code> and falls back to <code class="inl">[Symbol.dispose]()</code> — sync disposables work in async scopes, not the reverse.<br>
+    • Disposal errors in an async scope reject the block's promise (wrapped in <code class="inl">SuppressedError</code> if they mask an earlier error — see section 09).<br>
+    • Needs an async context: async function, async arrow, module top level inside an async IIFE. <code class="inl">await using</code> in a plain function is a syntax error.</p>
+  </div>
+</section>
+
+<!-- ============================ 5. LOCKED STREAM ============================ -->
+<section id="stream">
+  <div class="step"><span class="n">05</span><h2>Live: the locked stream reader</h2></div>
+  <p class="sub">The V8 team's canonical example, simulated deterministically on this page. A reader takes a lock on a stream; a parse error strikes mid-read. Watch the lock state under manual cleanup vs <code class="inl">using</code> — this section runs <strong>real native syntax</strong> when your engine supports it.</p>
+  <div class="grid2">
+    <div class="card">
+      <span class="tag leak">Manual cleanup — the lock leaks</span>
+<pre><span class="kw">const</span> reader = stream.<span class="st">getReader</span>();
+<span class="kw">let</span> chunk = <span class="kw">await</span> reader.<span class="st">read</span>();
+parse(chunk);          <span class="cm">// 💥 throws here</span>
+reader.<span class="st">releaseLock</span>(); <span class="cm">// never runs — stream stuck</span></pre>
+      <div class="row"><button id="run-manual" class="primary">Run manual version</button></div>
+    </div>
+    <div class="card">
+      <span class="tag win">using — the lock releases on every path</span>
+<pre><span class="us">using</span> readerRes = {
+  reader: stream.<span class="st">getReader</span>(),
+  [<span class="us">Symbol.dispose</span>]() { <span class="kw">this</span>.reader.<span class="st">releaseLock</span>(); }
+};
+<span class="kw">let</span> chunk = <span class="kw">await</span> readerRes.reader.<span class="st">read</span>();
+parse(chunk);          <span class="cm">// 💥 throws here too —</span>
+<span class="cm">// but the engine calls dispose anyway</span></pre>
+      <div class="row"><button id="run-using" class="primary">Run using version</button></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="row" style="justify-content:space-between">
+      <div class="statusbar" style="margin:0">
+        <span id="lock-manual" class="on">manual: unlocked</span>
+        <span id="lock-using" class="on">using: unlocked</span>
+      </div>
+    </div>
+    <div class="out" id="stream-out"><span class="dim">Output appears here…</span></div>
+    <p id="stream-mode" style="margin-top:10px"></p>
+  </div>
+</section>
+
+<!-- ============================ 6. DISPOSABLESTACK ============================ -->
+<section id="stack">
+  <div class="step"><span class="n">06</span><h2>DisposableStack — dynamic cleanup for messy reality</h2></div>
+  <p class="sub">Real code doesn't acquire all resources in one neat declaration list — it acquires conditionally, in loops, across helper calls. <code class="inl">DisposableStack</code> aggregates arbitrary cleanups and disposes them LIFO. The stack is itself disposable, so it composes: <code class="inl">using stack = new DisposableStack()</code> is the master pattern.</p>
+  <div class="card">
+    <h3>The four methods + one property</h3>
+    <table>
+      <tr><th>API</th><th>Takes</th><th>Use when</th></tr>
+      <tr><td><code class="inl">stack.use(res)</code></td><td>A disposable object</td><td>Resource already has <code class="inl">[Symbol.dispose]()</code>. Returns the resource, so it chains: <code class="inl">const t = stack.use(timer)</code>.</td></tr>
+      <tr><td><code class="inl">stack.adopt(res, fn)</code></td><td>Any value + cleanup fn</td><td>Resource is not disposable; you supply the cleanup. <code class="inl">stack.adopt(map, m =&gt; m.remove())</code>.</td></tr>
+      <tr><td><code class="inl">stack.defer(fn)</code></td><td>Just a function</td><td>No resource at all — "also do this at teardown." Python's <code class="inl">contextlib.ExitStack.callback</code>.</td></tr>
+      <tr><td><code class="inl">stack.move()</code></td><td>—</td><td>Transfer ownership: empties this stack into a new one (see section 08).</td></tr>
+      <tr><td><code class="inl">stack.disposed</code></td><td>—</td><td>Boolean — has this stack already been disposed?</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h3>Live playground <span style="font-weight:400;color:var(--muted);font-size:13px">(runs native or polyfill — label in output)</span></h3>
+    <p>Build a stack step by step, then let the scope do the teardown. Watch the order.</p>
+    <div class="row">
+      <button class="primary" data-stack="acquire">+ acquire telemetry stream <code class="inl">use()</code></button>
+      <button data-stack="adopt">+ adopt MapLibre map <code class="inl">adopt()</code></button>
+      <button data-stack="defer">+ defer log line <code class="inl">defer()</code></button>
+      <button data-stack="explode" style="border-color:var(--bad);color:var(--bad)">throw mid-setup 💥</button>
+      <button id="stack-dispose" class="primary">Dispose stack</button>
+      <button id="stack-reset">Reset</button>
+    </div>
+    <div class="out" id="stack-out"><span class="dim">Empty stack. Acquire some resources…</span></div>
+  </div>
+</section>
+
+<!-- ============================ 7. LIFO ============================ -->
+<section id="lifo">
+  <div class="step"><span class="n">07</span><h2>LIFO teardown, visualized</h2></div>
+  <p class="sub">Why reverse order? Because correct teardown mirrors setup: the thing you acquired <em>last</em> is the thing that depends on everything acquired <em>before</em> it. Disposing in reverse guarantees no dependency is yanked out from under a live consumer. Click through a Mission-Control-style boot sequence.</p>
+  <div class="card">
+    <div class="row">
+      <button id="lifo-run" class="primary">Boot panel → acquire A, B, C → tear down</button>
+    </div>
+    <div class="lifo-lane" id="lifo-lane"></div>
+    <div class="out" id="lifo-out"><span class="dim">Waiting…</span></div>
+  </div>
+</section>
+
+<!-- ============================ 8. MOVE ============================ -->
+<section id="move">
+  <div class="step"><span class="n">08</span><h2><code>move()</code> — ownership transfer between scopes</h2></div>
+  <p class="sub">The sleeper feature. A splash screen acquires a live telemetry stream; the main app wants to keep it. You can't <code class="inl">return</code> out of a <code class="inl">using</code> scope without triggering disposal — that's the point. <code class="inl">move()</code> is the escape hatch: it transfers every cleanup into a fresh stack whose lifetime you control.</p>
+  <div class="card">
+<pre><span class="kw">function</span> <span class="st">withSplash</span>(handoff) {
+  <span class="us">using</span> scope = <span class="kw">new</span> <span class="st">DisposableStack</span>();
+  <span class="kw">const</span> stream = scope.<span class="st">use</span>(connectTelemetry());
+
+  <span class="kw">if</span> (needsSplash) {
+    <span class="st">runSplash</span>(stream);
+    handoff(scope.<span class="st">move</span>()); <span class="cm">// ← ownership OUT, no dispose</span>
+  } <span class="cm">// scope exits empty — nothing disposed</span>
+}
+
+<span class="kw">async function</span> <span class="st">main</span>() {
+  <span class="us">await using</span> lifetime = <span class="kw">new</span> <span class="st">AsyncDisposableStack</span>();
+  <span class="st">withSplash</span>(s =&gt; lifetime.<span class="st">use</span>(s));
+  <span class="cm">// stream lives until `main`'s scope exits — app lifetime</span>
+}</pre>
+    <p style="margin-top:10px">Ownership-transfer used to be hand-rolled booleans and null-checks scattered through teardown code. It's now one method call with a type-checked contract.</p>
+  </div>
+</section>
+
+<!-- ============================ 9. SUPPRESSED ERROR ============================ -->
+<section id="suppressed">
+  <div class="step"><span class="n">09</span><h2>SuppressedError — no more vanishing bugs</h2></div>
+  <p class="sub">The subtlest win. Your code throws <strong>E1</strong> (the real bug). During unwinding, a cleanup throws <strong>E2</strong>. Old JS: E2 replaces E1 and the real bug evaporates from the stack. With <code class="inl">using</code>, the engine throws a <code class="inl">SuppressedError</code> carrying <em>both</em>: <code class="inl">.error</code> is the most recent (E2), <code class="inl">.suppressed</code> is what it masked (E1).</p>
+  <div class="card">
+    <div class="row"><button id="sup-run" class="primary">Trigger: body throws + cleanup throws</button></div>
+    <div class="out" id="sup-out"><span class="dim">Waiting…</span></div>
+  </div>
+</section>
+
+<!-- ============================ 10. MISSION CONTROL ============================ -->
+<section id="mission">
+  <div class="step"><span class="n">10</span><h2>OpenDrones Mission Control — the panel teardown pattern</h2></div>
+  <p class="sub">Mission Control is a vanilla-JS dashboard, which makes it the perfect adopter: every panel (map view, telemetry, fleet list) acquires resources on mount and must release them on unmount. One <code class="inl">DisposableStack</code> per panel turns component lifecycle into a language-level guarantee — including the hard part: partial failures during <em>setup</em>.</p>
+  <div class="card">
+    <div class="panel-demo">
+      <div class="statusbar">
+        <span id="mc-map" class="off">map</span>
+        <span id="mc-wt" class="off">telemetry-stream</span>
+        <span id="mc-gpu" class="off">gpu-buffers</span>
+        <span id="mc-sub" class="off">battery-sub</span>
+        <span id="mc-listeners" class="off">listeners</span>
+      </div>
+      <div class="row">
+        <button id="mc-mount" class="primary">Mount panel</button>
+        <button id="mc-unmount">Unmount (scope exit)</button>
+        <button id="mc-fail" style="border-color:var(--bad);color:var(--bad)">Mount with GPU failure 💥</button>
+      </div>
+      <div class="out" id="mc-out" style="max-height:300px"><span class="dim">Panel unmounted…</span></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>The pattern in production shape</h3>
+<pre><span class="kw">function</span> <span class="st">mountFleetPanel</span>(host) {
+  <span class="us">using</span> setup = <span class="kw">new</span> <span class="st">DisposableStack</span>(); <span class="cm">// rollback scope</span>
+
+  <span class="kw">const</span> map = setup.<span class="st">adopt</span>(<span class="kw">new</span> <span class="st">maplibre</span>.Map(cfg), m =&gt; m.<span class="st">remove</span>());
+  <span class="kw">const</span> stream = setup.<span class="st">use</span>(telemetry.<span class="st">subscribe</span>());     <span class="cm">// asyncDisposable</span>
+  <span class="kw">const</span> buffers = setup.<span class="st">adopt</span>(gpu.<span class="st">allocatePool</span>(), b =&gt; b.<span class="st">destroy</span>());
+  setup.<span class="st">defer</span>(() =&gt; <span class="st">log</span>(<span class="st">'fleet panel torn down'</span>));
+
+  <span class="cm">// Hand the live stack to the app-lifetime registry — panel stays alive.</span>
+  <span class="cm">// If ANY step above threw, `using setup` rolls back the earlier ones (LIFO).</span>
+  <span class="kw">return</span> panelRegistry.<span class="st">register</span>(setup.<span class="st">move</span>(), host);
+}</pre>
+    <p style="margin-top:10px"><strong>Setup-rollback is the underrated half:</strong> if GPU allocation (step 3) throws, the map and telemetry subscription from steps 1–2 are disposed automatically on scope exit. Handwritten versions almost always leak there.</p>
+  </div>
+</section>
+
+<!-- ============================ 11. REACT ============================ -->
+<section id="react">
+  <div class="step"><span class="n">11</span><h2>React, Next.js &amp; where <code>using</code> actually fits</h2></div>
+  <p class="sub">Honest framing: <code class="inl">using</code> does <strong>not</strong> replace <code class="inl">useEffect</code> cleanup — a component's lifetime is not a block scope, and effects outlive the render function. But React apps are full of block-scoped resource work where it's a strict upgrade.</p>
+  <div class="grid2">
+    <div class="card">
+      <span class="tag win">Great fit — block-scoped work</span>
+      <p style="margin-bottom:8px">• <strong>Event handlers:</strong> per-gesture/per-click acquisitions (streams, pointers, audio sessions) cleaned when the handler's block exits.<br>
+      • <strong>Route loaders / actions:</strong> with the Navigation API, <code class="inl">event.intercept({ async handler() { await using … } })</code> guarantees stream readers release even when a navigation is superseded mid-flight.<br>
+      • <strong>Server code (RSC, route handlers, scripts):</strong> Node 25+ runs it natively — DB handles, fs handles, advisory locks. Adopt today.<br>
+      • <strong>Analysis pipelines:</strong> canvas/OffscreenCanvas contexts, AudioContexts, ImageBitmaps — the classic "create → process → close" utility function.</p>
+    </div>
+    <div class="card">
+      <span class="tag note">Not a fit — cross-scope lifetimes</span>
+      <p style="margin-bottom:8px">• Component lifetime → keep <code class="inl">useEffect</code> return (or wrap a <code class="inl">DisposableStack</code> in a ref and dispose on unmount — a clean hybrid).<br>
+      • Global singletons (one MapLibre style, one WebGPU device) → app-lifetime registry, not scope.<br>
+      • Client Components on old targets → TypeScript downlevels it, but each <code class="inl">using</code> becomes a <code class="inl">try/finally</code> — fine, just know it's there.</p>
+    </div>
+  </div>
+  <div class="card">
+    <h3>TypeScript: you've been able to write this since 5.2</h3>
+    <p>TS 5.2 shipped the syntax with downleveling — <code class="inl">target: ES2022</code> compiles every <code class="inl">using</code> into the exact <code class="inl">try/finally</code> you'd write by hand, LIFO-correct, with <code class="inl">Symbol.dispose</code> polyfilled via helpers. What changed with ES2026 finalization: set <code class="inl">"target": "ES2026"</code> (or per-build for server bundles) and the syntax ships <em>as-is</em> to engines that run it natively. Zero-risk ladder: write it now → old targets get correct downlevel → raise targets as support lands → delete the helpers.</p>
+    <table>
+      <tr><th>Surface</th><th>Do this today</th></tr>
+      <tr><td>Node servers / scripts / RSC</td><td><span class="y" style="color:var(--ok);font-weight:600">Ship native</span> — Node 25+/V8 13.8+, TS target ES2026 for server builds.</td></tr>
+      <tr><td>Browser bundles (Molt client sites)</td><td><span style="color:var(--warn);font-weight:600">Write now, downlevel</span> — TS target ≤ES2022 emits try/finally. No behavior change.</td></tr>
+      <tr><td>Vanilla JS (Mission Control)</td><td><span style="color:var(--warn);font-weight:600">Polyfill the objects, gate the syntax</span> — DisposableStack + Symbol.dispose via es-shims; adopt `using` per-browser when Safari stable lands (fall 2026).</td></tr>
+      <tr><td>Libraries published to npm</td><td>Add <code class="inl">[Symbol.dispose]</code>/<code class="inl">[Symbol.asyncDispose]</code> methods to your handle-like exports — harmless where unknown, instantly useful where supported. This is the ecosystem unlock.</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ============================ 12. SUPPORT ============================ -->
+<section id="support">
+  <div class="step"><span class="n">12</span><h2>Browser support &amp; adoption verdict</h2></div>
+  <p class="sub">Where every engine stands as of August 16, 2026, and what to do about it.</p>
+  <div class="card">
+    <table>
+      <tr><th>Engine / runtime</th><th>Status</th><th>Notes</th></tr>
+      <tr><td>V8 — Chrome / Edge 134+</td><td class="y">Stable since Mar 2025</td><td>V8 13.8. The reference implementation — full surface incl. DisposableStack &amp; SuppressedError.</td></tr>
+      <tr><td>SpiderMonkey — Firefox 134+</td><td class="y">Stable since Jan 2025</td><td>Full surface, shipped alongside Iterator Helpers.</td></tr>
+      <tr><td>JavaScriptCore — WebKit</td><td class="w2">STP 250 — Aug 13, 2026</td><td><strong>The news:</strong> last engine to land. Preview only; stable expected with the fall Safari release (~Sept–Oct 2026). Not Baseline until then.</td></tr>
+      <tr><td>Node.js</td><td class="y">Native (last two majors)</td><td>Server-side adoption is unblocked today — same asymmetric posture as Temporal.</td></tr>
+      <tr><td>Deno / Bun</td><td class="y">Via V8 / JSC</td><td>Deno follows V8 (has it). Bun tracks JSC — gains it with WebKit's landing.</td></tr>
+      <tr><td>TypeScript 5.2+</td><td class="y">Full syntax + downlevel</td><td>Downlevels to try/finally below ES2026 target; emits native above.</td></tr>
+      <tr><td>Babel / esbuild</td><td class="y">Supported</td><td>Babel transforms since 2024; esbuild handles the syntax.</td></tr>
+    </table>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3>Why this matters to us</h3>
+      <p><strong>OpenDrones:</strong> Mission Control's vanilla-JS panel lifecycle (map + WebTransport + GPU + listeners) gets a language-guaranteed teardown; setup-rollback kills the partial-boot leak class; <code class="inl">move()</code> models splash→app stream handoff; Node-side mission scripts adopt today.<br><br>
+      <strong>Molt Studios:</strong> every client app with streams, maps, media sessions, or canvas pipelines ships fewer leak bugs; published libs gain disposable handles; TS downleveling means zero-risk adoption in the current build stack — and a clean story for Safari when stable lands this fall.</p>
+    </div>
+    <div class="card">
+      <h3>Adoption verdict</h3>
+      <p><strong>P3 — adopt asymmetrically, now.</strong> Server/Node: native today, no reason to write another manual <code class="inl">try/finally</code>. Bundled browser code: write it, let TS downlevel, delete the helpers when Safari stable ships (projected fall 2026 → then Baseline ~2027). The defect class it kills — leaked handles, stuck stream locks, masked errors — is a real production cost, but it's code-quality, not user-facing capability, and Safari stable is the gate on the last mile.</p>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Timeline</h3>
+    <p>2021 proposal (Stage 3 Oct 2023) → TS 5.2 downlevel (Aug 2023) → Chrome 134 / V8 13.8 (Mar 2025) → Firefox 134 (Jan 2025) → Test262 suite complete (Jan 2026) → <strong>Stage 4 / ES2026 (2026)</strong> → Node native (2025–26) → <strong>WebKit STP 250, all engines online (Aug 13, 2026)</strong> → Safari stable expected fall 2026 → Baseline ~2027.</p>
+  </div>
+</section>
+
+<footer>
+  <p>Research entry <strong> Explicit Resource Management — the <code class="inl">using</code> keyword (Stage 4 · ES2026)</strong> · Jin · Molt Studios / OpenDrones research · Aug 16, 2026.</p>
+  <p style="margin-top:6px">Sources: v8.dev/features/explicit-resource-management · TC39 proposal-explicit-resource-management · WebKit STP 250 release notes (Aug 13, 2026) · MDN Symbol.dispose · byteiota.com cross-browser analysis. Related entries: Temporal (ES2026 sibling), Navigation API (intercept-handler pairing), WebGPU / WebTransport (resources worth disposing).</p>
+</footer>
+
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------- capability detection ---------- */
+  var hasSymbolDispose = typeof Symbol.dispose === 'symbol';
+  var hasSymbolAsyncDispose = typeof Symbol.asyncDispose === 'symbol';
+  var hasNativeStack = typeof DisposableStack === 'function';
+  var hasAsyncStack = typeof AsyncDisposableStack === 'function';
+  var hasSuppressedError = typeof SuppressedError === 'function';
+  var usingSyntax = false, awaitUsingSyntax = false;
+  try { new Function('using x = null;'); usingSyntax = true; } catch (e) {}
+  try { new (Object.getPrototypeOf(async function(){}).constructor)('await using x = null;'); awaitUsingSyntax = true; } catch (e) {}
+
+  /* ---------- tiny polyfill (for the playgrounds only) ---------- */
+  var SD = hasSymbolDispose ? Symbol.dispose : Symbol.for('Symbol.dispose');
+  var SAD = hasSymbolAsyncDispose ? Symbol.asyncDispose : Symbol.for('Symbol.asyncDispose');
+  var usingPolyfill = !usingSyntax || !hasNativeStack;
+  var SupErr = hasSuppressedError ? SuppressedError : (function () {
+    function SuppressedErrorP(error, suppressed, message) {
+      var err = new Error(message || 'An error was suppressed during disposal');
+      err.name = 'SuppressedError'; err.error = error; err.suppressed = suppressed;
+      return err;
+    }
+    return SuppressedErrorP;
+  })();
+
+  function StackP(async) {
+    this._fns = []; this._disposed = false; this._async = async;
+  }
+  StackP.prototype.disposed = function () { return this._disposed; };
+  StackP.prototype.use = function (v) {
+    if (this._disposed) throw new ReferenceError('already disposed');
+    if (v !== null && v !== undefined) {
+      var m = v[this._async ? SAD : SD] || v[SD];
+      if (typeof m !== 'function') throw new TypeError('not disposable');
+      this._fns.push(m.bind(v));
+    }
+    return v;
+  };
+  StackP.prototype.adopt = function (v, onDispose) {
+    if (this._disposed) throw new ReferenceError('already disposed');
+    this._fns.push(function () { onDispose.call(v, v); });
+    return v;
+  };
+  StackP.prototype.defer = function (onDispose) {
+    if (this._disposed) throw new ReferenceError('already disposed');
+    this._fns.push(onDispose);
+  };
+  StackP.prototype.move = function () {
+    if (this._disposed) throw new ReferenceError('already disposed');
+    var n = new StackP(this._async);
+    n._fns = this._fns; this._fns = []; this._disposed = true;
+    return n;
+  };
+  StackP.prototype._run = function (isAsync) {
+    if (this._disposed) return isAsync ? Promise.resolve() : undefined;
+    this._disposed = true;
+    var fns = this._fns; this._fns = [];
+    var firstErr = null;
+    var runSync = function () {
+      for (var i = fns.length - 1; i >= 0; i--) {
+        try { fns[i](); } catch (e) { firstErr = firstErr ? new SupErr(e, firstErr) : e; }
+      }
+    };
+    if (!isAsync) { runSync(); if (firstErr) throw firstErr; return; }
+    var self = this;
+    return (async function () {
+      for (var i = fns.length - 1; i >= 0; i--) {
+        try { await fns[i](); } catch (e) { firstErr = firstErr ? new SupErr(e, firstErr) : e; }
+      }
+      if (firstErr) throw firstErr;
+    })();
+  };
+  StackP.prototype.dispose = function () { return this._run(false); };
+  StackP.prototype[SD] = function () { return this._run(false); };
+  StackP.prototype.disposeAsync = function () { return this._run(true); };
+  StackP.prototype[SAD] = function () { return this._run(true); };
+
+  var Stack = hasNativeStack ? DisposableStack : StackP;
+  var AStack = hasAsyncStack ? AsyncDisposableStack : StackP;
+
+  /* ---------- helpers ---------- */
+  function out(el, html) {
+    el.innerHTML += '<div class="log-line">' + html + '</div>';
+    var lines = el.querySelectorAll('.log-line');
+    requestAnimationFrame(function () { lines[lines.length - 1].classList.add('in'); });
+    el.scrollTop = el.scrollHeight;
+  }
+  function outClear(el, msg) { el.innerHTML = msg ? '<span class="dim">' + msg + '</span>' : ''; }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function $(id) { return document.getElementById(id); }
+
+  /* ---------- capability card ---------- */
+  var caps = [
+    ['Symbol.dispose', hasSymbolDispose], ['Symbol.asyncDispose', hasSymbolAsyncDispose],
+    ['using syntax', usingSyntax], ['await using syntax', awaitUsingSyntax],
+    ['DisposableStack', hasNativeStack], ['AsyncDisposableStack', hasAsyncStack],
+    ['SuppressedError', hasSuppressedError], ['new Function eval path', true]
+  ];
+  var g = $('cap-grid');
+  caps.forEach(function (c) {
+    var d = document.createElement('div');
+    d.className = 'cap';
+    d.style.padding = '12px 16px';
+    d.innerHTML = '<span class="pill ' + (c[1] ? 'ok' : 'bad') + '"><span class="dot"></span>' + (c[1] ? 'supported' : 'missing') + '</span><span class="mono">' + c[0] + '</span>';
+    g.appendChild(d);
+  });
+  var nativeAll = usingSyntax && hasNativeStack && hasSuppressedError;
+  $('cap-note').innerHTML = nativeAll
+    ? 'This browser runs <b>native</b> using/DisposableStack — playgrounds below execute real engine semantics.'
+    : 'This browser lacks parts of the surface — playgrounds run on a <b>faithful mini-polyfill</b> built into this page (LIFO order, SuppressedError masking, move() semantics). Same progressive-enhancement story as production.';
+  var pill = document.querySelector('#cap .pill');
+  pill.className = 'pill ' + (nativeAll ? 'ok' : 'warn');
+  pill.innerHTML = '<span class="dot"></span>' + (nativeAll ? 'native support — all sections live' : 'partial support — polyfill active');
+  $('cap-ua').textContent = navigator.userAgent.slice(0, 110);
+
+  /* ---------- 05: locked stream ---------- */
+  var lockManual = false, lockUsing = false;
+  function setLock(id, locked) {
+    var el = $(id);
+    el.className = locked ? 'off' : 'on';
+    el.textContent = id.slice(5) + (locked ? ': LOCKED' : ': unlocked');
+  }
+  function fakeStream() {
+    return { locked: false,
+      getReader: function () {
+        var s = this; s.locked = true;
+        return { read: function () { return Promise.resolve({ done: false, value: 'pkt#1' }); },
+                 releaseLock: function () { s.locked = false; } };
+      } };
+  }
+  $('run-manual').addEventListener('click', function () {
+    var o = $('stream-out'); outClear(o);
+    var s = fakeStream();
+    out(o, '> manual version — acquiring reader…');
+    var reader = s.getReader();
+    out(o, '  reader acquired · stream.locked = ' + s.locked);
+    setTimeout(function () {
+      try {
+        out(o, '  parse(pkt#1) → <span class="err">💥 SyntaxError: bad frame</span>');
+        throw new Error('bad frame');
+      } catch (e) {
+        out(o, '<span class="err">  caught: ' + esc(e.message) + '</span>');
+        out(o, '  reader.releaseLock() line <span class="err">never reached</span> — stream.locked = ' + s.locked);
+        setLock('lock-manual', true);
+      }
+    }, 250);
+  });
+  $('run-using').addEventListener('click', function () {
+    var o = $('stream-out'); outClear(o);
+    if (!usingSyntax) {
+      out(o, '<span class="dim">using syntax not available in this browser — showing native trace only.</span>');
+      out(o, '(Chrome/Edge 134+, Firefox 134+, STP 250+ run it live)');
+      $('stream-mode').textContent = '';
+      return;
+    }
+    var code = '(function(){ var s = fakeStream(); return function(log){' +
+      'log("> using version — acquiring reader…");' +
+      'try {' +
+      '  using res = { reader: s.getReader(), [Symbol.dispose](){ this.reader.releaseLock(); log("  engine called [Symbol.dispose]() → releaseLock"); } };' +
+      '  log("  reader acquired · stream.locked = " + s.locked);' +
+      '  log(\'  parse(pkt#1) → 💥 throws\');' +
+      '  throw new Error("bad frame");' +
+      '} catch (e) { log("  caught: " + e.message + " — lock state = " + s.locked); }' +
+      'return s; } ; })()';
+    try {
+      var factory = new Function('fakeStream', code)(fakeStream);
+      var s2 = factory(function (msg) { out(o, esc(msg)); });
+      setLock('lock-using', s2.locked);
+      $('stream-mode').textContent = 'Ran NATIVE using in this browser ✓';
+    } catch (e) { out(o, '<span class="err">eval failed: ' + esc(e.message) + '</span>'); }
+  });
+
+  /* ---------- 06: DisposableStack playground ---------- */
+  var stackInstance = null, stackMode = null;
+  function stackEnsure() {
+    if (!stackInstance) {
+      stackMode = hasNativeStack ? 'native DisposableStack' : 'page polyfill';
+      stackInstance = new Stack();
+      outClear($('stack-out'), '');
+      out($('stack-out'), '<b>new DisposableStack()</b> <span class="dim>(' + stackMode + ')</span>');
+    }
+    return stackInstance;
+  }
+  document.querySelectorAll('[data-stack]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var st = stackEnsure(), o = $('stack-out');
+      try {
+        if (btn.dataset.stack === 'acquire') {
+          var o1 = $('stack-out');
+          var stream = {};
+          stream[SD] = function () { out(o1, '  dispose → telemetry-stream.close() <span class="okc">✓</span>'); };
+          st.use(stream);
+          out(o1, '+ use(telemetry-stream)');
+        } else if (btn.dataset.stack === 'adopt') {
+          st.adopt({ name: 'MapLibre map' }, function (m) { out(o, '  dispose → map.remove() <span class="okc">✓</span>'); });
+          out(o, '+ adopt(map, m ⇒ m.remove())');
+        } else if (btn.dataset.stack === 'defer') {
+          st.defer(function () { out(o, '  deferred line runs <span class="okc">✓</span>'); });
+          out(o, '+ defer(() =&gt; log("done"))');
+        } else if (btn.dataset.stack === 'explode') {
+          out(o, '<span class="err">💥 mid-setup throw: GPU allocation failed</span>');
+          throw new Error('GPU allocation failed');
+        }
+      } catch (e) {
+        out(o, '<span class="err">threw during setup — scope exit disposes what was acquired (LIFO)</span>');
+        try { st.dispose(); } catch (e2) { out(o, '<span class="err">dispose error: ' + esc(e2.message) + '</span>'); }
+        stackInstance = null;
+      }
+    });
+  });
+  $('stack-dispose').addEventListener('click', function () {
+    if (!stackInstance) return;
+    var o = $('stack-out');
+    out(o, '<b>— scope exit → stack.dispose() (LIFO) —</b>');
+    try { stackInstance.dispose(); out(o, '<span class="okc">stack disposed cleanly ✓</span>'); }
+    catch (e) { out(o, '<span class="err">dispose threw: ' + esc(e.message) + '</span>'); }
+    stackInstance = null;
+  });
+  $('stack-reset').addEventListener('click', function () {
+    stackInstance = null; outClear($('stack-out'), 'Empty stack. Acquire some resources…');
+    document.querySelectorAll('#lock-manual,#lock-using').forEach(function(){});
+    setLock('lock-manual', false); setLock('lock-using', false);
+    outClear($('stream-out'), 'Output appears here…');
+  });
+
+  /* ---------- 07: LIFO visualizer ---------- */
+  var lifoBusy = false;
+  $('lifo-run').addEventListener('click', function () {
+    if (lifoBusy) return; lifoBusy = true;
+    var lane = $('lifo-lane'), o = $('lifo-out');
+    lane.innerHTML = ''; outClear(o, '');
+    var names = [['A · db pool', 'acquire'], ['B · gpu context', 'acquire'], ['C · map style', 'acquire']];
+    var els = [];
+    var i = 0;
+    var acq = setInterval(function () {
+      if (i >= names.length) {
+        clearInterval(acq);
+        out(o, '— panel mounted · scope exits now —');
+        var j = els.length - 1;
+        var dis = setInterval(function () {
+          if (j < 0) {
+            clearInterval(dis);
+            out(o, '<span class="okc">teardown complete — reverse of acquisition, exactly as guaranteed ✓</span>');
+            lifoBusy = false;
+            return;
+          }
+          els[j].className = 'res disposed';
+          out(o, '  dispose ' + esc(names[j][0]));
+          j--;
+        }, 600);
+        return;
+      }
+      var d = document.createElement('div');
+      d.className = 'res acquired';
+      d.textContent = names[i][0];
+      lane.appendChild(d); els.push(d);
+      out(o, 'acquire ' + esc(names[i][0]));
+      i++;
+    }, 500);
+  });
+
+  /* ---------- 09: SuppressedError ---------- */
+  $('sup-run').addEventListener('click', function () {
+    var o = $('sup-out'); outClear(o, '');
+    function runNative() {
+      var code = '(function(){ try {' +
+        'using x = { [Symbol.dispose]() { throw new Error("E2: ws close failed"); } };' +
+        'throw new Error("E1: telemetry parse error");' +
+        '} catch (e) { return e; } })()';
+      return new Function('return ' + code)();
+    }
+    var err;
+    if (usingSyntax && hasSymbolDispose) {
+      err = runNative();
+      out(o, 'ran <b>native using</b> in this browser');
+    } else {
+      // faithful simulation of spec semantics
+      var bodyErr = new Error('E1: telemetry parse error');
+      var dispErr = new Error('E2: ws close failed');
+      err = new SupErr(dispErr, bodyErr, 'An error was suppressed during disposal');
+      out(o, 'ran <b>page simulation</b> of spec semantics (engine lacks native syntax)');
+    }
+    out(o, 'caught: <b>' + esc(err.name) + '</b>');
+    out(o, '  .error      = ' + esc(err.error && err.error.message));
+    out(o, '  .suppressed = ' + esc(err.suppressed && err.suppressed.message));
+    out(o, '<span class="okc">both bugs visible — nothing masked ✓</span>');
+    out(o, '<span class="dim">old JS: E2 replaced E1 on the way out — you debugged the cleanup while the real bug vanished</span>');
+  });
+
+  /* ---------- 10: Mission Control ---------- */
+  var mcMounted = false;
+  function mcSet(ids, on) {
+    ids.forEach(function (id) { $(id).className = on ? 'on' : 'off'; });
+  }
+  $('mc-mount').addEventListener('click', function () {
+    if (mcMounted) return;
+    var o = $('mc-out'); outClear(o, '');
+    var st = new Stack();
+    out(o, '<b>mountFleetPanel()</b> — building rollback scope');
+    st.adopt({}, function () { out(o, '  dispose map.remove()'); });
+    out(o, '+ adopt(map)');
+    setTimeout(function () {
+      st.use((function () { var s = {}; s[SD] = function () { out(o, '  dispose telemetry-stream.close()'); }; return s; })());
+      out(o, '+ use(telemetry-stream)');
+      $('mc-wt').className = 'on';
+    }, 250);
+    setTimeout(function () {
+      st.adopt({}, function () { out(o, '  dispose gpu-buffer-pool.destroy()'); });
+      out(o, '+ adopt(gpu-buffers)');
+      $('mc-gpu').className = 'on';
+    }, 500);
+    setTimeout(function () {
+      st.adopt({}, function () { out(o, '  dispose battery-sub.unsubscribe()'); });
+      out(o, '+ adopt(battery-sub)');
+      $('mc-sub').className = 'on';
+    }, 750);
+    setTimeout(function () {
+      st.defer(function () { out(o, '  deferred: fleet panel torn down'); });
+      out(o, '+ defer(log)');
+      $('mc-listeners').className = 'on'; $('mc-map').className = 'on';
+      mcMounted = true;
+      window.__mcStack = st;
+      out(o, '<span class="okc">mounted — stack owns all 5 teardowns (move()d to panel registry) ✓</span>');
+    }, 1000);
+  });
+  $('mc-unmount').addEventListener('click', function () {
+    if (!mcMounted) return;
+    var o = $('mc-out');
+    out(o, '<b>— scope exit / unmount → dispose LIFO —</b>');
+    try { window.__mcStack.dispose(); out(o, '<span class="okc">clean teardown ✓</span>'); }
+    catch (e) { out(o, '<span class="err">' + esc(e.message) + '</span>'); }
+    mcMounted = false;
+    mcSet(['mc-map','mc-wt','mc-gpu','mc-sub','mc-listeners'], false);
+  });
+  $('mc-fail').addEventListener('click', function () {
+    if (mcMounted) return;
+    var o = $('mc-out'); outClear(o, '');
+    var st = new Stack();
+    st.adopt({}, function () { out(o, '  dispose map.remove() <span class="okc">(rolled back)</span>'); });
+    out(o, '+ adopt(map) — acquired');
+    var s2 = {}; s2[SD] = function () { out(o, '  dispose telemetry-stream.close() <span class="okc">(rolled back)</span>'); };
+    st.use(s2);
+    out(o, '+ use(telemetry-stream) — acquired');
+    $('mc-map').className = 'on'; $('mc-wt').className = 'on';
+    setTimeout(function () {
+      out(o, '<span class="err">💥 allocatePool() throws — GPU allocation failed</span>');
+      try { st.dispose(); } catch (e) { out(o, '<span class="dim">dispose error surfaced: ' + esc(e.message) + '</span>'); }
+      out(o, '<span class="okc">using setup rolled back map + stream (LIFO) — zero orphans ✓</span>');
+      mcSet(['mc-map','mc-wt','mc-gpu','mc-sub','mc-listeners'], false);
+    }, 400);
+  });
+})();
+</script>
+</body>
+</html>
