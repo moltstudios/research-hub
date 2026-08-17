@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Web Locks API + BroadcastChannel — Cross-Tab Coordination for Web Apps (Baseline 2022)</title>
+<meta name="description" content="The Web Locks API (navigator.locks) is a same-origin mutex that works across tabs and workers: one tab claims a named lock while others wait or skip, with automatic release when the holder closes or crashes. BroadcastChannel pairs with it for instant tab-to-tab messaging and leader election. Live multi-tab tug-of-war lab, lock inspector, exclusive vs shared modes, ifAvailable/steal/AbortSignal options, leader election failover. OpenDrones Mission Control + Molt Studios applications.">
+<style>
+  :root {
+    --bg: #faf9f7;
+    --surface: #ffffff;
+    --ink: #1c1b1f;
+    --muted: #6d6b76;
+    --accent: #cf5b2e;
+    --accent-soft: #fdeee6;
+    --line: #e9e6e1;
+    --code-bg: #211f26;
+    --code-ink: #e9e6e3;
+    --ok: #1f8a5d;
+    --warn: #b3742a;
+    --bad: #c2453a;
+    --radius: 16px;
+    --shadow: 0 1px 2px rgba(28,27,31,.05), 0 8px 24px rgba(28,27,31,.06);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg); color: var(--ink); font-size: 16px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  .orb { position: fixed; border-radius: 50%; filter: blur(90px); opacity: .14; pointer-events: none; z-index: 0; }
+  .orb-1 { width: 420px; height: 420px; background: var(--accent); top: -120px; right: -100px; }
+  .orb-2 { width: 340px; height: 340px; background: #e0952f; top: 40%; left: -160px; }
+  main { position: relative; z-index: 1; }
+
+  header.hero { padding: 72px 0 40px; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent-soft); color: var(--accent);
+    font-size: 12.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+    padding: 6px 14px; border-radius: 999px; margin-bottom: 20px;
+  }
+  h1 { font-size: clamp(34px, 5vw, 52px); line-height: 1.12; letter-spacing: -.02em; font-weight: 800; max-width: 920px; }
+  h1 em { font-style: normal; color: var(--accent); }
+  .lede { font-size: 18px; color: var(--muted); max-width: 800px; margin-top: 18px; }
+  .hero-badges { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+  .badge {
+    font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow);
+  }
+  .badge b { color: var(--accent); }
+  .badge.live-yes { border-color: #bfe3d2; background: #eefaf3; }
+  .badge.live-yes b { color: var(--ok); }
+  .badge.live-no b { color: var(--warn); }
+
+  section { padding: 48px 0; border-top: 1px solid var(--line); }
+  .sec-head { margin-bottom: 28px; }
+  .sec-num { font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: .12em; text-transform: uppercase; }
+  h2 { font-size: clamp(24px, 3.4vw, 34px); letter-spacing: -.015em; font-weight: 750; margin-top: 6px; }
+  .sec-sub { color: var(--muted); max-width: 800px; margin-top: 10px; font-size: 16.5px; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 26px; box-shadow: var(--shadow); }
+  .grid { display: grid; gap: 18px; min-width: 0; }
+  .g2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); }
+  .grid > * { min-width: 0; }
+  h3 { font-size: 18px; font-weight: 700; letter-spacing: -.01em; margin-bottom: 8px; }
+  h4 { font-size: 14.5px; font-weight: 700; margin-bottom: 6px; }
+  p + p { margin-top: 10px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13.5px; }
+  ul.clean { list-style: none; }
+  ul.clean li { padding-left: 22px; position: relative; margin-top: 8px; }
+  ul.clean li::before { content: "—"; position: absolute; left: 0; color: var(--accent); font-weight: 700; }
+  code {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: .88em;
+    background: #f1efec; border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; color: #9a3f1c;
+  }
+  pre {
+    background: var(--code-bg); color: var(--code-ink); border-radius: 12px; padding: 18px 20px;
+    overflow-x: auto; font-size: 13px; line-height: 1.6; margin-top: 14px;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  }
+  pre code { background: none; border: none; color: inherit; padding: 0; font-size: 1em; }
+  .kw { color: #ffb08a; } .str { color: #a8d8b9; } .cm { color: #8d8a96; font-style: italic; } .fn { color: #9fc6ff; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+    background: var(--ink); color: #fff; border: none; border-radius: 10px;
+    font-family: inherit; font-size: 14px; font-weight: 650; padding: 10px 18px;
+    transition: transform .15s ease, opacity .15s ease; margin: 4px 8px 4px 0;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+  .btn.acc { background: var(--accent); }
+  .btn.ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--line); }
+  .btn.ghost:hover { border-color: var(--ink); }
+  .btn.sm { font-size: 12.5px; padding: 7px 13px; }
+
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; padding: 4px 11px; border-radius: 999px; letter-spacing: .03em; }
+  .pill.ok { background: #eefaf3; color: var(--ok); border: 1px solid #bfe3d2; }
+  .pill.bad { background: #fdf0ee; color: var(--bad); border: 1px solid #efc4bd; }
+  .pill.wait { background: #fdf6ea; color: var(--warn); border: 1px solid #ecd9b6; }
+  .pill.mut { background: #f1efec; color: var(--muted); border: 1px solid var(--line); }
+
+  .log {
+    background: var(--code-bg); color: var(--code-ink); border-radius: 12px; padding: 14px 16px;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.75;
+    max-height: 240px; overflow-y: auto; margin-top: 14px; min-height: 64px;
+  }
+  .log .t { color: #8d8a96; margin-right: 8px; }
+  .log .ok { color: #7fd0a7; } .log .warn { color: #eec98a; } .log .err { color: #ef9a90; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  td code { white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+
+  .statebox {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+    background: #f6f4f1; border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; margin-top: 14px;
+  }
+  .statebox .dot { width: 12px; height: 12px; border-radius: 50%; background: #c9c6c0; flex: none; }
+  .statebox.held .dot { background: var(--ok); box-shadow: 0 0 0 4px rgba(31,138,93,.15); }
+  .statebox.waiting .dot { background: var(--warn); box-shadow: 0 0 0 4px rgba(179,116,42,.15); }
+
+  .tabs { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  .tabcard {
+    flex: 1; min-width: 220px; border: 2px solid var(--line); border-radius: 14px; padding: 16px 18px;
+    background: #fcfbfa; transition: border-color .2s ease;
+  }
+  .tabcard.leader { border-color: var(--ok); background: #f2fbf6; }
+  .tabcard.holding { border-color: var(--accent); background: var(--accent-soft); }
+  .tabcard h4 { display: flex; align-items: center; gap: 8px; }
+
+  .flow { display: grid; grid-template-columns: 1fr auto 1fr; gap: 14px; align-items: center; margin-top: 18px; }
+  .flow .box { background: #f6f4f1; border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .flow .arrow { font-size: 22px; color: var(--accent); font-weight: 800; text-align: center; }
+  @media (max-width: 640px) { .flow { grid-template-columns: 1fr; } .flow .arrow { transform: rotate(90deg); } }
+
+  .toc { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; margin-top: 22px; }
+  .toc a {
+    display: block; font-size: 13.5px; font-weight: 600; color: var(--ink);
+    text-decoration: none; padding: 9px 13px; border-radius: 10px; background: var(--surface);
+    border: 1px solid var(--line);
+  }
+  .toc a:hover { border-color: var(--accent); color: var(--accent); }
+  .toc a span { color: var(--accent); font-weight: 800; margin-right: 6px; }
+
+  .note { display: flex; gap: 12px; background: var(--accent-soft); border: 1px solid #f2d9c8; border-radius: 12px; padding: 14px 16px; margin-top: 16px; font-size: 14px; }
+  .note .ic { font-size: 18px; }
+  .note.blue { background: #eef3fb; border-color: #ccd9ef; }
+
+  .kbd { font-family: ui-monospace, monospace; font-size: .85em; background: #f1efec; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; padding: 1px 6px; }
+
+  footer { padding: 56px 0 72px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+  footer a { color: var(--accent); text-decoration: none; font-weight: 600; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<main class="wrap">
+
+<header class="hero">
+  <div class="eyebrow">🔬 Web Platform Research — Cross-Tab Coordination</div>
+  <h1>Web Locks API + BroadcastChannel — <em>one tab flies the drone</em>, the rest just watch</h1>
+  <p class="lede">
+    <code>navigator.locks</code> is the platform's same-origin mutex: it works <strong>across tabs, windows, and workers</strong>,
+    releases locks automatically when a holder closes or crashes, and gives you exclusive vs shared modes,
+    <code>ifAvailable</code>, <code>steal</code>, and AbortSignal timeouts. Pair it with <code>BroadcastChannel</code> for instant
+    tab-to-tab messaging and you get leader election, hardware-port ownership, and cross-tab state sync — no server, no libraries.
+  </p>
+  <div class="hero-badges" id="caps"></div>
+  <nav class="toc" id="toc"></nav>
+</header>
+
+<!-- ============================= 01 CAPABILITY ============================= -->
+<section id="s1">
+  <div class="sec-head">
+    <div class="sec-num">01 — Live capability detection</div>
+    <h2>What this browser can do right now</h2>
+    <p class="sec-sub">Detected at runtime on this exact page. Everything on this demo runs locally — no network calls, no permissions prompts, no storage writes beyond the lock manager itself.</p>
+  </div>
+  <div class="card">
+    <div class="grid g3" id="capGrid"></div>
+    <p class="small muted" style="margin-top:14px">User agent: <code id="ua"></code> · This tab's ID: <code id="tabId"></code></p>
+  </div>
+</section>
+
+<!-- ============================= 02 THE PROBLEM ============================= -->
+<section id="s2">
+  <div class="sec-head">
+    <div class="sec-num">02 — The problem</div>
+    <h2>Two tabs, one resource, zero coordination</h2>
+    <p class="sec-sub">Mission Control opens in multiple tabs by design — inspector, map, logs. Every exclusive resource in that app has a multi-tab failure mode.</p>
+  </div>
+  <div class="grid g3">
+    <div class="card">
+      <h3>🔌 Web Serial port</h3>
+      <p class="small">Tab A opens the USB telemetry port. Tab B opens the same port — the OS allows it in some drivers, both streams corrupt, or B errors with a confusing <code>PermissionDenied</code>. Two "pilots" on one stick.</p>
+    </div>
+    <div class="card">
+      <h3>📡 Duplicate subscriptions</h3>
+      <p class="small">Every tab connects its own WebTransport/WebSocket to the telemetry relay. Double subscriptions, double cost, and duplicate commands <em>sent to the aircraft</em> — the dangerous one.</p>
+    </div>
+    <div class="card">
+      <h3>💾 Storage write races</h3>
+      <p class="small">Two tabs sync OPFS/IndexedDB flight logs concurrently. Last-writer-wins clobbers records. localStorage flag hacks ("isAnotherTabOpen") are racy and never clean up after a crash.</p>
+    </div>
+  </div>
+  <div class="card" style="margin-top:18px">
+    <h3>The old hacks, and why they fail</h3>
+    <ul class="clean">
+      <li><strong>localStorage sentinel keys</strong> — require heartbeat polling to detect a crashed tab; leave stale locks after force-quit; race between get/set.</li>
+      <li><strong>"Check before connect"</strong> — TOCTOU race: both tabs check, both connect.</li>
+      <li><strong>Doing nothing</strong> — works until a pilot duplicates a tab to compare missions, then commands double-fire.</li>
+    </ul>
+    <p class="small muted" style="margin-top:10px">The platform's answer: a <strong>lock manager built into the browser</strong>, one per storage bucket, that the browser itself keeps consistent and cleans up on tab death — free.</p>
+  </div>
+</section>
+
+<!-- ============================= 03 API IN 60 SECONDS ============================= -->
+<section id="s3">
+  <div class="sec-head">
+    <div class="sec-num">03 — The API in 60 seconds</div>
+    <h2>Request → hold → auto-release</h2>
+    <p class="sec-sub">One method does everything: <code>navigator.locks.request(name, options?, callback)</code>. The callback runs when the lock is granted; the lock is released when the callback's promise settles. That's the whole mental model.</p>
+  </div>
+  <div class="card">
+    <pre><code><span class="cm">// The one-liner everyone starts with:</span>
+<span class="kw">await</span> navigator.locks.request(<span class="str">'telemetry-sync'</span>, <span class="kw">async</span> (lock) => {
+  <span class="cm">// granted — nobody else on this origin can hold 'telemetry-sync' now</span>
+  <span class="kw">await</span> syncDatabase();
+  <span class="cm">// returning ⟶ promise settles ⟶ lock released automatically</span>
+});
+<span class="cm">// released — queued requests in OTHER tabs get granted next</span>
+
+<span class="cm">// Hold for an arbitrary time (the "primary tab" pattern):</span>
+<span class="kw">const</span> { promise, resolve } = <span class="fn">Promise.withResolvers</span>();
+navigator.locks.request(<span class="str">'leader'</span>, (lock) => {
+  isLeader = <span class="kw">true</span>;
+  <span class="kw">return</span> promise;  <span class="cm">// held until resolve() is called OR this tab dies</span>
+});
+
+<span class="cm">// Try without waiting; bail out instantly if taken:</span>
+<span class="kw">await</span> navigator.locks.request(<span class="str">'serial:ttyACM0'</span>, { ifAvailable: <span class="kw">true</span> }, <span class="kw">async</span> (lock) => {
+  <span class="kw">if</span> (!lock) <span class="kw">return</span> showNotice(<span class="str">'Port already in use by another tab'</span>);
+  <span class="kw">await</span> usePort();
+});</code></pre>
+    <div class="grid g3" style="margin-top:18px">
+      <div>
+        <h4>Lifecycle guarantees</h4>
+        <p class="small muted">Lock released when: callback promise settles, the request's AbortSignal fires while pending, <code>steal</code> preempts, or the holding <strong>tab/worker closes or crashes</strong>. No heartbeats. No cleanup code.</p>
+      </div>
+      <div>
+        <h4>Scope</h4>
+        <p class="small muted">One lock manager per <strong>storage bucket</strong> — for normal first-party pages that means the origin: all tabs, iframes, and workers of this origin share the same lock namespace. Different browsers, profiles, and private windows are separate.</p>
+      </div>
+      <div>
+        <h4>Rules</h4>
+        <p class="small muted">Secure context (HTTPS/localhost) only. Names are any string — but names starting with <code>-</code> are reserved and throw. Works in dedicated/shared/service workers.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= 04 LIFECYCLE PLAYGROUND ============================= -->
+<section id="s4">
+  <div class="sec-head">
+    <div class="sec-num">04 — Hands-on: lifecycle &amp; queueing (single tab)</div>
+    <h2>Acquire, hold forever, queue behind yourself</h2>
+    <p class="sec-sub">Locks queue <em>within a tab too</em> — requests for the same name are serialized in order. Grab the lock with the hold-forever pattern, then queue a second request with an AbortSignal timeout and watch what happens.</p>
+  </div>
+  <div class="card">
+    <div class="statebox" id="lcState"><span class="dot"></span><strong id="lcLabel">wl-lifecycle — unheld</strong><span class="pill mut" id="lcPill">IDLE</span></div>
+    <div style="margin-top:14px">
+      <button class="btn acc" id="lcAcquireBtn">🔒 Acquire (hold forever)</button>
+      <button class="btn" id="lcReleaseBtn" disabled>🔓 Release</button>
+      <button class="btn ghost" id="lcQueueBtn">⏳ Queue request behind it (3s timeout)</button>
+      <button class="btn ghost" id="lcBurstBtn">⚡ Queue burst ×3</button>
+    </div>
+    <div class="log" id="lcLog"></div>
+    <p class="small muted" style="margin-top:12px">The queued request is granted the instant the holder releases — the promise resolution order proves FIFO scheduling. Timeout = <code>AbortController</code> passed as <code>signal</code>; it aborts <em>pending</em> requests without touching held locks.</p>
+  </div>
+</section>
+
+<!-- ============================= 05 QUERY INSPECTOR ============================= -->
+<section id="s5">
+  <div class="sec-head">
+    <div class="sec-num">05 — Diagnostics: navigator.locks.query()</div>
+    <h2>Live lock inspector — the DevTools of your lock namespace</h2>
+    <p class="sec-sub"><code>query()</code> returns a snapshot of every held and pending lock for the origin, with name, mode, and <code>clientId</code> (the opaque identity of the requesting context — same value as ServiceWorker <code>Client.id</code>). This table is live and shows every lock on this page, including the ones other sections hold.</p>
+  </div>
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600">
+        <input type="checkbox" id="qiAuto" checked> auto-refresh (500ms)
+      </label>
+      <button class="btn ghost sm" id="qiNow">↻ Refresh now</button>
+      <span class="pill mut" id="qiCount">0 held · 0 pending</span>
+    </div>
+    <table>
+      <thead><tr><th>State</th><th>Name</th><th>Mode</th><th>clientId (first 12)</th><th>Meaning</th></tr></thead>
+      <tbody id="qiBody"><tr><td colspan="5" class="muted small">…</td></tr></tbody>
+    </table>
+    <p class="small muted" style="margin-top:12px">Grab a lock in §4, run the election in §8, or open the lab in §7 — everything shows up here. This is exactly how you debug "why is my lock not granted" in production consoles.</p>
+  </div>
+</section>
+
+<!-- ============================= 06 MODES + OPTIONS ============================= -->
+<section id="s6">
+  <div class="sec-head">
+    <div class="sec-num">06 — Modes &amp; options</div>
+    <h2>Exclusive vs shared, ifAvailable, steal, signal</h2>
+    <p class="sec-sub">Four options make the primitive production-grade. <code>mode: 'shared'</code> implements the classic readers-writer lock: many shared holders OR exactly one exclusive holder.</p>
+  </div>
+  <div class="grid g2">
+    <div class="card">
+      <h3>🤝 Readers–writer matrix <span class="pill mut">lock: wl-modes</span></h3>
+      <p class="small muted">Acquire shared readers and an exclusive writer; then probe what's grantable right now.</p>
+      <div>
+        <button class="btn sm acc" data-mode="shared">＋ shared reader</button>
+        <button class="btn sm" data-mode="exclusive">＋ exclusive writer</button>
+        <button class="btn sm ghost" id="modesProbe">🔍 Probe grantability</button>
+        <button class="btn sm ghost" id="modesRelease">Release all mine</button>
+      </div>
+      <div class="statebox" id="modesState"><span class="dot"></span><span id="modesLabel">no holders</span></div>
+      <div class="log" id="modesLog"></div>
+    </div>
+    <div class="card">
+      <h3>🧰 The four options, one line each</h3>
+      <table>
+        <tbody>
+          <tr><td><code>mode</code></td><td class="small"><code>'exclusive'</code> (default) — mutual exclusion. <code>'shared'</code> — coexists with other shared, blocks exclusive. Readers-writer pattern.</td></tr>
+          <tr><td><code>ifAvailable</code></td><td class="small">Never wait: callback gets <code>null</code> if the lock is held. Perfect for "the other tab is already on it, do nothing."</td></tr>
+          <tr><td><code>steal</code></td><td class="small">Force-take: releases the current holder (their request rejects with <code>AbortError</code>) and preempts the queue. Admin override — use sparingly.</td></tr>
+          <tr><td><code>signal</code></td><td class="small">AbortSignal that cancels the request while it's still <em>pending</em>. How you build timeouts without hanging forever.</td></tr>
+        </tbody>
+      </table>
+      <div style="margin-top:14px">
+        <h4>steal, demonstrated</h4>
+        <button class="btn sm acc" id="stealHold">1. Hold wl-steal forever</button>
+        <button class="btn sm" id="stealTake">2. Steal it</button>
+      </div>
+      <div class="log" id="stealLog"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= 07 MULTI-TAB LAB ============================= -->
+<section id="s7">
+  <div class="sec-head">
+    <div class="sec-num">07 — The centerpiece: multi-tab tug-of-war</div>
+    <h2>Two tabs, one telemetry link</h2>
+    <p class="sec-sub">This is the Mission Control problem in miniature: an exclusive resource (<code>mc-telemetry-link</code>) that only one tab may own. Open a partner tab, fight over the lock, then close the holder's tab mid-flight and watch failover happen with zero cleanup code.</p>
+  </div>
+  <div class="card">
+    <div class="flow">
+      <div class="box">
+        <h4>📋 The drill</h4>
+        <ol class="small" style="padding-left:18px;margin-top:6px">
+          <li><strong>Tab 1:</strong> <em>Acquire (wait)</em> → holds the link</li>
+          <li><strong>Tab 2:</strong> <em>Acquire (wait)</em> → pends (yellow)</li>
+          <li><strong>Tab 1:</strong> <em>Release</em> → Tab 2 auto-granted ✓</li>
+          <li><strong>Failover test:</strong> Tab 1 re-acquires, Tab 2 queues… then <strong>close Tab 1 entirely</strong> — the browser releases its locks and Tab 2 takes over instantly. No heartbeat. No stale state.</li>
+        </ol>
+      </div>
+      <div class="arrow">⇄</div>
+      <div class="box">
+        <h4>🛰️ Shared state (via BroadcastChannel)</h4>
+        <p class="small" style="margin-top:6px">Grant/release events broadcast to every tab on this channel, so each tab's lab view mirrors the other's — the same pairing you'd use to sync real UI state alongside the lock.</p>
+        <button class="btn acc" id="labOpen" style="margin-top:10px">🚀 Open partner tab</button>
+        <p class="small muted" style="margin-top:8px">If nothing opens, allow popups for this site.</p>
+      </div>
+    </div>
+    <div class="tabs" id="labCards"></div>
+    <div style="margin-top:16px">
+      <button class="btn acc" id="labAcquire">🔒 Acquire (wait for turn)</button>
+      <button class="btn ghost" id="labIfAvail">⚡ Acquire ifAvailable</button>
+      <button class="btn" id="labSteal">🪃 Steal from other tab</button>
+      <button class="btn ghost" id="labRelease" disabled>🔓 Release</button>
+    </div>
+    <div class="log" id="labLog" style="max-height:300px"></div>
+  </div>
+</section>
+
+<!-- ============================= 08 LEADER ELECTION ============================= -->
+<section id="s8">
+  <div class="sec-head">
+    <div class="sec-num">08 — Leader election &amp; failover</div>
+    <h2>The "primary tab" pattern, live</h2>
+    <p class="sec-sub">Every tab queues for the <code>wl-leader</code> lock. Exactly one is granted — it holds forever. Close the leader tab and the next tab in the queue is promoted automatically. This is the spec's own motivating use case, and it's the backbone of single-subscriber telemetry, one-tab sync, and "who owns the WebSocket."</p>
+  </div>
+  <div class="card">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+      <button class="btn acc" id="elJoin">🗳️ Join election (wait for leadership)</button>
+      <button class="btn ghost" id="elAbdicate" disabled>👋 Abdicate (release leadership)</button>
+      <span class="pill mut" id="elBadge">NOT PARTICIPATING</span>
+      <span class="small muted" id="elKnown"></span>
+    </div>
+    <div class="note blue" style="margin-top:16px"><span class="ic">💡</span><div class="small">Open the partner tab from §7 and join there too — leadership badges update in both tabs via BroadcastChannel. Then close whichever tab is leader and watch the survivor promote itself.</div></div>
+    <div class="log" id="elLog"></div>
+    <pre><code><span class="cm">// Production leader election — the whole thing:</span>
+<span class="kw">const</span> chan = <span class="kw">new</span> <span class="fn">BroadcastChannel</span>(<span class="str">'app-state'</span>);
+<span class="kw">let</span> releaseLeadership;
+navigator.locks.request(<span class="str">'app-leader'</span>, <span class="kw">async</span> () => {
+  <span class="cm">// I'm the primary tab now — do the exclusive work:</span>
+  <span class="cm">// telemetry subscription, periodic sync, badge broadcasts</span>
+  chan.postMessage({ type: <span class="str">'leader'</span>, tab: tabId });
+  <span class="kw">await</span> <span class="kw">new</span> Promise(r => releaseLeadership = r); <span class="cm">// hold forever</span>
+}).catch(() => {}); <span class="cm">// preempted by steal or aborted — fall back to follower</span></code></pre>
+  </div>
+</section>
+
+<!-- ============================= 09 BROADCASTCHANNEL ============================= -->
+<section id="s9">
+  <div class="sec-head">
+    <div class="sec-num">09 — BroadcastChannel: the message bus</div>
+    <h2>Locks decide <em>who</em>, channels say <em>what</em></h2>
+    <p class="sec-sub"><code>BroadcastChannel</code> is postMessage for every same-origin context at once: tabs, windows, iframes, workers — no BroadcastChannel object sharing needed, no localStorage <code>storage</code> event hacks, structured-clone payloads. It doesn't coordinate anything by itself; paired with Web Locks it carries the state that follows the decision.</p>
+  </div>
+  <div class="grid g2">
+    <div class="card">
+      <h3>🏓 Ping / pong (needs 2 tabs)</h3>
+      <p class="small muted">Partner tab auto-replies to pings. Every message lands in both tabs' logs.</p>
+      <button class="btn acc" id="bcPing">Send ping</button>
+      <div class="log" id="bcLog"></div>
+    </div>
+    <div class="card">
+      <h3>What each primitive is for</h3>
+      <table>
+        <tbody>
+          <tr><td><strong>Web Locks</strong></td><td class="small">Mutual exclusion, ownership, leader election, failover on death. Decisions.</td></tr>
+          <tr><td><strong>BroadcastChannel</strong></td><td class="small">Fire-and-forget messaging to all same-origin contexts. State propagation.</td></tr>
+          <tr><td><strong>SharedWorker</strong></td><td class="small">Shared compute + relay hub; no exclusion guarantees; no Safari mobile history. Usually overkill.</td></tr>
+          <tr><td><strong>storage events</strong></td><td class="small">localStorage change notifications — strings only, other-tab only, write-notify pattern. Legacy.</td></tr>
+        </tbody>
+      </table>
+      <p class="small muted" style="margin-top:10px">Baseline 2022 trio: BroadcastChannel landed Chrome 54 (2016) / Firefox 38 (2015) / Safari 15.4 (2022). Ship anywhere.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= 10 OPENDRONES PATTERN ============================= -->
+<section id="s10">
+  <div class="sec-head">
+    <div class="sec-num">10 — Production pattern — OpenDrones Mission Control</div>
+    <h2>Hardware ownership + single subscriber + shared readers</h2>
+    <p class="sec-sub">Three lock conventions turn Mission Control from "please don't open two tabs" into "open as many tabs as you want, exactly one is flying."</p>
+  </div>
+  <div class="card">
+    <pre><code><span class="cm">// ── 1. Exclusive hardware ownership (Web Serial port):</span>
+<span class="cm">//    lock name = resource path ⟹ conflict impossible by construction</span>
+<span class="kw">async function</span> <span class="fn">withSerialPort</span>(path, fn) {
+  <span class="kw">return</span> navigator.locks.request(
+    <span class="str">`serial:${path}`</span>, { ifAvailable: <span class="kw">true</span> },
+    <span class="kw">async</span> (lock) => {
+      <span class="kw">if</span> (!lock) <span class="kw">throw new</span> <span class="fn">Error</span>(<span class="str">`port ${path} owned by another tab — read-only mode`</span>);
+      <span class="kw">const</span> port = <span class="kw">await</span> openPort(path);
+      <span class="kw">try</span> { <span class="kw">return await</span> fn(port); } <span class="kw">finally</span> { <span class="kw">await</span> port.close(); }
+    }
+  );
+}
+
+<span class="cm">// ── 2. Single telemetry subscriber (leader pattern):</span>
+<span class="cm">//    one connection per aircraft; every tab renders via BroadcastChannel</span>
+<span class="kw">await</span> navigator.locks.request(<span class="str">`telemetry:${droneId}`</span>, <span class="kw">async</span> () => {
+  <span class="kw">const</span> conn = <span class="kw">await</span> transport.connect(relayUrl);
+  conn.onTelemetry = (frame) => chan.postMessage({ type: <span class="str">'telemetry'</span>, frame });
+  <span class="kw">await</span> holdUntilPageDeath;          <span class="cm">// tab closes ⟶ lock + connection die together</span>
+});                                       <span class="cm">// queued tab auto-promotes ⟶ reconnects</span>
+
+<span class="cm">// ── 3. Flight log writes: exclusive writer, shared readers</span>
+<span class="kw">async function</span> <span class="fn">appendFlightLog</span>(entry) {
+  <span class="kw">return</span> navigator.locks.request(<span class="str">`log:${missionId}`</span>, <span class="kw">async</span> () => {
+    <span class="kw">await</span> opfsAppend(entry);            <span class="cm">// serialized — no interleaved writes, ever</span>
+  });
+}
+<span class="kw">async function</span> <span class="fn">readFlightLog</span>() {
+  <span class="kw">return</span> navigator.locks.request(<span class="str">`log:${missionId}`</span>,
+    { mode: <span class="str">'shared'</span> }, () => opfsRead());  <span class="cm">// parallel reads, blocked during writes</span>
+}</code></pre>
+    <div class="grid g3" style="margin-top:16px">
+      <div><h4>Naming convention</h4><p class="small muted"><code>resource:id</code> — <code>serial:</code>, <code>telemetry:</code>, <code>log:</code>, <code>sync:</code>. Self-documenting in query() output; deadlocks impossible if you never nest two different lock names.</p></div>
+      <div><h4>Failover semantics</h4><p class="small muted">Holder dies ⟶ browser releases ⟶ next queued tab granted ⟶ it reconnects and broadcasts "I'm primary." The reconnect script belongs in the grant callback.</p></div>
+      <div><h4>Pilot UX</h4><p class="small muted"><code>ifAvailable</code> + a banner: "This tab is observing — flying happens in the other tab." Never silently own hardware twice.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= 11 MOLT APPLICATIONS ============================= -->
+<section id="s11">
+  <div class="sec-head">
+    <div class="sec-num">11 — Molt Studios applications</div>
+    <h2>Where a client site wants this tomorrow</h2>
+    <p class="sec-sub">Multi-tab users are more common than analytics suggest — power users duplicate tabs constantly. These patterns are free insurance.</p>
+  </div>
+  <div class="grid g3">
+    <div class="card">
+      <h3>🛒 Cross-tab cart &amp; settings sync</h3>
+      <p class="small">Add to cart in one tab → every tab updates instantly via BroadcastChannel. No library, no websocket, works offline. The one-liner most clients actually want.</p>
+    </div>
+    <div class="card">
+      <h3>📝 "Another tab is editing"</h3>
+      <p class="small">CMS/quote-builder forms: acquire <code>edit:{docId}</code> with <code>ifAvailable</code>. Second tab gets read-only + a notice with a "take over" button (<code>steal</code>). Kills silent last-write-wins clobbering.</p>
+    </div>
+    <div class="card">
+      <h3>💳 Single-flight checkout guard</h3>
+      <p class="small">Duplicate-tab submit races are a real e-commerce support ticket. A <code>checkout:{cartId}</code> lock around payment init makes double-charge structurally impossible.</p>
+    </div>
+    <div class="card">
+      <h3>🔔 One-tab notifications</h3>
+      <p class="small">Leader-elected tab is the only one that shows toasts/plays sounds for push events — no echo chorus across five tabs.</p>
+    </div>
+    <div class="card">
+      <h3>🌗 Instant theme/locale fan-out</h3>
+      <p class="small">Toggle dark mode or language in one tab; every tab repaints the same frame via channel message. No re-read from storage.</p>
+    </div>
+    <div class="card">
+      <h3>🧹 Logout everywhere (client-side)</h3>
+      <p class="small">Broadcast a logout message; all tabs clear UI state and redirect — the classic SPA "log me out of all my tabs" feature in 6 lines.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= 12 SUPPORT + RECAP ============================= -->
+<section id="s12">
+  <div class="sec-head">
+    <div class="sec-num">12 — Browser support, gotchas &amp; recap</div>
+    <h2>Baseline 2022 — ship it today, everywhere</h2>
+  </div>
+  <div class="grid g2">
+    <div class="card">
+      <h3>📊 Support (Aug 2026)</h3>
+      <table>
+        <thead><tr><th>Browser</th><th>Web Locks</th><th>BroadcastChannel</th></tr></thead>
+        <tbody>
+          <tr><td>Chrome / Edge</td><td>69+ <span class="muted small">(Sep 2018)</span></td><td>54+ <span class="muted small">(Oct 2016)</span></td></tr>
+          <tr><td>Firefox</td><td>96+ <span class="muted small">(Jan 2022)</span></td><td>38+ <span class="muted small">(May 2015)</span></td></tr>
+          <tr><td>Safari / iOS</td><td>15.4+ <span class="muted small">(Mar 2022)</span></td><td>15.4+ <span class="muted small">(Mar 2022)</span></td></tr>
+          <tr><td>Workers</td><td colspan="2" class="small">Both work in dedicated, shared &amp; service workers — locks coordinate tabs <em>through</em> workers too</td></tr>
+          <tr><td>Baseline</td><td colspan="2"><span class="pill ok">WIDELY AVAILABLE — MARCH 2022</span></td></tr>
+        </tbody>
+      </table>
+      <p class="small muted" style="margin-top:10px"><code>query()</code> ships with the same versions. Everything on this page is Baseline — no feature detection gates needed in practice beyond a progressive <code>'locks' in navigator</code> check.</p>
+    </div>
+    <div class="card">
+      <h3>⚠️ Gotchas worth memorizing</h3>
+      <ul class="clean">
+        <li><strong>Secure context only</strong> — HTTPS or localhost. <code>file://</code> won't have it.</li>
+        <li><strong>Names starting with <code>-</code> throw</strong> <code>NotSupportedError</code> — reserved namespace.</li>
+        <li><strong>Deadlocks are possible</strong> if you nest different lock names out of order (Tab1 holds A wants B; Tab2 holds B wants A). Never nest, or always acquire in sorted order, or always pass <code>signal</code> timeouts.</li>
+        <li><strong><code>steal</code> is rude</strong> — the victim's request rejects <code>AbortError</code>; their callback may be mid-work. Reserve for admin overrides.</li>
+        <li><strong>Per storage bucket</strong> — partitioned third-party iframes get their own lock namespace (privacy feature, not a bug). First-party tabs all share one namespace.</li>
+        <li><strong>Not cross-browser/profile/private</strong> — separate user agents = separate lock managers, by design.</li>
+        <li><strong>Hold-forever needs a promise</strong> — return <code>Promise.withResolvers().promise</code>; a callback that returns nothing releases immediately.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card" style="margin-top:18px">
+    <h3>🧭 Recap — the coordination tier</h3>
+    <div class="grid g3">
+      <div><h4>Decide with locks</h4><p class="small muted">Ownership, exclusion, election, failover-on-death. <code>request / ifAvailable / steal / signal / shared</code>.</p></div>
+      <div><h4>Announce with channels</h4><p class="small muted">State fan-out to every same-origin context. Structured clone, workers included, zero setup.</p></div>
+      <div><h4>Debug with query()</h4><p class="small muted">Held + pending + clientId. The first tool you reach for when "it just waits forever."</p></div>
+    </div>
+    <p class="small muted" style="margin-top:14px">Tier position: completes the multi-tab reliability layer alongside Wake Lock (screen on during flight), Page Visibility (throttle when hidden), and OPFS (the storage these locks protect). Web Locks is the last piece of "Mission Control is allowed to be open in six tabs."</p>
+  </div>
+</section>
+
+<footer>
+  <p><strong>Web Locks API + BroadcastChannel — Cross-Tab Coordination.</strong> Part of the Molt Studios / OpenDrones research showcase. Vanilla HTML/CSS/JS, zero dependencies, everything runs locally in your browser.</p>
+  <p style="margin-top:8px">Specs: <a href="https://w3c.github.io/web-locks/" rel="noopener">W3C Web Locks</a> · <a href="https://html.spec.whatwg.org/multipage/comms.html#broadcasting-to-other-browsing-contexts" rel="noopener">HTML BroadcastChannel</a> · MDN: <a href="https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API" rel="noopener">Web Locks API</a>, <a href="https://developer.mozilla.org/en-US/docs/Web/API/BroadcastChannel" rel="noopener">BroadcastChannel</a></p>
+</footer>
+
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ─────────────────── capability + identity ─────────────────── */
+  var caps = {
+    locks: typeof navigator !== 'undefined' && 'locks' in navigator,
+    bc: typeof BroadcastChannel !== 'undefined',
+    withResolvers: typeof Promise !== 'undefined' && typeof Promise.withResolvers === 'function',
+    secure: window.isSecureContext
+  };
+  caps.query = caps.locks && typeof navigator.locks.query === 'function';
+
+  var qs = new URLSearchParams(location.search);
+  var isPartner = qs.get('wt') === '1';
+  var tabId;
+  try {
+    tabId = sessionStorage.getItem('wl.tab');
+    if (!tabId || isPartner) {
+      tabId = (crypto && crypto.randomUUID ? crypto.randomUUID() : 'id-' + Math.random().toString(36).slice(2)).replace(/-/g, '').slice(0, 8);
+      sessionStorage.setItem('wl.tab', tabId);
+    }
+  } catch (e) { tabId = 'tab-' + Math.random().toString(36).slice(2, 8); }
+
+  function el(id) { return document.getElementById(id); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  /* capability badges */
+  var capDefs = [
+    ['navigator.locks', caps.locks, 'Baseline since Mar 2022'],
+    ['locks.query()', caps.query, 'held + pending introspection'],
+    ['BroadcastChannel', caps.bc, 'Baseline since Mar 2022'],
+    ['Promise.withResolvers', caps.withResolvers, 'hold-forever pattern'],
+    ['Secure context', caps.secure, 'HTTPS — required by Web Locks'],
+    ['This tab', true, 'id ' + tabId + (isPartner ? ' (partner tab)' : '')]
+  ];
+  el('caps').innerHTML = capDefs.map(function (c) {
+    return '<span class="badge ' + (c[1] ? 'live-yes' : 'live-no') + '">' + (c[1] ? '✓' : '✗') + ' <b>' + c[0] + '</b> · ' + esc(c[2]) + '</span>';
+  }).join('');
+  el('ua').textContent = navigator.userAgent;
+  el('tabId').textContent = tabId;
+
+  var capCards = [
+    ['🔒 Lock manager', caps.locks, 'navigator.locks.request() — the same-origin mutex across tabs and workers.'],
+    ['🔍 Diagnostics', caps.query, 'navigator.locks.query() — snapshot of every held and pending lock.'],
+    ['📣 BroadcastChannel', caps.bc, 'Post structured-clone messages to every same-origin tab/iframe/worker at once.'],
+    ['🧵 Workers', typeof Worker !== 'undefined', 'Locks and channels both work inside workers — coordination through them too.'],
+    ['🛡️ Secure context', caps.secure, window.isSecureContext ? location.protocol + ' — Web Locks active here.' : 'Web Locks unavailable (needs HTTPS/localhost).'],
+    ['🪪 Tab identity', true, 'sessionStorage-scoped id: ' + tabId + ' — survives reloads, unique per tab.']
+  ];
+  el('capGrid').innerHTML = capCards.map(function (c) {
+    return '<div style="border:1px solid var(--line);border-radius:12px;padding:14px 16px"><h4>' + c[0] +
+      ' <span class="pill ' + (c[1] ? 'ok' : 'bad') + '">' + (c[1] ? 'READY' : 'MISSING') + '</span></h4><p class="small muted">' + c[2] + '</p></div>';
+  }).join('');
+
+  /* TOC */
+  var tocs = [
+    ['s1', 'Capability'], ['s2', 'The problem'], ['s3', 'API in 60s'], ['s4', 'Lifecycle lab'],
+    ['s5', 'query() inspector'], ['s6', 'Modes &amp; options'], ['s7', 'Multi-tab lab'], ['s8', 'Leader election'],
+    ['s9', 'BroadcastChannel'], ['s10', 'OpenDrones pattern'], ['s11', 'Molt applications'], ['s12', 'Support &amp; recap']
+  ];
+  el('toc').innerHTML = tocs.map(function (t, i) {
+    return '<a href="#' + t[0] + '"><span>' + String(i + 1).padStart(2, '0') + '</span>' + t[1] + '</a>';
+  }).join('');
+
+  /* ─────────────────── log helper ─────────────────── */
+  function makeLog(id, max) {
+    var box = el(id); var lines = [];
+    return function (msg, cls) {
+      var t = new Date().toLocaleTimeString([], { hour12: false });
+      lines.push('<div><span class="t">' + t + '</span><span class="' + (cls || '') + '">' + esc(msg) + '</span></div>');
+      if (lines.length > (max || 40)) lines.shift();
+      box.innerHTML = lines.join('');
+      box.scrollTop = box.scrollHeight;
+    };
+  }
+
+  /* ─────────────────── shared BroadcastChannel ─────────────────── */
+  var chan = null;
+  var bcLog = makeLog('bcLog', 30);
+  if (caps.bc) {
+    chan = new BroadcastChannel('wl-demo');
+    chan.onmessage = function (e) {
+      var m = e.data || {};
+      if (m.from === tabId) return;
+      if (m.type === 'ping') {
+        bcLog('ping from tab ' + m.from + ' — auto-replying', 'warn');
+        chan.postMessage({ type: 'pong', from: tabId });
+        labLog('📡 partner tab ' + m.from + ' pinged', '');
+      } else if (m.type === 'pong') {
+        bcLog('pong from tab ' + m.from + ' ✓ round-trip complete', 'ok');
+      }
+      if (m.type === 'grant' || m.type === 'release' || m.type === 'leader' || m.type === 'note') {
+        labLog('📨 from tab ' + m.from + ': ' + m.type + (m.detail ? ' — ' + m.detail : ''), m.type === 'grant' ? 'ok' : '');
+      }
+      if (m.type === 'leader') { knownLeader = m.from; renderElection(); }
+      if (m.type === 'grant') { knownHolder = m.from; renderLab(); }
+      if (m.type === 'release') { if (knownHolder === m.from) knownHolder = null; renderLab(); }
+    };
+  }
+  function bcSend(type, detail) {
+    if (!chan) return;
+    chan.postMessage({ type: type, from: tabId, detail: detail || '' });
+  }
+
+  /* ─────────────────── §4 lifecycle playground ─────────────────── */
+  var lcLog = makeLog('lcLog', 30);
+  var lcRelease = null;
+  function lcSet(state, pillText) {
+    var box = el('lcState');
+    box.className = 'statebox ' + (state || '');
+    el('lcPill').className = 'pill ' + (state === 'held' ? 'ok' : state === 'waiting' ? 'wait' : 'mut');
+    el('lcPill').textContent = pillText;
+    el('lcLabel').textContent = 'wl-lifecycle — ' + (lcRelease ? 'HELD by this tab' : state === 'waiting' ? 'requests queued' : 'unheld');
+    el('lcReleaseBtn').disabled = !lcRelease;
+    el('lcAcquireBtn').disabled = !!lcRelease;
+  }
+  el('lcAcquireBtn').addEventListener('click', function () {
+    if (!caps.locks || !caps.withResolvers) { lcLog('Web Locks or withResolvers unsupported here', 'err'); return; }
+    var res = Promise.withResolvers();
+    lcRelease = res.resolve;
+    lcLog('requesting wl-lifecycle (hold-forever pattern)');
+    navigator.locks.request('wl-lifecycle', function (lock) {
+      lcSet('held', 'HELD');
+      lcLog('🔒 granted — holding until Release clicked', 'ok');
+      return res.promise;
+    }).then(function () {
+      lcRelease = null;
+      lcSet('', 'IDLE');
+      lcLog('request() resolved — lock fully released', 'ok');
+    }).catch(function (e) { lcLog('request ended: ' + e.name, 'err'); lcSet('', 'IDLE'); });
+  });
+  el('lcReleaseBtn').addEventListener('click', function () {
+    if (lcRelease) { lcLog('Release clicked — resolving hold promise'); lcRelease(); }
+  });
+  function lcQueueOne(delay, timeoutMs) {
+    var ac = new AbortController();
+    setTimeout(function () { ac.abort(); }, delay + timeoutMs);
+    setTimeout(function () {
+      lcSet(lcRelease ? 'held' : 'waiting', 'QUEUED');
+      lcLog('⏳ queued request submitted (AbortSignal in ' + timeoutMs + 'ms)');
+      navigator.locks.request('wl-lifecycle', { signal: ac.signal }, function () {
+        lcLog('✓ granted after waiting — holding 1.2s', 'ok');
+        lcSet('held', 'HELD');
+        return sleep(1200);
+      }).then(function () { lcLog('granted request finished — released'); })
+        .catch(function (e) { lcLog('aborted while pending: ' + e.name, 'warn'); });
+    }, delay);
+  }
+  el('lcQueueBtn').addEventListener('click', function () { lcQueueOne(0, 3000); });
+  el('lcBurstBtn').addEventListener('click', function () {
+    [0, 50, 100].forEach(function (d, i) {
+      setTimeout(function () {
+        navigator.locks.request('wl-lifecycle', { signal: AbortSignal.timeout(8000) }, function () {
+          lcLog('burst #' + (i + 1) + ' granted — FIFO order proven', 'ok');
+          lcSet('held', 'HELD');
+          return sleep(900);
+        }).catch(function (e) { lcLog('burst #' + (i + 1) + ' aborted: ' + e.name, 'warn'); });
+      }, d);
+    });
+    lcSet(lcRelease ? 'held' : 'waiting', 'QUEUED ×3');
+    lcLog('queued burst of 3 behind current holder');
+  });
+
+  /* ─────────────────── §5 query inspector ─────────────────── */
+  function renderQuery() {
+    if (!caps.query) return;
+    navigator.locks.query().then(function (s) {
+      var rows = [];
+      (s.held || []).forEach(function (l) { rows.push(['<span class="pill ok">HELD</span>', l.name, l.mode, String(l.clientId || '').slice(0, 12), 'actively owned']); });
+      (s.pending || []).forEach(function (l) { rows.push(['<span class="pill wait">PENDING</span>', l.name, l.mode, String(l.clientId || '').slice(0, 12), 'waiting for holder to release']); });
+      el('qiCount').textContent = (s.held || []).length + ' held · ' + (s.pending || []).length + ' pending';
+      el('qiBody').innerHTML = rows.length ? rows.map(function (r) {
+        return '<tr><td>' + r[0] + '</td><td><code>' + esc(r[1]) + '</code></td><td class="small">' + esc(r[2]) + '</td><td><code>' + esc(r[3]) + '</code></td><td class="small muted">' + r[4] + '</td></tr>';
+      }).join('') : '<tr><td colspan="5" class="muted small">no locks — acquire something in §4, §6, §7 or §8</td></tr>';
+    }).catch(function () {});
+  }
+  el('qiAuto').addEventListener('change', function () { if (this.checked) renderQuery(); });
+  el('qiNow').addEventListener('click', renderQuery);
+  setInterval(function () { if (el('qiAuto').checked) renderQuery(); }, 500);
+  renderQuery();
+
+  /* ─────────────────── §6 modes + steal ─────────────────── */
+  var modesLog = makeLog('modesLog', 24);
+  var modesHolders = [];
+  function modesLabel() {
+    var sh = modesHolders.filter(function (h) { return h.mode === 'shared'; }).length;
+    var ex = modesHolders.filter(function (h) { return h.mode === 'exclusive'; }).length;
+    el('modesState').className = 'statebox ' + ((sh + ex) ? 'held' : '');
+    el('modesLabel').innerHTML = (ex ? '<span class="pill bad">1 exclusive</span>' : '') +
+      (sh ? '<span class="pill ok">' + sh + ' shared</span>' : '') +
+      (!sh && !ex ? 'no holders — lock free' : '');
+  }
+  document.querySelectorAll('[data-mode]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var mode = btn.getAttribute('data-mode');
+      var res = Promise.withResolvers();
+      modesHolders.push({ mode: mode, resolve: res.resolve });
+      modesLog('requesting ' + mode + ' on wl-modes…');
+      navigator.locks.request('wl-modes', { mode: mode }, function (lock) {
+        modesLog('🤝 granted ' + lock.mode + ' (' + lock.name + ')', 'ok');
+        modesLabel();
+        return res.promise;
+      }).then(function () {
+        modesHolders = modesHolders.filter(function (h) { return h.resolve !== res.resolve; });
+        modesLog(mode + ' released');
+        modesLabel();
+      }).catch(function (e) { modesLog('request failed: ' + e.name, 'err'); modesLabel(); });
+      modesLabel();
+    });
+  });
+  el('modesProbe').addEventListener('click', function () {
+    navigator.locks.request('wl-modes', { mode: 'shared', ifAvailable: true }, function (l) {
+      if (!l) { modesLog('probe: shared DENIED — an exclusive writer holds the lock', 'warn'); return null; }
+      modesLog('probe: shared GRANTED (compatible holders present) — releasing', 'ok');
+      var r = Promise.withResolvers(); setTimeout(r.resolve, 80); return r.promise;
+    });
+    navigator.locks.request('wl-modes', { mode: 'exclusive', ifAvailable: true }, function (l) {
+      if (!l) { modesLog('probe: exclusive DENIED — other holders present (this is the mutex working)', 'warn'); return null; }
+      modesLog('probe: exclusive GRANTED (lock was free) — releasing', 'ok');
+      var r = Promise.withResolvers(); setTimeout(r.resolve, 80); return r.promise;
+    });
+  });
+  el('modesRelease').addEventListener('click', function () {
+    modesHolders.forEach(function (h) { h.resolve(); });
+    modesLog('released all my holders');
+  });
+
+  var stealLog = makeLog('stealLog', 20);
+  el('stealHold').addEventListener('click', function () {
+    var res = Promise.withResolvers();
+    stealLog('holding wl-steal forever (hold promise captured)');
+    navigator.locks.request('wl-steal', function () {
+      stealLog('🔒 wl-steal granted', 'ok');
+      return res.promise;
+    }).then(function () { stealLog('holder request resolved cleanly'); })
+      .catch(function (e) { stealLog('victim request rejected: ' + e.name + ' — this is what steal feels like', 'err'); });
+    stealLog._res = res.resolve;
+  });
+  el('stealTake').addEventListener('click', function () {
+    stealLog('requesting wl-steal with { steal: true }…');
+    navigator.locks.request('wl-steal', { steal: true }, function () {
+      stealLog('🪃 stolen! previous holder preempted above ↑', 'ok');
+      var r = Promise.withResolvers(); setTimeout(r.resolve, 1500); return r.promise;
+    }).catch(function (e) { stealLog('steal failed: ' + e.name, 'err'); });
+  });
+
+  /* ─────────────────── §7 multi-tab lab ─────────────────── */
+  var labLog = makeLog('labLog', 60);
+  var labRelease = null;
+  var knownHolder = null;
+  var knownLeader = null;
+  var sawPartner = false;
+
+  el('labOpen').addEventListener('click', function () {
+    var url = location.pathname.lastIndexOf('/') >= 0
+      ? location.pathname.slice(0, location.pathname.lastIndexOf('/') + 1)
+      : '/';
+    var file = location.pathname.split('/').pop() || 'web-locks-cross-tab-coordination.html';
+    var w = window.open(location.origin + location.pathname.replace(file, '') + (location.pathname.endsWith('.html') ? file : '') + '?wt=1#s7', '_blank');
+    if (!w) labLog('popup blocked — allow popups for this site, then retry', 'err');
+    else labLog('partner tab opened — it should announce itself', 'ok');
+    bcSend('note', 'tab ' + tabId + ' opened a partner tab');
+  });
+
+  function renderLab() {
+    var wrap = el('labCards');
+    var meHolding = !!labRelease;
+    var mePending = labPending;
+    var html = '';
+    html += '<div class="tabcard ' + (meHolding ? 'holding' : '') + '"><h4>🟠 Tab ' + tabId + ' <span class="muted small">(this tab)</span> ' +
+      (meHolding ? '<span class="pill ok">HOLDS LINK</span>' : mePending ? '<span class="pill wait">QUEUED</span>' : '<span class="pill mut">idle</span>') + '</h4>' +
+      '<p class="small muted">' + (meHolding ? 'mc-telemetry-link owned here. Release it or close this tab to trigger failover.' : mePending ? 'waiting for the other tab to release / die' : 'acquire to claim the telemetry link') + '</p></div>';
+    var other = sawPartner && knownHolder !== tabId;
+    html += '<div class="tabcard ' + (knownHolder && knownHolder !== tabId ? 'holding' : '') + '"><h4>🔵 Partner tab ' +
+      (sawPartner ? (knownHolder && knownHolder !== tabId ? esc(knownHolder) : 'waiting…') : 'not open') +
+      ' ' + (knownHolder && knownHolder !== tabId ? '<span class="pill ok">HOLDS LINK</span>' : sawPartner ? '<span class="pill wait">alive</span>' : '') + '</h4>' +
+      '<p class="small muted">' + (sawPartner ? 'status mirrored from BroadcastChannel + query()' : 'click "Open partner tab" above') + '</p></div>';
+    wrap.innerHTML = html;
+    el('labRelease').disabled = !meHolding;
+    el('labAcquire').disabled = !!meHolding;
+  }
+  var labPending = false;
+  function labAcquire(opts, label) {
+    if (!caps.locks) { labLog('Web Locks unsupported', 'err'); return; }
+    labLog('requesting mc-telemetry-link (' + label + ')');
+    var res = Promise.withResolvers();
+    labPending = label === 'wait';
+    renderLab();
+    navigator.locks.request('mc-telemetry-link', opts || {}, function (lock) {
+      labPending = false;
+      if (!lock) { labLog('⚡ ifAvailable → null: another tab owns the link', 'warn'); renderLab(); return null; }
+      labRelease = res.resolve;
+      knownHolder = tabId;
+      bcSend('grant', 'tab ' + tabId + ' owns the link');
+      labLog('🔒 ACQUIRED — this tab owns mc-telemetry-link', 'ok');
+      renderLab();
+      return res.promise;
+    }).then(function () {
+      labRelease = null; labPending = false;
+      if (knownHolder === tabId) knownHolder = null;
+      bcSend('release', 'tab ' + tabId + ' released');
+      labLog('🔓 released — queued tab (if any) is granted now');
+      renderLab();
+    }).catch(function (e) {
+      labPending = false;
+      labLog('request ended: ' + e.name + (e.name === 'AbortError' ? ' (preempted by steal)' : ''), 'err');
+      renderLab();
+    });
+  }
+  el('labAcquire').addEventListener('click', function () {
+    sawPartner = true; /* assume for card display */
+    labAcquire({}, 'wait');
+  });
+  el('labIfAvail').addEventListener('click', function () { labAcquire({ ifAvailable: true }, 'ifAvailable'); });
+  el('labSteal').addEventListener('click', function () { labAcquire({ steal: true }, 'steal'); });
+  el('labRelease').addEventListener('click', function () { if (labRelease) labRelease(); });
+  renderLab();
+
+  /* partner tab: announce self */
+  if (isPartner && chan) {
+    bcSend('note', 'partner tab ' + tabId + ' is alive');
+    sawPartner = true;
+    labLog('👋 partner tab started — id ' + tabId, 'ok');
+    renderLab();
+  }
+  /* learn about partner from any message */
+  var origLabLog = labLog;
+  labLog = function (msg, cls) {
+    if (msg && msg.indexOf('from tab') >= 0) sawPartner = true;
+    origLabLog(msg, cls);
+  };
+
+  /* ─────────────────── §8 leader election ─────────────────── */
+  var elLog = makeLog('elLog', 24);
+  var elRelease = null;
+  var joined = false;
+  function renderElection() {
+    var badge = el('elBadge');
+    if (!joined) { badge.className = 'pill mut'; badge.textContent = 'NOT PARTICIPATING'; }
+    else if (knownLeader === tabId) { badge.className = 'pill ok'; badge.textContent = '👑 LEADER — this tab'; }
+    else if (knownLeader) { badge.className = 'pill wait'; badge.textContent = 'FOLLOWER — leader is tab ' + knownLeader; }
+    else { badge.className = 'pill wait'; badge.textContent = 'ELECTION PENDING'; }
+    el('elKnown').textContent = knownLeader ? ('known leader: ' + knownLeader) : 'no leader known yet';
+    el('elAbdicate').disabled = !elRelease;
+  }
+  el('elJoin').addEventListener('click', function () {
+    if (joined) return;
+    joined = true;
+    var res = Promise.withResolvers();
+    elLog('joining election — queuing for wl-leader' + (knownLeader ? ' (leader exists, will wait)' : ''));
+    elRelease = res.resolve;
+    renderElection();
+    navigator.locks.request('wl-leader', function () {
+      knownLeader = tabId;
+      bcSend('leader', 'tab ' + tabId + ' is now leader');
+      elLog('👑 LEADERSHIP GRANTED to this tab', 'ok');
+      renderElection();
+      return res.promise;
+    }).then(function () {
+      elRelease = null;
+      if (knownLeader === tabId) knownLeader = null;
+      elLog('abdicated — next queued tab promotes automatically');
+      renderElection();
+    }).catch(function (e) { elLog('leadership lost: ' + e.name, 'err'); elRelease = null; renderElection(); });
+  });
+  el('elAbdicate').addEventListener('click', function () { if (elRelease) { elLog('releasing leadership hold…'); elRelease(); } });
+  renderElection();
+
+  /* ─────────────────── §9 ping ─────────────────── */
+  el('bcPing').addEventListener('click', function () {
+    if (!chan) { bcLog('BroadcastChannel unsupported', 'err'); return; }
+    bcLog('ping sent from tab ' + tabId + ' — waiting for partner…');
+    chan.postMessage({ type: 'ping', from: tabId });
+    if (!sawPartner) bcLog('(open the partner tab in §7 to get a pong)', 'warn');
+  });
+
+  /* ─────────────────── tidy unload ─────────────────── */
+  window.addEventListener('pagehide', function () {
+    try { if (labRelease) labRelease(); } catch (e) {}
+    try { if (elRelease) elRelease(); } catch (e) {}
+    try { bcSend('release', 'tab ' + tabId + ' unloaded'); } catch (e) {}
+  });
+
+  /* section count for verification */
+  window.__wl = { sections: document.querySelectorAll('section').length, caps: caps, tabId: tabId };
+})();
+</script>
+</body>
+</html>
