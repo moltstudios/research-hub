@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gamepad API + WebHID — Physical Controller Input for the Browser (Baseline 2017)</title>
+<meta name="description" content="The Gamepad API is Baseline (every browser since 2017) and gives web apps native dual-stick controller input: polling, standard mapping, haptic feedback. WebHID extends Chromium to raw HID devices — RC transmitters, button decks, LED panels. Live stick visualizer with dead zone + expo curves, mode-2 drone control lab, haptics playground, WebHID device inspector. OpenDrones Mission Control + Molt Studios applications.">
+<style>
+  :root {
+    --bg: #faf9f7;
+    --surface: #ffffff;
+    --ink: #1c1b1f;
+    --muted: #6d6b76;
+    --accent: #cf5b2e;
+    --accent-soft: #fdeee6;
+    --line: #e9e6e1;
+    --code-bg: #211f26;
+    --code-ink: #e9e6e3;
+    --ok: #1f8a5d;
+    --warn: #b3742a;
+    --bad: #c2453a;
+    --radius: 16px;
+    --shadow: 0 1px 2px rgba(28,27,31,.05), 0 8px 24px rgba(28,27,31,.06);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg); color: var(--ink); font-size: 16px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  .orb { position: fixed; border-radius: 50%; filter: blur(90px); opacity: .14; pointer-events: none; z-index: 0; }
+  .orb-1 { width: 420px; height: 420px; background: var(--accent); top: -120px; right: -100px; }
+  .orb-2 { width: 340px; height: 340px; background: #e0952f; top: 40%; left: -160px; }
+  main { position: relative; z-index: 1; }
+
+  header.hero { padding: 72px 0 40px; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent-soft); color: var(--accent);
+    font-size: 12.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+    padding: 6px 14px; border-radius: 999px; margin-bottom: 20px;
+  }
+  h1 { font-size: clamp(34px, 5vw, 52px); line-height: 1.12; letter-spacing: -.02em; font-weight: 800; max-width: 900px; }
+  h1 em { font-style: normal; color: var(--accent); }
+  .lede { font-size: 18px; color: var(--muted); max-width: 780px; margin-top: 18px; }
+  .hero-badges { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+  .badge {
+    font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow);
+  }
+  .badge b { color: var(--accent); }
+  .badge.live-yes { border-color: #bfe3d2; background: #eefaf3; }
+  .badge.live-yes b { color: var(--ok); }
+  .badge.live-no b { color: var(--warn); }
+
+  section { padding: 48px 0; border-top: 1px solid var(--line); }
+  .sec-head { margin-bottom: 28px; }
+  .sec-num { font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: .12em; text-transform: uppercase; }
+  h2 { font-size: clamp(24px, 3.4vw, 34px); letter-spacing: -.015em; font-weight: 750; margin-top: 6px; }
+  .sec-sub { color: var(--muted); max-width: 780px; margin-top: 10px; font-size: 16.5px; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 26px; box-shadow: var(--shadow); }
+  .grid { display: grid; gap: 18px; min-width: 0; }
+  .g2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); }
+  .grid > * { min-width: 0; }
+  h3 { font-size: 18px; font-weight: 700; letter-spacing: -.01em; margin-bottom: 8px; }
+  h4 { font-size: 14.5px; font-weight: 700; margin-bottom: 6px; }
+  p + p { margin-top: 10px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13.5px; }
+  ul.clean { list-style: none; }
+  ul.clean li { padding-left: 22px; position: relative; margin-top: 8px; }
+  ul.clean li::before { content: "—"; position: absolute; left: 0; color: var(--accent); font-weight: 700; }
+  code {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: .88em;
+    background: #f1efec; border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; color: #9a3f1c;
+  }
+  pre {
+    background: var(--code-bg); color: var(--code-ink); border-radius: 12px; padding: 18px 20px;
+    overflow-x: auto; font-size: 13px; line-height: 1.6; margin-top: 12px;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  }
+  pre .k { color: #8fc7ff; } pre .s { color: #a8e6a3; } pre .c { color: #8a8794; font-style: italic; }
+  pre .n { color: #ffcb8d; } pre .f { color: #f2a6c0; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin-top: 14px; }
+  th { text-align: left; font-size: 12.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+  th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td b { font-weight: 650; }
+  .yes { color: var(--ok); font-weight: 700; } .no { color: var(--bad); font-weight: 700; } .part { color: var(--warn); font-weight: 700; }
+
+  .note {
+    background: var(--accent-soft); border: 1px solid #f3d9c8; color: #7a3f22;
+    border-radius: 12px; padding: 14px 16px; font-size: 14px; margin-top: 16px;
+  }
+  .note b { font-weight: 700; }
+
+  /* ---- controls ---- */
+  button.btn {
+    font: inherit; font-weight: 650; font-size: 14.5px; cursor: pointer;
+    background: var(--accent); color: #fff; border: none; border-radius: 10px;
+    padding: 10px 18px; box-shadow: var(--shadow); transition: transform .12s ease, filter .12s ease;
+  }
+  button.btn:hover { filter: brightness(1.06); }
+  button.btn:active { transform: scale(.97); }
+  button.btn.ghost { background: var(--surface); color: var(--accent); border: 1px solid var(--line); }
+  button.btn:disabled { opacity: .45; cursor: not-allowed; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  label.ctl { display: block; font-size: 13px; font-weight: 600; color: var(--muted); }
+  input[type="range"] { width: 150px; accent-color: var(--accent); vertical-align: middle; }
+  .ctl-val { font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--ink); font-weight: 650; }
+
+  /* ---- pads ---- */
+  .pad-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 640px) { .pad-grid { grid-template-columns: 1fr; } }
+  .padbox { text-align: center; }
+  .padbox h4 { margin-bottom: 10px; }
+  .xypad {
+    position: relative; width: 100%; aspect-ratio: 1/1; max-width: 260px; margin: 0 auto;
+    background: linear-gradient(#fbfaf8, #f4f2ee); border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: inset 0 1px 3px rgba(28,27,31,.06); touch-action: none;
+  }
+  .xypad .cross-h, .xypad .cross-v { position: absolute; background: #e5e1da; }
+  .xypad .cross-h { left: 6%; right: 6%; top: 50%; height: 1px; }
+  .xypad .cross-v { top: 6%; bottom: 6%; left: 50%; width: 1px; }
+  .xypad .dz-ring {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    border: 1px dashed #d3a48c; border-radius: 50%; background: rgba(207,91,46,.05);
+  }
+  .xypad .dot {
+    position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px;
+    background: var(--accent); border-radius: 50%; box-shadow: 0 2px 8px rgba(207,91,46,.45);
+    transition: transform .03s linear; will-change: transform;
+  }
+  .pad-readout { margin-top: 10px; font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .pad-readout b { color: var(--ink); }
+
+  /* ---- buttons matrix ---- */
+  .btn-matrix { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; margin-top: 14px; }
+  .gbtn {
+    border: 1px solid var(--line); background: #f7f5f2; border-radius: 10px;
+    padding: 8px 4px; text-align: center; font-size: 11.5px; font-weight: 650; color: var(--muted);
+    transition: all .08s ease; position: relative; overflow: hidden;
+  }
+  .gbtn .fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0%; background: var(--accent-soft); transition: height .05s linear; }
+  .gbtn span { position: relative; }
+  .gbtn.pressed { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .gbtn.pressed .fill { height: 0%; background: transparent; }
+
+  /* ---- drone lab ---- */
+  .drone-stage {
+    background: linear-gradient(180deg, #f2f0ec, #faf9f7); border: 1px solid var(--line);
+    border-radius: 14px; padding: 20px; min-height: 120px; position: relative; overflow: hidden;
+  }
+  .drone-icon {
+    position: absolute; left: 50%; top: 50%; font-size: 34px; width: 60px; height: 60px; margin: -30px 0 0 -30px;
+    display: grid; place-items: center; transition: transform .05s linear; will-change: transform;
+  }
+  .chan-bars { display: grid; gap: 8px; margin-top: 14px; }
+  .chan { display: grid; grid-template-columns: 92px 1fr 58px; gap: 10px; align-items: center; font-size: 12.5px; font-weight: 600; }
+  .chan .bar { height: 10px; border-radius: 999px; background: #edeae5; position: relative; overflow: hidden; }
+  .chan .bar i { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: #d8d4cd; }
+  .chan .bar b { position: absolute; top: 0; bottom: 0; background: var(--accent); border-radius: 999px; width: 0; transition: width .04s linear, left .04s linear; }
+  .chan .val { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700;
+    padding: 6px 14px; border-radius: 999px; background: #f1efec; border: 1px solid var(--line); color: var(--muted);
+  }
+  .status-pill.armed { background: #eefaf3; border-color: #bfe3d2; color: var(--ok); }
+  .status-pill.warn { background: #fdf3e4; border-color: #ecd3a8; color: var(--warn); }
+
+  /* ---- logs ---- */
+  .log {
+    background: var(--code-bg); color: var(--code-ink); border-radius: 12px; padding: 14px 16px;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.7;
+    height: 180px; overflow-y: auto; margin-top: 14px;
+  }
+  .log .t { color: #8a8794; } .log .ok { color: #a8e6a3; } .log .warn { color: #ffcb8d; } .log .err { color: #ff9d9d; }
+
+  /* ---- hid tree ---- */
+  .hid-tree { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.8; white-space: pre-wrap; word-break: break-word; }
+  .hid-empty { color: var(--muted); font-size: 14px; }
+
+  .checks li::before { content: "✓"; color: var(--ok); }
+  footer { padding: 56px 0 64px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+  footer a { color: var(--accent); text-decoration: none; font-weight: 600; }
+  .kbd {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px;
+    background: #f1efec; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; padding: 2px 7px; font-weight: 650;
+  }
+</style>
+</head>
+<body>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<main>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">🎮 Web Platform Research — Physical Input</div>
+    <h1>Gamepad API + WebHID — <em>physical controller input</em>, natively in the browser</h1>
+    <p class="lede">
+      The Gamepad API is <b>Baseline (widely available since 2017)</b>: every engine — Chrome, Edge, Firefox, Safari, iOS —
+      exposes dual-stick controllers, analog triggers and haptics through one polling interface. <b>WebHID</b> is the
+      Chromium escape hatch to raw HID devices: RC transmitters, button decks, LED panels, custom hardware.
+      Together they turn a browser tab into a drone-ground-station cockpit.
+    </p>
+    <div class="hero-badges">
+      <div class="badge" id="capGamepad">Gamepad API: <b>checking…</b></div>
+      <div class="badge" id="capHid">WebHID: <b>checking…</b></div>
+      <div class="badge" id="capSecure">Secure context: <b>…</b></div>
+      <div class="badge" id="capPads">Controllers seen: <b>0</b></div>
+    </div>
+  </div>
+</header>
+
+<!-- ============ 1. capability detection ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">Section 1</div>
+      <h2>Live capability detection</h2>
+      <p class="sec-sub">Both APIs feature-detect in one line each. The Gamepad API exists everywhere; WebHID exists only in Chromium browsers — the page must degrade, not break.</p>
+    </div>
+    <div class="card">
+      <div class="row" style="gap:18px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:280px;">
+<pre><span class="c">// One line each — no libraries, no permissions prompt for gamepads</span>
+<span class="k">const</span> hasGamepad = <span class="s">'getGamepads'</span> <span class="k">in</span> navigator;   <span class="c">// true in EVERY browser</span>
+<span class="k">const</span> hasWebHID  = <span class="s">'hid'</span> <span class="k">in</span> navigator;             <span class="c">// Chromium only (~27% global)</span>
+<span class="k">const</span> isSecure  = window.<span class="f">isSecureContext</span>;             <span class="c">// required for WebHID</span>
+
+<span class="c">// Haptics capability is per-device, not per-browser:</span>
+<span class="k">const</span> pad = navigator.<span class="f">getGamepads</span>()[<span class="n">0</span>];
+<span class="k">const</span> haptics = !!pad?.vibrationActuator;  <span class="c">// varies: Xbox/PS pads usually yes</span>
+<span class="k">const</span> effects = pad?.vibrationActuator?.effects; <span class="c">// ["dual-rumble","trigger-rumble"]</span></pre>
+        </div>
+        <div style="flex:1; min-width:280px;">
+          <h4>This browser right now</h4>
+          <table>
+            <tr><td>Gamepad API</td><td id="dGamepad" class="part">…</td></tr>
+            <tr><td>WebHID</td><td id="dHid" class="part">…</td></tr>
+            <tr><td>Secure context</td><td id="dSecure" class="part">…</td></tr>
+            <tr><td>Haptic actuator</td><td id="dHaptics" class="part">plug in a pad</td></tr>
+            <tr><td>User agent</td><td class="small muted" id="dUA">…</td></tr>
+          </table>
+          <p class="small muted" style="margin-top:10px;">Gamepad access needs zero permission prompts. WebHID always shows a browser-native device picker (user gesture required).</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2. the problem / two paths ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">Section 2</div>
+      <h2>Two native paths to physical input</h2>
+      <p class="sec-sub">For 20 years, "use a real controller in the browser" meant NPAPI plugins, then nothing. The platform now ships two complementary answers.</p>
+    </div>
+    <div class="grid g2">
+      <div class="card">
+        <h3>🕹️ Gamepad API — the universal one</h3>
+        <p class="muted">Baseline widely available since March 2017. Chrome, Edge, Firefox, Safari (macOS + iOS 16.4+), Samsung, Opera.</p>
+        <ul class="clean small">
+          <li><b>Polling model:</b> <code>navigator.getGamepads()</code> returns a snapshot array — read axes/buttons inside <code>requestAnimationFrame</code>.</li>
+          <li><b>Standard mapping:</b> <code>mapping === "standard"</code> guarantees stick/trigger/button indices across vendors.</li>
+          <li><b>Analog everything:</b> triggers and sticks are floats (−1…1), not key events.</li>
+          <li><b>Haptics:</b> <code>GamepadHapticActuator</code> — <code>dual-rumble</code> (Chrome/Firefox), <code>trigger-rumble</code> (Chrome 126+, Microsoft spec).</li>
+          <li><b>Zero prompts:</b> no permission dialog; pad appears after the first button press.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>🔌 WebHID — the raw one (Chromium)</h3>
+        <p class="muted">MDN: experimental, not Baseline. Chrome/Edge/Opera desktop; no Firefox (open request on Mozilla Connect), no Safari, no mobile. ~27% global traffic.</p>
+        <ul class="clean small">
+          <li><b>Any HID device:</b> vendor-defined interfaces, button decks, LED panels, unusual RC hardware.</li>
+          <li><b>Parsed descriptors:</b> <code>device.collections</code> gives the full usage tree the OS parser built.</li>
+          <li><b>Event-driven input:</b> <code>inputreport</code> events carry raw <code>DataView</code> report bytes.</li>
+          <li><b>Outputs:</b> <code>sendReport()</code> drives LEDs, force feedback, custom commands.</li>
+          <li><b>Guarded:</b> browser picker + user gesture; protected device classes blocklisted; secure context only.</li>
+        </ul>
+        <div class="note"><b>Division of labor:</b> if the device presents as a joystick/gamepad → Gamepad API, everywhere. If it's anything else (or you need LEDs out) → WebHID, feature-gated. Serial links (MAVLink telemetry) stay on Web Serial.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3. connection panel ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">Section 3</div>
+      <h2>Live controller connection</h2>
+      <p class="sec-sub">Browsers hide gamepads until the user presses a button — that's the privacy model. Connect a controller over USB or Bluetooth and <b>press any button</b> to wake it up.</p>
+    </div>
+    <div class="card">
+      <div class="row">
+        <div class="status-pill" id="padStatus">⚪ waiting for controller…</div>
+        <span class="small muted">Try Xbox, PlayStation, Switch Pro, or any Bluetooth pad. On a phone: iOS 16.4+ Safari works.</span>
+      </div>
+      <div id="padList" style="margin-top:16px;"></div>
+      <div class="log" id="connLog"><div><span class="t">[log]</span> listening for gamepadconnected / gamepaddisconnected…</div></div>
+      <div class="note"><b>No controller?</b> The stick visualizer and drone lab below also accept keyboard input — <span class="kbd">W</span>/<span class="kbd">S</span> throttle, <span class="kbd">A</span>/<span class="kbd">D</span> yaw, <span class="kbd">↑↓←→</span> pitch/roll. Click the page once so it receives keys.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4. stick visualizer ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">Section 4</div>
+      <h2>Dual-stick visualizer — dead zones &amp; expo curves</h2>
+      <p class="sec-sub">Raw stick floats are noisy near center. Every real ground station applies a <b>radial dead zone</b> and an <b>exponential response curve</b> — this is the exact math Mission Control would ship.</p>
+    </div>
+    <div class="card">
+      <div class="pad-grid">
+        <div class="padbox">
+          <h4>Left stick — throttle / yaw <span class="muted small">(mode 2)</span></h4>
+          <div class="xypad" id="padL"><div class="cross-h"></div><div class="cross-v"></div><div class="dz-ring" id="dzRingL"></div><div class="dot" id="dotL"></div></div>
+          <div class="pad-readout" id="roL">x <b>0.00</b> (yaw) · y <b>0.00</b> (throttle)</div>
+        </div>
+        <div class="padbox">
+          <h4>Right stick — roll / pitch <span class="muted small">(mode 2)</span></h4>
+          <div class="xypad" id="padR"><div class="cross-h"></div><div class="cross-v"></div><div class="dz-ring" id="dzRingR"></div><div class="dot" id="dotR"></div></div>
+          <div class="pad-readout" id="roR">x <b>0.00</b> (roll) · y <b>0.00</b> (pitch)</div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:22px; justify-content:center;">
+        <div>
+          <label class="ctl">Dead zone <span class="ctl-val" id="dzVal">0.08</span></label>
+          <input type="range" id="dzRange" min="0" max="0.4" step="0.01" value="0.08">
+        </div>
+        <div>
+          <label class="ctl">Expo curve <span class="ctl-val" id="expoVal">1.5</span></label>
+          <input type="range" id="expoRange" min="0.5" max="3" step="0.1" value="1.5">
+        </div>
+        <div>
+          <label class="ctl">Source</label>
+          <span class="status-pill" id="srcPill">auto</span>
+        </div>
+      </div>
+      <div style="margin-top:16px;">
+<pre><span class="c">// Radial dead zone + expo — the two lines every stick UI needs</span>
+<span class="k">function</span> <span class="f">shapeStick</span>(x, y, dz = <span class="n">0.08</span>, expo = <span class="n">1.5</span>) {
+  <span class="k">const</span> mag = Math.<span class="f">hypot</span>(x, y);
+  <span class="k">if</span> (mag &lt; dz) <span class="k">return</span> { x: <span class="n">0</span>, y: <span class="n">0</span> };            <span class="c">// inside dead zone → centered</span>
+  <span class="k">const</span> norm = (mag - dz) / (<span class="n">1</span> - dz);          <span class="c">// rescale so rim still = 1.0</span>
+  <span class="k">const</span> curved = Math.<span class="f">pow</span>(norm, expo);           <span class="c">// expo&gt;1: gentle center, firm rim</span>
+  <span class="k">return</span> { x: x / mag * curved, y: y / mag * curved };
+}</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5. button matrix ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">Section 5</div>
+      <h2>Standard-mapped button matrix</h2>
+      <p class="sec-sub">With <code>mapping: "standard"</code>, button indices are identical across vendors: 0=A/Cross, 6/7=analog triggers (watch the fill bars), 9=Start/Menu, 12-15=dpad. Non-standard pads fall back to raw indices.</p>
+    </div>
+    <div class="card">
+      <div class="btn-matrix" id="btnMatrix"></div>
+      <p class="small muted" style="margin-top:14px;">Analog triggers (6, 7) show a proportional fill. A fully-pressed standard button reads <code>value: 1, pressed: true</code>; triggers can be mid-range without "pressed".</p>
+      <div class="log" id="btnLog" style="height:120px;"><div><span class="t">[log]</span> button events will stream here…</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 6. drone lab ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">Section 6</div>
+      <h2>OpenDrones control lab — mode-2 channel mapping</h2>
+      <p class="sec-sub">The full production pattern: shaped sticks → 4 flight channels + arming state + haptic alerts + <b>failsafe on disconnect</b>. Fly the demo drone with a pad or the keyboard sim.</p>
+    </div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <div class="row">
+          <div class="status-pill" id="armPill">⚪ DISARMED</div>
+          <div class="status-pill" id="battPill">🔋 100%</div>
+        </div>
+        <div class="row">
+          <button class="btn" id="armBtn">Arm (Start)</button>
+          <button class="btn ghost" id="drainBtn">Simulate battery drain</button>
+        </div>
+      </div>
+      <div class="drone-stage" style="margin-top:18px;">
+        <div class="drone-icon" id="droneIcon">🛸</div>
+        <div class="small muted" style="position:absolute; left:16px; top:14px;">virtual airframe — telemetry only, no props</div>
+        <div class="small muted" style="position:absolute; right:16px; bottom:14px;" id="failsafeNote"></div>
+      </div>
+      <div class="chan-bars">
+        <div class="chan"><span>CH1 throttle</span><div class="bar"><i></i><b id="ch1"></b></div><span class="val" id="ch1v">1500 µs</span></div>
+        <div class="chan"><span>CH2 yaw</span><div class="bar"><i></i><b id="ch2"></b></div><span class="val" id="ch2v">1500 µs</span></div>
+        <div class="chan"><span>CH3 pitch</span><div class="bar"><i></i><b id="ch3"></b></div><span class="val" id="ch3v">1500 µs</span></div>
+        <div class="chan"><span>CH4 roll</span><div class="bar"><i></i><b id="ch4"></b></div><span class="val" id="ch4v">1500 µs</span></div>
+      </div>
+      <div class="note"><b>Failsafe pattern:</b> when <code>gamepaddisconnected</code> fires (or the tab hides), a real ground station zeroes throttle and triggers RTL. Watch it happen — yank a battery from the pad mid-flight. Keyboard users: press <span class="kbd">Esc</span> to simulate link loss.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 7. haptics ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">Section 7</div>
+      <h2>Haptics playground — feel the alerts</h2>
+      <p class="sec-sub"><code>GamepadHapticActuator</code> turns the controller into an output device: battery warnings, geofence pulses, arm confirmation. <code>dual-rumble</code> works in Chrome + Firefox; <code>trigger-rumble</code> landed in Chrome 126 (Microsoft-authored spec).</p>
+    </div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <div class="row">
+          <div>
+            <label class="ctl">Duration <span class="ctl-val" id="durVal">200</span> ms</label>
+            <input type="range" id="durRange" min="50" max="800" step="10" value="200">
+          </div>
+          <div>
+            <label class="ctl">Strong motor <span class="ctl-val" id="strongVal">0.8</span></label>
+            <input type="range" id="strongRange" min="0" max="1" step="0.05" value="0.8">
+          </div>
+          <div>
+            <label class="ctl">Weak motor <span class="ctl-val" id="weakVal">0.3</span></label>
+            <input type="range" id="weakRange" min="0" max="1" step="0.05" value="0.3">
+          </div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:18px;">
+        <button class="btn" id="rumbleBtn">▶ dual-rumble</button>
+        <button class="btn ghost" id="triggerBtn">▶ trigger-rumble</button>
+        <button class="btn ghost" id="patArm">Preset: arm pulse</button>
+        <button class="btn ghost" id="patBatt">Preset: low battery ⚠</button>
+        <button class="btn ghost" id="patRtl">Preset: RTL chirp</button>
+        <span class="small muted" id="hapticNote"></span>
+      </div>
+      <div style="margin-top:16px;">
+<pre><span class="c">// Ground-station alert helper — fire-and-forget, promise resolves when done</span>
+<span class="k">async function</span> <span class="f">hapticAlert</span>(pad, kind) {
+  <span class="k">const</span> act = pad.vibrationActuator;
+  <span class="k">if</span> (!act) <span class="k">return</span>;                          <span class="c">// silently degrade on Safari etc.</span>
+  <span class="k">if</span> (kind === <span class="s">'low-batt'</span>)
+    <span class="k">for</span> (<span class="k">let</span> i = <span class="n">0</span>; i &lt; <span class="n">3</span>; i++) {
+      <span class="k">await</span> act.<span class="f">playEffect</span>(<span class="s">'dual-rumble'</span>, { duration: <span class="n">120</span>, strongMagnitude: <span class="n">1</span>, weakMagnitude: <span class="n">0</span> });
+      <span class="k">await new</span> <span class="f">Promise</span>(r =&gt; <span class="f">setTimeout</span>(r, <span class="n">140</span>));
+    }
+  <span class="k">if</span> (kind === <span class="s">'arm'</span>)
+    act.<span class="f">playEffect</span>(<span class="s">'dual-rumble'</span>, { duration: <span class="n">80</span>, strongMagnitude: <span class="n">.2</span>, weakMagnitude: <span class="n">.9</span> });
+}</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 8. webhid inspector ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">Section 8</div>
+      <h2>WebHID device inspector (Chromium)</h2>
+      <p class="sec-sub">For hardware that isn't a gamepad: request any HID device, walk its parsed descriptor tree, and watch raw input reports arrive as hex. This is the debugging tool for RC-transmitter and button-deck bring-up.</p>
+    </div>
+    <div class="card" id="hidCard">
+      <div class="row">
+        <button class="btn" id="hidReqBtn">Request HID device…</button>
+        <button class="btn ghost" id="hidGrantBtn" disabled>Re-list granted</button>
+        <span class="small muted" id="hidStatus">status: idle</span>
+      </div>
+      <div id="hidDevices" style="margin-top:18px;"><p class="hid-empty">No HID devices requested yet. The browser shows its native picker; nothing is accessed without an explicit user grant.</p></div>
+      <div class="log" id="hidLog" style="display:none;"></div>
+      <div style="margin-top:16px;">
+<pre><span class="c">// WebHID bring-up in 5 lines (Chromium, secure context, user gesture)</span>
+<span class="k">const</span> [dev] = <span class="k">await</span> navigator.hid.<span class="f">requestDevice</span>({ filters: [] }); <span class="c">// picker → grant</span>
+<span class="k">await</span> dev.<span class="f">open</span>();
+dev.<span class="f">addEventListener</span>(<span class="s">'inputreport'</span>, e =&gt; {
+  <span class="c">// e.reportId, e.device, e.data — a DataView over the raw report bytes</span>
+  <span class="k">const</span> hex = [...<span class="k">new</span> <span class="f">Uint8Array</span>(e.data.buffer)].<span class="f">map</span>(b =&gt; b.<span class="f">toString</span>(<span class="n">16</span>).<span class="f">padStart</span>(<span class="n">2</span>, <span class="s">'0'</span>)).<span class="f">join</span>(<span class="s">' '</span>);
+});
+<span class="k">await</span> dev.<span class="f">sendReport</span>(<span class="n">0x01</span>, <span class="k">new</span> <span class="f">Uint8Array</span>([<span class="n">0xff</span>]));   <span class="c">// e.g. light an LED</span></pre>
+      </div>
+      <div class="note"><b>Descriptor already parsed:</b> <code>device.collections</code> is a tree of <code>{ usagePage, usage, inputReports[], outputReports[], children[] }</code> — you never parse HID report descriptors by hand. One physical device can expose several interfaces (several <code>HIDDevice</code> objects): a transmitter commonly shows one vendor-defined interface plus one consumer-control interface.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 9. code patterns ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">Section 9</div>
+      <h2>The production patterns</h2>
+      <p class="sec-sub">Connection lifecycle, the polling loop, and the disconnect-failsafe — the three pieces that make controller input shippable.</p>
+    </div>
+    <div class="card">
+<pre><span class="c">// 1) Lifecycle — pads only appear AFTER the user presses a button (privacy model)</span>
+window.<span class="f">addEventListener</span>(<span class="s">'gamepadconnected'</span>, e =&gt; console.<span class="f">log</span>(<span class="s">'pad in:'</span>, e.gamepad.id));
+window.<span class="f">addEventListener</span>(<span class="s">'gamepaddisconnected'</span>, e =&gt; <span class="f">failsafeZeroThrottle</span>(e.gamepad.index));
+
+<span class="c">// 2) Polling loop — getGamepads() is a SNAPSHOT; poll it every frame</span>
+<span class="k">function</span> <span class="f">loop</span>() {
+  <span class="k">const</span> pads = [...navigator.<span class="f">getGamepads</span>()].<span class="f">filter</span>(Boolean);
+  <span class="k">for</span> (<span class="k">const</span> p <span class="k">of</span> pads) {
+    <span class="k">const</span> [lx, ly, rx, ry] = p.axes;                <span class="c">// standard mapping order</span>
+    <span class="k">const</span> L = <span class="f">shapeStick</span>(lx, ly), R = <span class="f">shapeStick</span>(rx, ry);
+    <span class="f">sendChannels</span>(L.y, L.x, R.y, R.x);              <span class="c">// throttle, yaw, pitch, roll</span>
+    <span class="k">if</span> (p.buttons[<span class="n">9</span>]?.pressed) <span class="f">toggleArm</span>();      <span class="c">// Start button</span>
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+<span class="c">// 3) Failsafe — zero throttle + RTL when the link (pad) vanishes</span>
+<span class="k">function</span> <span class="f">failsafeZeroThrottle</span>() { <span class="f">sendChannels</span>(<span class="n">1000</span>, <span class="n">1500</span>, <span class="n">1500</span>, <span class="n">1500</span>); <span class="f">triggerRtl</span>(); }
+
+<span class="c">// 4) Page Visibility — pause the sim when the tab hides (battery + CPU)</span>
+document.<span class="f">addEventListener</span>(<span class="s">'visibilitychange'</span>, () =&gt;
+  document.hidden ? <span class="f">failsafeZeroThrottle</span>() : <span class="f">resume</span>());</pre>
+      <div class="grid g2" style="margin-top:16px;">
+        <div>
+          <h4>Gotchas that bite everyone once</h4>
+          <ul class="clean small">
+            <li><code>getGamepads()</code> returns a fixed-length array with <code>null</code> holes — filter before use.</li>
+            <li>Pads invisible until first button press; also re-press after OS sleep.</li>
+            <li>Trigger buttons can report <code>value 0.5</code> without <code>pressed: true</code> — read <code>value</code> for analog.</li>
+            <li>Dead zone per-stick radial, never per-axis square (square dz distorts diagonals).</li>
+            <li>macOS Safari + Bluetooth drift: apply dz ≥ 0.06 in production.</li>
+          </ul>
+        </div>
+        <div>
+          <h4>When to pick which API</h4>
+          <table>
+            <tr><th>Need</th><th>Use</th></tr>
+            <tr><td>Sticks / buttons / triggers</td><td><b class="yes">Gamepad</b></td></tr>
+            <tr><td>Rumble alerts</td><td><span class="part">Gamepad haptics</span></td></tr>
+            <tr><td>LEDs, custom hardware</td><td><b class="part">WebHID</b></td></tr>
+            <tr><td>MAVLink / serial telemetry</td><td><b class="part">Web Serial</b></td></tr>
+            <tr><td>Headset / 6DoF pose</td><td><b class="part">WebXR input</b></td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 10. browser support ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">Section 10</div>
+      <h2>Browser support — August 2026</h2>
+      <p class="sec-sub">Gamepad API: Baseline widely available (since March 2017). WebHID: Chromium desktop only — treat as progressive enhancement behind <code>'hid' in navigator</code>.</p>
+    </div>
+    <div class="card">
+      <table>
+        <tr><th>Capability</th><th>Chrome/Edge</th><th>Firefox</th><th>Safari</th><th>Notes</th></tr>
+        <tr><td><b>Gamepad API core</b></td><td class="yes">21+</td><td class="yes">29+</td><td class="yes">10.1+ / iOS 16.4+</td><td>Baseline 2017. Polling + events.</td></tr>
+        <tr><td><b>Standard mapping</b></td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td>Same button indices across vendors.</td></tr>
+        <tr><td><b>dual-rumble haptics</b></td><td class="yes">✓</td><td class="part">Windows</td><td class="no">✗</td><td>Gate on <code>vibrationActuator</code> presence.</td></tr>
+        <tr><td><b>trigger-rumble</b></td><td class="yes">126+</td><td class="no">✗</td><td class="no">✗</td><td>Microsoft spec, Chrome 126 (2024).</td></tr>
+        <tr><td><b>WebHID</b></td><td class="yes">89+</td><td class="no">✗</td><td class="no">✗</td><td>Desktop Chromium ≈ 27% global. Mozilla: open feature request, no ship date.</td></tr>
+        <tr><td><b>Web Serial (sibling)</b></td><td class="yes">89+</td><td class="yes">151+</td><td class="no">✗</td><td>Pairs for MAVLink telemetry links.</td></tr>
+      </table>
+      <div class="note"><b>Adoption posture:</b> build on Gamepad API first (works for ~everyone, zero risk), layer WebHID behind feature detection for kiosk/hardware deployments on Chromium. Never make WebHID the only input path.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 11. applications ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">Section 11</div>
+      <h2>Applications — Molt Studios &amp; OpenDrones</h2>
+    </div>
+    <div class="grid g2">
+      <div class="card">
+        <h3>🚁 OpenDrones Mission Control</h3>
+        <ul class="clean">
+          <li><b>Browser pilot trainer:</b> mode-2 stick mapping + arming logic in a zero-install tab — train new pilots before they touch hardware.</li>
+          <li><b>Controller calibration screen:</b> dead-zone + expo tuning with live visualization (exactly section 4), profiles saved to OPFS.</li>
+          <li><b>Haptic alert channel:</b> low-battery, geofence, and RTL warnings felt in the hands — pilots watch the aircraft, not the HUD.</li>
+          <li><b>Kiosk hardware panel:</b> WebHID arm/disarm button decks with LED state on the Chromium ground-station build.</li>
+          <li><b>Failsafe UX:</b> disconnect → zero-throttle + RTL, surfaced with the same pattern as real link loss.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>🎯 Molt Studios</h3>
+        <ul class="clean">
+          <li><b>Interactive campaign microsites:</b> game-controlled demos travel to console-literate audiences with no extra code path in Safari.</li>
+          <li><b>3D product configurators:</b> stick/thumbstick navigation of Three.js showcases — "console feel" for hardware-adjacent brands.</li>
+          <li><b>Event kiosks:</b> a $30 gamepad is the cheapest rugged input device that exists; WebHID adds custom branded buttons + LEDs.</li>
+          <li><b>Accessibility:</b> many players with motor disabilities already own tuned controllers — Gamepad API inherits their setups for free.</li>
+          <li><b>Portfolio playfulness:</b> "control our site with a controller" easter eggs that degrade to keyboard silently.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 12. recap ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">Section 12</div>
+      <h2>Recap &amp; adoption checklist</h2>
+    </div>
+    <div class="card">
+      <div class="grid g2">
+        <div>
+          <h4>Ship-it checklist</h4>
+          <ul class="clean checks">
+            <li>Feature-detect <code>getGamepads</code>; poll in rAF; filter nulls.</li>
+            <li>Show a "press any button" hint — pads start hidden.</li>
+            <li>Apply radial dead zone + expo before mapping to controls.</li>
+            <li>Handle connect/disconnect + visibilitychange → failsafe.</li>
+            <li>Gate haptics on <code>vibrationActuator</code>; never await in the input loop.</li>
+            <li>WebHID behind <code>'hid' in navigator</code> + user gesture + secure context.</li>
+            <li>Keyboard fallback so the page demos on any machine.</li>
+          </ul>
+        </div>
+        <div>
+          <h4>The one-paragraph takeaway</h4>
+          <p>Physical controller input is a solved, baseline web platform capability. The Gamepad API gives every browser dual-stick analog input and (mostly) haptics with zero permission friction — enough to ship a browser-based pilot trainer or console-feel product showcase today. WebHID extends Chromium ground stations to raw HID hardware: button decks, LED panels, odd RC interfaces, with the OS-parsed descriptor tree already done. Web Serial (Firefox 151 recently joined) remains the MAVLink telemetry path. The trio completes a browser-native ground station: sticks in, telemetry through, hardware panel alongside.</p>
+          <p class="muted small" style="margin-top:12px;">Research by Jin · Molt Studios / OpenDrones · August 2026</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    Part of the Molt Studios / OpenDrones research series · Demo: <b>Gamepad API + WebHID</b> ·
+    Docs: <a href="https://developer.mozilla.org/en-US/docs/Web/API/Gamepad_API">MDN Gamepad API</a> ·
+    <a href="https://developer.mozilla.org/en-US/docs/Web/API/WebHID_API">MDN WebHID API</a> ·
+    <a href="https://w3c.github.io/gamepad/extensions.html">W3C Gamepad Extensions</a> ·
+    <a href="https://microsoftedge.github.io/MSEdgeExplainers/GamepadHapticsActuatorTriggerRumble/explainer.html">Trigger-Rumble explainer</a>
+  </div>
+</footer>
+</main>
+
+<script>
+/* ================= shared utils ================= */
+var $ = function (id) { return document.getElementById(id); };
+function logTo(el, msg, cls) {
+  var d = document.createElement('div');
+  var t = new Date().toLocaleTimeString();
+  d.innerHTML = '<span class="t">[' + t + ']</span> <span class="' + (cls || '') + '">' + msg + '</span>';
+  el.appendChild(d);
+  while (el.childElementCount > 60) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
+}
+
+/* ================= section 1: capability ================= */
+var HAS_GP = 'getGamepads' in navigator;
+var HAS_HID = 'hid' in navigator;
+var IS_SEC = window.isSecureContext;
+(function () {
+  function setBadge(el, yes, label, noText) {
+    el.querySelector('b').textContent = yes ? '✓ ' + label : '✗ ' + (noText || 'not available');
+    el.classList.add(yes ? 'live-yes' : 'live-no');
+  }
+  setBadge($('capGamepad'), HAS_GP, 'supported');
+  setBadge($('capHid'), HAS_HID, 'supported');
+  setBadge($('capSecure'), IS_SEC, 'yes');
+  setBadge($('capPads'), false, '0');
+  $('capPads').classList.remove('live-no');
+
+  $('dGamepad').textContent = HAS_GP ? '✓ available' : '✗ missing';
+  $('dGamepad').className = HAS_GP ? 'yes' : 'no';
+  $('dHid').textContent = HAS_HID ? '✓ available' : '✗ not in this browser';
+  $('dHid').className = HAS_HID ? 'yes' : 'no';
+  $('dSecure').textContent = IS_SEC ? '✓ https / localhost' : '✗ insecure';
+  $('dSecure').className = IS_SEC ? 'yes' : 'no';
+  $('dUA').textContent = navigator.userAgent.slice(0, 64) + '…';
+
+  if (!HAS_HID) {
+    var note = document.createElement('p');
+    note.className = 'small muted';
+    note.style.marginTop = '8px';
+    note.textContent = 'WebHID sections below will show their fallback state — exactly what Firefox/Safari users see.';
+    $('dHid').parentNode.appendChild(note);
+  }
+})();
+
+/* ================= section 3: connection panel ================= */
+var padCount = 0;
+function padRow(p) {
+  var effects = (p.vibrationActuator && p.vibrationActuator.effects) ? p.vibrationActuator.effects.join(', ') : 'none';
+  return '<div style="border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-top:10px;">' +
+    '<b>' + p.id.replace(/</g, '&lt;') + '</b>' +
+    '<div class="small muted" style="margin-top:4px;">index ' + p.index + ' · mapping <b>' + p.mapping + '</b> · ' +
+    p.axes.length + ' axes · ' + p.buttons.length + ' buttons · haptics: ' + effects + '</div></div>';
+}
+function refreshPadList() {
+  var pads = HAS_GP ? Array.prototype.filter.call(navigator.getGamepads(), Boolean) : [];
+  padCount = pads.length;
+  $('capPads').querySelector('b').textContent = String(padCount);
+  var list = $('padList');
+  if (!pads.length) {
+    list.innerHTML = '<p class="muted small">No controller connected (or none woken). Press a button on a connected pad.</p>';
+    $('padStatus').textContent = '⚪ waiting for controller…';
+    $('padStatus').className = 'status-pill';
+    return;
+  }
+  list.innerHTML = pads.map(padRow).join('');
+  var first = pads[0];
+  $('padStatus').textContent = '🟢 ' + (first.id || 'controller').slice(0, 42);
+  $('padStatus').className = 'status-pill armed';
+  var act = first.vibrationActuator;
+  var eff = act && act.effects ? act.effects.join(', ') : 'none';
+  $('dHaptics').textContent = act ? '✓ ' + eff : '✗ none on this pad';
+  $('dHaptics').className = act ? 'yes' : 'no';
+}
+if (HAS_GP) {
+  window.addEventListener('gamepadconnected', function (e) {
+    logTo($('connLog'), 'CONNECTED: ' + (e.gamepad.id || 'controller') + ' (index ' + e.gamepad.index + ')', 'ok');
+    refreshPadList();
+  });
+  window.addEventListener('gamepaddisconnected', function (e) {
+    logTo($('connLog'), 'DISCONNECTED: ' + (e.gamepad.id || 'controller') + ' → FAILSAFE', 'err');
+    refreshPadList();
+    droneFailsafe('controller link lost');
+  });
+  refreshPadList();
+} else {
+  $('connLog').innerHTML = '<div><span class="warn">Gamepad API unavailable — keyboard simulation still works below.</span></div>';
+}
+
+/* ================= section 4: sticks + keyboard sim ================= */
+var state = {
+  dz: 0.08, expo: 1.5,
+  L: { x: 0, y: 0 }, R: { x: 0, y: 0 },     // shaped values
+  rawL: { x: 0, y: 0 }, rawR: { x: 0, y: 0 },
+  keys: {}, simActive: false, padActive: false,
+  armed: false, batt: 100, lastArmBtn: false
+};
+function shapeStick(x, y) {
+  var mag = Math.hypot(x, y);
+  if (mag < state.dz) return { x: 0, y: 0 };
+  var norm = (mag - state.dz) / (1 - state.dz);
+  var curved = Math.pow(Math.min(norm, 1), state.expo);
+  return { x: x / mag * curved, y: y / mag * curved };
+}
+function drawDotRemoved() {}
+function updateDzRings() {
+  var size = state.dz * 200;
+  ['dzRingL', 'dzRingR'].forEach(function (id) {
+    var r = $(id);
+    r.style.width = size + 'px';
+    r.style.height = size + 'px';
+  });
+}
+$('dzRange').addEventListener('input', function () {
+  state.dz = parseFloat(this.value);
+  $('dzVal').textContent = state.dz.toFixed(2);
+  updateDzRings();
+});
+$('expoRange').addEventListener('input', function () {
+  state.expo = parseFloat(this.value);
+  $('expoVal').textContent = state.expo.toFixed(1);
+});
+updateDzRings();
+
+/* keyboard sim: WASD = left, arrows = right */
+window.addEventListener('keydown', function (e) {
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].indexOf(e.key) >= 0) e.preventDefault();
+  state.keys[e.key.toLowerCase()] = true;
+  if (e.key === 'Escape') droneFailsafe('simulated link loss (Esc)');
+});
+window.addEventListener('keyup', function (e) { state.keys[e.key.toLowerCase()] = false; });
+window.addEventListener('blur', function () { state.keys = {}; });
+function readKeyboard() {
+  var k = state.keys;
+  var lx = (k['d'] ? 1 : 0) - (k['a'] ? 1 : 0);
+  var ly = (k['s'] ? 1 : 0) - (k['w'] ? 1 : 0);
+  var rx = (k['arrowright'] ? 1 : 0) - (k['arrowleft'] ? 1 : 0);
+  var ry = (k['arrowdown'] ? 1 : 0) - (k['arrowup'] ? 1 : 0);
+  var active = lx || ly || rx || ry;
+  return { L: { x: lx, y: ly }, R: { x: rx, y: ry }, active: !!active };
+}
+
+/* ================= section 5: button matrix ================= */
+var BTN_NAMES = ['A/Cross', 'B/Circle', 'X/Square', 'Y/Triangle', 'LB', 'RB', 'LT', 'RT',
+  'Back', 'Start', 'LS', 'RS', 'D-Up', 'D-Down', 'D-Left', 'D-Right', 'Home'];
+var prevButtons = [];
+(function () {
+  var m = $('btnMatrix');
+  BTN_NAMES.forEach(function (n, i) {
+    var d = document.createElement('div');
+    d.className = 'gbtn';
+    d.id = 'gb' + i;
+    d.innerHTML = '<div class="fill"></div><span>' + i + ' · ' + n + '</span>';
+    m.appendChild(d);
+  });
+})();
+function renderButtons(pads) {
+  var p = pads[0];
+  if (!p) return;
+  p.buttons.forEach(function (b, i) {
+    var el = $('gb' + i);
+    if (!el) return;
+    el.classList.toggle('pressed', !!b.pressed);
+    var fill = el.querySelector('.fill');
+    fill.style.height = (!b.pressed && b.value > 0.02 ? Math.round(b.value * 100) : 0) + '%';
+    if (b.pressed && !prevButtons[i]) logTo($('btnLog'), 'press: ' + (BTN_NAMES[i] || i), 'ok');
+  });
+  prevButtons = p.buttons.map(function (b) { return b.pressed; });
+  /* Start button toggles arm (section 6) */
+  var startPressed = p.buttons[9] && p.buttons[9].pressed;
+  if (startPressed && !state.lastArmBtn) toggleArm('Start button');
+  state.lastArmBtn = startPressed;
+}
+
+/* ================= section 6: drone lab ================= */
+function toggleArm(source) {
+  state.armed = !state.armed;
+  var pill = $('armPill');
+  pill.textContent = state.armed ? '🟢 ARMED' : '⚪ DISARMED';
+  pill.className = 'status-pill' + (state.armed ? ' armed' : '');
+  logTo($('connLog'), (state.armed ? 'ARMED' : 'DISARMED') + ' (' + source + ')', state.armed ? 'ok' : 'warn');
+  if (state.armed) playPreset('arm');
+}
+$('armBtn').addEventListener('click', function () { toggleArm('button'); });
+var drainTimer = null;
+$('drainBtn').addEventListener('click', function () {
+  if (drainTimer) return;
+  logTo($('connLog'), 'battery drain simulated', 'warn');
+  drainTimer = setInterval(function () {
+    state.batt = Math.max(5, state.batt - 2);
+    updateBatt();
+    if (state.batt <= 20 && state.batt % 6 === 0) playPreset('low-batt');
+    if (state.batt <= 5) { clearInterval(drainTimer); drainTimer = null; }
+  }, 400);
+});
+function updateBatt() {
+  var pill = $('battPill');
+  pill.textContent = '🔋 ' + state.batt + '%';
+  pill.className = 'status-pill' + (state.batt <= 20 ? ' warn' : '');
+}
+function droneFailsafe(reason) {
+  if (state.armed) {
+    state.armed = false;
+    var pill = $('armPill');
+    pill.textContent = '🔴 FAILSAFE → RTL';
+    pill.className = 'status-pill warn';
+    logTo($('connLog'), 'FAILSAFE (' + reason + '): throttle → 1000 µs, RTL engaged', 'err');
+    $('failsafeNote').textContent = 'failsafe: ' + reason + ' — throttle zeroed, RTL';
+    setTimeout(function () { $('failsafeNote').textContent = ''; toggleArmSilent(); }, 2200);
+  }
+}
+function toggleArmSilent() {
+  $('armPill').textContent = '⚪ DISARMED';
+  $('armPill').className = 'status-pill';
+}
+function setChannel(id, v) {
+  /* v in -1..1 → 1000..2000 µs */
+  var us = Math.round(1500 + v * 500);
+  var bar = $(id);
+  var b = $(id + 'v');
+  b.textContent = us + ' µs';
+  var el = $(id);
+  var pct = ((v + 1) / 2) * 100;
+  if (pct < 50) { el.style.left = pct + '%'; el.style.width = (50 - pct) + '%'; }
+  else { el.style.left = '50%'; el.style.width = (pct - 50) + '%'; }
+}
+
+/* ================= section 7: haptics ================= */
+function firstPad() {
+  if (!HAS_GP) return null;
+  return Array.prototype.filter.call(navigator.getGamepads(), Boolean)[0] || null;
+}
+function hapticNote(msg, warn) {
+  $('hapticNote').textContent = msg;
+  $('hapticNote').style.color = warn ? 'var(--warn)' : 'var(--muted)';
+}
+async function playDualRumble(dur, strong, weak) {
+  var p = firstPad();
+  var act = p && p.vibrationActuator;
+  if (!act) { hapticNote('No haptic actuator — connect a pad with rumble (Chrome + Xbox/PS).', true); return; }
+  try { await act.playEffect('dual-rumble', { duration: dur, strongMagnitude: strong, weakMagnitude: weak }); }
+  catch (e) { hapticNote('playEffect failed: ' + e.message, true); }
+}
+async function playTriggerRumble(dur, strong, weak) {
+  var p = firstPad();
+  var act = p && p.vibrationActuator;
+  if (!act || !act.effects || act.effects.indexOf('trigger-rumble') < 0) {
+    hapticNote('trigger-rumble needs Chrome 126+ + compatible pad (DualSense/Xbox).', true); return;
+  }
+  try { await act.playEffect('trigger-rumble', { duration: dur, strongMagnitude: strong, weakMagnitude: weak }); }
+  catch (e) { hapticNote('playEffect failed: ' + e.message, true); }
+}
+var presets = {
+  'arm': function () { return playDualRumble(90, 0.2, 0.9); },
+  'low-batt': async function () {
+    for (var i = 0; i < 3; i++) { await playDualRumble(120, 1, 0); await new Promise(function (r) { setTimeout(r, 140); }); }
+  },
+  'rtl': async function () {
+    await playDualRumble(70, 0.5, 0.1); await new Promise(function (r) { setTimeout(r, 90); });
+    await playDualRumble(70, 0.5, 0.1); await new Promise(function (r) { setTimeout(r, 90); });
+    await playDualRumble(160, 0.1, 0.8);
+  }
+};
+function playPreset(name) { if (presets[name]) presets[name](); }
+$('rumbleBtn').addEventListener('click', function () {
+  playDualRumble(parseInt($('durRange').value, 10), parseFloat($('strongRange').value), parseFloat($('weakRange').value));
+});
+$('triggerBtn').addEventListener('click', function () {
+  playTriggerRumble(parseInt($('durRange').value, 10), parseFloat($('strongRange').value), parseFloat($('weakRange').value));
+});
+$('patArm').addEventListener('click', function () { presets['arm'](); });
+$('patBatt').addEventListener('click', function () { presets['low-batt'](); });
+$('patRtl').addEventListener('click', function () { presets['rtl'](); });
+$('durRange').addEventListener('input', function () { $('durVal').textContent = this.value; });
+$('strongRange').addEventListener('input', function () { $('strongVal').textContent = parseFloat(this.value).toFixed(2); });
+$('weakRange').addEventListener('input', function () { $('weakVal').textContent = parseFloat(this.value).toFixed(2); });
+
+/* ================= section 8: webhid ================= */
+function usageName(page, usage) {
+  var pages = { 0x01: 'Generic Desktop', 0x0c: 'Consumer', 0xff00: 'Vendor Defined' };
+  var names = { 0x01: { 0x04: 'Joystick', 0x05: 'Game Pad', 0x06: 'Keyboard', 0x02: 'Mouse', 0x08: 'Multi-axis' },
+    0x0c: { 0x01: 'Consumer Control', 0x20: '+10', 0x22: '+100', 0x30: 'Power' },
+    0xff00: { 0x01: 'Vendor Usage 1' } };
+  var p = pages[page] || ('Page 0x' + page.toString(16));
+  var u = (names[page] && names[page][usage]) || ('0x' + usage.toString(16));
+  return p + ' / ' + u;
+}
+function renderCollections(node, depth) {
+  var out = '';
+  var padStr = new Array(depth * 2 + 1).join(' ');
+  var tag = depth === 0 ? '📦' : '└─';
+  out += padStr + tag + ' usage: ' + usageName(node.usagePage, node.usage) +
+    ' · in:' + (node.inputReports ? node.inputReports.length : 0) +
+    ' out:' + (node.outputReports ? node.outputReports.length : 0) +
+    ' feat:' + (node.featureReports ? node.featureReports.length : 0) + '\n';
+  (node.children || []).forEach(function (c) { out += renderCollections(c, depth + 1); });
+  return out;
+}
+function bindHidDevice(dev, container) {
+  var logEl = $('hidLog');
+  logEl.style.display = 'block';
+  dev.addEventListener('inputreport', function (e) {
+    var bytes = new Uint8Array(e.data.buffer, e.data.byteOffset, e.data.byteLength);
+    var hex = Array.prototype.map.call(bytes, function (b) { return ('0' + b.toString(16)).slice(-2); }).join(' ');
+    logTo(logEl, 'report 0x' + e.reportId.toString(16) + ' [' + bytes.length + 'B] ' + hex);
+  });
+  if (!dev.opened) {
+    dev.open().then(function () {
+      logTo(logEl, 'opened: ' + dev.productName, 'ok');
+    }).catch(function (err) {
+      logTo(logEl, 'open failed: ' + err.message, 'err');
+    });
+  }
+  dev.addEventListener('disconnect', function () {
+    logTo(logEl, 'device gone: ' + dev.productName, 'warn');
+  });
+}
+function renderHidDevices(devices) {
+  var box = $('hidDevices');
+  if (!devices.length) {
+    box.innerHTML = '<p class="hid-empty">Granted device list is empty — use "Request HID device…" first.</p>';
+    return;
+  }
+  box.innerHTML = devices.map(function (d, i) {
+    var tree = (d.collections || []).map(function (c) { return renderCollections(c, 0); }).join('') || '(no collections parsed)';
+    return '<div style="border:1px solid var(--line); border-radius:12px; padding:16px; margin-top:10px;">' +
+      '<b>' + (d.productName || 'HID device') + '</b> <span class="small muted">vid 0x' + d.vendorId.toString(16) +
+      ' · pid 0x' + d.productId.toString(16) + (d.opened ? ' · open' : '') + '</span>' +
+      '<div class="hid-tree" style="margin-top:8px;">' + tree.replace(/</g, '&lt;') + '</div></div>';
+  }).join('');
+  devices.forEach(function (d) { bindHidDevice(d); });
+}
+if (HAS_HID) {
+  $('hidReqBtn').addEventListener('click', async function () {
+    $('hidStatus').textContent = 'status: picker open…';
+    try {
+      var devs = await navigator.hid.requestDevice({ filters: [] });
+      $('hidStatus').textContent = 'status: granted ' + devs.length + ' device(s)';
+      logTo($('hidLog'), 'granted: ' + devs.map(function (d) { return d.productName; }).join(', '), 'ok');
+      renderHidDevices(await navigator.hid.getDevices());
+    } catch (e) {
+      $('hidStatus').textContent = 'status: ' + (e.name === 'AbortError' ? 'cancelled' : 'error');
+      if (e.name !== 'AbortError') logTo($('hidLog'), 'requestDevice error: ' + e.message, 'err');
+    }
+  });
+  $('hidGrantBtn').addEventListener('click', async function () {
+    renderHidDevices(await navigator.hid.getDevices());
+    $('hidStatus').textContent = 'status: listed granted devices';
+  });
+  $('hidGrantBtn').disabled = false;
+  navigator.hid.addEventListener('connect', function (e) {
+    logTo($('hidLog'), 'HID plugged in: ' + e.device.productName, 'ok');
+  });
+  navigator.hid.addEventListener('disconnect', function (e) {
+    logTo($('hidLog'), 'HID unplugged: ' + e.device.productName, 'warn');
+  });
+} else {
+  $('hidReqBtn').disabled = true;
+  $('hidStatus').textContent = 'status: WebHID not available in this browser (Chromium only)';
+  var hn = document.createElement('p');
+  hn.className = 'note';
+  hn.innerHTML = '<b>Expected in Firefox/Safari:</b> WebHID ships only in Chromium browsers (~27% of traffic, desktop only). The full inspector works in Chrome/Edge — this fallback note IS the progressive-enhancement story.';
+  $('hidDevices').parentNode.appendChild(hn);
+}
+
+/* ================= main loop ================= */
+var droneX = 0, droneY = 0;
+function loop() {
+  var pads = HAS_GP ? Array.prototype.filter.call(navigator.getGamepads(), Boolean) : [];
+  var L, R, rawL, rawR;
+  if (pads.length && pads[0].mapping === 'standard' && pads[0].axes.length >= 4) {
+    var p = pads[0];
+    rawL = { x: p.axes[0], y: p.axes[1] };
+    rawR = { x: p.axes[2], y: p.axes[3] };
+    state.padActive = Math.hypot(rawL.x, rawL.y) > 0.02 || Math.hypot(rawR.x, rawR.y) > 0.02;
+    renderButtons(pads);
+  } else {
+    rawL = null; rawR = null; state.padActive = false;
+  }
+  var kb = readKeyboard();
+  if (state.padActive) {
+    state.simActive = false;
+  } else if (kb.active) {
+    rawL = kb.L; rawR = kb.R;
+    state.simActive = true;
+  } else {
+    rawL = { x: 0, y: 0 }; rawR = { x: 0, y: 0 };
+    state.simActive = false;
+  }
+
+  state.L = shapeStick(rawL.x, rawL.y);
+  state.R = shapeStick(rawR.x, rawR.y);
+  $('roL').innerHTML = 'x <b>' + state.L.x.toFixed(2) + '</b> (yaw) · y <b>' + (-state.L.y).toFixed(2) + '</b> (throttle)';
+  $('roR').innerHTML = 'x <b>' + state.R.x.toFixed(2) + '</b> (roll) · y <b>' + (-state.R.y).toFixed(2) + '</b> (pitch)';
+  var halfL = $('padL').clientWidth / 2 - 16;
+  var halfR = $('padR').clientWidth / 2 - 16;
+  $('dotL').style.transform = 'translate(' + (rawL.x * halfL) + 'px,' + (rawL.y * halfL) + 'px)';
+  $('dotR').style.transform = 'translate(' + (rawR.x * halfR) + 'px,' + (rawR.y * halfR) + 'px)';
+
+  var src = state.padActive ? '🎮 gamepad' : (state.simActive ? '⌨ keyboard sim' : 'auto (idle)');
+  $('srcPill').textContent = src;
+
+  /* drone lab: throttle stick is NOT centered — mode 2 uses full down = idle */
+  var throttle = state.armed ? (-(state.L.y) + 1) / 2 : 0;  /* 0..1 */
+  var yaw = state.L.x, pitch = state.R.y, roll = state.R.x;
+  setChannel('ch1', throttle * 2 - 1);
+  setChannel('ch2', yaw);
+  setChannel('ch3', -pitch);
+  setChannel('ch4', roll);
+  if (state.armed) {
+    droneX = Math.max(-90, Math.min(90, droneX + roll * 6));
+    droneY = Math.max(-40, Math.min(40, droneY + pitch * 4 - throttle * 2));
+  } else {
+    droneX *= 0.92; droneY *= 0.92;
+  }
+  $('droneIcon').style.transform = 'translate(' + droneX + 'px,' + droneY + 'px) rotate(' + (roll * 12) + 'deg)';
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+document.addEventListener('visibilitychange', function () {
+  if (document.hidden) droneFailsafe('tab hidden');
+});
+</script>
+</body>
+</html>
