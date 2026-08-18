@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSS if() — Inline Conditionals for Property Values (Chrome 137+, WebKit STP)</title>
+<meta name="description" content="The CSS if() function from css-values-5 puts if/else logic inside property values: if(style(--scheme: dark): X; media(width < 700px): Y; supports(...): Z; else: default). First true branch wins, evaluated in order, live-responsive. Shipped Chrome/Edge 137+ (May 2025), landed WebKit STP 249 (Jul 2026), Firefox in progress. Live playgrounds: style-query theming without container ancestors, media-driven values that respond to resize, supports-based inline fallbacks, boolean logic, else short-circuit gotchas, guaranteed-invalid semantics, and the static-fallback discipline every if() declaration needs.">
+<style>
+  :root {
+    --bg: #faf9f7;
+    --surface: #ffffff;
+    --ink: #1c1b1f;
+    --muted: #6d6b76;
+    --accent: #4f5fd2;
+    --accent-soft: #e9ecfb;
+    --line: #e9e6e1;
+    --code-bg: #211f26;
+    --code-ink: #e9e6e3;
+    --ok: #1f8a5d;
+    --warn: #b3742a;
+    --bad: #c2453a;
+    --radius: 16px;
+    --shadow: 0 1px 2px rgba(28,27,31,.05), 0 8px 24px rgba(28,27,31,.06);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg); color: var(--ink); font-size: 16px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  .orb { position: fixed; border-radius: 50%; filter: blur(90px); opacity: .14; pointer-events: none; z-index: 0; }
+  .orb-1 { width: 420px; height: 420px; background: var(--accent); top: -120px; right: -100px; }
+  .orb-2 { width: 340px; height: 340px; background: #2f9e8f; top: 40%; left: -160px; }
+  main { position: relative; z-index: 1; }
+
+  header.hero { padding: 72px 0 40px; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent-soft); color: var(--accent);
+    font-size: 12.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+    padding: 6px 14px; border-radius: 999px; margin-bottom: 20px;
+  }
+  h1 { font-size: clamp(34px, 5vw, 52px); line-height: 1.12; letter-spacing: -.02em; font-weight: 800; max-width: 920px; }
+  h1 em { font-style: normal; color: var(--accent); }
+  .lede { font-size: 18px; color: var(--muted); max-width: 800px; margin-top: 18px; }
+  .hero-badges { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+  .badge {
+    font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow);
+  }
+  .badge b { color: var(--accent); }
+  .badge.live-yes { border-color: #bfe3d2; background: #eefaf3; }
+  .badge.live-yes b { color: var(--ok); }
+  .badge.live-no b { color: var(--warn); }
+
+  section { padding: 48px 0; border-top: 1px solid var(--line); }
+  .sec-head { margin-bottom: 28px; }
+  .sec-num { font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: .12em; text-transform: uppercase; }
+  h2 { font-size: clamp(24px, 3.4vw, 32px); line-height: 1.2; letter-spacing: -.015em; font-weight: 750; margin-top: 6px; }
+  h3 { font-size: 17px; font-weight: 700; margin: 22px 0 10px; }
+  p { max-width: 76ch; color: #3a3940; margin-bottom: 14px; }
+  p.note { font-size: 14px; color: var(--muted); }
+  strong { font-weight: 700; }
+  code {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: .88em; background: #f1efe9; border: 1px solid var(--line);
+    border-radius: 6px; padding: 1px 6px; white-space: nowrap;
+  }
+  pre {
+    background: var(--code-bg); color: var(--code-ink); border-radius: 12px;
+    padding: 20px 22px; overflow-x: auto; font-size: 13.5px; line-height: 1.7;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    margin: 16px 0; max-width: 100%;
+  }
+  pre .c { color: #8a8794; }
+  pre .k { color: #7ee2c0; }
+  pre .v { color: #f0b06a; }
+  pre .s { color: #9ecbff; }
+
+  .grid { display: grid; gap: 18px; }
+  .g2 { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 22px; min-width: 0;
+  }
+  .card h3 { margin-top: 0; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 12px 0; }
+  .btn {
+    font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+    padding: 9px 16px; border-radius: 10px; border: 1.5px solid var(--line);
+    background: var(--surface); color: var(--ink); transition: all .18s ease;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .readout {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 13px;
+    background: #f1efe9; border: 1px dashed #d8d3ca; border-radius: 10px;
+    padding: 10px 14px; color: #4a4740; overflow-wrap: anywhere;
+  }
+  .readout b { color: var(--accent); }
+  .tag { display: inline-block; font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; }
+  .tag-ok { background: #eefaf3; color: var(--ok); }
+  .tag-warn { background: #fdf3e2; color: var(--warn); }
+  .tag-bad { background: #fdeeec; color: var(--bad); }
+
+  /* §3 style() playground — the whole switch runs on ONE custom property */
+  .scheme-stage {
+    border-radius: var(--radius); border: 1px solid var(--line); padding: 28px;
+    text-align: center; transition: background 1s ease, color 1s ease;
+    background: #f4f2ee; color: var(--ink);
+    background: if(
+      style(--scheme: ice): linear-gradient(160deg, #caf0f8, #ffffff, #caf0f8);
+      style(--scheme: fire): linear-gradient(160deg, #ffc971, #ffffff, #ffc971);
+      else: #f4f2ee;
+    );
+  }
+  .scheme-stage h3 { margin: 0 0 6px; font-size: 22px; }
+  .scheme-stage .glyph { font-size: 44px; line-height: 1; display: block; margin-bottom: 10px; }
+
+  /* §5 media() card — live density without any breakpoint rules */
+  .media-card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 40px;
+    padding: if(media(width < 700px): 14px; else: 40px);
+    transition: padding .2s ease;
+  }
+  .media-card h3 { margin-top: 0; }
+
+  /* §7 logic playground */
+  .logic-chip {
+    display: inline-flex; align-items: center; gap: 8px; font-weight: 700;
+    padding: 12px 18px; border-radius: 12px; border: 2px solid var(--line);
+    font-size: 15px;
+    border-color: if(
+      style((--dark: 1) and (--alert: 1)): var(--bad);
+      style(--alert: 1): var(--warn);
+      style(--dark: 1): var(--accent);
+      else: var(--line);
+    );
+    color: if(
+      style((--dark: 1) and (--alert: 1)): var(--bad);
+      style(--alert: 1): var(--warn);
+      style(--dark: 1): var(--accent);
+      else: var(--muted);
+    );
+  }
+
+  /* §9 fallback discipline — two identical boxes, one protected, one naked */
+  .fb-box {
+    border-radius: 12px; padding: 18px 20px; font-weight: 600; font-size: 15px;
+    border: 1px solid var(--line);
+  }
+  .fb-protected {
+    background: #f4f2ee;
+    background: if(style(--mode: neon): linear-gradient(90deg, #7df9c8, #7ec8ff); else: #f4f2ee);
+  }
+  .fb-naked {
+    background: if(style(--mode: neon): linear-gradient(90deg, #7df9c8, #7ec8ff); else: #f4f2ee);
+  }
+
+  /* §10 shorthand composition */
+  .short-demo {
+    padding: 20px; border-radius: 12px; background: #fffdf6; display: inline-block;
+    border: 3px yellow if(style(--dash: 1): dashed; else: solid;);
+  }
+
+  /* §11 Molt variant cards */
+  .molt-card {
+    border-radius: 12px;
+    border-radius: if(style(--variant: featured): 22px; else: 12px);
+    background: var(--surface); border: 1px solid var(--line);
+    padding: 20px;
+    padding: if(style(--variant: featured): 28px; else: 18px);
+    border-width: if(style(--variant: featured): 2px; else: 1px);
+    border-color: if(style(--variant: featured): #4f5fd2; else: var(--line));
+    box-shadow: if(style(--variant: featured): 0 12px 32px rgba(79,95,210,.18); else: var(--shadow));
+  }
+  .molt-card .price { font-size: 30px; font-weight: 800; letter-spacing: -.02em; }
+  .molt-card .price span { font-size: 14px; font-weight: 600; color: var(--muted); }
+  .molt-card ul { list-style: none; margin: 14px 0; }
+  .molt-card li { padding: 6px 0; font-size: 14.5px; color: #3a3940; border-bottom: 1px dashed var(--line); }
+  .molt-card li::before { content: "✓ "; color: var(--ok); font-weight: 700; }
+
+  /* §12 OpenDrones telemetry rail */
+  .telem {
+    display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch;
+  }
+  .telem .cell {
+    flex: 1 1 150px; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 14px; padding: 16px; text-align: center; min-width: 0;
+    border-color: if(style(--state: crit): var(--bad); style(--state: warn): var(--warn); else: #bfe3d2);
+    background: if(style(--state: crit): #fdeeec; style(--state: warn): #fdf3e2; else: #eefaf3);
+  }
+  .telem .cell .label { font-size: 11.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .telem .cell .val { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin-top: 4px;
+    color: if(style(--state: crit): var(--bad); style(--state: warn): var(--warn); else: var(--ok));
+  }
+  .telem .cell .val small { font-size: 13px; font-weight: 600; color: var(--muted); }
+  .battery-wrap { margin: 16px 0 6px; }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+  /* §8 guaranteed-invalid chip -- --pill has NO else branch */
+  #gi-chip {
+    --pill: if(style(--mode: a): "A";);
+    font-size: 13px;
+  }
+  #gi-chip::before {
+    content: "—";
+    content: var(--pill, "—");
+  }
+
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14.5px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+  td code { white-space: normal; }
+
+  .takeaway {
+    background: var(--accent-soft); border: 1px solid #d4daf7; border-radius: var(--radius);
+    padding: 20px 24px; margin-top: 18px;
+  }
+  .takeaway p { margin: 0; color: #33346a; }
+  .takeaway p + p { margin-top: 8px; }
+
+  footer { padding: 48px 0 64px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+  footer a { color: var(--accent); text-decoration: none; font-weight: 600; }
+  footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<main>
+<div class="wrap">
+
+<header class="hero">
+  <div class="eyebrow">CSS Values &amp; Units Level 5 · Chromium 137+ · WebKit STP 249</div>
+  <h1>The <em>if()</em> function: if/else logic <em>inside</em> CSS property values</h1>
+  <p class="lede">CSS finally has a ternary operator. <code>if()</code> puts branching logic in the value of any declaration — driven by style queries on the <strong>same element</strong>, media queries, or feature queries — and it re-evaluates live as conditions change. No wrapper classes, no duplicated rules, no JavaScript.</p>
+  <div class="hero-badges">
+    <div class="badge" id="badge-support">if() support: <b>testing…</b></div>
+    <div class="badge">Spec: <b>css-values-5</b></div>
+    <div class="badge">Chrome / Edge <b>137+</b> · May 2025</div>
+    <div class="badge">WebKit <b>STP 249</b> · Jul 2026</div>
+    <div class="badge">Firefox <b>in development</b></div>
+  </div>
+</header>
+
+<!-- ══════════ §1 WHAT & WHY ══════════ -->
+<section id="s1">
+  <div class="sec-head">
+    <div class="sec-num">01 · What it is</div>
+    <h2>One function, three kinds of conditions, zero extra rules</h2>
+  </div>
+  <p><code>if()</code> takes a semicolon-separated list of <code>condition : value;</code> branches. Conditions are evaluated <strong>in order, and the first one that's true wins</strong> — its value becomes the value of the property. An optional <code>else</code> branch always matches and closes the chain.</p>
+  <pre><span class="c">/* three condition types — mix freely inside one if() */</span>
+color: <span class="k">if</span>(
+  <span class="s">style(--scheme: dark)</span>: <span class="v">#eeeeee</span>;   <span class="c">/* style query on THIS element    */</span>
+  <span class="s">media(width &lt; 700px)</span>: <span class="v">#111111</span>;  <span class="c">/* media query                    */</span>
+  <span class="s">supports(color: lch(50% 0 0))</span>: <span class="v">lch(50% 0 0)</span>; <span class="c">/* feature query        */</span>
+  <span class="k">else</span>: <span class="v">#1c1b1f</span>;                   <span class="c">/* always-true default            */</span>
+);</pre>
+  <div class="grid g3">
+    <div class="card">
+      <h3>Before if()</h3>
+      <p class="note">Every conditional value meant a separate rule — a wrapper class, a media block, or a <code>@supports</code> fork — duplicated per property:</p>
+      <pre>.card { padding: 20px; }
+@media (width &lt; 700px) {
+  .card { padding: 14px; }
+}</pre>
+    </div>
+    <div class="card">
+      <h3>With if()</h3>
+      <p class="note">The branching lives where the value lives. One declaration, responsive by construction:</p>
+      <pre>.card {
+  padding: 20px;
+  padding: if(media(width &lt; 700px): 14px;
+                else: 20px;);
+}</pre>
+    </div>
+    <div class="card">
+      <h3>Why it matters</h3>
+      <p class="note">Design tokens stop needing token-per-variant explosion. A component can carry its own variant logic inline — <code>--variant: featured</code> flips six properties with six one-line <code>if()</code>s, no cascade gymnastics.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ §2 SYNTAX ══════════ -->
+<section id="s2">
+  <div class="sec-head">
+    <div class="sec-num">02 · Syntax</div>
+    <h2>Anatomy of a branch list</h2>
+  </div>
+  <div class="grid g2">
+    <div class="card">
+      <h3>The five rules that matter</h3>
+      <p><strong>1.</strong> Condition and value are separated by a <code>colon</code>; branches are separated by <code>semicolons</code> (the last one is optional).</p>
+      <p><strong>2.</strong> <strong>No space</strong> between <code>if</code> and <code>(</code> — <code>if (…)</code> invalidates the whole declaration.</p>
+      <p><strong>3.</strong> First true branch wins; evaluation stops there.</p>
+      <p><strong>4.</strong> <code>else</code> always evaluates true — and short-circuits everything after it, whatever its position.</p>
+      <p><strong>5.</strong> A single invalid branch doesn't kill the function — the parser skips to the next branch. Only if <em>nothing</em> matches does <code>if()</code> return the guaranteed-invalid value.</p>
+    </div>
+    <div class="card">
+      <h3>Valid, legal, and inadvisable</h3>
+      <p class="note">The parser is forgiving to a fault. These are all <em>valid</em>:</p>
+      <pre>background-color: if(<span class="k">else</span>: yellow);
+background-image: if();        <span class="c">/* empty! */</span>
+background: if(
+  <span class="k">else</span>: none;                 <span class="c">/* else FIRST… */</span>
+  style(--a: 1): red;          <span class="c">/* …never evaluated */
+);</span></pre>
+      <p class="note">An <code>else</code> in first position makes every later branch dead code. Useful for debugging (put a <code>url("debug.png")</code> branch in to prove a condition misfires), useless otherwise.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ §3 STYLE() PLAYGROUND ══════════ -->
+<section id="s3">
+  <div class="sec-head">
+    <div class="sec-num">03 · style() conditions</div>
+    <h2>Style queries on the same element — no container needed</h2>
+  </div>
+  <p><code>@container style()</code> (Baseline May 2026) checks a custom property on a <strong>container ancestor</strong>. <code>if(style())</code> checks it on <strong>this very element</strong> — which makes it the natural companion to component-level design tokens. Flip one custom property and watch the gradient below change with zero class toggles:</p>
+  <div class="row">
+    <button class="btn on" data-scheme="none">--scheme: (unset)</button>
+    <button class="btn" data-scheme="ice">ice</button>
+    <button class="btn" data-scheme="fire">fire</button>
+  </div>
+  <div class="scheme-stage" id="scheme-stage" style="--scheme: none;">
+    <span class="glyph" id="scheme-glyph">🎛️</span>
+    <h3 id="scheme-title">Pick a scheme above</h3>
+    <p class="note" id="scheme-sub">The background-image of this card is a single if() with two style() branches and an else.</p>
+  </div>
+  <pre>.scheme-stage {
+  background: <span class="k">if</span>(
+    <span class="s">style(--scheme: ice)</span>: <span class="v">linear-gradient(160deg, #caf0f8, #fff, #caf0f8)</span>;
+    <span class="s">style(--scheme: fire)</span>: <span class="v">linear-gradient(160deg, #ffc971, #fff, #ffc971)</span>;
+    <span class="k">else</span>: <span class="v">#f4f2ee</span>;
+  );
+}</pre>
+  <div class="readout" id="scheme-readout">resolved background-image → (waiting)</div>
+  <p class="note"><strong>Equality only:</strong> <code>style()</code> compares values — it can't do <code>&gt;</code>/<code>&lt;</code> ranges. Numeric threshold logic (battery %, score) still needs one line of JS to bucket the value into a state token, then if() handles all presentation (see §12).</p>
+</section>
+
+<!-- ══════════ §4 SAME-ELEMENT VS CONTAINER ══════════ -->
+<section id="s4">
+  <div class="sec-head">
+    <div class="sec-num">04 · Complementary, not competing</div>
+    <h2>if(style()) vs @container style() — when to use which</h2>
+  </div>
+  <table>
+    <thead><tr><th></th><th><code>if(style())</code></th><th><code>@container style()</code></th></tr></thead>
+    <tbody>
+      <tr><td><strong>Checks custom property on</strong></td><td>the same element</td><td>a container ancestor</td></tr>
+      <tr><td><strong>Affects</strong></td><td>one property value</td><td>a whole block of rules (any properties)</td></tr>
+      <tr><td><strong>Best for</strong></td><td>variant tokens on a component — <code>--variant: featured</code> switching radius, padding, shadow individually</td><td>whole-section theme swaps, design-system surface switches</td></tr>
+      <tr><td><strong>Support</strong></td><td>Chrome/Edge 137+ · STP 249</td><td>Baseline May 2026 (~96%)</td></tr>
+      <tr><td><strong>Style queries can check</strong></td><td colspan="2">custom properties only — standard properties (<code>style(color: white)</code>) not yet supported anywhere</td></tr>
+    </tbody>
+  </table>
+  <p>Rule of thumb: <strong>one value changes → if(); a set of rules changes → @container.</strong> Both re-evaluate live when the custom property changes.</p>
+</section>
+
+<!-- ══════════ §5 MEDIA() ══════════ -->
+<section id="s5">
+  <div class="sec-head">
+    <div class="sec-num">05 · media() conditions</div>
+    <h2>Responsive single values — resize this window</h2>
+  </div>
+  <p>The card below has <strong>no breakpoint rules anywhere</strong>. Its padding is one declaration with a <code>media()</code> condition, and it tracks the viewport live. Drag the window across 700px and watch the resolved value flip:</p>
+  <div class="media-card">
+    <h3>Live density card</h3>
+    <p class="note">My padding is <code>if(media(width &lt; 700px): 14px; else: 40px)</code> — cramped on narrow viewports, roomy on wide ones, with zero media blocks in the stylesheet.</p>
+    <div class="readout" id="media-readout">resolved padding → (waiting)</div>
+  </div>
+  <pre>.media-card {
+  padding: 40px;  <span class="c">/* static fallback for non-supporting browsers */</span>
+  padding: if(<span class="s">media(width &lt; 700px)</span>: <span class="v">14px</span>; <span class="k">else</span>: <span class="v">40px</span>;);
+}
+
+<span class="c">/* also works for print — a white report background, inline */</span>
+.report {
+  background: if(<span class="s">media(print)</span>: <span class="v">white</span>; <span class="k">else</span>: <span class="v">#f6f4ef</span>);
+}
+
+<span class="c">/* compound media logic */</span>
+.border {
+  border-color: if(<span class="s">media((width &gt; 700px) and (width &lt; 1000px))</span>: <span class="v">blue</span>;);
+}</pre>
+</section>
+
+<!-- ══════════ §6 SUPPORTS() ══════════ -->
+<section id="s6">
+  <div class="sec-head">
+    <div class="sec-num">06 · supports() conditions</div>
+    <h2>Inline feature queries — @supports moved into the value</h2>
+  </div>
+  <p>Gradual enhancement used to cost a whole <code>@supports</code> block per property. With <code>if(supports(...))</code> the fallback sits next to the enhancement, in the same declaration:</p>
+  <pre>color: if(
+  <span class="s">supports(color: lch(75% 0 0))</span>: <span class="v">lch(75% 0 0)</span>;   <span class="c">/* modern color if available */</span>
+  <span class="k">else</span>: <span class="v">rgb(185 185 185)</span>;                        <span class="c">/* srgb fallback */</span>
+);
+
+<span class="c">/* selector support queries work too */</span>
+margin-top: if(<span class="s">supports(selector(:buffering))</span>: <span class="v">1em</span>; <span class="k">else</span>: <span class="v">initial</span>;);</pre>
+  <div class="card">
+    <h3>Live example</h3>
+    <p class="note">This chip's border uses oklch() when supported, gray otherwise — decided per-value, not per-block:</p>
+    <div class="row"><span class="tag tag-ok" style="border: 3px solid;border-color: if(supports(color: oklch(75% 0.1 200)): oklch(75% 0.13 230); else: #9a9a9a;);">oklch border if you can see teal</span></div>
+    <div class="readout" id="supports-readout">resolved border-color → (waiting)</div>
+  </div>
+</section>
+
+<!-- ══════════ §7 LOGIC ══════════ -->
+<section id="s7">
+  <div class="sec-head">
+    <div class="sec-num">07 · Boolean logic</div>
+    <h2>and · or · not inside conditions</h2>
+  </div>
+  <p>Each condition can be a compound expression — same grammar as media queries. Below, one chip derives border color and text color from two independent tokens combined with <code>and</code>:</p>
+  <pre>border-color: if(
+  <span class="s">style((--dark: 1) and (--alert: 1))</span>: <span class="v">var(--bad)</span>;
+  <span class="s">style(--alert: 1)</span>: <span class="v">var(--warn)</span>;
+  <span class="s">style(--dark: 1)</span>: <span class="v">var(--accent)</span>;
+  <span class="k">else</span>: <span class="v">var(--line)</span>;
+);</pre>
+  <div class="row" id="logic-ctl" style="--dark: 0; --alert: 0;">
+    <button class="btn" data-k="dark" data-v="1">--dark: 1</button>
+    <button class="btn" data-k="dark" data-v="0">--dark: 0</button>
+    <button class="btn" data-k="alert" data-v="1">--alert: 1</button>
+    <button class="btn" data-k="alert" data-v="0">--alert: 0</button>
+    <span class="logic-chip" id="logic-chip">status chip</span>
+  </div>
+  <div class="readout" id="logic-readout">resolved border-color → (waiting)</div>
+  <p class="note">Both properties (border-color + color) are separate <code>if()</code>s reading the same two tokens — the "one value per if()" tradeoff vs a single <code>@container</code> block that could set many properties at once.</p>
+</section>
+
+<!-- ══════════ §8 INVALID & ELSE SEMANTICS ══════════ -->
+<section id="s8">
+  <div class="sec-head">
+    <div class="sec-num">08 · Failure semantics</div>
+    <h2>No match, no else → guaranteed-invalid, not a fallback</h2>
+  </div>
+  <div class="grid g2">
+    <div class="card">
+      <h3>The IACVT trap</h3>
+      <p>When no branch matches and there's no <code>else</code>, <code>if()</code> returns the <strong>guaranteed-invalid value</strong>. Inside a custom property that means the property behaves as unset — and any <code>var()</code> consuming it falls back:</p>
+      <pre>--pill: if(<span class="s">style(--mode: a)</span>: <span class="v">"A"</span>;);  <span class="c">/* no else */</span>
+content: var(--pill, <span class="v">"—"</span>);      <span class="c">/* shows — unless --mode: a */</span></pre>
+      <div class="row"><span class="tag tag-warn" id="gi-chip">var() fallback test</span></div>
+      <div class="readout" id="gi-readout">resolved content → (waiting)</div>
+      <p class="note">Flip <code>--mode</code> on the chip with the buttons — only <code>a</code> produces output; everything else (including unset) hits the <code>var()</code> fallback.</p>
+      <div class="row">
+        <button class="btn" data-gi="a">--mode: a</button>
+        <button class="btn" data-gi="b">--mode: b</button>
+        <button class="btn on" data-gi="">unset</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Per-branch graceful degradation</h3>
+      <p>One malformed branch doesn't invalidate the function — that branch is skipped and evaluation continues. This is <em>per-branch</em> IACVT, kinder than most CSS failure modes:</p>
+      <pre>color: if(
+  <span class="s">style(--t: 1)</span>: <span class="v">not-a-color</span>;   <span class="c">/* skipped */</span>
+  <span class="s">style(--t: 1)</span>: <span class="v">rebeccapurple</span>; <span class="c">/* used! */</span>
+  <span class="k">else</span>: <span class="v">gray</span>;
+);</pre>
+      <p class="note">Contrast with <code>var()</code>, where one bad substitution poisons the declaration. if() quarantines failures to the branch.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ §9 FALLBACK DISCIPLINE ══════════ -->
+<section id="s9">
+  <div class="sec-head">
+    <div class="sec-num">09 · The fallback rule</div>
+    <h2>if() does not degrade gracefully — the cascade does</h2>
+  </div>
+  <p>This is the one production rule to burn in: <strong>a browser without if() drops the entire declaration</strong> (it's an unknown function). There is no internal fallback. You provide one with a static declaration on the line above — the classic cascade pattern, same move as <code>var()</code> fallbacks:</p>
+  <pre>.thing {
+  background: <span class="v">#f4f2ee</span>;  <span class="c">/* 1. static value every browser parses */</span>
+  background: if(style(--mode: neon): <span class="v">linear-gradient(90deg, #7df9c8, #7ec8ff)</span>;
+               <span class="k">else</span>: <span class="v">#f4f2ee</span>;);  <span class="c">/* 2. upgrade for if() browsers */</span>
+}</pre>
+  <p>Both boxes below set <code>--mode: neon</code>. The left one has the static fallback line; the right one doesn't. In an if() browser they look identical — <strong>in every other browser (current Firefox, stable Safari), the right one loses its background entirely</strong>:</p>
+  <div class="grid g2" style="--mode: neon;">
+    <div>
+      <div class="fb-box fb-protected">✓ protected — static line above the if()</div>
+      <p class="note">Always renders. On non-supporting browsers the if() line is dropped and this stays on the static value.</p>
+    </div>
+    <div>
+      <div class="fb-box fb-naked">✗ naked — if() with no fallback line</div>
+      <p class="note">If your browser lacks if(), this box is transparent right now. That's the failure mode.</p>
+    </div>
+  </div>
+  <div class="readout" id="fb-readout">your browser's verdict on the naked box → (waiting)</div>
+  <p class="note">A vanilla-JS + PostCSS polyfill exists (<a href="https://github.com/mfranzke/css-if-polyfill" style="color:var(--accent)">mfranzke/css-if-polyfill</a>) but the static-line pattern is cheaper and needs no build step.</p>
+</section>
+
+<!-- ══════════ §10 SHORTHAND COMPOSITION ══════════ -->
+<section id="s10">
+  <div class="sec-head">
+    <div class="sec-num">10 · Composition</div>
+    <h2>if() inside shorthands — branch only the part that changes</h2>
+  </div>
+  <p>An if() can sit inside a larger value, so the parts that never change stay out of the branches. The badge below toggles its border style while width and color stay static:</p>
+  <div class="row" id="dash-ctl" style="--dash: 0;">
+    <button class="btn" data-dash="1">--dash: 1</button>
+    <button class="btn on" data-dash="0">--dash: 0</button>
+    <span class="short-demo">badge with composed border</span>
+  </div>
+  <pre>.badge {
+  border: 3px yellow if(<span class="s">style(--dash: 1)</span>: <span class="v">dashed</span>; <span class="k">else</span>: <span class="v">solid</span>;);
+}</pre>
+  <p class="note">Nesting if() inside if() values is legal too — but at that point, consider whether a single <code>@container style()</code> block or an extra custom property would read better. if() rewards shallow logic.</p>
+</section>
+
+<!-- ══════════ §11 MOLT STUDIOS ══════════ -->
+<section id="s11">
+  <div class="sec-head">
+    <div class="sec-num">11 · Molt Studios</div>
+    <h2>Variant pricing cards — one token, six coordinated values</h2>
+  </div>
+  <p>A pricing grid where "featured" means bigger radius, more padding, accent border and a lift shadow — conventionally a <code>.featured</code> class overriding four properties, or four token variants. With if(), each property carries its own tiny branch, and the same markup serves every tier:</p>
+  <div class="row">
+    <button class="btn on" data-variant="standard">--variant: standard</button>
+    <button class="btn" data-variant="featured">--variant: featured</button>
+  </div>
+  <div class="grid g2" id="molt-grid" style="--variant: standard;">
+    <div class="molt-card">
+      <h3>Starter</h3>
+      <div class="price">$1,800 <span>/ site</span></div>
+      <ul><li>5-page marketing site</li><li>Core Web Vitals tuned</li><li>2 rounds of revisions</li></ul>
+    </div>
+    <div class="molt-card">
+      <h3>Signature</h3>
+      <div class="price">$4,500 <span>/ site</span></div>
+      <ul><li>Custom design system</li><li>Motion + micro-interactions</li><li>CMS + analytics</li><li>30-day support</li></ul>
+    </div>
+  </div>
+  <pre>.molt-card {
+  border-radius: if(<span class="s">style(--variant: featured)</span>: <span class="v">22px</span>; <span class="k">else</span>: <span class="v">12px</span>;);
+  padding:     if(<span class="s">style(--variant: featured)</span>: <span class="v">28px</span>; <span class="k">else</span>: <span class="v">18px</span>;);
+  border-color:if(<span class="s">style(--variant: featured)</span>: <span class="v">#4f5fd2</span>; <span class="k">else</span>: <span class="v">var(--line)</span>;);
+  box-shadow:  if(<span class="s">style(--variant: featured)</span>: <span class="v">0 12px 32px rgba(79,95,210,.18)</span>; <span class="k">else</span>: <span class="v">var(--shadow)</span>;);
+}</pre>
+  <p class="note">Switching the token restyles both cards instantly — and because it's one custom property, a parent section, a media query, or a <code>data-</code> attribute could set it too.</p>
+</section>
+
+<!-- ══════════ §12 OPENDRONES ══════════ -->
+<section id="s12">
+  <div class="sec-head">
+    <div class="sec-num">12 · OpenDrones Mission Control</div>
+    <h2>Telemetry rail — presentation logic without presentation JS</h2>
+  </div>
+  <p>Style queries are equality-only, so threshold math stays in one line of JS that buckets the battery level into a state token. Everything downstream — border color, background, number color — is pure CSS reading <code>--state</code>. Drag the slider:</p>
+  <div class="battery-wrap">
+    <label for="batt" class="note"><strong>Battery: <span id="batt-val">72</span>%</strong> — one JS line buckets this into --state: ok | warn | crit</label>
+    <input type="range" id="batt" min="0" max="100" value="72">
+  </div>
+  <div class="telem" id="telem" style="--state: ok;">
+    <div class="cell"><div class="label">Battery</div><div class="val"><span id="telem-batt">72</span><small>%</small></div></div>
+    <div class="cell"><div class="label">Link</div><div class="val" id="telem-link">GOOD</div></div>
+    <div class="cell"><div class="label">Mode</div><div class="val">AUTO</div></div>
+  </div>
+  <pre>/* JS sets exactly one token — the bucketing style() can't do */
+rail.style.setProperty('--state', pct &lt; 20 ? 'crit' : pct &lt; 40 ? 'warn' : 'ok');
+
+.cell {
+  border-color: if(<span class="s">style(--state: crit)</span>: <span class="v">var(--bad)</span>;
+                   <span class="s">style(--state: warn)</span>: <span class="v">var(--warn)</span>;
+                   <span class="k">else</span>: <span class="v">#bfe3d2</span>;);
+  background:   if(<span class="s">style(--state: crit)</span>: <span class="v">#fdeeec</span>;
+                   <span class="s">style(--state: warn)</span>: <span class="v">#fdf3e2</span>;
+                   <span class="k">else</span>: <span class="v">#eefaf3</span>;);
+}</pre>
+  <p class="note">The same pattern drives the HUD density on narrow field-laptops (<code>media()</code> branches on cell padding) and print-friendly incident reports (<code>media(print)</code> white backgrounds) — all in the declarations themselves.</p>
+</section>
+
+<!-- ══════════ §13 SUPPORT MATRIX ══════════ -->
+<section id="s13">
+  <div class="sec-head">
+    <div class="sec-num">13 · Support &amp; adoption</div>
+    <h2>Where if() runs today — August 2026</h2>
+  </div>
+  <table>
+    <thead><tr><th>Engine</th><th>Status</th><th>Since</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Chrome / Edge / Opera</strong></td><td><span class="tag tag-ok">Stable</span></td><td>137 · May 2025</td><td>~15 months stable, all three condition types; ≈ 2/3 of global traffic</td></tr>
+      <tr><td><strong>WebKit (Safari)</strong></td><td><span class="tag tag-warn">Preview</span></td><td>STP 249 · Jul 29 2026</td><td>Landed alongside attr(), @function, calc-mix() — stable release expected fall/winter 2026+</td></tr>
+      <tr><td><strong>Firefox</strong></td><td><span class="tag tag-bad">Not shipped</span></td><td>—</td><td>Bug 1981485; standards position open (team: Layout). The long pole for Baseline (~2027+)</td></tr>
+    </tbody>
+  </table>
+  <div class="takeaway">
+    <p><strong>Adopt like color-mix():</strong> static line above every if() line, feature-detect with <code>CSS.supports('color', 'if(style(--x: 1): red; else: blue)')</code>, and let Chromium users get the upgraded logic while everyone else keeps the exact design they already get.</p>
+    <p><strong>Watch this fall:</strong> when Safari 27 ships STP 249's CSS pile (if() + @function + attr() + calc-mix()), stylesheet-level templating becomes a two-engine reality and the polyfill question narrows to Firefox.</p>
+  </div>
+</section>
+
+<footer>
+  <p>Research demo · <a href="https://developer.mozilla.org/en-US/docs/Web/CSS/if">MDN if()</a> · <a href="https://drafts.csswg.org/css-values-5/#if-notation">css-values-5 §if-notation</a> · <a href="https://caniuse.com/css-if">caniuse css-if</a> · <a href="https://github.com/mfranzke/css-if-polyfill">polyfill</a> · Molt Studios / OpenDrones internal research, Aug 2026.</p>
+</footer>
+
+</div>
+</main>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var clamp = function (n, a, b) { return Math.max(a, Math.min(b, n)); };
+
+  /* capability badge */
+  var supported = false;
+  try {
+    supported = window.CSS && CSS.supports && CSS.supports('color', 'if(style(--x: 1): red; else: blue)');
+  } catch (e) { supported = false; }
+  var b = $('badge-support');
+  if (supported) { b.classList.add('live-yes'); b.innerHTML = 'if() support: <b>✓ native in this browser</b>'; }
+  else { b.classList.add('live-no'); b.innerHTML = 'if() support: <b>not supported — fallbacks active</b>'; }
+
+  /* §3 scheme playground */
+  var stage = $('scheme-stage');
+  var glyphs = { ice: '🧊', fire: '🔥', none: '🎛️' };
+  var titles = { ice: 'Ice scheme', fire: 'Fire scheme', none: 'Pick a scheme above' };
+  var subs = {
+    ice: 'style(--scheme: ice) matched → first branch wins',
+    fire: 'style(--scheme: fire) matched → second branch wins',
+    none: 'No branch matched → else: #f4f2ee is live'
+  };
+  document.querySelectorAll('[data-scheme]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('[data-scheme]').forEach(function (x) { x.classList.remove('on'); });
+      btn.classList.add('on');
+      var v = btn.getAttribute('data-scheme');
+      stage.style.setProperty('--scheme', v === 'none' ? 'none' : v);
+      $('scheme-glyph').textContent = glyphs[v];
+      $('scheme-title').textContent = titles[v];
+      $('scheme-sub').textContent = subs[v];
+      var bg = getComputedStyle(stage).backgroundImage;
+      var solid = getComputedStyle(stage).backgroundColor;
+      $('scheme-readout').innerHTML = 'resolved background-image → <b>' + (bg && bg !== 'none' ? 'linear-gradient (branch active)' : 'none') + '</b> · background-color → <b>' + solid + '</b>' + (supported ? '' : ' · <b>(static fallback — no if() here)</b>');
+    });
+  });
+
+  /* §5 media readout — live on resize */
+  var mcard = document.querySelector('.media-card');
+  function mediaRead() {
+    $('media-readout').innerHTML = 'viewport → <b>' + window.innerWidth + 'px</b> · resolved padding → <b>' +
+      getComputedStyle(mcard).padding + '</b>' + (supported ? ' · live if() branch' : ' · <b>static fallback</b>');
+  }
+  window.addEventListener('resize', mediaRead);
+  mediaRead();
+
+  /* §6 supports readout */
+  var chip = document.querySelector('#s6 .tag');
+  $('supports-readout').innerHTML = 'resolved border-color → <b>' + getComputedStyle(chip).borderColor + '</b>' +
+    (supported ? '' : ' · <b>(declaration dropped — fallback border below is plain)</b>');
+
+  /* §7 logic playground */
+  var ctl = $('logic-ctl');
+  document.querySelectorAll('[data-k]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      ctl.style.setProperty('--' + btn.getAttribute('data-k'), btn.getAttribute('data-v'));
+      document.querySelectorAll('[data-k="' + btn.getAttribute('data-k') + '"]').forEach(function (x) {
+        x.classList.toggle('on', x === btn);
+      });
+      $('logic-readout').innerHTML = 'dark=' + ctl.style.getPropertyValue('--dark') + ' · alert=' + ctl.style.getPropertyValue('--alert') +
+        ' → resolved border-color → <b>' + getComputedStyle($('logic-chip')).borderColor + '</b>' +
+        (supported ? '' : ' · <b>static fallback (line color, no logic)</b>');
+    });
+  });
+  $('logic-readout').innerHTML = 'resolved border-color → <b>' + getComputedStyle($('logic-chip')).borderColor + '</b>' + (supported ? '' : ' · <b>static fallback</b>');
+
+  /* §8 guaranteed-invalid */
+  var giChip = $('gi-chip');
+  document.querySelectorAll('[data-gi]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('[data-gi]').forEach(function (x) { x.classList.remove('on'); });
+      btn.classList.add('on');
+      var v = btn.getAttribute('data-gi');
+      if (v === '') { giChip.style.removeProperty('--mode'); }
+      else { giChip.style.setProperty('--mode', v); }
+      var rendered = getComputedStyle(giChip, '::before').content;
+      var pill = getComputedStyle(giChip).getPropertyValue('--pill');
+      $('gi-readout').innerHTML = '--mode=' + (v === '' ? '(unset)' : v) + ' · --pill computed → <b>' + (pill.trim() || '(guaranteed-invalid · empty)') +
+        '</b> · ::before renders <b>' + rendered + '</b>' + (supported ? '' : ' · <b>no if() in this browser → static "—" line holds</b>');
+    });
+  });
+  $('gi-readout').innerHTML = 'resolved ::before content → <b>' + getComputedStyle(giChip, '::before').content + '</b>' + (supported ? '' : ' · <b>static fallback</b>');
+
+  /* §9 fallback verdict — the if() branches paint background-IMAGE, so check that */
+  var naked = document.querySelector('.fb-naked');
+  var nimg = getComputedStyle(naked).backgroundImage;
+  var hasBg = nimg && nimg !== 'none';
+  $('fb-readout').innerHTML = 'naked box background-image → <b>' + (hasBg ? nimg.slice(0, 40) + '…' : 'none') + '</b> → ' +
+    (hasBg ? '<b>if() branch ran — you are on an if() browser</b>' : '<b>none — this browser dropped the entire if() declaration</b>');
+
+  /* §10 dash */
+  var dashCtl = $('dash-ctl');
+  document.querySelectorAll('[data-dash]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('[data-dash]').forEach(function (x) { x.classList.remove('on'); });
+      btn.classList.add('on');
+      dashCtl.style.setProperty('--dash', btn.getAttribute('data-dash'));
+    });
+  });
+
+  /* §11 variant */
+  var mg = $('molt-grid');
+  document.querySelectorAll('[data-variant]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('[data-variant]').forEach(function (x) { x.classList.remove('on'); });
+      btn.classList.add('on');
+      mg.style.setProperty('--variant', btn.getAttribute('data-variant'));
+    });
+  });
+
+  /* §12 battery */
+  var batt = $('batt'), telem = $('telem');
+  function bucket(p) { return p < 20 ? 'crit' : p < 40 ? 'warn' : 'ok'; }
+  function battUpdate() {
+    var p = clamp(parseInt(batt.value, 10) || 0, 0, 100);
+    $('batt-val').textContent = p;
+    $('telem-batt').textContent = p;
+    telem.style.setProperty('--state', bucket(p));
+    $('telem-link').textContent = bucket(p) === 'crit' ? 'LOST' : bucket(p) === 'warn' ? 'WEAK' : 'GOOD';
+  }
+  batt.addEventListener('input', battUpdate);
+  battUpdate();
+})();
+</script>
+</body>
+</html>
