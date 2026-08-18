@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Long Animation Frames API (LoAF) — Field INP Debugging (Chrome 123+)</title>
+<meta name="description" content="The Long Animation Frames API (LoAF) replaces the Long Tasks API for diagnosing slow interactions: it reports whole rendering frames blocked over 50ms with per-script attribution down to sourceURL, function name and character position, plus render-phase breakdowns (renderStart, styleAndLayoutStart, blockingDuration). Shipped Chrome/Edge 123+ (March 2024), Samsung Internet 27+, W3C First Public Working Draft 2026; Firefox and Safari not shipped. Live labs: a real LoAF monitor on this page, long-frame generators (one long task vs eight sub-50ms tasks the Long Tasks API misses), layout-thrash attribution, scheduler.yield() fixes, INP-to-LoAF linkage, and an OpenDrones telemetry-wall jank audit.">
+<style>
+  :root {
+    --bg: #faf9f7;
+    --surface: #ffffff;
+    --ink: #1c1b1f;
+    --muted: #6d6b76;
+    --accent: #4f5fd2;
+    --accent-soft: #e9ecfb;
+    --line: #e9e6e1;
+    --code-bg: #211f26;
+    --code-ink: #e9e6e3;
+    --ok: #1f8a5d;
+    --warn: #b3742a;
+    --bad: #c2453a;
+    --teal: #2f9e8f;
+    --radius: 16px;
+    --shadow: 0 1px 2px rgba(28,27,31,.05), 0 8px 24px rgba(28,27,31,.06);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg); color: var(--ink); font-size: 16px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  .orb { position: fixed; border-radius: 50%; filter: blur(90px); opacity: .14; pointer-events: none; z-index: 0; }
+  .orb-1 { width: 420px; height: 420px; background: var(--accent); top: -120px; right: -100px; }
+  .orb-2 { width: 340px; height: 340px; background: var(--teal); top: 40%; left: -160px; }
+  main { position: relative; z-index: 1; }
+
+  header.hero { padding: 72px 0 40px; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent-soft); color: var(--accent);
+    font-size: 12.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+    padding: 6px 14px; border-radius: 999px; margin-bottom: 20px;
+  }
+  h1 { font-size: clamp(34px, 5vw, 52px); line-height: 1.12; letter-spacing: -.02em; font-weight: 800; max-width: 920px; }
+  h1 em { font-style: normal; color: var(--accent); }
+  .lede { font-size: 18px; color: var(--muted); max-width: 800px; margin-top: 18px; }
+  .hero-badges { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+  .badge {
+    font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow);
+  }
+  .badge b { color: var(--accent); }
+  .badge.live-yes { border-color: #bfe3d2; background: #eefaf3; }
+  .badge.live-yes b { color: var(--ok); }
+  .badge.live-no b { color: var(--warn); }
+
+  section { padding: 48px 0; border-top: 1px solid var(--line); }
+  .sec-head { margin-bottom: 28px; }
+  .sec-num { font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: .12em; text-transform: uppercase; }
+  h2 { font-size: clamp(24px, 3.4vw, 32px); line-height: 1.2; letter-spacing: -.015em; font-weight: 750; margin-top: 6px; }
+  h3 { font-size: 17px; font-weight: 700; margin: 22px 0 10px; }
+  p { max-width: 76ch; color: #3a3940; margin-bottom: 14px; }
+  p.note { font-size: 14px; color: var(--muted); }
+  strong { font-weight: 700; }
+  code {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: .88em; background: #f1efe9; border: 1px solid var(--line);
+    border-radius: 6px; padding: 1px 6px; white-space: nowrap;
+  }
+  pre {
+    background: var(--code-bg); color: var(--code-ink); border-radius: 12px;
+    padding: 20px 22px; overflow-x: auto; font-size: 13.5px; line-height: 1.7;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    margin: 16px 0; max-width: 100%;
+  }
+  pre .c { color: #8a8794; }
+  pre .k { color: #7ee2c0; }
+  pre .v { color: #f0b06a; }
+  pre .s { color: #9ecbff; }
+
+  .grid { display: grid; gap: 18px; }
+  .g2 { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 22px; min-width: 0;
+  }
+  .card h3 { margin-top: 0; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 12px 0; }
+  .btn {
+    font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+    padding: 9px 16px; border-radius: 10px; border: 1.5px solid var(--line);
+    background: var(--surface); color: var(--ink); transition: all .18s ease;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.danger { border-color: #ecc8c4; }
+  .btn.danger:hover { border-color: var(--bad); color: var(--bad); }
+  .readout {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 13px;
+    background: #f1efe9; border: 1px dashed #d8d3ca; border-radius: 10px;
+    padding: 10px 14px; color: #4a4740; overflow-wrap: anywhere;
+  }
+  .readout b { color: var(--accent); }
+  .tag { display: inline-block; font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; }
+  .tag-ok { background: #eefaf3; color: var(--ok); }
+  .tag-warn { background: #fdf3e2; color: var(--warn); }
+  .tag-bad { background: #fdeeec; color: var(--bad); }
+  .stat-chips { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+  .chip {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 10px 16px; box-shadow: var(--shadow); min-width: 120px;
+  }
+  .chip .num { font-size: 22px; font-weight: 800; letter-spacing: -.02em; }
+  .chip .lbl { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .chip.hot .num { color: var(--bad); }
+  .chip.cool .num { color: var(--ok); }
+
+  .tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+  table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .tbl th {
+    text-align: left; font-size: 11.5px; letter-spacing: .07em; text-transform: uppercase;
+    color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--line);
+    background: #f7f5f1; white-space: nowrap;
+  }
+  .tbl td { padding: 9px 12px; border-bottom: 1px solid #f0ede7; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .tbl tr:last-child td { border-bottom: none; }
+  .tbl td.mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; }
+  .num-bad { color: var(--bad); font-weight: 700; }
+  .num-warn { color: var(--warn); font-weight: 700; }
+  .num-ok { color: var(--ok); font-weight: 700; }
+
+  /* §5 timeline bars */
+  .tl-row { margin: 10px 0; }
+  .tl-top { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+  .tl-bar { display: flex; height: 26px; border-radius: 8px; overflow: hidden; background: #efece6; }
+  .tl-seg { height: 100%; min-width: 2px; }
+  .seg-work { background: var(--accent); }
+  .seg-pre { background: #f0b06a; }
+  .seg-sl { background: var(--teal); }
+  .tl-scale { font-size: 11px; color: var(--muted); margin-top: 3px; display: flex; gap: 14px; flex-wrap: wrap; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  .tl-blocking { height: 6px; margin-top: 3px; border-radius: 3px; background: repeating-linear-gradient(45deg, #c2453a, #c2453a 6px, #f0d9d6 6px, #f0d9d6 12px); }
+
+  /* §10 telemetry wall */
+  .tele-wall {
+    height: 260px; overflow-y: auto; border: 1px solid var(--line); border-radius: 12px;
+    background: #14131a; color: #cfcbd6; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 11.5px; padding: 8px 10px;
+  }
+  .tele-row { display: flex; gap: 8px; padding: 2px 4px; border-bottom: 1px solid #211f27; white-space: nowrap; }
+  .tele-row .id { color: #7ee2c0; }
+  .tele-row .crit { color: #ff8d80; font-weight: 700; }
+  .tele-row .warn2 { color: #f0b06a; }
+  @supports (content-visibility: auto) {
+    .tele-row { content-visibility: auto; contain-intrinsic-size: auto 18px; }
+  }
+  .tele-wall.no-cv .tele-row { content-visibility: visible; contain-intrinsic-size: normal; }
+
+  .script-card { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin: 10px 0; background: #fcfbf9; }
+  .script-card .sc-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .script-card .sc-invoker { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12.5px; font-weight: 700; color: var(--accent); overflow-wrap: anywhere; }
+  .kv { font-size: 12.5px; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; color: #4a4740; overflow-wrap: anywhere; }
+  .kv b { color: var(--ink); }
+
+  .flow { display: grid; gap: 0; }
+  .flow-step { display: flex; gap: 14px; padding: 12px 0; border-bottom: 1px dashed var(--line); }
+  .flow-step:last-child { border-bottom: none; }
+  .flow-n { flex: 0 0 28px; height: 28px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 800; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+  .vs { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); }
+  footer { padding: 40px 0 64px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
+  .toc { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+  .toc a {
+    font-size: 12.5px; font-weight: 600; color: var(--muted); text-decoration: none;
+    border: 1px solid var(--line); padding: 5px 11px; border-radius: 999px; background: var(--surface);
+  }
+  .toc a:hover { color: var(--accent); border-color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<main>
+<div class="wrap">
+
+<header class="hero">
+  <div class="eyebrow">Web Performance API · W3C FPWD 2026</div>
+  <h1>Long Animation Frames API — <em>find what actually broke your INP</em></h1>
+  <p class="lede">
+    The Long Tasks API told you <em>that</em> the main thread stalled. The Long Animation Frames API (LoAF) tells you
+    <strong>which script, which function, which character position</strong>, how long the render took, and how much of the frame
+    was actually blocking input — measured in the field, on real users, not in a lab trace.
+  </p>
+  <div class="hero-badges">
+    <span class="badge live-yes" id="badge-loaf"><b>LoAF</b>: checking…</span>
+    <span class="badge" id="badge-et"><b>Event Timing</b>: checking…</span>
+    <span class="badge" id="badge-yield"><b>scheduler.yield()</b>: checking…</span>
+    <span class="badge"><b>Chrome/Edge</b> 123+ · Mar 2024</span>
+    <span class="badge"><b>Samsung Internet</b> 27+</span>
+    <span class="badge live-no"><b>Firefox / Safari</b>: not shipped</span>
+  </div>
+  <div class="toc">
+    <a href="#s1">1 · Capability</a><a href="#s2">2 · Long Tasks vs LoAF</a><a href="#s3">3 · Live Monitor</a>
+    <a href="#s4">4 · Long-Frame Lab</a><a href="#s5">5 · Frame Timeline</a><a href="#s6">6 · Script Attribution</a>
+    <a href="#s7">7 · INP Linkage</a><a href="#s8">8 · blockingDuration</a><a href="#s9">9 · RUM Reporting</a>
+    <a href="#s10">10 · OpenDrones</a><a href="#s11">11 · Molt Studios</a><a href="#s12">12 · Support &amp; Recap</a>
+  </div>
+</header>
+
+<!-- ============ 1. CAPABILITY ============ -->
+<section id="s1">
+  <div class="sec-head">
+    <div class="sec-num">Section 1</div>
+    <h2>Live capability detection</h2>
+  </div>
+  <p>
+    LoAF is observed through the standard <code>PerformanceObserver</code> with entry type
+    <code>long-animation-frame</code>. The canonical feature detect asks the observer itself which entry types this
+    browser supports — one array lookup, no try/catch, no UA sniffing:
+  </p>
+<pre><span class="k">if</span> (PerformanceObserver.supportedEntryTypes.includes(<span class="s">'long-animation-frame'</span>)) {
+  <span class="c">// Monitor LoAFs — this browser can see its own jank</span>
+}</pre>
+  <div class="row">
+    <span class="readout" id="cap-readout" style="flex:1; min-width:280px">checking…</span>
+  </div>
+  <p class="note">
+    This page runs a real observer — every section below that <em>causes</em> a long frame feeds section 3's monitor and
+    section 5's timeline. The buttons in section 4 are deliberately jank-producing. That's the demo.
+  </p>
+</section>
+
+<!-- ============ 2. LONG TASKS vs LOAF ============ -->
+<section id="s2">
+  <div class="sec-head">
+    <div class="sec-num">Section 2</div>
+    <h2>The problem: what Long Tasks couldn't tell you</h2>
+  </div>
+  <p>
+    The Long Tasks API (Chrome 58, 2017) reports any task over 50ms. It was the only field signal for a decade — and it
+    has three structural blind spots that LoAF fixes:
+  </p>
+  <div class="grid g3">
+    <div class="card">
+      <h3>1 · Attribution says "unknown"</h3>
+      <p class="note" style="font-size:13.5px">
+        A longtask entry names at best the container (window or iframe). Not the script, not the function. RUM tools could
+        count long tasks but not <em>explain</em> them.
+      </p>
+    </div>
+    <div class="card">
+      <h3>2 · Render work is invisible</h3>
+      <p class="note" style="font-size:13.5px">
+        Rendering often happens in separate tasks after your script. Long Tasks sees the script <em>or</em> the render —
+        never the total "work until paint" that the user actually experiences.
+      </p>
+    </div>
+    <div class="card">
+      <h3>3 · Death by a thousand cuts</h3>
+      <p class="note" style="font-size:13.5px">
+        Eight 40ms tasks chained back-to-back produce zero longtask entries — every task is under 50ms — while the frame
+        they compose blocks input for ~320ms. Section 4 proves this live.
+      </p>
+    </div>
+  </div>
+  <div class="vs" style="margin-top:18px">
+    <div class="card">
+      <h3>A longtask entry (all you got in 2017–2024)</h3>
+<pre>{
+  <span class="s">"name"</span>: <span class="s">"unknown"</span>,
+  <span class="s">"entryType"</span>: <span class="s">"longtask"</span>,
+  <span class="s">"startTime"</span>: 31.79,
+  <span class="s">"duration"</span>: 136,
+  <span class="s">"attribution"</span>: [{ <span class="s">"name"</span>: <span class="s">"unknown"</span>, <span class="s">"containerType"</span>: <span class="s">"window"</span>, … }]
+}</pre>
+    </div>
+    <div class="card">
+      <h3>A long-animation-frame entry (the same stall, today)</h3>
+<pre>{
+  <span class="s">"duration"</span>: 60,                    <span class="c">// frame total</span>
+  <span class="s">"blockingDuration"</span>: 0,           <span class="c">// input-blocking time</span>
+  <span class="s">"renderStart"</span>: 11858.8,           <span class="c">// render cycle began</span>
+  <span class="s">"styleAndLayoutStart"</span>: 11858.8,   <span class="c">// S&amp;L began</span>
+  <span class="s">"firstUIEventTimestamp"</span>: 11801.1, <span class="c">// 1st input processed</span>
+  <span class="s">"scripts"</span>: [{
+    <span class="s">"invoker"</span>: <span class="s">"DOMWindow.onclick"</span>,
+    <span class="s">"invokerType"</span>: <span class="s">"event-listener"</span>,
+    <span class="s">"sourceURL"</span>: <span class="s">"https://site.com/js/app.js"</span>,
+    <span class="s">"sourceFunctionName"</span>: <span class="s">"myClickHandler"</span>,
+    <span class="s">"sourceCharPosition"</span>: 17796,
+    <span class="s">"forcedStyleAndLayoutDuration"</span>: 0,
+    <span class="s">"pauseDuration"</span>: 0,
+    <span class="s">"windowAttribution"</span>: <span class="s">"self"</span>
+  }]
+}</pre>
+    </div>
+  </div>
+  <p class="note">
+    Same stall, night-and-day diagnosability: frame-level duration, a render-phase breakdown, and per-script attribution
+    <strong>down to the character position in the source file</strong> — from real users, in production.
+  </p>
+</section>
+
+<!-- ============ 3. LIVE MONITOR ============ -->
+<section id="s3">
+  <div class="sec-head">
+    <div class="sec-num">Section 3</div>
+    <h2>Live LoAF monitor — this page, right now</h2>
+  </div>
+  <p>
+    This is the real API running against this page. The observer is registered once with
+    <code>buffered: true</code> (the buffer holds 200 entries — always prefer the observer over
+    <code>performance.getEntriesByType()</code>, which silently drops entries once the buffer is full):
+  </p>
+<pre><span class="k">const</span> observer = <span class="k">new</span> PerformanceObserver(list => {
+  <span class="k">for</span> (<span class="k">const</span> entry <span class="k">of</span> list.getEntries()) logLoaf(entry);
+});
+observer.observe({ type: <span class="s">'long-animation-frame'</span>, buffered: <span class="k">true</span> });</pre>
+  <div class="stat-chips">
+    <div class="chip"><div class="num" id="stat-count">0</div><div class="lbl">LoAFs observed</div></div>
+    <div class="chip hot"><div class="num" id="stat-worst">0 ms</div><div class="lbl">Worst duration</div></div>
+    <div class="chip hot"><div class="num" id="stat-block">0 ms</div><div class="lbl">Worst blocking</div></div>
+    <div class="chip cool"><div class="num" id="stat-longtask">0</div><div class="lbl">Longtask entries (same period)</div></div>
+  </div>
+  <div class="tbl-wrap">
+    <table class="tbl" id="loaf-table">
+      <thead><tr>
+        <th>#</th><th>startTime (ms)</th><th>duration</th><th>blocking</th><th>renderStart</th>
+        <th>work</th><th>render</th><th>style+layout</th><th>scripts</th><th>trigger</th>
+      </tr></thead>
+      <tbody><tr><td colspan="10" style="color:var(--muted)">No long frames yet — go press some buttons in section 4.</td></tr></tbody>
+    </table>
+  </div>
+  <p class="note">
+    The <strong>Longtask entries</strong> chip counts entries from a parallel <code>longtask</code> observer over the same
+    period. Watch it stay at 0 while LoAF climbs when you run the "eight sub-50ms tasks" lab — the API's headline trick.
+  </p>
+</section>
+
+<!-- ============ 4. LONG-FRAME LAB ============ -->
+<section id="s4">
+  <div class="sec-head">
+    <div class="sec-num">Section 4</div>
+    <h2>Long-frame lab — four ways to break a frame</h2>
+  </div>
+  <p>
+    Each button does real main-thread damage; the observer in section 3 catches the resulting entry. Every result below
+    also renders a full timeline bar in section 5.
+  </p>
+  <div class="grid g2">
+    <div class="card">
+      <h3>A · One long task <span class="tag tag-bad">classic longtask</span></h3>
+      <p class="note" style="font-size:13.5px">A single ~180ms synchronous busy loop in a click handler. Both APIs see it. Attribution names this exact function.</p>
+      <button class="btn danger" data-lab="longtask">Run 180ms blocking task</button>
+    </div>
+    <div class="card">
+      <h3>B · Eight 40ms tasks <span class="tag tag-bad">invisible to longtask</span></h3>
+      <p class="note" style="font-size:13.5px">Chained <code>setTimeout</code>, each under 50ms, renders pending throughout. Long Tasks: 0 entries — ever. LoAF: catches every resulting long frame (~80ms each), attributes each 40ms chunk.</p>
+      <button class="btn danger" data-lab="chain">Run 8 × 40ms chain</button>
+    </div>
+    <div class="card">
+      <h3>C · Layout thrash <span class="tag tag-warn">forced reflow</span></h3>
+      <p class="note" style="font-size:13.5px">130 iterations of write-then-read DOM churn. Watch <code>forcedStyleAndLayoutDuration</code> appear in the script attribution (section 6).</p>
+      <button class="btn danger" data-lab="thrash">Run layout thrash</button>
+    </div>
+    <div class="card">
+      <h3>D · The yield fix <span class="tag tag-ok">the remediation</span></h3>
+      <p class="note" style="font-size:13.5px">The same kind of work (8 × 32ms), chunked with <code>scheduler.yield()</code>. Expect: <strong>blockingDuration ≈ 0</strong> — input responsive throughout. Frame <em>duration</em> may still exceed 50ms (the browser batches high-priority yield continuations): yielding fixes responsiveness, only less work fixes smoothness.</p>
+      <button class="btn" data-lab="yield">Run 8 × 32ms with yields</button>
+    </div>
+  </div>
+  <div class="row" style="margin-top:16px">
+    <span class="readout" id="lab-readout" style="flex:1; min-width:280px">Lab idle. Pick a scenario.</span>
+  </div>
+<pre><span class="c">// B — the invisible stall: every task is under 50ms, the frames are not</span>
+<span class="k">function</span> chain(i) {
+  <span class="k">if</span> (i &gt;= 8) { labDone(<span class="s">'chain'</span>); <span class="k">return</span>; }
+  busy(40);                       <span class="c">// under the 50ms longtask line</span>
+  counter.textContent = i;        <span class="c">// pending render keeps frames long</span>
+  setTimeout(() => chain(i + 1)); <span class="c">// task boundary, render may or may not squeeze in</span>
+}
+
+<span class="c">// D — the fix: yield to the browser between chunks (Chrome 129+)</span>
+<span class="k">async function</span> yielded() {
+  <span class="k">for</span> (<span class="k">let</span> i = 0; i &lt; 8; i++) {
+    busy(40);
+    counter.textContent = i;
+    <span class="k">await</span> scheduler.yield();  <span class="c">// task + frame boundary → browser paints + handles input</span>
+  }
+}</pre>
+  <p class="note">
+    <code>scheduler.yield()</code> (Chrome/Edge 129+) is the modern break-up-the-task primitive: unlike
+    <code>setTimeout</code>, it inherits the caller's priority, so a user-initiated continuation can't be starved by
+    background work. Fallback for other browsers: <code>setTimeout(0)</code> still ends the frame.
+  </p>
+</section>
+
+<!-- ============ 5. FRAME TIMELINE ============ -->
+<section id="s5">
+  <div class="sec-head">
+    <div class="sec-num">Section 5</div>
+    <h2>Frame timeline visualizer</h2>
+  </div>
+  <p>
+    LoAF's four timestamps slice every frame into exactly three phases — the math is pure subtraction, no extra API:
+  </p>
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead><tr><th>Phase</th><th>Calculation</th><th>Contains</th></tr></thead>
+      <tbody>
+        <tr><td><b style="color:var(--accent)">Work</b></td><td class="mono">renderStart − startTime</td><td>Your JS: event handlers, timers, promises, microtasks</td></tr>
+        <tr><td><b style="color:#b3742a">Render: pre-layout</b></td><td class="mono">styleAndLayoutStart − renderStart</td><td>rAF callbacks, ResizeObserver + IntersectionObserver callbacks</td></tr>
+        <tr><td><b style="color:var(--teal)">Render: style &amp; layout</b></td><td class="mono">(startTime + duration) − styleAndLayoutStart</td><td>Recalc style, layout, paint, composite</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div style="margin-top:20px" id="timeline-area">
+    <div class="tl-row"><div class="tl-top"><span>Run a lab scenario in section 4 — bars appear here, scaled to the worst frame.</span></div></div>
+  </div>
+  <div class="tl-scale">
+    <span><span class="swatch seg-work"></span>work (JS)</span>
+    <span><span class="swatch seg-pre"></span>pre-layout (rAF + observers)</span>
+    <span><span class="swatch seg-sl"></span>style &amp; layout</span>
+    <span><span class="swatch" style="background:repeating-linear-gradient(45deg,#c2453a,#c2453a 4px,#f0d9d6 4px,#f0d9d6 8px)"></span>blockingDuration</span>
+  </div>
+  <p class="note">
+    A frame that is mostly <strong>work</strong> is a JS problem (yield or shrink the work). A frame that is mostly
+    <strong>style &amp; layout</strong> is a DOM problem (smaller trees, less invalidation, <code>content-visibility</code>).
+    That single glance is the triage step the Long Tasks API never gave you.
+  </p>
+</section>
+
+<!-- ============ 6. SCRIPT ATTRIBUTION ============ -->
+<section id="s6">
+  <div class="sec-head">
+    <div class="sec-num">Section 6</div>
+    <h2>Script attribution — down to the character</h2>
+  </div>
+  <p>
+    Every script contributing more than 5ms to a LoAF appears in <code>entry.scripts[]</code> with an invoker chain, a
+    timing breakdown of its own, and — when source maps resolve — the file, function and character offset. The
+    <code>invokerType</code> taxonomy has six values worth memorizing:
+  </p>
+  <div class="grid g3">
+    <div class="card"><h3 class="sc-invoker" style="font-size:14px">user-callback</h3><p class="note" style="font-size:13px">Platform-scheduled callback: <code>setTimeout</code>, <code>requestAnimationFrame</code>, etc.</p></div>
+    <div class="card"><h3 class="sc-invoker" style="font-size:14px">event-listener</h3><p class="note" style="font-size:13px">Listener to a platform event: <code>click</code>, <code>keyup</code>, <code>load</code>…</p></div>
+    <div class="card"><h3 class="sc-invoker" style="font-size:14px">resolve / reject-promise</h3><p class="note" style="font-size:13px">Platform promise handlers (<code>fetch().then</code>); same-promise handlers merge into one entry.</p></div>
+    <div class="card"><h3 class="sc-invoker" style="font-size:14px">classic-script</h3><p class="note" style="font-size:13px">Top-level evaluation of a classic script or <code>import()</code>.</p></div>
+    <div class="card"><h3 class="sc-invoker" style="font-size:14px">module-script</h3><p class="note" style="font-size:13px">Top-level evaluation of a module script.</p></div>
+    <div class="card"><h3 class="sc-invoker" style="font-size:14px">windowAttribution</h3><p class="note" style="font-size:13px">Not a type — the container field: <code>self</code> / <code>ancestor</code> / <code>descendant</code> iframe / <code>unknown</code>. The third-party smoke gun.</p></div>
+  </div>
+  <h3 style="margin-top:26px">Live — the scripts inside your last long frame</h3>
+  <div id="attribution-area" class="readout" style="min-height:48px">Nothing yet. Run a section-4 lab, then look here.</div>
+  <p class="note">
+    The per-script fields doing the heavy lifting: <code>executionStart</code> (post-compilation), <code>duration</code>
+    (until the microtask queue drains), <code>forcedStyleAndLayoutDuration</code> (layout thrash inside this function —
+    lab C will show it non-zero), and <code>pauseDuration</code> (synchronous stalls like <code>alert()</code> or sync XHR).
+  </p>
+</section>
+<!-- ============ 7. INP LINKAGE ============ -->
+<section id="s7">
+  <div class="sec-head">
+    <div class="sec-num">Section 7</div>
+    <h2>Linking LoAFs to a slow interaction</h2>
+  </div>
+  <p>
+    There is no direct API joining an INP interaction to its LoAF entries (it's an open spec issue —
+    <code>w3c/long-animation-frames#5</code>). The standard workaround is timestamp intersection, which is exactly what
+    the <code>web-vitals</code> library does from v4: it ships every intersecting LoAF inside
+    <code>INPAttribution.longAnimationFramesEntries</code>. Here it is live — the button below runs a deliberately slow
+    (~140ms) click handler while both an <strong>Event Timing</strong> observer and the LoAF observer watch:
+  </p>
+  <div class="card">
+    <div class="row">
+      <button class="btn danger" id="inp-btn">Click me — slow interaction (~140ms)</button>
+      <span class="note" id="inp-hint" style="font-size:13px">then read the breakdown below</span>
+    </div>
+    <div id="inp-result" class="readout" style="margin-top:10px">Waiting for your click…</div>
+  </div>
+<pre><span class="c">// The WhyNp pattern (Noam Rosenthal's gist, simplified): intersect by time</span>
+<span class="k">const</span> loafStart = l.startTime, loafEnd = l.startTime + l.duration;
+<span class="k">const</span> intersects = loafStart &lt; entry.processingEnd &amp;&amp; entry.startTime &lt; loafEnd;
+
+<span class="c">// Event Timing gives the interaction's own three slices:</span>
+inputDelay    = entry.processingStart - entry.startTime;   <span class="c">// queue time = what ELSE was blocking</span>
+processingDur = entry.processingEnd - entry.processingStart; <span class="c">// your handler</span>
+presentation = (entry.startTime + entry.duration) - entry.processingEnd; <span class="c">// paint after handler</span></pre>
+  <p class="note">
+    The diagnostic gold is <strong>input delay</strong>: when it's large, your handler wasn't the problem — the intersecting
+    LoAF's <code>scripts[]</code> shows which other code was hogging the frame when the user clicked. That's the field-debug
+    workflow DevTools can't give you, because it depends on what <em>real users</em> happened to be doing.
+  </p>
+</section>
+
+<!-- ============ 8. BLOCKING DURATION ============ -->
+<section id="s8">
+  <div class="sec-head">
+    <div class="sec-num">Section 8</div>
+    <h2>blockingDuration — the number INP actually feels</h2>
+  </div>
+  <p>
+    <code>duration</code> measures the whole frame; <code>blockingDuration</code> measures only the part that could delay
+    input. The accounting: for <strong>each task</strong> in the frame, everything beyond its first 50ms counts as blocking
+    (the final render rolls into the longest task). The spec's worked example:
+  </p>
+  <div class="card">
+    <div class="tl-top"><span>Frame: task 1 (55ms) + task 2 (65ms) + render (20ms) → duration ≈ 140ms</span></div>
+    <div class="tl-bar" style="height:30px">
+      <div class="tl-seg seg-work" style="width:39.3%"></div>
+      <div class="tl-seg seg-work" style="width:46.4%; background:#6d7ae3"></div>
+      <div class="tl-seg seg-sl" style="width:14.3%"></div>
+    </div>
+    <div class="tl-top" style="margin-top:10px"><span>blockingDuration = (55 − 50) + (65 + 20 − 50) = <b style="color:var(--bad)">40ms</b> of the 140ms</span></div>
+    <div class="tl-bar" style="height:14px">
+      <div class="tl-seg" style="width:71.4%; background:#efece6"></div>
+      <div class="tl-seg" style="width:28.6%; background:repeating-linear-gradient(45deg,#c2453a,#c2453a 5px,#f0d9d6 5px,#f0d9d6 10px)"></div>
+    </div>
+    <div class="tl-top"><span style="color:var(--muted)">grey = the free 50ms every task gets · hatched red = input-blocking</span></div>
+  </div>
+  <div class="grid g2" style="margin-top:18px">
+    <div class="card">
+      <h3>High blocking, high duration</h3>
+      <p class="note" style="font-size:13.5px">The INP killer. Tasks too long to yield inside. Fix: break work up (<code>scheduler.yield()</code>, chunking) — blockingDuration drops even if total work doesn't.</p>
+    </div>
+    <div class="card">
+      <h3>Zero blocking, still-long duration</h3>
+      <p class="note" style="font-size:13.5px">Frame stayed open over many small tasks (the browser chose to batch renders). Input still gets in — but smoothness/animation may suffer. Fix: reduce total work; you can't yield your way out of this one.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 9. RUM REPORTING ============ -->
+<section id="s9">
+  <div class="sec-head">
+    <div class="sec-num">Section 9</div>
+    <h2>The production pattern — field reporting</h2>
+  </div>
+  <p>
+    LoAF is designed for RUM, not labs. The pattern every vendor (Datadog RUM, Debugbearer, speedCurve…) converged on:
+    observe continuously, report <strong>only on meaningful events</strong> (the INP interaction, or a slow LoAF above a
+    threshold), and rank scripts by cumulative volume once samples accumulate.
+  </p>
+<pre><span class="c">// Option 1 — web-vitals v4+: LoAFs arrive inside INP attribution, already linked</span>
+<span class="k">import</span> { onINP } <span class="k">from</span> <span class="s">'web-vitals'</span>;
+onINP(metric => {
+  <span class="k">const</span> loafs = metric.attribution.longAnimationFramesEntries ?? [];
+  <span class="k">const</span> offenders = loafs.flatMap(l => l.scripts)
+    .map(s => ({ url: s.sourceURL || <span class="s">'(inline)'</span>, fn: s.sourceFunctionName,
+                 ms: s.duration, forced: s.forcedStyleAndLayoutDuration }));
+  navigator.sendBeacon(<span class="s">'/api/rum'</span>, JSON.stringify(
+    { inp: metric.value, offenders, route: location.pathname }));
+});
+
+<span class="c">// Option 2 — raw observer, report only exceptional frames (sample + threshold)</span>
+<span class="k">const</span> REPORT_MS = 150;
+<span class="k">new</span> PerformanceObserver(list => {
+  <span class="k">for</span> (<span class="k">const</span> l <span class="k">of</span> list.getEntries())
+    <span class="k">if</span> (l.blockingDuration &gt; REPORT_MS) report(l);   <span class="c">// e.g. 1-in-100 sampled users</span>
+}).observe({ type: <span class="s">'long-animation-frame'</span> });</pre>
+  <div class="grid g3">
+    <div class="card"><h3>Buffer discipline</h3><p class="note" style="font-size:13px">The entry buffer is 200. Long sessions overflow it — observe with the callback (drains the buffer), and if you must query ad-hoc, be ready to call <code>.clear()</code>.</p></div>
+    <div class="card"><h3>Sampling</h3><p class="note" style="font-size:13px">LoAF payloads are rich; beacon volume costs money. Report at a threshold (≥150ms blocking) and sample users (5–10%) — trends survive fine.</p></div>
+    <div class="card"><h3>Rank by volume</h3><p class="note" style="font-size:13px">One user's slow frame is an anecdote. Group <code>scripts[].sourceURL</code> origin across thousands of sessions — the widget with the most cumulative ms is your sprint ticket.</p></div>
+  </div>
+</section>
+
+<!-- ============ 10. OPENDRONES ============ -->
+<section id="s10">
+  <div class="sec-head">
+    <div class="sec-num">Section 10</div>
+    <h2>OpenDrones Mission Control — the telemetry wall audit</h2>
+  </div>
+  <p>
+    The classic Mission Control jank: a fleet of drones reports a fresh telemetry batch every second, and the dashboard
+    rebuilds the table in one gulp on the main thread. Two renders of the same <strong>2,400-row wall</strong> — first the
+    naive way, then chunked with yields. The LoAF observer judges both:
+  </p>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Naive render <span class="tag tag-bad">one 2,400-row gulp</span></h3>
+      <div class="tele-wall no-cv" id="wall-a" aria-label="naive telemetry wall"><div class="tele-row"><span class="id">—</span> idle — press a button</div></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn danger" id="wall-naive">Parse + render 2,400 rows (blocking)</button>
+      </div>
+      <div class="readout" id="wall-a-stats">not run</div>
+    </div>
+    <div class="card">
+      <h3>Chunked render <span class="tag tag-ok">400 rows per yield</span></h3>
+      <div class="tele-wall" id="wall-b" aria-label="chunked telemetry wall"><div class="tele-row"><span class="id">—</span> idle — press a button</div></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="wall-chunked">Render 2,400 rows (chunked)</button>
+      </div>
+      <div class="readout" id="wall-b-stats">not run</div>
+    </div>
+  </div>
+  <p class="note" style="margin-top:14px">
+    Two deliberate differences: the naive wall pays <strong>full layout for all 2,400 rows</strong> (no
+    <code>content-visibility</code>) in a single parse-then-render gulp; the fixed wall adds
+    <code>content-visibility: auto</code> (off-screen rows skip layout) and yields every 400 rows. Same data, same DOM
+    count — the user's next click gets through instantly in version B. During flight ops, "input gets through" is not a
+    nice-to-have.
+  </p>
+</section>
+
+<!-- ============ 11. MOLT STUDIOS ============ -->
+<section id="s11">
+  <div class="sec-head">
+    <div class="sec-num">Section 11</div>
+    <h2>Molt Studios — the CWV field-debug kit</h2>
+  </div>
+  <p>
+    Client complaint: "the site feels slow sometimes" — CrUX says INP fails, Lighthouse says it's fine. Lab tools can't
+    see the chat widget fighting the analytics bundle on a mid-tier Android over hotel Wi-Fi. A ~1KB LoAF snippet on the
+    client site turns that anecdote into a ranked list:
+  </p>
+<pre><span class="c">// Group blocking time by origin — third parties can't hide</span>
+<span class="k">const</span> byOrigin = {};
+<span class="k">new</span> PerformanceObserver(list => {
+  <span class="k">for</span> (<span class="k">const</span> l <span class="k">of</span> list.getEntries()) {
+    <span class="k">for</span> (<span class="k">const</span> s <span class="k">of</span> l.scripts) {
+      <span class="k">const</span> key = s.sourceURL
+        ? <span class="k">new</span> URL(s.sourceURL, location.href).origin
+        : s.windowAttribution === <span class="s">'self'</span> ? <span class="s">'(first-party inline)'</span> : <span class="s">'(iframe: '</span> + s.windowAttribution + <span class="s">')'</span>;
+      byOrigin[key] = (byOrigin[key] || 0) + (s.duration || 0);
+    }
+  }
+}).observe({ type: <span class="s">'long-animation-frame'</span> });</pre>
+  <div class="grid g3">
+    <div class="card">
+      <h3>Deliverable: field-debug kit</h3>
+      <p class="note" style="font-size:13px">Ship the snippet, collect two weeks of origin-ranked LoAF data, present a fix list ordered by cumulative milliseconds. A repeatable $2–4k audit product.</p>
+    </div>
+    <div class="card">
+      <h3>Third-party leverage</h3>
+      <p class="note" style="font-size:13px">When the top offender is a vendor script, the LoAF report is the evidence that moves the client meeting from "maybe redesign" to "swap the widget".</p>
+    </div>
+    <div class="card">
+      <h3>Regression alarm</h3>
+      <p class="note" style="font-size:13px">Keep the observer in production at 1% sampling; alert when p75 blockingDuration for a route crosses a threshold. INP regressions get caught at deploy time, not at the next CrUX refresh.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 12. SUPPORT & RECAP ============ -->
+<section id="s12">
+  <div class="sec-head">
+    <div class="sec-num">Section 12</div>
+    <h2>Browser support, decision matrix &amp; recap</h2>
+  </div>
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead><tr><th>Browser</th><th>LoAF support</th><th>Since</th></tr></thead>
+      <tbody>
+        <tr><td>Chrome / Edge</td><td class="num-ok">✓ 123+</td><td>March 2024 (origin trial 116–122)</td></tr>
+        <tr><td>Chrome Android</td><td class="num-ok">✓</td><td>same release train</td></tr>
+        <tr><td>Samsung Internet</td><td class="num-ok">✓ 27+</td><td>early 2026</td></tr>
+        <tr><td>Opera</td><td class="num-ok">✓ 109+</td><td>Chromium train</td></tr>
+        <tr><td>Firefox</td><td class="num-bad">✗ (through 157)</td><td>no implementation signal; no standards position yet</td></tr>
+        <tr><td>Safari / WebKit</td><td class="num-bad">✗ (through 27 / TP)</td><td>no public signal</td></tr>
+        <tr><td>W3C status</td><td class="num-warn">FPWD</td><td>First Public Working Draft, 2026</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="margin-top:16px">
+    Chromium-only ≈ two-thirds of real traffic — and that's fine, because LoAF is <strong>observability, not UX</strong>.
+    Feature-detect, ship it where it exists, and keep the <code>longtask</code> observer as the lowest-common-denominator
+    signal for Firefox/Safari users until they catch up. Nothing about your page changes for users either way.
+  </p>
+  <div class="tbl-wrap" style="margin-top:8px">
+    <table class="tbl">
+      <thead><tr><th>Symptom</th><th>Read this field</th><th>Fix direction</th></tr></thead>
+      <tbody>
+        <tr><td>High input delay on INP</td><td class="mono">firstUIEventTimestamp + scripts[] around it</td><td>yield the offending long task; defer non-urgent work</td></tr>
+        <tr><td>High processing duration</td><td class="mono">scripts[].duration, sourceURL/CharPosition</td><td>shrink or split your own handler</td></tr>
+        <tr><td>High presentation delay</td><td class="mono">styleAndLayoutStart → frame end</td><td>smaller invalidations, content-visibility, fewer layers</td></tr>
+        <tr><td>Janky scroll/animation, INP fine</td><td class="mono">duration with low blockingDuration</td><td>reduce total work per frame (can't yield out of this)</td></tr>
+        <tr><td>Mystery stall in RUM</td><td class="mono">scripts[].forcedStyleAndLayoutDuration / pauseDuration</td><td>layout thrash / sync XHR — the entry names it</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="grid g3" style="margin-top:20px">
+    <div class="card">
+      <h3>Why it matters</h3>
+      <p class="note" style="font-size:13px">INP became a Core Web Vital in March 2024 — the same month LoAF shipped. The metric that gates SEO and the instrument to debug it arrived together. Every Molt client site and the OpenDrones dashboard benefits.</p>
+    </div>
+    <div class="card">
+      <h3>Adoption cost</h3>
+      <p class="note" style="font-size:13px">Near zero: one PerformanceObserver, feature-detected, no polyfill, no UX risk. The web-vitals v4 attribution build bundles the linkage logic for you.</p>
+    </div>
+    <div class="card">
+      <h3>The one-line pitch</h3>
+      <p class="note" style="font-size:13px">Long Tasks said "something is slow." LoAF says <strong>which file, which function, which character, and whether it blocked input</strong> — from real users, in production.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap" style="padding:0">
+    <p><strong>Long Animation Frames API (LoAF)</strong> — research demo by Jin (Molt Studios / OpenDrones). Chrome/Edge 123+ · Samsung 27+ · W3C FPWD 2026 · Firefox &amp; Safari pending. Sources: developer.chrome.com/docs/web-platform/long-animation-frames · MDN Long animation frame timing · w3c.github.io/long-animation-frames · web-vitals v4 attribution.</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var hasLoAF = !!(window.PerformanceObserver && PerformanceObserver.supportedEntryTypes && PerformanceObserver.supportedEntryTypes.indexOf('long-animation-frame') !== -1);
+  var hasET = !!(window.PerformanceObserver && PerformanceObserver.supportedEntryTypes && PerformanceObserver.supportedEntryTypes.indexOf('event') !== -1);
+  var hasYield = !!(window.scheduler && typeof window.scheduler.yield === 'function');
+
+  /* ---------- §1 capability ---------- */
+  (function badges() {
+    var b1 = $('badge-loaf'), b2 = $('badge-et'), b3 = $('badge-yield');
+    if (b1) { b1.className = 'badge ' + (hasLoAF ? 'live-yes' : 'live-no'); b1.innerHTML = '<b>LoAF</b>: ' + (hasLoAF ? '✓ supported here' : '✗ not in this browser'); }
+    if (b2) { b2.innerHTML = '<b>Event Timing</b>: ' + (hasET ? '✓' : '✗'); }
+    if (b3) { b3.className = 'badge ' + (hasYield ? 'live-yes' : 'live-no'); b3.innerHTML = '<b>scheduler.yield()</b>: ' + (hasYield ? '✓ Chrome 129+' : 'falls back to setTimeout'); }
+    var ro = $('cap-readout');
+    if (ro) {
+      ro.innerHTML = 'LoAF: <b>' + (hasLoAF ? 'YES' : 'NO') + '</b> · Event Timing: <b>' + (hasET ? 'YES' : 'NO') + '</b> · scheduler.yield: <b>' + (hasYield ? 'YES' : 'NO') + '</b><br>' +
+        'cores: <b>' + (navigator.hardwareConcurrency || '?') + '</b> · deviceMemory: <b>' + (navigator.deviceMemory || navigator.deviceMemory === 0 ? navigator.deviceMemory + ' GB' : 'n/a') + '</b><br>' +
+        'UA: ' + navigator.userAgent.slice(0, 110);
+    }
+  })();
+
+  /* ---------- shared state ---------- */
+  var loaves = [];        // rolling log, cap 200
+  var longtaskCount = 0;
+  var currentTrigger = 'page load';
+  var loafSeq = 0;
+
+  function fmt(n) { return (Math.round(n * 10) / 10).toFixed(1); }
+
+  function pushLoaf(entry) {
+    loafSeq++;
+    var rec = {
+      seq: loafSeq, entry: entry, trigger: currentTrigger,
+      start: entry.startTime, dur: entry.duration,
+      block: entry.blockingDuration || 0,
+      renderStart: entry.renderStart || 0,
+      sLS: entry.styleAndLayoutStart || 0,
+      scripts: entry.scripts || []
+    };
+    loaves.push(rec);
+    if (loaves.length > 200) loaves.shift();
+    renderStats(); renderTable(); renderTimeline();
+    if (rec.trigger.indexOf('lab') === 0 || rec.trigger === 'inp-lab' || rec.trigger === 'wall') renderAttribution(rec);
+  }
+
+  /* ---------- §3 stats + table ---------- */
+  function renderStats() {
+    var worst = 0, worstB = 0;
+    for (var i = 0; i < loaves.length; i++) {
+      if (loaves[i].dur > worst) worst = loaves[i].dur;
+      if (loaves[i].block > worstB) worstB = loaves[i].block;
+    }
+    $('stat-count').textContent = loaves.length;
+    $('stat-worst').textContent = fmt(worst) + ' ms';
+    $('stat-block').textContent = fmt(worstB) + ' ms';
+    $('stat-longtask').textContent = longtaskCount;
+  }
+
+  function renderTable() {
+    var tb = $('loaf-table').querySelector('tbody');
+    if (!loaves.length) return;
+    var rows = loaves.slice(-8).reverse();
+    var html = '';
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      var work = r.renderStart ? r.renderStart - r.start : r.dur;
+      var render = r.renderStart ? (r.start + r.dur) - r.renderStart : 0;
+      var sl = r.sLS ? (r.start + r.dur) - r.sLS : 0;
+      html += '<tr><td>' + r.seq + '</td><td class="mono">' + fmt(r.start) + '</td>' +
+        '<td class="' + (r.dur > 150 ? 'num-bad' : r.dur > 80 ? 'num-warn' : '') + '">' + fmt(r.dur) + '</td>' +
+        '<td class="' + (r.block > 100 ? 'num-bad' : '') + '">' + fmt(r.block) + '</td>' +
+        '<td class="mono">' + (r.renderStart ? fmt(r.renderStart) : '— (no render)') + '</td>' +
+        '<td class="mono">' + fmt(work) + '</td><td class="mono">' + fmt(render) + '</td>' +
+        '<td class="mono">' + fmt(sl) + '</td><td>' + r.scripts.length + '</td>' +
+        '<td class="mono" style="white-space:normal">' + r.trigger + '</td></tr>';
+    }
+    tb.innerHTML = html;
+  }
+
+  /* ---------- §5 timeline ---------- */
+  function renderTimeline() {
+    var area = $('timeline-area');
+    var rows = loaves.slice(-10);
+    if (!rows.length) return;
+    var maxDur = 10;
+    for (var i = 0; i < rows.length; i++) if (rows[i].dur > maxDur) maxDur = rows[i].dur;
+    var html = '';
+    for (var j = 0; j < rows.length; j++) {
+      var r = rows[j];
+      var work = r.renderStart ? r.renderStart - r.start : r.dur;
+      var pre = r.sLS ? r.sLS - r.renderStart : 0;
+      var sl = r.sLS ? (r.start + r.dur) - r.sLS : (r.renderStart ? (r.start + r.dur) - r.renderStart : 0);
+      var wPct = Math.max(work / maxDur * 100, 1);
+      var pPct = Math.max(pre / maxDur * 100, pre > 0 ? 1 : 0);
+      var sPct = Math.max(sl / maxDur * 100, sl > 0 ? 1 : 0);
+      var bPct = Math.min(r.block / maxDur * 100, 100);
+      html += '<div class="tl-row"><div class="tl-top"><span>#' + r.seq + ' · ' + r.trigger + (r.renderStart ? '' : ' · no render') + '</span><span>' + fmt(r.dur) + 'ms (blocking ' + fmt(r.block) + 'ms)</span></div>' +
+        '<div class="tl-bar"><div class="tl-seg seg-work" style="width:' + wPct + '%"></div>' +
+        '<div class="tl-seg seg-pre" style="width:' + pPct + '%"></div>' +
+        '<div class="tl-seg seg-sl" style="width:' + sPct + '%"></div></div>' +
+        (bPct > 0.5 ? '<div class="tl-blocking" style="width:' + bPct + '%"></div>' : '') +
+        '</div>';
+    }
+    area.innerHTML = html;
+  }
+
+  /* ---------- §6 attribution ---------- */
+  function renderAttribution(rec) {
+    var area = $('attribution-area');
+    if (!rec.scripts.length) {
+      area.innerHTML = 'Frame #' + rec.seq + ' (' + fmt(rec.dur) + 'ms, ' + rec.trigger + ') — no single script crossed the 5ms attribution threshold.';
+      return;
+    }
+    var html = 'Frame #' + rec.seq + ' — ' + fmt(rec.dur) + 'ms · ' + rec.trigger + ' · ' + rec.scripts.length + ' script(s):';
+    for (var i = 0; i < rec.scripts.length; i++) {
+      var s = rec.scripts[i];
+      var src = s.sourceURL ? s.sourceURL.split('/').pop() : '(inline or unattributed)';
+      html += '<div class="script-card"><div class="sc-head"><span class="tag tag-warn">' + (s.invokerType || 'script') + '</span>' +
+        '<span class="sc-invoker">' + (s.invoker || '—') + '</span></div>' +
+        '<div class="kv">duration <b>' + fmt(s.duration) + 'ms</b> · forcedStyleAndLayout <b style="' + (s.forcedStyleAndLayoutDuration > 1 ? 'color:var(--bad)' : '') + '">' + fmt(s.forcedStyleAndLayoutDuration || 0) + 'ms</b> · pause <b>' + fmt(s.pauseDuration || 0) + 'ms</b></div>' +
+        '<div class="kv">source <b>' + src + '</b>' + (s.sourceFunctionName ? ' · fn <b>' + s.sourceFunctionName + '</b>' : '') + (s.sourceCharPosition >= 0 ? ' · char <b>' + s.sourceCharPosition + '</b>' : '') + ' · window <b>' + s.windowAttribution + '</b></div></div>';
+    }
+    area.innerHTML = html;
+  }
+
+  /* ---------- observers ---------- */
+  if (hasLoAF) {
+    new PerformanceObserver(function (list) {
+      for (var i = 0; i < list.getEntries().length; i++) pushLoaf(list.getEntries()[i]);
+    }).observe({ type: 'long-animation-frame', buffered: true });
+  }
+  if (window.PerformanceObserver && PerformanceObserver.supportedEntryTypes && PerformanceObserver.supportedEntryTypes.indexOf('longtask') !== -1) {
+    new PerformanceObserver(function (list) {
+      longtaskCount += list.getEntries().length; renderStats();
+    }).observe({ type: 'longtask', buffered: true });
+  }
+
+  /* ---------- §4 lab ---------- */
+  function busy(ms) {
+    var t0 = performance.now();
+    while (performance.now() - t0 < ms) { /* deliberate main-thread spin */ }
+  }
+  var counter = document.createElement('div');
+  counter.setAttribute('aria-hidden', 'true');
+  counter.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);';
+  document.body.appendChild(counter);
+  // a real subtree for lab C to thrash — forced layout on 150 rows is not free
+  var arena = document.createElement('div');
+  arena.setAttribute('aria-hidden', 'true');
+  arena.style.cssText = 'position:absolute;left:-9999px;top:0;width:220px;font-size:12px;';
+  for (var a = 0; a < 150; a++) { var ar = document.createElement('div'); ar.textContent = 'arena row ' + a + ' · layout Thrash Target ' + ((a * 7) % 97); arena.appendChild(ar); }
+  document.body.appendChild(arena);
+
+  function snapshot() { return { loaf: loaves.length, lt: longtaskCount }; }
+  function report(label, t0, before) {
+    setTimeout(function () {
+      currentTrigger = 'page load'; // entries delivered by now — safe to reset the label
+      var dLoaf = loaves.length - before.loaf, dLt = longtaskCount - before.lt;
+      var tail = '';
+      if (label.indexOf('D ·') === 0) {
+        var wb = 0, wd = 0;
+        for (var i = loaves.length - dLoaf; i < loaves.length; i++) {
+          if (loaves[i] && loaves[i].block > wb) wb = loaves[i].block;
+          if (loaves[i] && loaves[i].dur > wd) wd = loaves[i].dur;
+        }
+        tail = ' → worst frame ' + fmt(wd) + 'ms but blockingDuration <b>' + fmt(wb) + 'ms</b> — input stayed responsive (§8: batching yields trades smoothness, not responsiveness).';
+      }
+      $('lab-readout').innerHTML = '<b>' + label + '</b> — wall ' + fmt(performance.now() - t0) + 'ms · LoAF entries <b>' + dLoaf + '</b> · longtask entries <b>' + dLt + '</b>' + tail;
+    }, 400);
+  }
+
+  document.querySelectorAll('[data-lab]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var kind = btn.getAttribute('data-lab');
+      var t0 = performance.now();
+      var before = snapshot();
+      if (kind === 'longtask') {
+        currentTrigger = 'lab:A long task';
+        counter.textContent = 'lab A: single long task'; // pending render → the frame must paint after the task
+        busy(180);
+        report('A · one 180ms task', t0, before);
+      } else if (kind === 'chain') {
+        currentTrigger = 'lab:B 8×40ms chain';
+        (function chain(i) {
+          if (i >= 8) { report('B · eight 40ms tasks, one long frame train', t0, before); return; }
+          busy(40);
+          counter.textContent = 'chain step ' + i;
+          setTimeout(function () { chain(i + 1); });
+        })(0);
+      } else if (kind === 'thrash') {
+        currentTrigger = 'lab:C layout thrash';
+        var victim = arena;
+        for (var i = 0; i < 130; i++) {
+          victim.style.width = (180 + (i % 5) * 20) + 'px';
+          void victim.offsetWidth; // forced synchronous layout of 150 rows
+          victim.style.fontSize = (11 + (i % 3)) + 'px';
+        }
+        report('C · 130× write-read layout thrash', t0, before);
+      } else if (kind === 'yield') {
+        currentTrigger = 'lab:D yielded chunks';
+        var step = function (i) {
+          if (i >= 8) { report('D · 8×32ms with scheduler.yield', t0, before); return Promise.resolve(); }
+          busy(32);
+          counter.textContent = 'yield step ' + i;
+          var y = (window.scheduler && window.scheduler.yield) ? window.scheduler.yield() : new Promise(function (res) { setTimeout(res, 0); });
+          return y.then(function () { return step(i + 1); });
+        };
+        step(0);
+      }
+    });
+  });
+
+  /* ---------- §7 INP linkage ---------- */
+  var interactions = [];
+  if (hasET) {
+    new PerformanceObserver(function (list) {
+      for (var i = 0; i < list.getEntries().length; i++) {
+        var e = list.getEntries()[i];
+        if (e.interactionId) interactions.push(e);
+      }
+    }).observe({ type: 'event', durationThreshold: 16 });
+  }
+  $('inp-btn').addEventListener('click', function () {
+    currentTrigger = 'inp-lab';
+    var before = snapshot();
+    busy(140); // the slow handler — trigger resets in the timeout below, after entry delivery
+    setTimeout(function () {
+      currentTrigger = 'page load';
+      var e = null;
+      for (var i = interactions.length - 1; i >= 0; i--) {
+        if (interactions[i].startTime > performance.now() - 5000) { e = interactions[i]; break; }
+      }
+      var out = $('inp-result');
+      if (!e) {
+        out.innerHTML = 'Event Timing ' + (hasET ? 'observed no click entry (click again)' : 'not supported in this browser') + '.';
+        return;
+      }
+      var inputDelay = e.processingStart - e.startTime;
+      var processing = e.processingEnd - e.processingStart;
+      var presentation = (e.startTime + e.duration) - e.processingEnd;
+      var linked = [];
+      for (var j = 0; j < loaves.length; j++) {
+        var l = loaves[j];
+        if (l.start < e.processingEnd && e.startTime < l.start + l.dur) linked.push(l);
+      }
+      var html = '<b>Interaction total ' + fmt(e.duration) + 'ms</b> (Event Timing, quantized) — input delay <b>' + fmt(inputDelay) + 'ms</b> · processing <b>' + fmt(processing) + 'ms</b> · presentation <b>' + fmt(Math.max(presentation, 0)) + 'ms</b><br>';
+      if (linked.length) {
+        html += 'Intersecting LoAFs: <b>' + linked.length + '</b> — ';
+        for (var k = 0; k < linked.length; k++) {
+          html += '#' + linked[k].seq + ' (' + fmt(linked[k].dur) + 'ms, blocking ' + fmt(linked[k].block) + 'ms, ' + linked[k].scripts.length + ' scripts)' + (k < linked.length - 1 ? '; ' : '');
+        }
+        html += '<br>→ the handler was in frame #' + linked[linked.length - 1].seq + '; attribution in section 6.';
+      } else {
+        html += 'No intersecting LoAF (this browser may not support LoAF, or the frame squeaked under 50ms).';
+      }
+      out.innerHTML = html;
+    }, 450);
+  });
+
+  /* ---------- §10 telemetry wall ---------- */
+  function fleetData(n) {
+    var calls = ['ARC-01', 'ARC-02', 'SKY-2', 'SKY-7', 'PARROT-X', 'X10-A', 'X10-B', 'PHX-9'];
+    var rows = [];
+    for (var i = 0; i < n; i++) {
+      var bat = 20 + (i * 7) % 80;
+      var alt = (i * 13) % 420;
+      var rssi = -95 + (i * 3) % 45;
+      rows.push({ id: calls[i % calls.length] + '-' + (1000 + i), bat: bat, alt: alt, rssi: rssi });
+    }
+    return rows;
+  }
+  var DATA = fleetData(2400);
+  function wallRow(d) {
+    var cls = d.bat < 30 ? 'crit' : (d.rssi < -85 ? 'warn2' : '');
+    return '<div class="tele-row"><span class="id">' + d.id + '</span><span class="' + cls + '">BAT ' + d.bat + '%</span><span>ALT ' + d.alt + 'm</span><span>RSSI ' + d.rssi + 'dBm</span><span>LINK ' + (d.rssi < -85 ? 'WEAK' : 'OK') + '</span></div>';
+  }
+  function wallStats(el, t0, before, done) {
+    setTimeout(function () {
+      currentTrigger = 'page load';
+      var dLoaf = loaves.length - before.loaf;
+      var worst = 0, wb = 0;
+      for (var i = loaves.length - dLoaf; i < loaves.length; i++) {
+        if (loaves[i] && loaves[i].dur > worst) worst = loaves[i].dur;
+        if (loaves[i] && loaves[i].block > wb) wb = loaves[i].block;
+      }
+      el.innerHTML = 'wall <b>' + fmt(performance.now() - t0) + 'ms</b> · LoAFs <b>' + dLoaf + '</b> · worst frame <b>' + fmt(worst) + 'ms</b> · worst blocking <b>' + fmt(wb) + 'ms</b>';
+      if (done) done();
+    }, 450);
+  }
+  $('wall-naive').addEventListener('click', function () {
+    currentTrigger = 'wall:naive 2400 rows';
+    var t0 = performance.now(), before = snapshot();
+    busy(70); // "parse the telemetry batch" — one synchronous JSON digestion, as the naive code does
+    var wall = $('wall-a');
+    wall.innerHTML = '';
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < DATA.length; i++) {
+      var div = document.createElement('div');
+      div.innerHTML = wallRow(DATA[i]);
+      frag.appendChild(div.firstChild);
+    }
+    wall.appendChild(frag); // one gulp — parse + full 2400-row layout in a single frame
+    wallStats($('wall-a-stats'), t0, before);
+  });
+  $('wall-chunked').addEventListener('click', function () {
+    currentTrigger = 'wall:chunked';
+    var t0 = performance.now(), before = snapshot();
+    var wall = $('wall-b');
+    wall.innerHTML = '';
+    var CH = 400;
+    var step = function (from) {
+      busy(12); // parse this chunk's packets — same total parse cost, spread across tasks
+      var frag = document.createDocumentFragment();
+      for (var i = from; i < Math.min(from + CH, DATA.length); i++) {
+        var div = document.createElement('div');
+        div.innerHTML = wallRow(DATA[i]);
+        frag.appendChild(div.firstChild);
+      }
+      wall.appendChild(frag);
+      if (from + CH < DATA.length) {
+        var y = (window.scheduler && window.scheduler.yield) ? window.scheduler.yield() : new Promise(function (res) { setTimeout(res, 0); });
+        return y.then(function () { return step(from + CH); });
+      }
+      wallStats($('wall-b-stats'), t0, before);
+      return Promise.resolve();
+    };
+    step(0);
+  });
+
+  /* trigger label for organic frames */
+  window.addEventListener('load', function () { currentTrigger = 'page load'; });
+})();
+</script>
+</div>
+</main>
+</body>
+</html>
