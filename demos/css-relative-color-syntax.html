@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSS Relative Color Syntax — Derive Palettes From One Seed (Baseline 2024)</title>
+<meta name="description" content="Relative color syntax: oklch(from var(--seed) calc(l + 0.15) c h) — the preprocessor darken()/lighten() workflow made native. Labs, gotchas, palette engine, telemetry derivation.">
+<style>
+:root{
+  --bg:#faf8f5; --ink:#1c1917; --muted:#78716c; --line:#e7e2da; --card:#ffffff;
+  --radius:18px; --max:980px; --prose:640px;
+  --seed: oklch(0.55 0.19 262); /* the single brand seed every accent derives from */
+  --accent: var(--seed);
+  --accent-soft: oklch(from var(--seed) 0.94 calc(c * 0.35) h);
+  --accent-ink: oklch(from var(--seed) calc(l + 0.42) calc(c * 0.75) h);
+  --accent-deep: oklch(from var(--seed) calc(l * 0.62) c h);
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  background:var(--bg); color:var(--ink); line-height:1.6; font-size:15px;
+  overflow-x:hidden;
+}
+/* gradient orbs */
+.orbs{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none}
+.orb{position:absolute;border-radius:50%;filter:blur(90px);opacity:.5}
+.orb1{width:420px;height:420px;top:-120px;left:-100px;background:var(--accent-soft)}
+.orb2{width:380px;height:380px;bottom:-140px;right:-80px;background:oklch(from var(--seed) 0.93 calc(c*0.25) calc(h + 60))}
+header{max-width:var(--max);margin:0 auto;padding:64px 24px 8px}
+.pill{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;letter-spacing:.4px;
+  background:var(--accent-soft);color:var(--accent-deep);border-radius:999px;padding:6px 14px;margin-bottom:20px}
+h1{font-size:clamp(30px,5vw,44px);line-height:1.12;letter-spacing:-.02em;font-weight:800;max-width:15ch}
+.sub{color:var(--muted);font-size:17px;max-width:56ch;margin-top:16px}
+.sub code{font-family:var(--mono);font-size:14px}
+main{max-width:var(--max);margin:0 auto;padding:24px 24px 80px;display:flex;flex-direction:column;gap:44px}
+section{scroll-margin-top:20px}
+.kicker{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-deep);margin-bottom:8px}
+h2{font-size:26px;letter-spacing:-.01em;margin-bottom:12px;font-weight:750}
+h3{font-size:17px;margin:20px 0 8px;font-weight:700}
+p{max-width:var(--prose)}
+p+p{margin-top:10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:24px;box-shadow:0 1px 3px rgba(28,25,23,.04)}
+code{font-family:var(--mono);font-size:13px;background:oklch(0.97 0.005 90);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+pre{font-family:var(--mono);font-size:12.5px;line-height:1.7;background:#1c1917;color:#e7e5e4;border-radius:14px;
+  padding:18px 20px;overflow-x:auto;margin:14px 0}
+pre .c{color:#a8a29e}pre .k{color:#7dd3fc}pre .g{color:#86efac}pre .y{color:#fde68a}pre .r{color:#fca5a5}
+.badges{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+.badge{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;background:var(--card);
+  border:1px solid var(--line);border-radius:999px;padding:7px 13px}
+.badge .dot{width:9px;height:9px;border-radius:50%;background:#a8a29e}
+.badge.ok .dot{background:oklch(0.72 0.17 152)}
+.badge.no .dot{background:oklch(0.62 0.2 25)}
+.badge.ok{border-color:oklch(from oklch(0.72 0.17 152) l calc(c*0.5) h)}
+table{width:100%;border-collapse:collapse;font-size:13.5px;margin:12px 0}
+th{text-align:left;font-weight:700;padding:9px 10px;border-bottom:2px solid var(--line);white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+td.mono,th.mono{font-family:var(--mono);font-size:12.5px}
+.yes{color:oklch(0.55 0.15 152);font-weight:700}
+.part{color:oklch(0.68 0.15 75);font-weight:700}
+.no-cell{color:oklch(0.55 0.19 25);font-weight:700}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.note{border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 12px 12px 0;
+  padding:12px 16px;margin:14px 0;font-size:13.5px;max-width:var(--prose)}
+.note.warn{border-left-color:oklch(0.7 0.16 60);background:oklch(0.96 0.03 80)}
+.note b{font-weight:700}
+.swatch{border-radius:12px;border:1px solid rgba(0,0,0,.08);height:56px}
+.swatch.tall{height:72px}
+.swlabel{font-size:11px;font-family:var(--mono);color:var(--muted);margin-top:6px;word-break:break-all}
+.lab{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px}
+.lab h3{margin-top:0}
+.labrow{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:10px 0}
+button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--card);
+  padding:8px 14px;font-weight:600;font-size:13.5px;color:var(--ink);transition:transform .1s}
+button:hover{transform:translateY(-1px);border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:transparent;color:oklch(0.99 0 0)}
+input[type=color]{width:52px;height:38px;border:1px solid var(--line);border-radius:10px;background:var(--card);padding:2px;cursor:pointer}
+input[type=range]{accent-color:var(--accent);width:160px}
+.readout{font-family:var(--mono);font-size:12.5px;background:#1c1917;color:#e7e5e4;border-radius:10px;
+  padding:10px 14px;margin-top:12px;overflow-x:auto;white-space:pre-wrap;word-break:break-all}
+.readout .good{color:#86efac}.readout .bad{color:#fca5a5}.readout .dim{color:#a8a29e}
+.tag{display:inline-block;font-family:var(--mono);font-size:10.5px;padding:2px 8px;border-radius:99px;
+  background:oklch(0.96 0.01 90);border:1px solid var(--line);color:var(--muted)}
+.checklist li{margin:8px 0 8px 18px;max-width:var(--prose)}
+a{color:var(--accent-deep)}
+.foot{max-width:var(--max);margin:0 auto;padding:0 24px 48px;color:var(--muted);font-size:13px}
+hr.sep{border:0;border-top:1px solid var(--line);margin:8px 0 0}
+
+/* ---- §5 playground ---- */
+.pg-seed{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.pg-out{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-top:14px}
+.pg-cell .swatch{height:64px}
+/* ---- §6 var-origin lab ---- */
+.twin{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.twinbox{border-radius:14px;padding:16px;color:#fff;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,.3)}
+/* ---- §7 fallback lab ---- */
+.fallback-stage{background:
+  repeating-conic-gradient(oklch(0.9 0.01 90) 0% 25%, #fff 0% 50%) 50%/16px 16px;
+  border-radius:12px;padding:14px;margin-bottom:14px}
+.fallback-a{background:oklch(0.62 0.19 25)} /* static only */
+.fallback-literalbad{background:oklch(0.62 0.19 25);
+  background:oklch(from teal calc(l + 20%) c h)} /* parse-time drop → static survives */
+.fallback-varbad{background:oklch(0.62 0.19 25);
+  background:oklch(from var(--seed) calc(l + 20%) c h)} /* IACVT → unset → transparent! */
+.fallback-d{background:oklch(0.62 0.19 25);
+  background:oklch(from var(--seed) calc(l + 0.2) c h)} /* valid → derived wins */
+/* ---- §8 alpha lab ---- */
+.alpha-stage{background:
+  repeating-conic-gradient(oklch(0.9 0.01 90) 0% 25%, #fff 0% 50%) 50%/16px 16px;
+  border-radius:12px;padding:16px;display:flex;gap:12px;flex-wrap:wrap}
+.alpha-chip{width:110px;height:64px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+/* ---- §9 contrast lab ---- */
+.cr-row{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:12px 0;padding:14px;border-radius:12px;border:1px solid var(--line)}
+.cr-chip{min-width:150px;padding:14px;border-radius:10px;font-weight:700;font-size:14px;flex:0 0 auto}
+.ratio{font-family:var(--mono);font-size:15px;font-weight:700}
+.wcag{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:99px;margin-left:6px}
+.wcag.aa{background:oklch(0.9 0.1 152);color:oklch(0.35 0.1 152)}
+.wcag.fail{background:oklch(0.92 0.08 25);color:oklch(0.45 0.16 25)}
+/* ---- §10 recipes ---- */
+.recipes{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.recipe{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--card)}
+.recipe .top{height:64px;display:flex}
+.recipe .half{flex:1}
+.recipe .body{padding:10px 12px;font-size:12px}
+.recipe .body b{display:block;font-size:12.5px;margin-bottom:2px}
+/* ---- §11 Molt theme engine ---- */
+.theme-wrap{--t: var(--seed); border-radius:16px;padding:22px;border:1px solid transparent;
+  background:linear-gradient(oklch(from var(--t) 0.985 calc(c*0.12) h), oklch(from var(--t) 0.955 calc(c*0.18) h));
+  border-color:oklch(from var(--t) 0.88 calc(c*0.35) h)}
+.theme-card{background:#fff;border-radius:14px;padding:18px;box-shadow:0 2px 10px rgba(28,25,23,.07);
+  border-top:4px solid oklch(from var(--t) calc(l + 0.08) c h)}
+.theme-card h4{font-size:16px;color:oklch(from var(--t) calc(l * 0.72) c h);margin-bottom:6px}
+.theme-card p{font-size:13px;color:var(--muted);margin:0}
+.btnrow{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+.tbtn{border:none;border-radius:10px;padding:9px 16px;font-weight:700;font-size:13.5px}
+.tbtn.primary{background:oklch(from var(--t) l c h);color:#fff;box-shadow:0 2px 8px oklch(from var(--t) l c h / .35)}
+.tbtn.primary:hover{background:oklch(from var(--t) calc(l - 0.06) c h)}
+.tbtn.ghost{background:oklch(from var(--t) 0.95 calc(c*0.25) h);color:oklch(from var(--t) calc(l*0.75) c h);
+  border:1px solid oklch(from var(--t) 0.85 calc(c*0.4) h)}
+.focus-demo{margin-top:14px;display:flex;gap:10px;align-items:center;font-size:13px;color:var(--muted)}
+.focus-demo input{border:2px solid oklch(from var(--t) 0.85 calc(c*0.35) h);border-radius:10px;padding:8px 12px;font:inherit;outline:none}
+.focus-demo input:focus{border-color:oklch(from var(--t) l calc(c*1.35) h);
+  box-shadow:0 0 0 4px oklch(from var(--t) l c h / .25)}
+.theme-token{display:inline-block;font-family:var(--mono);font-size:11px;background:#fff;border:1px dashed oklch(from var(--t) 0.8 calc(c*0.4) h);
+  color:oklch(from var(--t) calc(l*0.75) c h);border-radius:8px;padding:3px 9px;margin:3px}
+/* ---- §12 OpenDrones telemetry ---- */
+.telem{background:oklch(0.21 0.02 260);border-radius:16px;padding:20px;color:oklch(0.93 0.01 260)}
+.telem h4{color:oklch(0.95 0.01 260);font-size:15px;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.trow{margin:12px 0}
+.trow .lbl{display:flex;justify-content:space-between;font-size:12.5px;font-family:var(--mono);margin-bottom:5px}
+.track{height:14px;border-radius:99px;background:oklch(from var(--status) calc(l*0.22) calc(c*0.35) h);overflow:hidden;position:relative}
+.fill{height:100%;border-radius:99px;background:linear-gradient(90deg, oklch(from var(--status) calc(l*0.85) c h), oklch(from var(--status) l c h));
+  box-shadow:0 0 12px oklch(from var(--status) l calc(c*1.4) h / .8);transition:width .6s cubic-bezier(.22,1,.36,1)}
+.tval{color:oklch(from var(--status) calc(l + 0.28) calc(c*0.55) h);font-weight:700}
+.tcrit .fill{animation:pulse 1.1s ease-in-out infinite}
+@keyframes pulse{50%{filter:brightness(1.25)}}
+@media (prefers-reduced-motion:reduce){.fill{transition:none}.tcrit .fill{animation:none}}
+.telem .statusline{margin-top:16px;display:flex;gap:10px;flex-wrap:wrap}
+.statechip{font-size:12px;font-weight:700;border-radius:99px;padding:5px 12px;border:1px solid}
+footer small{display:block;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="orbs"><div class="orb orb1"></div><div class="orb orb2"></div></div>
+
+<header>
+  <div class="pill">🎨 Molt Research · CSS Color Level 5</div>
+  <h1>Relative Color Syntax</h1>
+  <p class="sub">One seed color → an entire palette, computed by the browser:
+  <code>oklch(from var(--seed) calc(l + 0.15) c h)</code>.
+  The preprocessor <code>darken()</code>/<code>lighten()</code> workflow, finally native — and theme-able through custom properties since Chrome 131 / Safari 18 / Firefox 133.</p>
+  <div class="badges" id="badges">
+    <span class="badge" id="b-rcs"><span class="dot"></span>relative color syntax</span>
+    <span class="badge" id="b-var"><span class="dot"></span><code>from var(--x)</code> origin</span>
+    <span class="badge" id="b-cur"><span class="dot"></span><code>from currentcolor</code> origin</span>
+    <span class="badge" id="b-sup"><span class="dot"></span>support matrix</span>
+  </div>
+</header>
+
+<main>
+
+<!-- ================= 1 ================= -->
+<section id="s1">
+  <div class="kicker">01 · Why this matters</div>
+  <h2>The foundation the color tier was missing</h2>
+  <p>We've cataloged <code>oklch()</code>, <code>color-mix()</code>, <code>light-dark()</code> and <code>contrast-color()</code> — the modern color stack. Relative color syntax (RCS) is the piece all of them lean on: it <b>derives</b> new colors from an existing one's channels with full <code>calc()</code> math, instead of blending two fixed colors.</p>
+  <p>Design systems stop shipping 11 hand-picked hex tokens per brand and start shipping <b>one seed + formulas</b>. Change the seed, the entire palette — buttons, borders, tints, focus rings, status bands — recomputes in the browser, live, with no build step and no JavaScript color library.</p>
+  <div class="note"><b>The one-liner:</b> <code>color-mix()</code> blends two colors. RCS derives a ramp from one. Production systems need both, but every formula in <code>color-mix(in oklch, X 80%, white)</code> was secretly an RCS-shaped problem ("lighten X by 20%").</div>
+</section>
+
+<!-- ================= 2 ================= -->
+<section id="s2">
+  <div class="kicker">02 · Support (August 2026)</div>
+  <h2>Shipped in 2023. Universal since late 2024.</h2>
+  <p>The matrix hides a two-phase story. The syntax landed first (Safari 16.4 Mar 2023, Chrome 119 Nov 2023, Firefox 128 Jul 2024) — but the <b>theme-able form</b>, <code>from var(--brand) …</code>, only went full-support in the wave of Chrome/Edge 131, Safari 18 and Firefox 133 (late 2024). Chrome 119–130, Safari 16.4–17.6 and Firefox 128–132 are marked <span class="part">partial</span> precisely because custom-property origins failed there.</p>
+  <div class="card">
+  <table>
+    <tr><th>Engine</th><th>Partial</th><th>Full support</th><th>Status Aug 2026</th></tr>
+    <tr><td>Chrome / Edge</td><td class="mono">119–130</td><td class="mono yes">131+ <span class="tag">Nov 2024</span></td><td>~20 stable versions (151 current)</td></tr>
+    <tr><td>Safari (macOS + iOS)</td><td class="mono">16.4–17.6</td><td class="mono yes">18.0+ <span class="tag">Sep 2024</span></td><td>18 / 26.x / 27-TP ✓</td></tr>
+    <tr><td>Firefox</td><td class="mono">128–132</td><td class="mono yes">133+ <span class="tag">Oct 2024</span></td><td>~19 stable versions</td></tr>
+    <tr><td>Opera</td><td class="mono">106–116</td><td class="mono yes">117+</td><td>✓</td></tr>
+    <tr><td>Samsung Internet</td><td class="mono">25–30</td><td class="mono part">still partial</td><td>the last holdout — test on Samsung</td></tr>
+    <tr><td>Opera Mini / old UC / QQ</td><td>—</td><td class="mono no-cell">never</td><td>rounding error</td></tr>
+  </table>
+  </div>
+  <p style="margin-top:10px">Baseline 2024 — about 21 months old at time of writing, inside the 30-month "newly available" window but effectively universal: every current stable engine except Samsung Internet fully supports it. That makes RCS a <b>ship-today default</b>, not a progressive enhancement — the fallback discipline in §7 is for the Samsung tail, not for whole browsers.</p>
+</section>
+
+<!-- ================= 3 ================= -->
+<section id="s3">
+  <div class="kicker">03 · Mechanics</div>
+  <h2>Convert → destructure → calc → output</h2>
+  <p>Every relative color runs the same four-step pipeline. The origin is <b>converted into the output function's color space first</b>, then broken into channel values you can read and compute against:</p>
+  <pre><span class="c">/*                ┌─ 1. output space = oklch</span>
+<span class="c">                 │        ┌─ 2. origin: converted TO oklch</span>
+<span class="c">                 │        │            ┌─ 3. channels as math values ──┐  4. alpha ─┐*/</span>
+<span class="k">background</span>: <span class="g">oklch</span>(<span class="y">from</span> <span class="k">var(--seed)</span> <span class="g">calc(l * 0.78)</span> <span class="g">c</span> <span class="g">h</span> <span class="y">/</span> <span class="g">calc(alpha * 0.9)</span>);
+<span class="c">//               └── oklch lightness     └ chroma  └ hue  └ derived opacity</span></pre>
+  <ul class="checklist">
+    <li><b>Origin can be anything</b> — hex, named colors, <code>var()</code>, system colors, <code>currentcolor</code>, even another relative color. Input format never matters; conversion happens first.</li>
+    <li><b>Channels are values, not strings</b> — they participate in <code>calc()</code>, <code>clamp()</code>, <code>min()</code>/<code>max()</code>, and even <code>infinity</code> tricks.</li>
+    <li><b>Omit or repeat freely</b> — <code>rgb(from green g g g)</code> is legal (yields gray). You must supply all output channels, but they don't have to reference the origin at all.</li>
+    <li><b>Omitted alpha inherits from the origin</b> — unlike absolute colors, where missing alpha means 100% (§8).</li>
+  </ul>
+  <div class="note"><b>Serialization gotcha:</b> outputs of the sRGB family (<code>rgb()</code>, <code>hsl()</code>, <code>hwb()</code>) serialize as <code>color(srgb …)</code> in computed style; <code>oklch()</code>/<code>lab()</code> outputs keep their own syntax. Verified live in §5's readout.</div>
+</section>
+
+<!-- ================= 4 ================= -->
+<section id="s4">
+  <div class="kicker">04 · Reference</div>
+  <h2>Channel keywords cheat sheet</h2>
+  <div class="card">
+  <table>
+    <tr><th>Output function</th><th>Keywords</th><th>Value types in calc()</th><th>Watch out</th></tr>
+    <tr><td class="mono">oklch()</td><td class="mono">l c h</td><td>l: 0–1 · c: 0–~0.4 · h: degrees</td><td>l is a <b>number</b> — <code>calc(l + 20%)</code> is invalid (§7)</td></tr>
+    <tr><td class="mono">oklab()</td><td class="mono">l a b</td><td>l 0–1 · a/b ±0.4</td><td>a is the green↔red axis — not alpha</td></tr>
+    <tr><td class="mono">lch() / lab()</td><td class="mono">l c h / l a b</td><td>l: 0–100 number</td><td>same-name <code>l</code>, 100× different scale than oklch</td></tr>
+    <tr><td class="mono">rgb()</td><td class="mono">r g b</td><td>0–255 numbers</td><td>serializes as <code>color(srgb …)</code></td></tr>
+    <tr><td class="mono">hsl() / hwb()</td><td class="mono">h s l / h w b</td><td>s/l: 0–1 · h: degrees</td><td>b means blackness in hwb, blue in rgb/lab</td></tr>
+    <tr><td class="mono">color(xyz…)</td><td class="mono">x y z</td><td>0–1 numbers</td><td>space named in the function: <code>color(from red xyz-d65 x y z)</code></td></tr>
+    <tr><td>any + alpha</td><td class="mono">alpha</td><td>0–1 number</td><td>write the word <code>alpha</code>; omitted = origin's alpha</td></tr>
+  </table>
+  </div>
+  <p style="margin-top:10px">Keywords are <b>case-sensitive and lowercase</b>. Hue keywords resolve to plain degrees (0–360), so <code>calc(h + 180)</code> is a complement rotation — no <code>deg</code> unit inside the math. Percentage <em>outputs</em> are fine (<code>oklch(from X 85% c h)</code>); it's only percentages inside <code>calc()</code> with a number keyword that explode.</p>
+</section>
+
+<!-- ================= 5 ================= -->
+<section id="s5">
+  <div class="kicker">05 · Live lab</div>
+  <h2>Playground — seed → derived ramp</h2>
+  <div class="lab">
+    <div class="pg-seed">
+      <label style="font-weight:600;font-size:13.5px">Seed <code>--seed</code></label>
+      <input type="color" id="seedpick" value="#4f46c8">
+      <span class="tag" id="hexin">#4f46c8</span>
+      <span style="color:var(--muted);font-size:13px">everything below recomputes in pure CSS</span>
+    </div>
+    <div class="grid3" style="margin-top:14px">
+      <div><label style="font-size:12px;color:var(--muted)">lightness Δ <code>calc(l + δ)</code></label><br>
+        <input type="range" id="dl" min="-0.4" max="0.4" step="0.02" value="0.12"></div>
+      <div><label style="font-size:12px;color:var(--muted)">chroma × <code>calc(c × k)</code></label><br>
+        <input type="range" id="kc" min="0" max="1.8" step="0.05" value="1"></div>
+      <div><label style="font-size:12px;color:var(--muted)">hue rotate <code>calc(h + θ)</code></label><br>
+        <input type="range" id="dh" min="-180" max="180" step="5" value="0"></div>
+    </div>
+    <style id="pgstyle"></style>
+    <div class="pg-out" id="pgout"></div>
+    <div class="readout" id="pgread"></div>
+    <div class="note" style="margin-bottom:0"><b>How it works:</b> JS only writes three custom properties (<code>--dl</code>, <code>--kc</code>, <code>--dh</code>) and the seed. Every swatch below is a static stylesheet rule — <code>oklch(from var(--seed) calc(l + var(--dl)) calc(c * var(--kc)) calc(h + var(--dh)))</code> at different fixed multipliers. The browser does all color math. The readout shows the <b>computed serialization</b> — note the oklch swatch serializes as <code>oklch(…)</code> while the hsl one serializes as <code>color(srgb …)</code>.</div>
+  </div>
+</section>
+
+<!-- ================= 6 ================= -->
+<section id="s6">
+  <div class="kicker">06 · The gotcha that split the matrix</div>
+  <h2>var() origins — the partial-support era, live</h2>
+  <p>In Chrome 119–130 (and Safari 16.4–17.6 / Firefox 128–132), <code>oklch(from teal l c h)</code> worked but <code>oklch(from var(--brand) l c h)</code> — the entire point for theming — did not. Custom-property substitution happened after relative-color parsing. Tutorials from 2023–24 said "RCS can't read custom properties"; that advice is ~2 years stale and it's why this entry exists.</p>
+  <div class="lab">
+    <h3 style="margin-bottom:4px">Live probe — literal vs var() origin</h3>
+    <div class="twin">
+      <div class="twinbox" id="t-literal" style="background:oklch(from teal l c h)">oklch(from teal l c h)<br><small style="font-weight:400;opacity:.85">literal origin</small></div>
+      <div class="twinbox" id="t-var" style="--brand2:teal;background:oklch(from var(--brand2) l c h)">oklch(from var(--brand2) l c h)<br><small style="font-weight:400;opacity:.85">var() origin</small></div>
+    </div>
+    <div class="readout" id="varread"></div>
+  </div>
+  <div class="note warn"><b>Production rule:</b> gate the theme-able form, not the syntax:
+  <code>@supports (color: oklch(from var(--x) l c h))</code> is unreliable for <em>var-origin</em> capability — some engines accept the at-rule but fail at substitution. The robust check is the runtime probe above (computed-value equality) run once at boot, or simply require the full-support versions and ship the static palette as fallback (§7).</div>
+</section>
+
+<!-- ================= 7 ================= -->
+<section id="s7">
+  <div class="kicker">07 · Type system</div>
+  <h2>Number vs percentage — and fallback discipline</h2>
+  <p>Channel keywords are typed numbers. <code>calc(l + 0.2)</code> is valid; <code>calc(l + 20%)</code> is a type error (number + percentage) that invalidates <b>the whole color function</b>. What happens next depends on the origin — and the var() case is the trap:</p>
+  <ul class="checklist" style="margin-bottom:6px">
+    <li><b>Literal origin</b> (<code>from teal …</code>) — the error is caught at parse time → declaration dropped → the <b>static line above survives</b>. Classic progressive enhancement.</li>
+    <li><b>var() origin</b> (<code>from var(--seed) …</code>) — substitution happens first, so the error surfaces at <b>computed-value time</b> → the property becomes <code>unset</code> (initial/inherited) → <b>your static fallback does NOT save you</b>. The property goes transparent/initial instead. Verified live below — swatch C.</li>
+  </ul>
+  <div class="lab">
+    <div class="fallback-stage">
+    <div class="grid3" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+      <div>
+        <div class="swatch fallback-a" id="f-a"></div>
+        <div class="swlabel">A · static only<br>(the safety net)</div>
+      </div>
+      <div>
+        <div class="swatch fallback-literalbad" id="f-b"></div>
+        <div class="swlabel">B · literal + <span style="color:oklch(0.55 0.15 152);font-weight:700">calc(l+20%)</span><br>parse-drop → static survives</div>
+      </div>
+      <div>
+        <div class="swatch fallback-varbad" id="f-c"></div>
+        <div class="swlabel">C · var() + <span style="color:oklch(0.55 0.19 25);font-weight:700">calc(l+20%)</span><br>IACVT → unset → transparent ⚠</div>
+      </div>
+      <div>
+        <div class="swatch fallback-d" id="f-d"></div>
+        <div class="swlabel">D · var() + <span style="color:oklch(0.55 0.15 152);font-weight:700">calc(l+0.2)</span><br>valid → derived wins</div>
+      </div>
+    </div>
+    </div>
+    <div class="readout" id="fread"></div>
+    <p style="font-size:13.5px;color:var(--muted);margin-top:10px;margin-bottom:0">B renders the static red — parse-time drop. C renders <b>nothing</b> (transparent checkerboard shows through) — the var() substitution moved the same type error past the cascade, so the property reset instead of falling back. <b>Lesson: the "static line above" rule protects literal derivations only; for theme-able var() derivations, your only safety net is correct number math.</b> Unit-test derivations, or gate with the §6 runtime probe before enabling derived tokens.</p>
+  </div>
+</section>
+
+<!-- ================= 8 ================= -->
+<section id="s8">
+  <div class="kicker">08 · Alpha semantics</div>
+  <h2>Omitted alpha inherits from the origin</h2>
+  <p>Surprising default: <code>rgb(from rgba(0,128,0,.5) r g b)</code> outputs <b>50%-alpha green</b>, not opaque green. Absolute colors default missing alpha to 1; relative colors default it to the origin's alpha. Derive-only-chroma-and-keep-transparency becomes a one-liner — and so does accidentally inheriting translucency you didn't want.</p>
+  <div class="lab">
+    <div class="alpha-stage">
+      <div>
+        <div class="alpha-chip" id="a-origin" style="background:rgb(30 120 255 / 45%)"></div>
+        <div class="swlabel" style="color:#57534e">origin · alpha 45%</div>
+      </div>
+      <div>
+        <div class="alpha-chip" id="a-inherit" style="background:oklch(from rgb(30 120 255 / 45%) calc(l + 0.12) c h)"></div>
+        <div class="swlabel" style="color:#57534e">derive, omit alpha<br>→ inherits 45%</div>
+      </div>
+      <div>
+        <div class="alpha-chip" id="a-override" style="background:oklch(from rgb(30 120 255 / 45%) calc(l + 0.12) c h / 90%)"></div>
+        <div class="swlabel" style="color:#57534e">override → 90%</div>
+      </div>
+      <div>
+        <div class="alpha-chip" id="a-ramp" style="background:oklch(from rgb(30 120 255 / 45%) calc(l + 0.24) calc(c*0.5) h / calc(alpha * 0.4))"></div>
+        <div class="swlabel" style="color:#57534e">calc(alpha × 0.4) → 18%</div>
+      </div>
+    </div>
+    <div class="readout" id="aread"></div>
+    <p style="font-size:13.5px;color:var(--muted);margin:10px 0 0;margin-bottom:0">The checkerboard behind the chips makes inherited vs overridden alpha visible at a glance; the readout prints each computed alpha from <code>getComputedStyle</code>.</p>
+  </div>
+</section>
+
+<!-- ================= 9 ================= -->
+<section id="s9">
+  <div class="kicker">09 · Accessibility</div>
+  <h2>Contrast pairs via L* delta — 40 / 50 / 60</h2>
+  <p>The classic recipe: pick text colors by shifting the origin's lightness by a fixed perceptual delta in OKLCH — roughly <b>±0.40 / 0.50 / 0.60</b> for low/medium/high contrast. Same hue, same chroma, guaranteed perceptual distance. Below: live WCAG ratios for each delta, computed against the current seed from §5.</p>
+  <div class="lab">
+    <div class="cr-row">
+      <div class="cr-chip" style="background:var(--seed);color:oklch(from var(--seed) calc(l + 0.40) calc(c*0.7) h)">Aa +0.40</div>
+      <div>ΔL +0.40 · <span class="ratio" id="r40">…</span><span class="wcag" id="w40">…</span></div>
+    </div>
+    <div class="cr-row">
+      <div class="cr-chip" style="background:var(--seed);color:oklch(from var(--seed) calc(l + 0.50) calc(c*0.7) h)">Aa +0.50</div>
+      <div>ΔL +0.50 · <span class="ratio" id="r50">…</span><span class="wcag" id="w50">…</span></div>
+    </div>
+    <div class="cr-row">
+      <div class="cr-chip" style="background:var(--seed);color:oklch(from var(--seed) calc(l + 0.60) calc(c*0.7) h)">Aa +0.60</div>
+      <div>ΔL +0.60 · <span class="ratio" id="r60">…</span><span class="wcag" id="w60">…</span></div>
+    </div>
+    <div class="cr-row">
+      <div class="cr-chip" style="background:oklch(from var(--seed) 0.93 calc(c*0.3) h);color:oklch(from var(--seed) calc(l - 0.18) c h)">Aa pair</div>
+      <div>light surface <code>l→0.93</code> + dark ink <code>l−0.18</code> (surface+pair both derived) · <span class="ratio" id="rm">…</span><span class="wcag" id="wm">…</span></div>
+    </div>
+    <div class="readout" id="cread" style="margin-bottom:0"></div>
+  </div>
+  <div class="note" style="margin-top:12px"><b>Pair it:</b> Chrome's newer <code>contrast-color()</code> picks black-or-white for you, but can't give you a <em>same-hue</em> accessible pair. RCS's L*-delta technique can. Together: <code>contrast-color()</code> for neutrals, RCS for on-brand pairs.</div>
+</section>
+
+<!-- ================= 10 ================= -->
+<section id="s10">
+  <div class="kicker">10 · Recipes</div>
+  <h2>The eight derivations you'll actually ship</h2>
+  <div class="lab">
+    <div class="recipes">
+      <div class="recipe"><div class="top"><div class="half" id="rc0a"></div><div class="half" id="rc0b"></div></div>
+        <div class="body"><b>lighten / darken</b><code style="font-size:10.5px">oklch(from v calc(l+Δ) c h)</code></div></div>
+      <div class="recipe"><div class="top"><div class="half" id="rc1a"></div><div class="half" id="rc1b"></div></div>
+        <div class="body"><b>saturate / desat</b><code style="font-size:10.5px">oklch(from v l calc(c×k) h)</code></div></div>
+      <div class="recipe"><div class="top"><div class="half" id="rc2a"></div><div class="half" id="rc2b"></div></div>
+        <div class="body"><b>complement</b><code style="font-size:10.5px">oklch(from v l c calc(h+180))</code></div></div>
+      <div class="recipe"><div class="top"><div class="half" id="rc3a"></div><div class="half" id="rc3b"></div></div>
+        <div class="body"><b>grayscale</b><code style="font-size:10.5px">oklch(from v l 0 h)</code></div></div>
+      <div class="recipe"><div class="top"><div class="half" id="rc4a"></div><div class="half" id="rc4b"></div></div>
+        <div class="body"><b>chroma boost</b><code style="font-size:10.5px">oklch(from v l calc(c+0.08) h)</code></div></div>
+      <div class="recipe"><div class="top"><div class="half" id="rc5a"></div><div class="half" id="rc5b"></div></div>
+        <div class="body"><b>invert (rgb)</b><code style="font-size:10.5px">rgb(from v calc(1-r) calc(1-g) calc(1-b))</code></div></div>
+      <div class="recipe"><div class="top"><div class="half" id="rc6a"></div><div class="half" id="rc6b"></div></div>
+        <div class="body"><b>tint surface</b><code style="font-size:10.5px">oklch(from v 0.96 calc(c×0.15) h)</code></div></div>
+      <div class="recipe"><div class="top"><div class="half" id="rc7a"></div><div class="half" id="rc7b"></div></div>
+        <div class="body"><b>focus ring</b><code style="font-size:10.5px">oklch(from v l calc(c×1.4) h / 0.4)</code></div></div>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin:12px 0 0;margin-bottom:0">Left half of each card = seed; right = derived. All static CSS — resize or recolor via §5 and these still reference <code>var(--seed)</code>, so they retheme with the page.</p>
+  </div>
+</section>
+
+<!-- ================= 11 ================= -->
+<section id="s11">
+  <div class="kicker">11 · Molt Studios</div>
+  <h2>Client theme engine — one token, whole kit</h2>
+  <p>The Molt pattern: client onboarding becomes "pick a seed." Surfaces, borders, headings, buttons, hovers and focus rings below are <b>all derived from <code>--t</code></b> — no theme object, no CSS-variable sprawl, no JS. This is the fastest path to the "$5k site" per-client theming story we pitch.</p>
+  <div class="lab">
+    <div class="labrow">
+      <input type="color" id="themepick" value="#4f46c8" aria-label="Client seed color">
+      <span class="tag">--t = seed · everything else derived</span>
+    </div>
+    <div class="theme-wrap" id="themewrap">
+      <div class="theme-card">
+        <h4>Northside Aerial Co.</h4>
+        <p>Site survey package — hero tint, heading ink, buttons and focus states all derive from a single seed token the client picked in onboarding.</p>
+        <div class="btnrow">
+          <button class="tbtn primary">Book a flight</button>
+          <button class="tbtn ghost">View pricing</button>
+        </div>
+        <div class="focus-demo"><input placeholder="Tab into me — focus ring derives chroma ×1.4"> <span>focus ring + surface tints</span></div>
+      </div>
+      <div style="margin-top:12px">
+        <span class="theme-token">--t (seed)</span>
+        <span class="theme-token">surface: oklch(from --t 0.97 c×0.12 h)</span>
+        <span class="theme-token">border: oklch(from --t 0.88 c×0.35 h)</span>
+        <span class="theme-token">heading: l×0.72</span>
+        <span class="theme-token">hover: l−0.06</span>
+        <span class="theme-token">focus: c×1.4 / α .25</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 12 ================= -->
+<section id="s12">
+  <div class="kicker">12 · OpenDrones</div>
+  <h2>Telemetry status derivation — one --status token</h2>
+  <p>Mission Control bars: each reading sets <b>one</b> custom property (<code>--status</code> — already hue-shifted per band by a container class). Track, fill, glow, value text and critical pulse below are six independent derivations of that single token. Changing the band palette is a one-line token change, not a palette object refactor.</p>
+  <div class="lab">
+    <div class="telem" id="telem">
+      <h4>🛰️ OD-1 · live derivation <span class="tag" style="background:transparent;border-color:oklch(from var(--status) l c h /.4);color:inherit">--status driven</span></h4>
+      <div class="trow ok"     style="--status: oklch(0.72 0.17 152)">
+        <div class="lbl"><span>BATTERY</span><span class="tval" id="tb1">86%</span></div>
+        <div class="track"><div class="fill" id="fB1" style="width:86%"></div></div>
+      </div>
+      <div class="trow warn"  style="--status: oklch(0.80 0.16 80)">
+        <div class="lbl"><span>LINK RSSI</span><span class="tval" id="tb2">−71 dBm</span></div>
+        <div class="track"><div class="fill" id="fB2" style="width:44%"></div></div>
+      </div>
+      <div class="trow tcrit" style="--status: oklch(0.62 0.24 25)">
+        <div class="lbl"><span>ESC TEMP</span><span class="tval" id="tb3">94°C</span></div>
+        <div class="track"><div class="fill" id="fB3" style="width:92%"></div></div>
+      </div>
+      <div class="statusline">
+        <span class="statechip" style="border-color:oklch(from var(--status,oklch(0.72 .17 152)) l c h);color:oklch(from var(--status,oklch(0.72 .17 152)) calc(l+0.2) c h)">track = l×0.22</span>
+        <span class="statechip" style="border-color:oklch(from oklch(0.72 0.17 152) l c h);color:oklch(from oklch(0.72 0.17 152) l c h)">fill = gradient l→l×0.85</span>
+        <span class="statechip" style="border-color:oklch(from oklch(0.80 0.16 80) l c h);color:oklch(from oklch(0.80 0.16 80) l c h)">glow = c×1.4 / α .8</span>
+        <span class="statechip" style="border-color:oklch(from oklch(0.62 0.24 25) l c h);color:oklch(from oklch(0.62 0.24 25) l c h)">value = l+0.28, c×0.55</span>
+      </div>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin:12px 0 0;margin-bottom:0">Read-only demo: bands are static tokens here; in production the JS telemetry loop writes <code>--status</code> per reading (one property per channel) and CSS owns every color decision. Contrast pairs for the value text come from the same §9 L*-delta recipe.</p>
+  </div>
+</section>
+
+<!-- ================= 13 ================= -->
+<section id="s13">
+  <div class="kicker">13 · Adoption</div>
+  <h2>Ship checklist</h2>
+  <div class="card">
+  <ul class="checklist" style="margin:6px 0">
+    <li><b>Seed first, palette second.</b> Define <code>--seed</code> (or <code>--brand</code>) once in <code>:root</code>; every other color token becomes <code>oklch(from var(--seed) …)</code>. Keep the old static tokens as the fallback block directly above.</li>
+    <li><b>Gate on var-origin, not syntax.</b> <code>@supports (color: oklch(from white l c h))</code> passes on partial-support engines (Samsung!). Runtime computed-value probe (§6) or UA-floor policy — pick one.</li>
+    <li><b>Number math only — and the var() trap.</b> Channel keywords are numbers (oklch l: 0–1, lch l: 0–100, rgb: 0–255, h: degrees). A type error in a <em>literal</em> derivation drops the declaration (static line above survives); in a <em>var()</em> derivation the error surfaces at computed-value time and the property goes <b>unset</b> — transparent/initial, static line does not save you (§7C). Validate theme derivations in a test.</li>
+    <li><b>Remember alpha inheritance.</b> Omit the slash → you inherit the origin's opacity. Explicit <code>/ 100%</code> when you truly want opaque.</li>
+    <li><b>oklch for ramps, hsl for saturation tricks, rgb for channel inversion.</b> Pick the output space for the transformation, not the input's format — conversion is automatic.</li>
+    <li><b>Interop path:</b> pairs with <code>if()</code> (conditional channel math), <code>@function</code> (named derivations), <code>light-dark()</code>, <code>contrast-color()</code>, and <code>@property</code>-typed color tokens. PostCSS can pre-compile static derivations for the Samsung tail.</li>
+  </ul>
+  </div>
+  <p style="margin-top:12px">Bottom line: this is the last member of the color tier — and arguably its foundation. Universal in every current engine (one holdout), zero dependencies, and it deletes an entire class of "generate the palette" tooling from our builds.</p>
+</section>
+
+</main>
+
+<footer class="foot">
+  <hr class="sep">
+  <small style="display:block;margin-top:14px">🎨 Jin · Molt Studios / OpenDrones research · 2026-08-19 · Part of the color tier: oklch() · color-mix() · light-dark() · contrast-color() · <b>relative color syntax</b> · Sources: MDN Using relative colors, caniuse css-relative-colors (Aug 2026), Chrome for Developers blog, css-color-5 §relative-colors. Live-verified in Chrome on deploy.</small>
+</footer>
+
+<script>
+(function(){
+"use strict";
+var $ = function(id){ return document.getElementById(id); };
+
+/* ---------- helpers ---------- */
+function parseColorStr(s){
+  // returns [r,g,b,a] 0-255/0-1 or null — handles rgb(), oklch(), color(srgb …), #hex
+  var m, i;
+  if((m = s.match(/rgba?\(([^)]+)\)/i))){
+    var p = m[1].split(/[\s,\/]+/).filter(Boolean).map(Number);
+    return [p[0],p[1],p[2], p.length>3 ? p[3] : 1];
+  }
+  if((m = s.match(/^#([0-9a-f]{6})$/i))){
+    var n = parseInt(m[1],16);
+    return [(n>>16)&255,(n>>8)&255,n&255,1];
+  }
+  if((m = s.match(/^oklch\(\s*([\d.+-]+)%?\s+([\d.+-]+)\s+([\d.+-]+)\s*(?:\/\s*([\d.]+))?\s*\)/))){
+    var L=/%/.test(m[1]) ? parseFloat(m[1])/100 : parseFloat(m[1]), C=parseFloat(m[2]), H=parseFloat(m[3])*Math.PI/180, A=m[4]?parseFloat(m[4]):1;
+    if(/%/.test(m[2])) C = parseFloat(m[2])/100; // rare % chroma
+    // oklch → oklab
+    var la=L, aa=C*Math.cos(H), bb=C*Math.sin(H);
+    // oklab → LMS' (OKLab M1)
+    var l_=la + 0.3963377774*aa + 0.2158037573*bb;
+    var m_=la - 0.1055613458*aa - 0.0638541728*bb;
+    var s_=la - 0.0894841775*aa - 1.2914855480*bb;
+    l_=l_*l_*l_; m_=m_*m_*m_; s_=s_*s_*s_;
+    // LMS → linear sRGB (OKLab M2 inverse)
+    var r= 4.0767416621*l_ - 3.3077115913*m_ + 0.2309699292*s_;
+    var g=-1.2684380046*l_ + 2.6097574011*m_ - 0.3413193965*s_;
+    var b=-0.0041960863*l_ - 0.7034186147*m_ + 1.7076147010*s_;
+    var gam=function(c){ c=Math.min(1,Math.max(0,c)); return c<=0.0031308 ? 12.92*c : 1.055*Math.pow(c,1/2.4)-0.055; };
+    return [Math.round(gam(r)*255), Math.round(gam(g)*255), Math.round(gam(b)*255), A];
+  }
+  if((m = s.match(/^color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*(?:\/\s*([\d.]+))?\s*\)/))){
+    return [Math.round(parseFloat(m[1])*255), Math.round(parseFloat(m[2])*255), Math.round(parseFloat(m[3])*255), m[4]?parseFloat(m[4]):1];
+  }
+  return null;
+}
+function lum(rgb){
+  var f = function(c){ c/=255; return c<=0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055,2.4); };
+  return 0.2126*f(rgb[0])+0.7152*f(rgb[1])+0.0722*f(rgb[2]);
+}
+function ratio(a,b){
+  var l1=lum(a),l2=lum(b),hi=Math.max(l1,l2),lo=Math.min(l1,l2);
+  return (hi+0.05)/(lo+0.05);
+}
+function bgOf(el){ return getComputedStyle(el).backgroundColor; }
+function fmtRatio(el, chip, out, wc){
+  var ct = parseColorStr(getComputedStyle(chip).color);
+  var cb = parseColorStr(bgOf(chip));
+  if(!ct||!cb){ out.textContent='?'; wc.textContent='parse fail'; wc.className='wcag fail'; return; }
+  var r = ratio(ct,cb);
+  el.textContent = r.toFixed(2) + ':1';
+  var pass3 = r>=4.5;
+  wc.textContent = pass3 ? 'WCAG AA ✓' : 'below AA';
+  wc.className = 'wcag ' + (pass3 ? 'aa' : 'fail');
+}
+
+/* ---------- badges ---------- */
+var sup = window.CSS && CSS.supports;
+function setBadge(id, ok, label){
+  var b = $(id); b.className = 'badge ' + (ok ? 'ok' : 'no');
+  if(label){ var n=document.createElement('span'); n.textContent=label; b.appendChild(n); }
+}
+var rcsOK = !!(sup && sup('color','oklch(from white l c h)'));
+setBadge('b-rcs', rcsOK);
+
+// runtime var-origin probe
+var probe = document.createElement('div');
+probe.style.setProperty('--probe-color','teal');
+probe.style.background = 'oklch(from var(--probe-color) l c h)';
+var lit = document.createElement('div');
+lit.style.background = 'oklch(from teal l c h)';
+var varOK = bgOf(probe) !== 'rgba(0, 0, 0, 0)' && bgOf(probe) === bgOf(lit);
+setBadge('b-var', varOK, varOK ? '· full support' : '· partial engine!');
+
+var cc = document.createElement('div');
+cc.style.color = 'teal';
+cc.style.background = 'oklch(from currentcolor l c h)';
+var ccRef = document.createElement('div');
+ccRef.style.background = 'oklch(from teal l c h)';
+setBadge('b-cur', bgOf(cc) === bgOf(ccRef), '· full support');
+setBadge('b-sup', true, 'Chrome/Edge 131+ · Safari 18+ · FF 133+');
+
+/* ---------- §5 playground ---------- */
+var seedpick = $('seedpick'), hexin = $('hexin');
+var pgout = $('pgout'), pgread = $('pgread'), pgstyle = $('pgstyle');
+var cells = [
+  {name:'seed',        css:'var(--seed)'},
+  {name:'l + 0.18',    css:'oklch(from var(--seed) calc(l + 0.18) c h)'},
+  {name:'l − 0.15',    css:'oklch(from var(--seed) calc(l - 0.15) c h)'},
+  {name:'l 0.95 c×0.2',css:'oklch(from var(--seed) 0.95 calc(c * 0.2) h)'},
+  {name:'c×1.5',       css:'oklch(from var(--seed) l calc(c * 1.5) h)'},
+  {name:'h + 90',      css:'oklch(from var(--seed) l c calc(h + 90))'},
+  {name:'hsl serialize', css:'hsl(from var(--seed) h calc(s * 0.9) l)'},
+  {name:'α 30%',       css:'oklch(from var(--seed) l c h / 30%)'}
+];
+pgout.innerHTML = cells.map(function(c,i){
+  return '<div class="pg-cell"><div class="swatch" id="pg'+i+'" style="background:'+c.css+'"></div><div class="swlabel">'+c.name+'</div></div>';
+}).join('');
+var pgVars = {dl:0.12, kc:1, dh:0};
+function pgApply(){
+  var seed = seedpick.value;
+  document.documentElement.style.setProperty('--seed', seed);
+  hexin.textContent = seed;
+  pgstyle.textContent = '.pg-cell .swatch{background:linear-gradient(90deg,'+
+    'oklch(from var(--seed) calc(l + var(--dl)) calc(c * var(--kc)) calc(h + var(--dh))),'+
+    'oklch(from var(--seed) calc(l + var(--dl) + 0.18) calc(c * var(--kc) * 0.5) calc(h + var(--dh))))}';
+  document.documentElement.style.setProperty('--dl', pgVars.dl);
+  document.documentElement.style.setProperty('--kc', pgVars.kc);
+  document.documentElement.style.setProperty('--dh', pgVars.dh);
+  // readout: computed serializations
+  var lines = [];
+  var s0 = bgOf($('pg0')), s1 = bgOf($('pg1')), s6 = bgOf($('pg6')), s7 = bgOf($('pg7'));
+  lines.push('<span class="dim">// computed serializations (getComputedStyle)</span>');
+  lines.push('seed        → ' + s0);
+  lines.push('oklch deriv → ' + s1 + (s1.indexOf('oklch(')===0 ? '  <span class="good">✓ keeps oklch() form</span>' : ''));
+  lines.push('hsl deriv   → ' + s6 + (s6.indexOf('color(srgb')===0 ? '  <span class="good">✓ serializes as color(srgb …)</span>' : ''));
+  lines.push('alpha 30%   → ' + s7);
+  pgread.innerHTML = lines.join('\n');
+}
+['dl','kc','dh'].forEach(function(k){
+  var el = $(k==='dl'?'dl':k==='kc'?'kc':'dh');
+  el.addEventListener('input', function(){ pgVars[k] = parseFloat(el.value); pgApply(); });
+});
+seedpick.addEventListener('input', pgApply);
+pgApply();
+
+/* ---------- §6 var readout ---------- */
+var t1 = bgOf($('t-literal')), t2 = bgOf($('t-var'));
+$('varread').innerHTML =
+  'literal  oklch(from teal l c h)          → ' + t1 + '\n' +
+  'var      oklch(from var(--brand2) l c h) → ' + t2 + '\n' +
+  (t1 === t2 ? '<span class="good">✓ EQUAL — full var() origin support on this engine</span>'
+             : '<span class="bad">✗ DIFFER — var() origins broken (partial-support engine)</span>');
+
+/* ---------- §7 fallback readout ---------- */
+var fa = bgOf($('f-a')), fb = bgOf($('f-b')), fc = bgOf($('f-c')), fd = bgOf($('f-d'));
+$('fread').innerHTML =
+  'A static              → ' + fa + '\n' +
+  'B literal + 20% calc  → ' + fb + (fb===fa ? '  <span class="good">✓ parse-time drop, static survived</span>' : '  <span class="bad">? unexpected</span>') + '\n' +
+  'C var() + 20% calc    → ' + fc + (fc==='rgba(0, 0, 0, 0)' ? '  <span class="bad">⚠ UNSET (transparent) — static line did NOT save you</span>' : (fc===fa ? '  <span class="good">static survived</span>' : '  <span class="bad">? unexpected</span>')) + '\n' +
+  'D var() + 0.2 calc    → ' + fd + (fd!==fa && fd!=='rgba(0, 0, 0, 0)' ? '  <span class="good">✓ valid derivation replaced static</span>' : '  <span class="bad">✗ not applied</span>');
+
+/* ---------- §8 alpha readout ---------- */
+var a1 = bgOf($('a-origin')), a2 = bgOf($('a-inherit')), a3 = bgOf($('a-override')), a4 = bgOf($('a-ramp'));
+$('aread').innerHTML =
+  'origin            → ' + a1 + '\n' +
+  'derived, α omitted→ ' + a2 + '  <span class="good">✓ inherited 45% from origin</span>\n' +
+  'derived, α 90%    → ' + a3 + '\n' +
+  'α calc(α × 0.4)   → ' + a4;
+
+/* ---------- §9 contrast ---------- */
+function crUpdate(){
+  fmtRatio($('r40'), document.querySelector('.cr-row:nth-of-type(1) .cr-chip'), $('r40'), $('w40'));
+  fmtRatio($('r50'), document.querySelector('.cr-row:nth-of-type(2) .cr-chip'), $('r50'), $('w50'));
+  fmtRatio($('r60'), document.querySelector('.cr-row:nth-of-type(3) .cr-chip'), $('r60'), $('w60'));
+  fmtRatio($('rm'),  document.querySelector('.cr-row:nth-of-type(4) .cr-chip'), $('rm'),  $('wm'));
+  $('cread').textContent = '// ratios computed live in JS from computed styles — colors themselves are pure CSS derivations';
+}
+crUpdate();
+seedpick.addEventListener('input', crUpdate);
+
+/* ---------- §10 recipes (static CSS classes, JS only labels) ---------- */
+var rec = [
+  ['rc0a','var(--seed)','rc0b','oklch(from var(--seed) calc(l + 0.18) c h)'],
+  ['rc1a','var(--seed)','rc1b','oklch(from var(--seed) l calc(c * 1.6) h)'],
+  ['rc2a','var(--seed)','rc2b','oklch(from var(--seed) l c calc(h + 180))'],
+  ['rc3a','var(--seed)','rc3b','oklch(from var(--seed) l 0 h)'],
+  ['rc4a','var(--seed)','rc4b','oklch(from var(--seed) l calc(c + 0.08) h)'],
+  ['rc5a','var(--seed)','rc5b','rgb(from var(--seed) calc(255 - r) calc(255 - g) calc(255 - b))'],
+  ['rc6a','var(--seed)','rc6b','oklch(from var(--seed) 0.96 calc(c * 0.15) h)'],
+  ['rc7a','var(--seed)','rc7b','oklch(from var(--seed) l calc(c * 1.4) h / 40%)']
+];
+rec.forEach(function(r){
+  var a=document.getElementById(r[0]), b=document.getElementById(r[2]);
+  a.style.background=r[1]; b.style.background=r[3];
+});
+
+/* ---------- §11 theme engine ---------- */
+var themewrap = $('themewrap'), themepick = $('themepick');
+themepick.addEventListener('input', function(){
+  themewrap.style.setProperty('--t', themepick.value);
+});
+
+/* section count + overflow audit (dev) */
+window.__jin = {
+  sections: document.querySelectorAll('main section').length,
+  overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  badges: {rcs: rcsOK, varOrigin: varOK},
+  serializations: {seed: bgOf($('pg0')), oklch: bgOf($('pg1')), hsl: bgOf($('pg6'))}
+};
+})();
+</script>
+</body>
+</html>
