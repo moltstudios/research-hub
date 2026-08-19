@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prioritized Task Scheduling API — scheduler.postTask() + scheduler.yield() — Molt Research</title>
+<meta name="description" content="The browser's native task scheduler: three explicit priorities, prioritized continuations after yield, mutable priority via TaskController.setPriority(), abortable task pipelines. Chrome 94/129+, Firefox 142+, Safari pending.">
+<style>
+  :root{
+    --bg:#f7f6f3; --card:#ffffff; --ink:#1c1b1a; --muted:#6f6a63; --faint:#a39d93;
+    --accent:#4f46e5; --accent-soft:#eef0fe; --accent-ink:#3730a3;
+    --red:#dc2626; --red-soft:#fdeaea; --amber:#b45309; --amber-soft:#fdf3e3;
+    --slate:#64748b; --slate-soft:#eef1f5; --green:#15803d; --green-soft:#e9f7ee;
+    --line:#e7e4de; --code-bg:#1e1b18; --code-ink:#f3efe8;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--ink);font:15px/1.65 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1060px;margin:0 auto;padding:0 24px}
+  header.hero{padding:64px 0 40px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fbfaf8 0%,var(--bg) 100%)}
+  .kicker{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-ink);background:var(--accent-soft);border:1px solid #dcdcf9;padding:5px 12px;border-radius:999px;margin-bottom:20px}
+  h1{font-size:clamp(30px,4.5vw,44px);line-height:1.12;letter-spacing:-.02em;font-weight:800;max-width:840px}
+  h1 .accent{color:var(--accent)}
+  .lede{margin-top:16px;font-size:17px;color:var(--muted);max-width:760px}
+  .badges{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}
+  .badge{font-family:var(--mono);font-size:12px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--muted)}
+  .badge.ok{color:var(--green);border-color:#bfe5cc;background:var(--green-soft)}
+  .badge.no{color:var(--red);border-color:#f3c1c1;background:var(--red-soft)}
+  .badge.wait{color:var(--amber);border-color:#ecd9b4;background:var(--amber-soft)}
+  nav.toc{position:sticky;top:0;z-index:40;background:rgba(247,246,243,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  nav.toc .wrap{display:flex;gap:4px;overflow-x:auto;padding:10px 24px;scrollbar-width:none}
+  nav.toc .wrap::-webkit-scrollbar{display:none}
+  nav.toc a{flex:none;font-size:12.5px;font-weight:600;color:var(--muted);text-decoration:none;padding:5px 11px;border-radius:8px}
+  nav.toc a:hover{background:var(--accent-soft);color:var(--accent-ink)}
+  section{padding:52px 0 8px}
+  .secnum{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent);letter-spacing:.14em;text-transform:uppercase}
+  h2{font-size:26px;letter-spacing:-.015em;margin:6px 0 10px;font-weight:750}
+  h3{font-size:16.5px;margin:22px 0 8px;font-weight:700}
+  p{color:#3d3a35;max-width:820px}
+  p+p{margin-top:10px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px 24px;margin:18px 0;box-shadow:0 1px 2px rgba(28,27,26,.04)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:820px){.grid2{grid-template-columns:1fr}}
+  button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:9px 16px;font-weight:600;font-size:14px;transition:transform .05s, box-shadow .15s}
+  button:hover{box-shadow:0 2px 8px rgba(28,27,26,.08)}
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.danger{background:var(--red);border-color:var(--red);color:#fff}
+  button.warn{background:var(--amber);border-color:var(--amber);color:#fff}
+  .btnrow{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0 4px}
+  code{font-family:var(--mono);font-size:.86em;background:#efece6;border:1px solid var(--line);padding:1px 6px;border-radius:6px}
+  pre{background:var(--code-bg);color:var(--code-ink);border-radius:12px;padding:18px 20px;overflow-x:auto;margin:14px 0;font-size:13px;line-height:1.6;font-family:var(--mono)}
+  pre code{background:none;border:none;padding:0;color:inherit;font-size:inherit}
+  pre .c{color:#8f887c}pre .k{color:#c4b5fd}pre .s{color:#a5e2a5}pre .f{color:#93c5fd}pre .n{color:#f0b6f0}
+  .note{border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 10px 10px 0;padding:12px 16px;margin:14px 0;font-size:14px;color:#3730a3;max-width:820px}
+  .note.warn{border-left-color:var(--amber);background:var(--amber-soft);color:#7c3f06}
+  .note.bad{border-left-color:var(--red);background:var(--red-soft);color:#8a1f1f}
+  .note b{font-weight:700}
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:13.5px;background:var(--card);border-radius:12px;overflow:hidden}
+  th,td{border:1px solid var(--line);padding:8px 12px;text-align:left;vertical-align:top}
+  th{background:#f1efe9;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+  td code{white-space:nowrap}
+  .log{font-family:var(--mono);font-size:12.5px;line-height:1.7;background:#141210;color:#e8e3d9;border-radius:10px;padding:14px 16px;max-height:260px;overflow-y:auto;white-space:pre-wrap;word-break:break-word}
+  .log .t{color:#8f887c}.log .g{color:#7fd67f}.log .r{color:#f08a8a}.log .y{color:#e8c268}.log .b{color:#8ab4f8}.log .m{color:#d9a6e8}
+  .pill{display:inline-block;font-family:var(--mono);font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;letter-spacing:.02em}
+  .pill.ub{background:var(--red-soft);color:var(--red)}
+  .pill.uv{background:var(--amber-soft);color:var(--amber)}
+  .pill.bg{background:var(--slate-soft);color:var(--slate)}
+  .pill.ct{background:var(--accent-soft);color:var(--accent-ink)}
+  .pill.ok{background:var(--green-soft);color:var(--green)}
+  /* gantt */
+  .gantt{position:relative;margin:16px 0 6px;background:#fbfaf8;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .gantt .lane{position:relative;height:44px;border-bottom:1px dashed var(--line)}
+  .gantt .lane:last-child{border-bottom:none}
+  .gantt .lane-label{position:absolute;left:10px;top:50%;transform:translateY(-50%);font-family:var(--mono);font-size:11px;color:var(--muted);z-index:2;pointer-events:none}
+  .gantt .bar{position:absolute;top:9px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10.5px;font-weight:700;color:#fff;overflow:hidden;white-space:nowrap;min-width:14px}
+  .gantt .axis{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:var(--faint);padding:5px 10px 2px}
+  .gantt .bar.a{background:var(--accent)} .gantt .bar.b{background:var(--slate)} .gantt .bar.r{background:var(--red)} .gantt .bar.am{background:var(--amber)} .gantt .bar.g{background:var(--green)}
+  .gantt .bar .ord{position:absolute;top:-7px;left:50%;transform:translateX(-50%);background:#1c1b1a;color:#fff;font-size:9px;padding:0 5px;border-radius:4px;line-height:14px}
+  .stat{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px}
+  .stat .box{flex:1;min-width:130px;background:#fbfaf8;border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+  .stat .box .v{font-family:var(--mono);font-size:20px;font-weight:700}
+  .stat .box .l{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
+  .orderlist{font-family:var(--mono);font-size:12.5px;line-height:2}
+  .pingzone{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:14px}
+  .pingbtn{font-size:20px;padding:16px 30px;border-radius:14px;background:var(--green);border-color:var(--green);color:#fff;font-weight:800}
+  input[type=range]{width:220px;accent-color:var(--accent)}
+  .kbd{display:inline-block;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;background:#fff;padding:0 7px;font-family:var(--mono);font-size:12px}
+  .latbar{height:10px;border-radius:6px;background:linear-gradient(90deg,#86efac 0%,#fde047 40%,#f87171 75%);position:relative;margin:8px 0}
+  .latbar .mark{position:absolute;top:-4px;width:3px;height:18px;background:#1c1b1a;border-radius:2px}
+  .src{font-size:13px;color:var(--muted)}
+  .src a{color:var(--accent-ink)}
+  footer{margin-top:70px;padding:28px 0 48px;border-top:1px solid var(--line);color:var(--faint);font-size:13px}
+  .flex{display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+  .demo-pending{opacity:.6}
+  details{border:1px solid var(--line);border-radius:10px;background:var(--card);margin:10px 0}
+  summary{cursor:pointer;padding:10px 14px;font-weight:650;font-size:14px}
+  details pre{margin:0 14px 14px;border-radius:8px}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="kicker">⚡ Performance · WICG Scheduling APIs</div>
+    <h1>The browser finally ships a <span class="accent">task scheduler</span>: <code style="font-size:.55em;vertical-align:middle">scheduler.postTask()</code> + <code style="font-size:.55em;vertical-align:middle">scheduler.yield()</code></h1>
+    <p class="lede">Three explicit priorities, continuations that don't get punished for yielding, runtime priority changes and abortable task pipelines — the mitigation half of the INP story that <b>Long Animation Frames</b> (measured yesterday) only lets you diagnose. Chrome 94+/129+, Firefox 142+, Safari pending.</p>
+    <div class="badges" id="capBadges"></div>
+  </div>
+</header>
+
+<nav class="toc"><div class="wrap">
+  <a href="#s1">01 Problem</a><a href="#s2">02 Anatomy</a><a href="#s3">03 Priorities</a><a href="#s4">04 Yield order</a><a href="#s5">05 Priority queue</a><a href="#s6">06 Mutable priority</a><a href="#s7">07 Abort</a><a href="#s8">08 Inheritance</a><a href="#s9">09 Fallback</a><a href="#s10">10 Batching</a><a href="#s11">11 INP lab</a><a href="#s12">12 Status</a>
+</div></nav>
+
+<div class="wrap">
+
+<!-- ============ 01 ============ -->
+<section id="s1">
+  <div class="secnum">01 · The problem</div>
+  <h2>One long task = one frozen page</h2>
+  <p>The main thread runs exactly one task at a time. Any task over <b>50ms</b> is a "long task" — and during it, clicks queue, keys buffer, nothing paints. The classic advice — <i>"break up your tasks"</i> — had no dedicated API for a decade, so we yielding-ed with <code>setTimeout(fn, 0)</code>. That has three real problems:</p>
+  <div class="card">
+    <h3 style="margin-top:0">The three sins of <code>setTimeout</code> yielding</h3>
+    <table>
+      <tr><th>Sin</th><th>What happens</th></tr>
+      <tr><td><b>1 · Punished for yielding</b></td><td>Your continuation goes to the <b>back of the queue</b>. If a third-party script queued work before you yielded, <i>their</i> entire job runs before your part 2. You did the right thing and got demoted for it.</td></tr>
+      <tr><td><b>2 · No priorities</b></td><td>Timer tasks are all equal. Analytics beacons, image decoding, and the handler responding to a pilot's stick input wait in <b>one undifferentiated line</b>.</td></tr>
+      <tr><td><b>3 · Nested-timeout clamp</b></td><td>After 5 levels of nested timers, the browser imposes a <b>minimum ~4ms delay</b> per <code>setTimeout</code> — a throughput tax on fine-grained chunking (MDN: nested timeouts).</td></tr>
+    </table>
+    <div class="note bad" style="margin-bottom:0"><b>Also retired:</b> <code>navigator.scheduling.isInputPending()</code> — Chrome's own team no longer recommends it: it can return <code>false</code> while the user <i>has</i> interacted, and input isn't the only thing worth yielding for (animations, rAF, paint). Yield unconditionally instead.</div>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Feel it: freeze vs yield (click, then try typing in the box)</h3>
+    <p style="font-size:14px">Press a button, then immediately type into the input and watch the echo. <b>Naive</b> crunches 700ms in one gulp. <b>Yielded</b> crunches the same 700ms but <code>await scheduler.yield()</code> every ~40ms.</p>
+    <div class="btnrow">
+      <button class="danger" id="freezeBtn">🧊 Naive crunch — 700ms single task</button>
+      <button class="primary" id="yieldBtn" disabled>⚡ Yielded crunch — 700ms chunked</button>
+    </div>
+    <input id="echoInput" placeholder="Type here WHILE a crunch runs…" style="width:100%;max-width:420px;font:15px/1.5 var(--mono,monospace);monospace;padding:10px 14px;border:1px solid var(--line);border-radius:10px;margin-top:6px" aria-label="echo input">
+    <div id="echoOut" style="font-family:var(--mono);font-size:13px;color:var(--muted);margin-top:6px;min-height:22px">—</div>
+    <div class="stat" id="freezeStat"></div>
+  </div>
+</section>
+
+<!-- ============ 02 ============ -->
+<section id="s2">
+  <div class="secnum">02 · Anatomy</div>
+  <h2>Two methods, one mental model</h2>
+  <div class="grid2">
+    <div class="card">
+      <h3 style="margin-top:0"><code>scheduler.postTask(cb, options?)</code></h3>
+      <p style="font-size:14px">Queue a <b>one-shot function</b> with explicit control. Returns a Promise with the callback's value (or rejection on error/abort).</p>
+      <table style="font-size:12.5px">
+        <tr><th>Option</th><th>Effect</th></tr>
+        <tr><td><code>priority</code></td><td>Immutable priority: <code>'user-blocking'</code> | <code>'user-visible'</code> (default) | <code>'background'</code></td></tr>
+        <tr><td><code>signal</code></td><td>A <code>TaskSignal</code> (abort + <b>mutable priority</b>) or plain <code>AbortSignal</code> (abort only)</td></tr>
+        <tr><td><code>delay</code></td><td>ms before the task enters the queue (a prioritized <code>setTimeout</code>)</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0"><code>await scheduler.yield()</code></h3>
+      <p style="font-size:14px">Pause <b>any async function</b> mid-task, let the browser run pending work (input, paint, other tasks), then continue. Takes no arguments.</p>
+      <p style="font-size:14px;margin-top:8px">The killer property: the continuation is scheduled <b>ahead of other similar tasks already queued</b> — you yield without losing your place. Inside a <code>postTask</code> callback, it <b>inherits that task's priority</b> (§08).</p>
+    </div>
+  </div>
+  <div class="note"><b>Where it lives:</b> <code>globalThis.scheduler</code> — on <b>window and workers</b> (<code>WorkerGlobalScope.scheduler</code>), so heavy crunching in a dedicated worker can be prioritized too. Feature-detect with <code>'scheduler' in globalThis</code>.</div>
+  <pre><span class="c">// The two-line version of "don't freeze the page":</span>
+async function saveSettings() {
+  validateForm(); showSpinner(); updateUI();   <span class="c">// user-visible part</span>
+  <span class="k">await</span> scheduler.<span class="f">yield</span>();                    <span class="c">// ← browser can paint + take input HERE</span>
+  saveToDatabase(); sendAnalytics();           <span class="c">// continuation: still YOUR task, prioritized</span>
+}</pre>
+</section>
+
+<!-- ============ 03 ============ -->
+<section id="s3">
+  <div class="secnum">03 · Priorities</div>
+  <h2>Three lanes, mapped to what users feel</h2>
+  <div class="card">
+    <table>
+      <tr><th>Priority</th><th>Default?</th><th>Made for</th><th style="width:34%">Mission Control examples</th></tr>
+      <tr><td><span class="pill ub">user-blocking</span></td><td>—</td><td>Work that gates interaction: input handlers, opening modals, first render of a view the user just asked for</td><td>Stick/telemetry command responses, arm/disarm confirmation render, map camera fly-to</td></tr>
+      <tr><td><span class="pill uv">user-visible</span></td><td>✅ both methods</td><td>Visible but not interaction-critical: list re-renders, image decode, non-critical animations</td><td>Telemetry wall row appends, chart tick redraws, geofence overlay updates</td></tr>
+      <tr><td><span class="pill bg">background</span></td><td>—</td><td>Time-insensitive: analytics, log crunching, cache warm-up, tag init</td><td>Flight-log post-processing, tile prefetch, mission report generation</td></tr>
+    </table>
+    <p style="font-size:14px;margin-top:8px;color:var(--muted)">Scheduling rule: <b>priority first, then FIFO</b> within a priority. Continuations from <code>yield()</code> slot in just above same-priority new tasks (§04/§08).</p>
+  </div>
+</section>
+
+<!-- ============ 04 ============ -->
+<section id="s4">
+  <div class="secnum">04 · Lab A</div>
+  <h2>Yield order: setTimeout sends you to the back of the bus</h2>
+  <p>The canonical race from the Chrome team's scheduler.yield launch post. <b>myJob</b> splits into two parts; <b>someoneElsesJob</b> (a third-party script, say) is queued right after myJob starts. Same work, same order of posting — only the yield mechanism differs:</p>
+  <div class="card">
+    <div class="btnrow">
+      <button class="primary" id="raceST">▶ Race 1 — yield via setTimeout(0)</button>
+      <button class="primary" id="raceSY">▶ Race 2 — yield via scheduler.yield()</button>
+      <button id="raceReset">↺ Reset</button>
+    </div>
+    <div class="grid2" style="margin-top:16px">
+      <div>
+        <div style="font-size:12.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Expected: setTimeout</div>
+        <div class="orderlist" id="expectST">A1 → B → A2 <span style="color:var(--faint)">(punished: B jumps the line)</span></div>
+      </div>
+      <div>
+        <div style="font-size:12.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Expected: scheduler.yield</div>
+        <div class="orderlist" id="expectSY">A1 → A2 → B <span style="color:var(--faint)">(continuation keeps its place)</span></div>
+      </div>
+    </div>
+    <div id="raceGantt"></div>
+    <div class="log" id="raceLog" aria-live="polite">— run a race —</div>
+  </div>
+  <p class="src">Bars <b>A1/A2</b> = myJob parts (accent), <b>B</b> = someoneElsesJob (slate). Numbered chips show execution order. ~30ms per segment keeps the demo itself jank-free.</p>
+</section>
+
+<!-- ============ 05 ============ -->
+<section id="s5">
+  <div class="secnum">05 · Lab B</div>
+  <h2>Priority queue: post scrambled, run sorted</h2>
+  <p>Seven tasks posted back-to-back in deliberately scrambled priority order. Each does ~12ms of work and logs its run. Watch the scheduler reorder the queue: <b>priority first, then posting order</b> — regardless of when each was posted.</p>
+  <div class="card">
+    <div class="btnrow">
+      <button class="primary" id="prioRun">▶ Post 7 tasks</button>
+      <button id="prioReset">↺ Reset</button>
+    </div>
+    <div class="grid2" style="margin-top:14px">
+      <div>
+        <div style="font-size:12.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Posted order</div>
+        <div class="orderlist" id="prioPosted">—</div>
+      </div>
+      <div>
+        <div style="font-size:12.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Execution order</div>
+        <div class="orderlist" id="prioRan">—</div>
+      </div>
+    </div>
+    <div class="log" id="prioLog" aria-live="polite">—</div>
+  </div>
+</section>
+
+<!-- ============ 06 ============ -->
+<section id="s6">
+  <div class="secnum">06 · Lab C</div>
+  <h2>Mutable priority: <code>TaskController.setPriority()</code> mid-flight</h2>
+  <p>Immutable priorities are fine for most work. The carousel case is the spec's own motivation: images prefetch at <span class="pill bg">background</span>, then the user scrolls one into view — <b>that</b> prefetch must jump the queue. Post tasks with a <code>TaskSignal</code> (no <code>priority</code> option!) and change the controller's priority while chunks are still pending. The <code>prioritychange</code> event fires on the signal.</p>
+  <div class="card">
+    <div class="btnrow">
+      <button class="primary" id="mutRun">▶ Start 8 background chunks (~30ms each)</button>
+      <button class="warn" id="mutBump" disabled>👆 User scrolls! → setPriority('user-blocking')</button>
+      <button id="mutReset">↺ Reset</button>
+    </div>
+    <div class="log" id="mutLog" aria-live="polite">—</div>
+    <div class="note" style="margin-bottom:0"><b>Mutability rule:</b> a task's priority is changeable <u>only</u> if you pass a <code>TaskSignal</code> and <u>don't</u> set <code>options.priority</code>. Setting both makes the priority immutable. Already-<i>running</i> tasks are unaffected — re-sorting applies to pending ones.</div>
+    <div class="note warn" style="margin-bottom:0"><b>Gotchas found the hard way (live-verified in Chrome 148):</b> (1) The TaskController constructor takes a <code>TaskControllerInit</code> <u>dictionary</u> — <code>new TaskController({ priority: 'background' })</code>; a bare priority string throws <code>TypeError</code>. <code>setPriority()</code> and <code>postTask(…, { priority })</code> take the string — only the constructor wants the object. (2) <code>TaskPriorityChangeEvent.newPriority</code> is <code>undefined</code> in Chrome 148 (prototype exposes <code>previousPriority</code> only) — read <code>signal.priority</code> inside the handler instead.</div>
+  </div>
+  <pre><span class="k">const</span> tc = <span class="k">new</span> <span class="f">TaskController</span>({ <span class="n">priority</span>: <span class="s">'background'</span> }); <span class="c">// ⚠ TaskControllerInit DICT — a bare string THROWS in Chrome</span>
+tc.signal.addEventListener(<span class="s">'prioritychange'</span>, e =&gt;
+  log(`${e.<span class="f">previousPriority</span>} → ${e.<span class="f">newPriority</span> ?? tc.signal.<span class="f">priority</span>}`)); <span class="c">// ⚠ Chrome 148: e.newPriority is undefined — read signal.priority</span>
+<span class="k">for</span> (chunk of chunks) scheduler.<span class="f">postTask</span>(chunk, { signal: tc.signal }); <span class="c">// mutable ⬇ no priority option</span>
+tc.<span class="f">setPriority</span>(<span class="s">'user-blocking'</span>);                        <span class="c">// pending chunks jump the queue</span></pre>
+</section>
+
+<!-- ============ 07 ============ -->
+<section id="s7">
+  <div class="secnum">07 · Lab D</div>
+  <h2>Abort: cancel the pipeline you no longer need</h2>
+  <p>Every <code>postTask</code> promise wired to a signal rejects with <code>AbortError</code> the instant the controller aborts. OpenDrones case: a background crunch for <b>mission A</b> is 4 chunks in when the pilot switches to <b>mission B</b> — kill the remaining work, don't waste another cycle, then start the new batch.</p>
+  <div class="card">
+    <div class="btnrow">
+      <button class="primary" id="abRun">▶ Mission A crunch (6 × background chunks)</button>
+      <button class="danger" id="abAbort" disabled>🛑 Pilot switched mission → abort()</button>
+      <button id="abReset">↺ Reset</button>
+    </div>
+    <div class="log" id="abLog" aria-live="polite">—</div>
+    <div class="note" style="margin-bottom:0"><b>Why it matters:</b> <code>setTimeout</code> can be cleared only by keeping every timer id yourself. <code>TaskController</code> extends <code>AbortController</code> — one call aborts any number of tasks, and (per MDN) pending tasks reject with a DOMException named <code>AbortError</code>.</div>
+  </div>
+</section>
+
+<!-- ============ 08 ============ -->
+<section id="s8">
+  <div class="secnum">08 · Lab E</div>
+  <h2>Priority inheritance: a yield inside a background task stays background</h2>
+  <p><code>scheduler.yield()</code> alone gets <span class="pill uv">user-visible</span>. But awaited <b>inside a postTask callback</b>, the continuation inherits the surrounding task's priority: a background job that yields doesn't suddenly get to cut in front of user-visible work — it just keeps its place among <i>other background tasks</i>. Exactly what "yield ≠ surrender" means at the bottom of the stack.</p>
+  <div class="card">
+    <div class="btnrow">
+      <button class="primary" id="inhRun">▶ Run: bg job (yields) + user-visible job racing</button>
+      <button id="inhReset">↺ Reset</button>
+    </div>
+    <div id="inhGantt"></div>
+    <div class="log" id="inhLog" aria-live="polite">—</div>
+    <p style="font-size:13.5px;color:var(--muted);margin-top:8px">Expected: <b>P1</b> (bg) runs and, while holding the thread, queues a <b>user-visible</b> job (amber) and a plain new <b>background</b> task; P1 then yields. The continuation <b>P2</b> does NOT cut ahead of the user-visible work (inheritance keeps it background), but DOES run before the new background task BG2 — “yield ≠ surrender” at the bottom of the stack. With plain <code>yield()</code> outside a low-priority postTask, continuations run before other similar tasks (§04).</p>
+  </div>
+</section>
+
+<!-- ============ 09 ============ -->
+<section id="s9">
+  <div class="secnum">09 · Cross-browser</div>
+  <h2>The production wrapper (and the honest one-liner)</h2>
+  <p>Safari hasn't shipped the Scheduler API (as of Aug 2026), so production code needs a fallback ladder. The nuance most posts skip: <code>await globalThis.scheduler?.yield?.()</code> on Safari awaits <code>undefined</code> — a <b>microtask</b> — which never returns to the event loop and never lets paint happen. That's acceptable only when "yield if prioritized, else keep going" is the policy you actually want.</p>
+  <div class="card">
+    <h3 style="margin-top:0"><code>yieldToMain()</code> — the version to ship</h3>
+    <pre><span class="k">function</span> <span class="f">yieldToMain</span>() {
+  <span class="k">if</span> (globalThis.scheduler?.<span class="f">yield</span>) <span class="k">return</span> scheduler.<span class="f">yield</span>();        <span class="c">// Chrome/Edge 129+, FF 142+</span>
+  <span class="k">return new</span> Promise(r =&gt; <span class="f">setTimeout</span>(r, 0));                  <span class="c">// Safari: real task boundary,</span>
+}                                                                  <span class="c">// …but continuation goes to back of queue</span>
+
+<span class="c">// The "yield only if prioritized" one-liner (microtask on Safari — NO event-loop yield):</span>
+<span class="k">await</span> globalThis.scheduler?.yield?.();</pre>
+    <div class="flex" style="margin-top:10px">
+      <button class="primary" id="probeBtn">🔍 Which path does THIS browser take?</button>
+      <span id="probeOut" style="font-family:var(--mono);font-size:13px"></span>
+    </div>
+    <div class="note warn" style="margin-bottom:0"><b>Polyfill:</b> <code>scheduler-polyfill</code> (npm) emulates <code>postTask</code> + <code>yield</code> on top of MessageChannel/timeouts — behavior parity for ordering, but <b>no true priority inheritance</b> for continuations. Types for TS: <code>@types/wicg-task-scheduling</code>.</div>
+  </div>
+</section>
+
+<!-- ============ 10 ============ -->
+<section id="s10">
+  <div class="secnum">10 · Lab F</div>
+  <h2>Deadline batching: don't pay yield overhead per job</h2>
+  <p><code>yield()</code> is cheap but not free — yielding after <i>every</i> 1ms job wastes more time in scheduling than in work. The web.dev pattern: keep working until <b>50ms</b> since the last yield, then yield once. Run 140 jobs × ~7ms (~1s of work) and drag the deadline — watch task count, yield count, and worst task length trade off.</p>
+  <div class="card">
+    <div class="flex" style="margin-top:0">
+      <label style="font-size:13.5px"><b>Deadline:</b> <span id="dlVal" style="font-family:var(--mono)">50ms</span></label>
+      <input type="range" id="dlRange" min="5" max="200" value="50" step="5">
+      <button class="primary" id="dlRun">▶ Run 140 jobs</button>
+      <button id="dlNaive">▶ Same work, one gulp (no yield)</button>
+      <button id="dlReset">↺ Reset</button>
+    </div>
+    <div class="stat" id="dlStat"></div>
+    <div class="log" id="dlLog" aria-live="polite">—</div>
+    <pre><span class="k">async function</span> <span class="f">runJobs</span>(jobs, deadline = 50) {
+  <span class="k">let</span> lastYield = performance.<span class="f">now</span>();
+  <span class="k">for</span> (<span class="k">const</span> job <span class="k">of</span> jobs) {
+    job();
+    <span class="k">if</span> (performance.<span class="f">now</span>() - lastYield &gt; deadline) {   <span class="c">// only yield when we've earned it</span>
+      <span class="k">await</span> <span class="f">yieldToMain</span>();
+      lastYield = performance.<span class="f">now</span>();
+    }
+  }
+}</pre>
+  </div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section id="s11">
+  <div class="secnum">11 · Lab G · INP</div>
+  <h2>The INP payoff: click during the crunch</h2>
+  <p>Yesterday's LoAF entry measured <i>which script</i> stole responsiveness. This is the fix, measured live. Start a 1.2s crunch, then <b>spam the green PING button with real mouse clicks</b> while it runs. Event Timing reports each interaction's <b>input delay</b> (<code>processingStart − startTime</code> — how long the click waited before your handler even started). Same work, same machine — only the yielding differs.</p>
+  <div class="card">
+    <div class="btnrow">
+      <button class="danger" id="inpNaive">🧊 Naive 1.2s</button>
+      <button class="primary" id="inpYield" disabled>⚡ Deadline-yielded 1.2s</button>
+      <button id="inpReset">↺ Reset</button>
+    </div>
+    <div class="pingzone">
+      <button class="pingbtn" id="pingBtn">🏓 PING</button>
+      <span style="font-size:13.5px;color:var(--muted)">Click THIS while a crunch runs — real pointer clicks only (synthetic ones get no <code>interactionId</code>).</span>
+    </div>
+    <div class="stat" id="inpStat"></div>
+    <div id="inpBars"></div>
+    <div class="log" id="inpLog" aria-live="polite">—</div>
+    <div class="note" style="margin-bottom:0"><b>Molt/OpenDrones recipes:</b> telemetry wall renders → chunk by deadline + <code>postTask(..., 'user-visible')</code>; analytics/log crunch → <code>postTask(..., 'background')</code> behind a <code>TaskController</code> you abort on view change; stick-input handlers → never yield before first feedback, yield <i>after</i> the paint-critical part. Measure the result with LoAF's <code>blockingDuration</code>.</div>
+  </div>
+</section>
+
+<!-- ============ 12 ============ -->
+<section id="s12">
+  <div class="secnum">12 · Status &amp; adoption</div>
+  <h2>Compat, spec, and the ladder we recommend</h2>
+  <div class="card">
+    <table>
+      <tr><th>Engine</th><th>postTask</th><th>yield</th><th>Notes</th></tr>
+      <tr><td>Chrome / Edge / Opera</td><td><b>94</b> (Sep 2021)</td><td><b>129</b> (Sep 2024)</td><td>Full surface: priorities, signals, mutable priority, workers</td></tr>
+      <tr><td>Firefox</td><td colspan="2" style="text-align:center"><b>142</b> (Sep 2025 — both, together)</td><td>Second engine online → ~70% global reach</td></tr>
+      <tr><td>Safari / WebKit</td><td colspan="2" style="text-align:center">✗ not shipped</td><td>No public ship date (Aug 2026) — <code>yieldToMain()</code> ladder covers it</td></tr>
+    </table>
+    <p style="font-size:13.5px;color:var(--muted)">Spec: WICG <i>scheduling-apis</i> (standard track). MDN marks the API non-experimental. Data: MDN BCD <code>api/Scheduler.json</code>, Aug 2026.</p>
+    <h3>The adoption ladder</h3>
+    <table>
+      <tr><th>Step</th><th>Do this</th><th>Risk</th></tr>
+      <tr><td><b>1</b></td><td>Swap raw <code>setTimeout(fn,0)</code> yields for the <code>yieldToMain()</code> wrapper (§09) everywhere you chunk work</td><td>Zero — identical fallback path</td></tr>
+      <tr><td><b>2</b></td><td>Convert batch loops to the <b>50ms deadline runner</b> (§10)</td><td>Zero</td></tr>
+      <tr><td><b>3</b></td><td>Tag third-party/analytics work <code>postTask(…, 'background')</code>; UI-adjacent work <code>'user-visible'</code></td><td>Low — graceful on Safari (feature-detect, else run direct)</td></tr>
+      <tr><td><b>4</b></td><td>Cancelable pipelines: <code>TaskController</code> + <code>abort()</code> + <code>setPriority()</code> for prefetch/log-crunch jobs (§06/§07)</td><td>Low — gate on <code>typeof TaskController === 'function'</code></td></tr>
+    </table>
+    <p class="src" style="margin-top:12px">Sources: MDN Prioritized Task Scheduling API + Scheduler.postTask/yield + BCD; Chrome for Developers, <i>“Use scheduler.yield() to break up long tasks”</i> (Mar 2025); web.dev, <i>“Optimize long tasks”</i>; WICG scheduling-apis spec &amp; explainer; scheduler-polyfill (npm).</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    Molt Studios · Research Hub · Prioritized Task Scheduling API demo · built 2026-08-19 · pairs with <a href="./long-animation-frames-api.html" style="color:var(--accent-ink)">Long Animation Frames API (measure)</a> — this page is the fix side.
+  </div>
+</footer>
+</div>
+
+<script>
+(function(){
+'use strict';
+var HAS_SCHED = ('scheduler' in globalThis);
+var HAS_YIELD = HAS_SCHED && ('yield' in globalThis.scheduler);
+var HAS_TC = (typeof TaskController === 'function');
+var t0 = performance.now();
+
+function $(id){ return document.getElementById(id); }
+function busy(ms){ var s = performance.now(); while (performance.now() - s < ms) { /* spin */ } }
+function fmt(n){ return (Math.round(n*10)/10).toFixed(1); }
+function logTo(el, html, cls){
+  var line = document.createElement('div');
+  var ts = fmt(performance.now() - t0);
+  line.innerHTML = '<span class="t">[' + ts + 'ms]</span> ' + (cls ? '<span class="'+cls+'">'+html+'</span>' : html);
+  el.appendChild(line); el.scrollTop = el.scrollHeight;
+}
+function resetLog(el, msg){ el.innerHTML = ''; if (msg) logTo(el, msg); }
+function stat(el, boxes){
+  el.innerHTML = boxes.map(function(b){
+    return '<div class="box"><div class="v" style="color:'+(b.c||'var(--ink)')+'">'+b.v+'</div><div class="l">'+b.l+'</div></div>';
+  }).join('');
+}
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+/* ============ capability badges ============ */
+(function(){
+  var b = [];
+  b.push(HAS_SCHED ? ['ok','✓ scheduler'] : ['no','✗ scheduler']);
+  b.push(HAS_SCHED ? ['ok','✓ postTask'] : ['no','✗ postTask']);
+  b.push(HAS_YIELD ? ['ok','✓ scheduler.yield'] : ['no','✗ scheduler.yield']);
+  b.push(HAS_TC ? ['ok','✓ TaskController + setPriority'] : ['wait','△ TaskController']);
+  b.push(HAS_SCHED ? ['wait','⏳ worker scheduler…'] : ['wait','△ worker scheduler']);
+  $('capBadges').innerHTML = b.map(function(x){ return '<span class="badge '+x[0]+'">'+x[1]+'</span>'; }).join('');
+  if (HAS_SCHED){
+    try {
+      var src = 'self.onmessage = async function(e){ var out = {}; out.hasSched = ("scheduler" in self); if (out.hasSched){ out.pinged = await scheduler.postTask(function(){ return "pong"; }, {priority:"background"}); } postMessage(out); };';
+      var w = new Worker(URL.createObjectURL(new Blob([src], {type:'text/javascript'})));
+      var to = setTimeout(function(){ w.terminate(); }, 4000);
+      w.onmessage = function(e){
+        clearTimeout(to); w.terminate();
+        var badges = $('capBadges');
+        var d = document.createElement('span');
+        d.className = 'badge ' + (e.data.hasSched ? 'ok' : 'no');
+        d.textContent = (e.data.hasSched ? '✓ worker scheduler (' + e.data.pinged + ' @background)' : '✗ worker scheduler');
+        badges.replaceChild(d, badges.children[4]);
+      };
+      w.postMessage('go');
+    } catch(err){ /* badge stays waiting */ }
+  }
+})();
+
+/* ============ 01 freeze vs yield ============ */
+(function(){
+  var btnN = $('freezeBtn'), btnY = $('yieldBtn'), input = $('echoInput'), out = $('echoOut'), st = $('freezeStat');
+  var mode = null, ranOnce = false, started = 0, lastEcho = '';
+  function echo(){
+    var v = input.value;
+    if (v !== lastEcho){
+      lastEcho = v;
+      var d = fmt(performance.now() - started);
+      out.innerHTML = 'typed “' + esc(v.slice(-14)) + '” echoed after <b>' + d + 'ms</b>' + (mode ? ' <span style="color:var(--faint)">(' + mode + ')</span>' : '');
+    }
+    if (v === '') { out.textContent = '—'; lastEcho = ''; }
+  }
+  input.addEventListener('input', function(){
+    if (!mode && !ranOnce) { out.textContent = '(start a crunch first, then keep typing…)'; }
+  });
+  setInterval(echo, 30); // polling reveals exactly WHEN the echo actually lands
+  btnN.addEventListener('click', function(){
+    mode = 'naive'; ranOnce = true; started = performance.now(); out.textContent = '…waiting for main thread…';
+    btnN.disabled = btnY.disabled = true;
+    busy(700);
+    var took = performance.now() - started;
+    stat(st, [{v: fmt(took)+'ms', l:'single task length', c:'var(--red)'}, {v:'0', l:'yields'}, {v:'blocked', l:'input during crunch'}]);
+    mode = null; btnN.disabled = btnY.disabled = false;
+  });
+  btnY.addEventListener('click', function(){
+    if (!HAS_YIELD){ out.textContent = 'scheduler.yield unavailable in this browser — that IS the lesson of §09.'; return; }
+    mode = 'yielded'; ranOnce = true; started = performance.now(); out.textContent = '…crunching with yields…';
+    btnN.disabled = btnY.disabled = true;
+    (async function(){
+      var done = 0, yields = 0, last = performance.now();
+      while (done < 700){
+        busy(Math.min(12, 700 - done)); done += 12;
+        if (performance.now() - last > 40){ await scheduler.yield(); yields++; last = performance.now(); }
+      }
+      var took = performance.now() - started;
+      stat(st, [{v: fmt(took)+'ms', l:'wall time', c:'var(--green)'}, {v:String(yields), l:'yields'}, {v:'live', l:'input during crunch', c:'var(--green)'}]);
+      mode = null; btnN.disabled = btnY.disabled = false;
+    })();
+  });
+})();
+
+/* ============ gantt renderer ============ */
+function renderGantt(container, items, lanes){
+  if (!items.length){ container.innerHTML = ''; return; }
+  var min = Infinity, max = -Infinity;
+  items.forEach(function(it){ min = Math.min(min, it.start); max = Math.max(max, it.end); });
+  var span = Math.max(max - min, 0.001);
+  var html = '<div class="gantt">';
+  lanes.forEach(function(lane){
+    html += '<div class="lane"><span class="lane-label">' + esc(lane) + '</span></div>';
+  });
+  html += '</div><div class="axis"><span>' + fmt(min - t0) + 'ms</span><span>' + fmt(min + span/2 - t0) + 'ms</span><span>' + fmt(max - t0) + 'ms</span></div>';
+  container.innerHTML = html;
+  var gEl = container.querySelector('.gantt');
+  var ord = 0;
+  var sorted = items.slice().sort(function(a,b){ return a.start - b.start; });
+  var lanePad0 = 10, lanePad1 = 98; // % of lane reserved for rendering
+  sorted.forEach(function(it){
+    ord++;
+    var laneIdx = lanes.indexOf(it.lane); if (laneIdx < 0) laneIdx = 0;
+    var laneEl = gEl.children[laneIdx];
+    var bar = document.createElement('div');
+    bar.className = 'bar ' + it.cls;
+    var left = lanePad0 + ((it.start - min)/span) * (lanePad1 - lanePad0);
+    var w = Math.max(((it.end - it.start)/span) * (lanePad1 - lanePad0), 2.5);
+    if (left + w > 99.5) w = 99.5 - left;
+    bar.style.left = left + '%';
+    bar.style.width = w + '%';
+    bar.title = it.label + ' · ' + fmt(it.end - it.start) + 'ms';
+    bar.innerHTML = (it.ord !== false ? '<span class="ord">' + ord + '</span>' : '') + esc(it.label);
+    laneEl.appendChild(bar);
+  });
+}
+
+/* ============ 04 race ============ */
+(function(){
+  var gEl = $('raceGantt'), log = $('raceLog');
+  $('raceReset').addEventListener('click', function(){ resetLog(log, '— run a race —'); gEl.innerHTML = ''; });
+  function seg(start, ms, label, cls, lane){ return {start:start, end:start+ms, label:label, cls:cls, lane:lane}; }
+  $('raceST').addEventListener('click', function(){
+    resetLog(log, 'Race 1 — setTimeout(0) yield:');
+    var items = [], order = [];
+    logTo(log, 'post myJob (setTimeout 0) → post someoneElsesJob (setTimeout 0)');
+    setTimeout(function A1(){
+      var s = performance.now(); busy(30);
+      items.push(seg(s, performance.now()-s, 'A1', 'a', 'myJob'));
+      order.push('A1'); logTo(log, 'A1 runs (myJob part 1) — 30ms', 'b');
+      setTimeout(function A2(){
+        var a2s = performance.now(); busy(30);
+        items.push(seg(a2s, performance.now()-a2s, 'A2', 'a', 'myJob'));
+        order.push('A2'); logTo(log, 'A2 finally runs (myJob part 2) — AFTER someoneElsesJob 😖', 'r');
+        renderGantt(gEl, items, ['myJob','someoneElsesJob']);
+        logTo(log, 'ORDER: ' + order.join(' → ') + '  ·  continuation punished', 'r');
+      }, 0);
+    }, 0);
+    setTimeout(function B(){
+      var bs = performance.now(); busy(45);
+      items.push(seg(bs, performance.now()-bs, 'B', 'b', 'someoneElsesJob'));
+      order.push('B'); logTo(log, 'B runs (someoneElsesJob) — jumped the line', 'y');
+      renderGantt(gEl, items, ['myJob','someoneElsesJob']);
+    }, 0);
+  });
+  $('raceSY').addEventListener('click', function(){
+    if (!HAS_YIELD){ resetLog(log, 'scheduler.yield() not available here — this is the §09 story.'); return; }
+    resetLog(log, 'Race 2 — scheduler.yield():');
+    var items = [], order = [];
+    logTo(log, 'post myJob (setTimeout 0) → post someoneElsesJob (setTimeout 0)');
+    setTimeout(async function(){
+      var a1s = performance.now(); busy(30);
+      items.push(seg(a1s, performance.now()-a1s, 'A1', 'a', 'myJob'));
+      order.push('A1'); logTo(log, 'A1 runs (myJob part 1) — 30ms', 'b');
+      await scheduler.yield();
+      var a2s = performance.now(); busy(30);
+      items.push(seg(a2s, performance.now()-a2s, 'A2', 'a', 'myJob'));
+      order.push('A2'); logTo(log, 'A2 runs FIRST (prioritized continuation) ✅', 'g');
+      renderGantt(gEl, items, ['myJob','someoneElsesJob']);
+    }, 0);
+    setTimeout(function B(){
+      var bs = performance.now(); busy(45);
+      items.push(seg(bs, performance.now()-bs, 'B', 'b', 'someoneElsesJob'));
+      order.push('B'); logTo(log, 'B runs after A2', 'y');
+      renderGantt(gEl, items, ['myJob','someoneElsesJob']);
+      logTo(log, 'ORDER: ' + order.join(' → ') + '  ·  continuation kept its place', 'g');
+    }, 0);
+  });
+})();
+
+/* ============ 05 priority queue ============ */
+(function(){
+  var log = $('prioLog'), posted = $('prioPosted'), ran = $('prioRan');
+  var specs = [
+    {n:'bkg 1', p:'background'},
+    {n:'usr-vis 1', p:'user-visible'},
+    {n:'usr-blk 1', p:'user-blocking'},
+    {n:'bkg 2', p:'background'},
+    {n:'usr-vis 2', p:'user-visible'},
+    {n:'usr-blk 2', p:'user-blocking'},
+    {n:'usr-vis 3 (default)', p:null}
+  ];
+  $('prioReset').addEventListener('click', function(){ resetLog(log); posted.textContent='—'; ran.textContent='—'; });
+  posted.innerHTML = specs.map(function(s){
+    var cls = s.p === 'user-blocking' ? 'ub' : (s.p === 'background' ? 'bg' : 'uv');
+    return '· ' + esc(s.n) + ' <span class="pill ' + cls + '">' + (s.p || 'user-visible*') + '</span>';
+  }).join('<br>');
+  $('prioRun').addEventListener('click', function(){
+    if (!HAS_SCHED){ resetLog(log, 'scheduler.postTask unavailable in this browser.'); return; }
+    resetLog(log, 'Posting 7 tasks synchronously (scrambled priorities)…');
+    ran.textContent = '…';
+    var results = [];
+    specs.forEach(function(s){
+      var opts = {}; if (s.p) opts.priority = s.p;
+      scheduler.postTask(function(){
+        var st = performance.now(); busy(12);
+        results.push(s.n);
+        logTo(log, 'ran <b>' + esc(s.n) + '</b> (' + fmt(performance.now()-st) + 'ms)');
+        ran.innerHTML = results.map(function(r, i){ return (i+1) + '. ' + esc(r); }).join('<br>');
+      }, opts).catch(function(e){ logTo(log, 'error: ' + esc(e), 'r'); });
+    });
+  });
+})();
+
+/* ============ 06 mutable priority ============ */
+(function(){
+  var log = $('mutLog'), run = $('mutRun'), bump = $('mutBump');
+  var tc = null, gen = 0;
+  $('mutReset').addEventListener('click', function(){ gen++; if (tc) { try{tc.abort();}catch(e){} } tc = null; resetLog(log); run.disabled = false; bump.disabled = true; });
+  run.addEventListener('click', function(){
+    if (!HAS_SCHED || !HAS_TC){ resetLog(log, 'TaskController not available in this browser — gate on typeof TaskController === "function".'); return; }
+    gen++;
+    var myGen = gen;
+    resetLog(log, 'Prefetching 8 chunks at background priority (30ms each)…');
+    tc = new TaskController({ priority: 'background' });
+    tc.signal.addEventListener('prioritychange', function(e){
+      // Chrome 148 quirk (live-verified): e.newPriority is undefined — TaskPriorityChangeEvent
+      // only exposes previousPriority on its prototype. signal.priority is already updated.
+      var next = e.newPriority || tc.signal.priority;
+      logTo(log, '📣 prioritychange: ' + e.previousPriority + ' → ' + next + (e.newPriority ? '' : '  (via signal.priority — e.newPriority is undefined in Chrome 148)'), 'm');
+    });
+    run.disabled = true; bump.disabled = false;
+    var done = 0, pending = 8;
+    for (var i = 1; i <= 8; i++){
+      (function(idx){
+        scheduler.postTask(function(){
+          if (myGen !== gen) return;
+          var st = performance.now(); busy(30); done++;
+          logTo(log, 'chunk ' + idx + ' ran (' + fmt(performance.now()-st) + 'ms, done=' + done + '/8)', 'y');
+        }, { signal: tc.signal }).then(function(){ pending--; if (!pending && myGen === gen){ bump.disabled = true; logTo(log, 'all chunks done', 'g'); } })
+          .catch(function(e){ if (myGen === gen) logTo(log, 'chunk ' + idx + ' aborted/reset: ' + (e && e.name), 'r'); });
+      })(i);
+    }
+  });
+  bump.addEventListener('click', function(){
+    if (!tc) return;
+    logTo(log, '👆 user scrolled the carousel into view — calling setPriority("user-blocking")', 'b');
+    tc.setPriority('user-blocking');
+    bump.disabled = true;
+  });
+})();
+
+/* ============ 07 abort ============ */
+(function(){
+  var log = $('abLog'), run = $('abRun'), ab = $('abAbort');
+  var tc = null, gen = 0;
+  $('abReset').addEventListener('click', function(){ gen++; if (tc) { try{tc.abort();}catch(e){} } tc = null; resetLog(log); run.disabled = false; ab.disabled = true; });
+  run.addEventListener('click', function(){
+    if (!HAS_SCHED || !HAS_TC){ resetLog(log, 'TaskController not available in this browser.'); return; }
+    gen++;
+    var myGen = gen;
+    resetLog(log, 'Mission A: 6 background chunks (35ms each)…');
+    tc = new TaskController({ priority: 'background' });
+    run.disabled = true; ab.disabled = false;
+    var remaining = 6;
+    for (var i = 1; i <= 6; i++){
+      (function(idx){
+        scheduler.postTask(function(){
+          if (myGen !== gen) return;
+          busy(35);
+          logTo(log, 'mission A chunk ' + idx + ' ✓', 'y');
+        }, { signal: tc.signal })
+        .catch(function(e){
+          if (myGen === gen) logTo(log, 'mission A chunk ' + idx + ' REJECTED: ' + (e && e.name || e), 'r'); // AbortError
+        })
+        .finally(function(){ remaining--; if (!remaining) ab.disabled = true; });
+      })(i);
+    }
+  });
+  ab.addEventListener('click', function(){
+    if (!tc) return;
+    logTo(log, '🛑 pilot switched to mission B — controller.abort()', 'r');
+    tc.abort();
+    ab.disabled = true;
+    logTo(log, 'starting mission B chunk 1 (fresh controller)…', 'b');
+    var tc2 = new TaskController({ priority: 'background' });
+    scheduler.postTask(function(){ busy(35); logTo(log, 'mission B chunk 1 ✓ (no wasted cycles on A)', 'g'); }, { signal: tc2.signal })
+      .catch(function(e){ logTo(log, 'mission B rejected: ' + (e && e.name || e), 'r'); });
+  });
+})();
+
+/* ============ 08 inheritance ============ */
+(function(){
+  var gEl = $('inhGantt'), log = $('inhLog');
+  $('inhReset').addEventListener('click', function(){ resetLog(log); gEl.innerHTML=''; });
+  $('inhRun').addEventListener('click', function(){
+    if (!HAS_SCHED || !HAS_YIELD){ resetLog(log, 'requires scheduler.postTask + scheduler.yield'); return; }
+    resetLog(log, 'posting bg job at background priority — it starts immediately (queue empty)…');
+    var items = [], order = [];
+    scheduler.postTask(async function(){
+      var s = performance.now(); busy(30);
+      items.push({start:s, end:performance.now(), label:'P1', cls:'b', lane:'bg job (background)'});
+      order.push('P1'); logTo(log, 'P1 (bg part 1) ran', 'y');
+      // NOW post competitors, while we hold the thread (they queue behind us)
+      scheduler.postTask(function(){
+        var s2 = performance.now(); busy(60);
+        items.push({start:s2, end:performance.now(), label:'UV', cls:'am', lane:'user-visible job'});
+        order.push('UV'); logTo(log, 'UV (user-visible 60ms) ran BETWEEN P1 and P2', 'b');
+        renderGantt(gEl, items, ['bg job (background)','user-visible job']);
+      }, { priority: 'user-visible' });
+      scheduler.postTask(function(){
+        var s3 = performance.now(); busy(20);
+        items.push({start:s3, end:performance.now(), label:'BG2', cls:'g', lane:'other bg task'});
+        order.push('BG2'); logTo(log, 'BG2 (plain new background task) ran after P2 — continuation beat it', 'g');
+        renderGantt(gEl, items, ['bg job (background)','user-visible job','other bg task']);
+        logTo(log, 'ORDER: ' + order.join(' → ') + ' — continuation kept place among bg, did NOT cut ahead of UV', 'g');
+      }, { priority: 'background' });
+      await scheduler.yield();  // inherits 'background' — stays under UV, stays above new bg tasks
+      var s4 = performance.now(); busy(30);
+      items.push({start:s4, end:performance.now(), label:'P2', cls:'b', lane:'bg job (background)'});
+      order.push('P2'); logTo(log, 'P2 (bg continuation) ran', 'g');
+      renderGantt(gEl, items, ['bg job (background)','user-visible job','other bg task']);
+    }, { priority: 'background' }).catch(function(e){ logTo(log, 'bg job error: ' + esc(e), 'r'); });
+  });
+})();
+
+/* ============ 09 probe ============ */
+(function(){
+  $('probeBtn').addEventListener('click', function(){
+    var out = $('probeOut');
+    if (HAS_YIELD){
+      out.innerHTML = '<span style="color:var(--green)">✓ scheduler.yield() — prioritized continuation path</span>';
+    } else {
+      out.innerHTML = '<span style="color:var(--amber)">✗ no scheduler.yield() — wrapper falls back to setTimeout(0): real task boundary, back-of-queue continuation</span>';
+    }
+  });
+})();
+
+/* ============ 10 deadline batching ============ */
+(function(){
+  var log = $('dlLog'), st = $('dlStat'), range = $('dlRange'), dlVal = $('dlVal');
+  range.addEventListener('input', function(){ dlVal.textContent = range.value + 'ms'; });
+  function makeJobs(n){ var a = []; for (var i=0;i<n;i++) a.push(function(){ busy(7); }); return a; }
+  var running = false;
+  function guard(btns, on){ btns.forEach(function(b){ b.disabled = !on; }); }
+  var allBtns = [$('dlRun'), $('dlNaive')];
+  $('dlReset').addEventListener('click', function(){ resetLog(log); st.innerHTML=''; });
+  $('dlRun').addEventListener('click', function(){
+    if (running) return; running = true; guard(allBtns, false);
+    var deadline = +range.value, jobs = makeJobs(140);
+    resetLog(log, 'running 140 jobs (~7ms each) with deadline=' + deadline + 'ms…');
+    var yields = 0, last = performance.now(), start = last, worst = 0, segStart = last;
+    (async function(){
+      for (var i = 0; i < jobs.length; i++){
+        jobs[i]();
+        if (performance.now() - last > deadline){
+          worst = Math.max(worst, performance.now() - segStart);
+          await (HAS_YIELD ? scheduler.yield() : new Promise(function(r){ setTimeout(r,0); }));
+          yields++; last = segStart = performance.now();
+        }
+      }
+      worst = Math.max(worst, performance.now() - segStart);
+      var total = performance.now() - start;
+      stat(st, [
+        {v: fmt(total)+'ms', l:'wall time'},
+        {v: String(yields), l:'yields', c:'var(--accent)'},
+        {v: fmt(worst)+'ms', l:'longest task', c: worst > 50 ? 'var(--red)' : 'var(--green)'},
+        {v: String(jobs.length), l:'jobs done'}
+      ]);
+      logTo(log, 'done: ' + jobs.length + ' jobs, ' + yields + ' yields, longest continuous segment ' + fmt(worst) + 'ms ' + (worst>50?'(long task!)':'(< 50ms ✓)'), worst>50?'y':'g');
+      running = false; guard(allBtns, true);
+    })();
+  });
+  $('dlNaive').addEventListener('click', function(){
+    if (running) return; running = true; guard(allBtns, false);
+    var jobs = makeJobs(140), start;
+    resetLog(log, 'running the SAME 140 jobs in one gulp (no yields)…');
+    setTimeout(function(){
+      start = performance.now();
+      jobs.forEach(function(j){ j(); });
+      var total = performance.now() - start;
+      stat(st, [
+        {v: fmt(total)+'ms', l:'wall time'},
+        {v: '0', l:'yields', c:'var(--red)'},
+        {v: fmt(total)+'ms', l:'longest task', c:'var(--red)'},
+        {v: String(jobs.length), l:'jobs done'}
+      ]);
+      logTo(log, 'done: one single ' + fmt(total) + 'ms task — the page was frozen the whole time', 'r');
+      running = false; guard(allBtns, true);
+    }, 50);
+  });
+})();
+
+/* ============ 11 INP lab ============ */
+(function(){
+  var log = $('inpLog'), st = $('inpStat'), bars = $('inpBars');
+  var mode = null, start = 0, latencies = [];
+  // Event Timing observer: real interactions only
+  if ('PerformanceObserver' in window){
+    try {
+      new PerformanceObserver(function(list){
+        list.getEntries().forEach(function(e){
+          if (!e.interactionId || !mode) return;
+          var delay = e.processingStart - e.startTime; // input delay
+          var dur = e.duration;
+          latencies.push(delay);
+          logTo(log, mode + ': PING input delay <b>' + fmt(delay) + 'ms</b> (handler wait) · duration ' + fmt(dur) + 'ms', delay > 100 ? 'r' : (delay > 50 ? 'y' : 'g'));
+          draw();
+        });
+      }).observe({ type: 'event', buffered: false, durationThreshold: 16 });
+    } catch(err){ /* Safari ET partial */ }
+  }
+  function draw(){
+    if (!latencies.length) return;
+    var worst = Math.max.apply(null, latencies), p75 = latencies.slice().sort(function(a,b){return a-b;})[Math.floor(latencies.length*0.75)] || 0;
+    stat(st, [
+      {v: fmt(worst)+'ms', l:'worst input delay', c: worst>200?'var(--red)':(worst>100?'var(--amber)':'var(--green)')},
+      {v: fmt(p75)+'ms', l:'p75 delay (' + latencies.length + ')'},
+      {v: mode || '—', l:'mode'}
+    ]);
+    var max = Math.max(worst, 300);
+    bars.innerHTML = '<div class="latbar"><div class="mark" style="left:' + Math.min(98, worst/max*100) + '%"></div></div>' +
+      '<div style="font-family:var(--mono);font-size:11px;color:var(--faint)">0ms' + '&nbsp;'.repeat(30) + fmt(max) + 'ms (green→red = good→poor INP territory; “good” INP needs full interaction ≤200ms)</div>';
+  }
+  $('inpReset').addEventListener('click', function(){ latencies = []; mode = null; resetLog(log); st.innerHTML=''; bars.innerHTML=''; });
+  $('inpNaive').addEventListener('click', function(){
+    mode = 'naive'; start = performance.now();
+    resetLog(log, 'NAIVE 1.2s crunch started — click PING NOW');
+    $('inpNaive').disabled = $('inpYield').disabled = true;
+    setTimeout(function(){ busy(1200); }, 80); // small gap so the click can land first
+    setTimeout(function(){ mode = null; logTo(log, 'naive crunch done', 'r'); $('inpNaive').disabled = $('inpYield').disabled = false; }, 1400);
+  });
+  $('inpYield').addEventListener('click', function(){
+    if (!HAS_YIELD){ resetLog(log, 'scheduler.yield unavailable — Safari path = setTimeout ladder.'); return; }
+    mode = 'yielded'; start = performance.now();
+    resetLog(log, 'YIELDED 1.2s crunch started (40ms deadline) — click PING NOW');
+    $('inpNaive').disabled = $('inpYield').disabled = true;
+    (async function(){
+      var done = 0, last = performance.now();
+      while (done < 1200){
+        busy(Math.min(10, 1200 - done)); done += 10;
+        if (performance.now() - last > 40){ await scheduler.yield(); last = performance.now(); }
+      }
+      mode = null; logTo(log, 'yielded crunch done', 'g'); $('inpNaive').disabled = $('inpYield').disabled = false;
+    })();
+  });
+  $('pingBtn').addEventListener('click', function(){
+    if (!mode) logTo(log, '(start a crunch first — pings during a crunch get measured)');
+  });
+})();
+
+})();
+</script>
+</body>
+</html>
