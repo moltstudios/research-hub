@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSS text-box-trim — Kill the Half-Leading Gap, Pixel-True Typography (Chrome 133+ / Safari 18.2+ / Firefox 154+)</title>
+<meta name="description" content="text-box-trim + text-box-edge: trim the invisible half-leading above and below text for cap-height-centered buttons, edge-aligned badges, and true heading rhythm. Labs, gotchas, fallbacks.">
+<style>
+:root{
+  --bg:#faf8f5; --ink:#1c1917; --muted:#78716c; --line:#e7e2da; --card:#ffffff;
+  --radius:18px; --max:980px; --prose:640px;
+  --accent:#0e7490; --accent-soft:#e0f2f7; --accent-deep:#155e75; --accent-ink:#0c4a6e;
+  --ok:#059669; --bad:#dc2626;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  background:var(--bg);color:var(--ink);line-height:1.6;font-size:15px;overflow-x:hidden}
+.orbs{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none}
+.orb{position:absolute;border-radius:50%;filter:blur(90px);opacity:.5}
+.orb1{width:420px;height:420px;top:-120px;left:-100px;background:#dbeafe}
+.orb2{width:380px;height:380px;bottom:-140px;right:-80px;background:#e0f2f7}
+header{max-width:var(--max);margin:0 auto;padding:64px 24px 8px}
+.pill{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;letter-spacing:.4px;
+  background:var(--accent-soft);color:var(--accent-deep);border-radius:999px;padding:6px 14px;margin-bottom:20px}
+h1{font-size:clamp(30px,5vw,44px);line-height:1.12;letter-spacing:-.02em;font-weight:800;max-width:18ch}
+.sub{color:var(--muted);font-size:17px;max-width:58ch;margin-top:16px}
+.sub code{font-family:var(--mono);font-size:14px}
+main{max-width:var(--max);margin:0 auto;padding:24px 24px 80px;display:flex;flex-direction:column;gap:44px}
+section{scroll-margin-top:20px}
+.kicker{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-deep);margin-bottom:8px}
+h2{font-size:26px;letter-spacing:-.01em;margin-bottom:12px;font-weight:750}
+h3{font-size:17px;margin:20px 0 8px;font-weight:700}
+p{max-width:var(--prose)}
+p+p{margin-top:10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:24px;box-shadow:0 1px 3px rgba(28,25,23,.04)}
+code{font-family:var(--mono);font-size:13px;background:#f5f2ec;border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+pre{font-family:var(--mono);font-size:12.5px;line-height:1.7;background:#1c1917;color:#e7e5e4;border-radius:14px;
+  padding:18px 20px;overflow-x:auto;margin:14px 0}
+pre .c{color:#a8a29e}pre .k{color:#7dd3fc}pre .g{color:#86efac}pre .y{color:#fde68a}pre .r{color:#fca5a5}
+.badges{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+.badge{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;background:var(--card);
+  border:1px solid var(--line);border-radius:999px;padding:7px 13px}
+.badge .dot{width:9px;height:9px;border-radius:50%;background:#a8a29e}
+.badge.ok .dot{background:var(--ok)}
+.badge.no .dot{background:var(--bad)}
+table{width:100%;border-collapse:collapse;font-size:13.5px;margin:12px 0}
+th{text-align:left;font-weight:700;padding:9px 10px;border-bottom:2px solid var(--line);white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+td.mono,th.mono{font-family:var(--mono);font-size:12.5px}
+.yes{color:#047857;font-weight:700}
+.no{color:#b91c1c;font-weight:700}
+.partial{color:#b45309;font-weight:700}
+.btn{appearance:none;border:0;cursor:pointer;font:inherit;font-weight:700;border-radius:12px;padding:10px 18px;background:var(--ink);color:#fff}
+.btn.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.note{border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 10px 10px 0;padding:12px 16px;font-size:13.5px;max-width:var(--prose);margin:14px 0}
+.warn{border-left-color:#d97706;background:#fef3c7}
+.gotcha{border-left-color:var(--bad);background:#fee2e2}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.tag{font-family:var(--mono);font-size:11px;background:#1c1917;color:#e7e5e4;border-radius:6px;padding:2px 7px}
+
+/* ---------- §1 half-leading diagram ---------- */
+.leadwrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:16px}
+.leadbox{border:1.5px dashed #94a3b8;border-radius:12px;padding:26px 18px;position:relative;background:
+  repeating-linear-gradient(to bottom, transparent 0 15px, rgba(148,163,184,.18) 15px 16px)}
+.specimen{display:inline-block;font-size:44px;font-weight:800;letter-spacing:-.01em;
+  background:linear-gradient(180deg,#bae6fd 0%,#bae6fd 100%) padding-box;outline:2px solid #38bdf8}
+.specimen.trimmed{background:linear-gradient(180deg,#bbf7d0 0%,#bbf7d0 100%) padding-box;outline-color:#22c55e}
+.leadcap{margin-top:12px;font-size:12.5px;color:var(--muted);font-family:var(--mono)}
+
+/* ---------- §3/§4 edge lab ---------- */
+.seg{display:inline-flex;flex-wrap:wrap;border:1.5px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card)}
+.seg button{appearance:none;border:0;background:transparent;font:inherit;font-size:12.5px;font-weight:600;
+  padding:8px 12px;cursor:pointer;color:var(--muted);border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--ink);color:#fff}
+.edgelab{position:relative;border:1.5px solid var(--line);border-radius:14px;padding:34px 22px;margin-top:14px;
+  background:repeating-linear-gradient(to bottom,transparent 0 11px,rgba(148,163,184,.14) 11px 12px);
+  display:flex;align-items:flex-start;justify-content:center}
+.edgeTarget{display:inline-block;font-size:64px;font-weight:800;position:relative;transition:background .2s}
+.edgeTarget.trimOn{background:#bbf7d0;outline:2px solid #22c55e}
+.edgeTarget.trimOff{background:#bae6fd;outline:2px solid #38bdf8}
+.metric{font-family:var(--mono);font-size:12.5px;background:#1c1917;color:#e7e5e4;border-radius:10px;
+  padding:10px 14px;margin-top:14px;white-space:pre;overflow-x:auto}
+.metric b{color:#86efac;font-weight:400}
+
+/* ---------- §5 button centering ---------- */
+.centerlab{display:flex;gap:26px;flex-wrap:wrap;justify-content:center;padding:30px 16px;margin-top:14px;
+  border:1.5px solid var(--line);border-radius:14px;
+  background-image:linear-gradient(to right,rgba(148,163,184,.25) 1px,transparent 1px),linear-gradient(to bottom,rgba(148,163,184,.25) 1px,transparent 1px);
+  background-size:12px 12px}
+.bigbtn{display:inline-flex;align-items:center;justify-content:center;width:170px;height:64px;border-radius:14px;
+  font-weight:800;font-size:20px;background:var(--ink);color:#fff}
+.bigbtn.b1{line-height:64px}
+.bigbtn.b3{line-height:64px}
+.bigbtn.b3.trimmed{text-box-trim:trim-both;text-box-edge:cap alphabetic}
+.crosshair{position:relative}
+.crosshair::after{content:"";position:absolute;left:-14px;right:-14px;top:50%;height:0;
+  border-top:2px dashed rgba(220,38,38,.65);pointer-events:none}
+
+/* ---------- §6 chips ---------- */
+.chiplab{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:14px}
+.chip{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;letter-spacing:.03em;
+  padding:7px 13px;border-radius:999px;border:1.5px solid}
+.chip .cdot{width:8px;height:8px;border-radius:50%}
+.chip.ok{border-color:#a7f3d0;background:#ecfdf5;color:#065f46}.chip.ok .cdot{background:#10b981}
+.chip.warn{border-color:#fde68a;background:#fffbeb;color:#92400e}.chip.warn .cdot{background:#f59e0b}
+.chip.crit{border-color:#fecaca;background:#fef2f2;color:#991b1b}.chip.crit .cdot{background:#ef4444}
+body.chiptrim .chip{text-box-trim:trim-both;text-box-edge:cap alphabetic}
+body.chiptrim .chip.haslow{text-box-edge:cap text}
+
+/* ---------- §7 heading rhythm ---------- */
+.rhythm{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:14px}
+.rhycard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px}
+.rhycard h4{font-size:21px;line-height:1.3;font-weight:800;letter-spacing:-.01em}
+.rhycard.trimmed h4{text-box-trim:trim-both;text-box-edge:cap alphabetic}
+.rhycard p{font-size:13.5px;color:var(--muted);margin-top:10px}
+.gapbar{height:6px;border-radius:3px;background:repeating-linear-gradient(45deg,#fde68a 0 6px,#fbbf24 6px 12px);margin:10px 0}
+footer{max-width:var(--max);margin:0 auto;padding:20px 24px 60px;color:var(--muted);font-size:13px}
+@media(max-width:640px){.centerlab{gap:16px}}
+</style>
+</head>
+<body>
+<div class="orbs"><div class="orb orb1"></div><div class="orb orb2"></div></div>
+
+<header>
+  <div class="pill">Typography · CSS Inline Layout Module 3</div>
+  <h1>CSS <code style="font-size:.7em">text-box-trim</code> — pixel-true text, no more half-leading air</h1>
+  <p class="sub">Every glyph you render floats inside an invisible box taller than the letters themselves — the font's <b>ascent + descent</b>, plus <b>half-leading</b> from <code>line-height</code>. That phantom air is why button text never optically centers, badges never align to their icons, and headings carry a hidden gap no margin value can fix. <code>text-box-trim</code> + <code>text-box-edge</code> cut the box to the actual ink edges — <b>cap height to baseline</b> — with one declaration, zero JS.</p>
+  <div class="badges" id="badges"></div>
+</header>
+
+<main>
+
+<!-- ============ 1 ============ -->
+<section class="card" id="s1">
+  <div class="kicker">§1 · The invisible problem</div>
+  <h2>What is half-leading?</h2>
+  <p>A block of text contributes a box to layout that is <b>not</b> <code>font-size</code> tall. It is the font's own <b>ascent + descent</b> (metrics baked into the font file, usually ≈1.2em for Latin fonts) — and when <code>line-height</code> is larger, the difference is split as <b>half-leading</b> on top and bottom:</p>
+  <pre><span class="c">/* the formula nobody writes but everybody fights */</span>
+halfLeading = (lineHeight − (ascent + descent)) / 2
+contentArea = ascent + descent        <span class="c">// font metrics, NOT font-size</span></pre>
+  <p>The result: a 44px heading with <code>line-height:1.1</code> still pushes several pixels of empty air above the caps and below the baseline — different amounts per font, invisible in devtools, and different again at every line-height. This is the air <code>text-box-trim</code> removes.</p>
+  <div class="leadwrap">
+    <div class="leadbox">
+      <span class="specimen" id="rawSpec">Hgjy</span>
+      <div class="leadcap" id="rawCap">measuring…</div>
+    </div>
+    <div class="leadbox">
+      <span class="specimen trimmed" id="trimSpec" style="text-box-trim:trim-both;text-box-edge:cap alphabetic">Hgjy</span>
+      <div class="leadcap" id="trimCap">measuring…</div>
+    </div>
+  </div>
+  <p style="margin-top:12px;font-size:13.5px;color:var(--muted)">Live <code>getBoundingClientRect()</code> heights of the two specimens above (same text, same font, same font-size — one trimmed to cap↔alphabetic edges). In a supporting browser the green box is measurably shorter and the letters sit flush with its edges.</p>
+</section>
+
+<!-- ============ 2 ============ -->
+<section class="card" id="s2">
+  <div class="kicker">§2 · The 30-second pitch</div>
+  <h2>One line kills the gap</h2>
+  <div class="chiplab" id="quickToggle" style="margin-top:6px">
+    <button class="btn" id="quickBtn">Trim the chips →</button>
+    <span class="chip ok" style="font-size:14px;padding:10px 18px"><span class="cdot"></span>ARMED · GPS 3D</span>
+    <span class="chip warn" haslow style="font-size:14px;padding:10px 18px"><span class="cdot"></span>RTL · 12% BATT</span>
+  </div>
+  <pre><span class="k">.label</span> {
+  <span class="g">text-box-trim</span>: trim-both;
+  <span class="g">text-box-edge</span>: cap alphabetic;  <span class="c">/* box = cap height → baseline */</span>
+}</pre>
+  <p>The chips above carry a fixed 10px vertical padding — but each one's visual height silently differs from its layout height by the font's phantom air. Toggle trimming and watch the dots, text, and border snap into optical alignment (green = trimmed). No line-height gymnastics, no magic padding numbers, no <code>::before</code> spacing hacks.</p>
+  <div class="note">This is the feature Apple co-designed and shipped <b>first</b> (Safari 18.2, Dec 2024) — it's how native platform labels sit flush in their pills. If our design bar is "would Apple ship this?" — they did, in the engine.</div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section class="card" id="s3">
+  <div class="kicker">§3 · Syntax</div>
+  <h2>Two longhands, one shorthand</h2>
+  <table>
+    <tr><th>Property</th><th>Values</th><th>Meaning</th></tr>
+    <tr><td class="mono">text-box-trim</td><td class="mono">none | trim-start | trim-end | trim-both</td><td>Which block edges to trim (start = first line's above-space, end = last line's below-space)</td></tr>
+    <tr><td class="mono">text-box-edge</td><td class="mono">overEdge underEdge</td><td>Which font metric each trimmed edge snaps to</td></tr>
+    <tr><td class="mono">text-box</td><td class="mono">normal | [trim…] [edges]</td><td>Shorthand — <code>text-box: trim-both cap alphabetic</code> or just <code>text-box: cap alphabetic</code> (implies trim-both)</td></tr>
+  </table>
+  <h3>Edge keywords</h3>
+  <table>
+    <tr><th>Over edge (top)</th><th>Under edge (bottom)</th><th>Snaps to</th></tr>
+    <tr><td class="mono">text</td><td class="mono">text</td><td>Font's full ascent / descent — safe default, keeps descenders inside</td></tr>
+    <tr><td class="mono">cap</td><td class="mono">alphabetic</td><td>Cap height / alphabetic baseline — tightest for Latin caps &amp; digits</td></tr>
+    <tr><td class="mono">ex</td><td class="mono">alphabetic</td><td>x-height / baseline — for lowercase-dominant labels</td></tr>
+    <tr><td class="mono">ideographic</td><td class="mono">ideographic</td><td>CJK ideographic metrics — flush CJK blocks (the Apple use case)</td></tr>
+  </table>
+  <pre><span class="c">/* the two production recipes that cover 95% of cases */</span>
+.badge, .btn-label {
+  text-box-trim: trim-both;
+  text-box-edge: <span class="y">cap alphabetic</span>;   <span class="c">/* tight: caps→baseline (descenders hang!) */</span>
+}
+.card-title-cjk {
+  text-box: trim-both <span class="y">ideographic ideographic</span>;  <span class="c">/* flush CJK */</span>
+}</pre>
+</section>
+
+<!-- ============ 4 ============ -->
+<section class="card" id="s4">
+  <div class="kicker">§4 · Live lab</div>
+  <h2>Edge picker + pixel readout</h2>
+  <p>Pick a trim mode and edge pair — the specimen re-measures itself live. The ruled background is 12px pitch; watch the green box's edges land exactly on the ink.</p>
+  <div class="row" style="margin-top:14px">
+    <div class="seg" id="trimSeg">
+      <button data-v="none" class="on">trim: none</button>
+      <button data-v="trim-start">trim-start</button>
+      <button data-v="trim-end">trim-end</button>
+      <button data-v="trim-both">trim-both</button>
+    </div>
+    <div class="seg" id="edgeSeg">
+      <button data-v="text text" class="on">text text</button>
+      <button data-v="cap alphabetic">cap alphabetic</button>
+      <button data-v="cap text">cap text</button>
+      <button data-v="ex alphabetic">ex alphabetic</button>
+    </div>
+  </div>
+  <div class="edgelab">
+    <span class="edgeTarget trimOff" id="edgeTarget">Hgjy 万</span>
+  </div>
+  <div class="metric" id="edgeMetric">…</div>
+  <div class="note warn" id="edgeNote" hidden></div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section class="card" id="s5">
+  <div class="kicker">§5 · The classic win</div>
+  <h2>Cap-height optical centering</h2>
+  <p>Flexbox centers the <b>line box</b> — but caps occupy only the top part of it, so vertically-centered button text reads 1–3px low. Trimming to <code>cap alphabetic</code> makes flex center the <b>ink itself</b>.</p>
+  <div class="centerlab">
+    <div class="bigbtn b1" style="text-box-edge:normal">NAVIGATE</div>
+    <div class="bigbtn b3 crosshair trimmed">NAVIGATE</div>
+    <div class="bigbtn b1">LAUNCH</div>
+    <div class="bigbtn b3 crosshair trimmed" style="text-box-edge:cap text">LAUNCH<span style="font-size:12px;font-weight:600;opacity:.75">&nbsp;(cap·text)</span></div>
+  </div>
+  <p style="margin-top:14px;font-size:13.5px;color:var(--muted)">The dashed red crosshair sits at the flexbox vertical center. Untrimmed: the caps hang below it. Trimmed to cap↔alphabetic: the optical mass of the caps straddles it. Same markup, same padding, one property.</p>
+</section>
+
+<!-- ============ 6 ============ -->
+<section class="card" id="s6">
+  <div class="kicker">§6 · OpenDrones pattern</div>
+  <h2>Telemetry chips that align to the grid</h2>
+  <p>HUD rows stack labels, values, and status chips of different fonts and sizes. Half-leading makes every row breathe differently. Trim once at the row level and every chip's <b>visual</b> edges meet the design grid.</p>
+  <div class="row" style="margin-top:8px;margin-bottom:14px">
+    <button class="btn ghost" id="hudBtn">Toggle trim (whole panel)</button>
+  </div>
+  <div class="card" id="hudPanel" style="border-radius:14px">
+    <div class="chiplab">
+      <span class="chip ok"><span class="cdot"></span>ARMED</span>
+      <span class="chip ok"><span class="cdot"></span>GPS 3D FIX · 14 SAT</span>
+      <span class="chip warn haslow"><span class="cdot"></span>LINK 62% · 4.8 km</span>
+      <span class="chip crit haslow"><span class="cdot"></span>BATT 12% · RTL NOW</span>
+      <span class="chip warn"><span class="cdot"></span>WIND 9 m/s SW</span>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-top:12px;max-width:none">Rows mixing uppercase chips, mixed-case values, and descender-bearing labels (<i>BATT</i> next to <i>payload</i>) keep one optical baseline once trimmed. Chips containing descenders (<code>g</code>, <code>y</code>, <code>p</code>) use <code>cap text</code> — the safe under-edge that keeps descenders inside the box.</p>
+  </div>
+</section>
+
+<!-- ============ 7 ============ -->
+<section class="card" id="s7">
+  <div class="kicker">§7 · Molt Studios pattern</div>
+  <h2>Heading rhythm that finally equals margin</h2>
+  <p>Section spacing is designed as margin — but every heading smuggles in hidden air that varies per font weight. Trimmed headings make <code>margin-top: 48px</code> actually render as 48px of visual space.</p>
+  <div class="rhythm">
+    <div class="rhycard" id="rhyRaw">
+      <div class="gapbar"></div>
+      <h4>Untrimmed heading</h4>
+      <div class="gapbar" id="gapRaw"></div>
+      <p>The hatched bars hug the heading's visual ink. The gap between them = heading box. Note the air above caps &amp; below baseline inside the measured band.</p>
+    </div>
+    <div class="rhycard trimmed" id="rhyTrim">
+      <div class="gapbar"></div>
+      <h4>Trimmed heading</h4>
+      <div class="gapbar" id="gapTrim"></div>
+      <p>Same font, same weight, same line-height — the measured band is now caps-to-baseline, so margins around it are optically honest.</p>
+    </div>
+  </div>
+  <div class="metric" id="rhyMetric">…</div>
+</section>
+
+<!-- ============ 8 ============ -->
+<section class="card" id="s8">
+  <div class="kicker">§8 · Semantics</div>
+  <h2>line-height stays, trim ≠ line-height: 1</h2>
+  <p><code>text-box-trim</code> trims the <b>block's start and end edges</b> (the space above the first line and below the last line) — it does not touch the spacing <i>between</i> lines, and it does not depend on <code>line-height</code> at all: it uses <b>font metrics</b>, which is why it's stable across fonts where <code>line-height</code> hacks are not.</p>
+  <div class="card" style="border-radius:14px;margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px">
+    <div>
+      <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px">line-height: 1.6, untrimmed</div>
+      <div style="font-size:19px;line-height:1.6;background:#bae6fd;outline:2px solid #38bdf8">Air above<br>three lines<br>air below</div>
+    </div>
+    <div>
+      <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px">line-height: 1.6 + trim-both (cap·text)</div>
+      <div style="font-size:19px;line-height:1.6;background:#bbf7d0;outline:2px solid #22c55e;text-box-trim:trim-both;text-box-edge:cap text">Air above<br>three lines<br>air below</div>
+    </div>
+  </div>
+  <p style="margin-top:14px;font-size:13.5px;color:var(--muted)">Inner line spacing (1.6) is untouched; only the outer air collapses. That's why trimming is safe for accessibility — reading rhythm inside paragraphs is preserved.</p>
+</section>
+
+<!-- ============ 9 ============ -->
+<section class="card" id="s9">
+  <div class="kicker">§9 · Gotchas</div>
+  <h2>Four things that bite</h2>
+  <div class="note gotcha"><b>1 · Descenders hang outside <code>cap alphabetic</code>.</b> The under-edge snaps to the <i>baseline</i>, so <code>g y p q j</code> paint below the box. Visually fine in open layout — but <b>overflow:hidden</b> ancestors, tight sibling stacking, or scroll snapping can clip them. Rule: static labels with known-case text → <code>cap alphabetic</code>; anything that might contain descenders → <code>cap text</code>.</div>
+  <div class="note gotcha"><b>2 · It is font-metric math, not geometry.</b> Swap the font (or weight) and the trim changes with it — that's the feature (optical truth per font). But screenshot-diff tests and pixel-perfect Figma handoff need the real loaded font, not a fallback.</div>
+  <div class="note gotcha"><b>3 · Support is newer than it looks.</b> Chrome/Edge 132–133 (Feb 2025) and Safari 18.2 (Dec 2024) have it; <b>Firefox only since 154 (≈Jun 30 2026)</b> — MDN's "not Baseline" banner predates that Firefox ship and is stale. Samsung Internet (30) still lacks it. Not Baseline-labeled yet — treat as progressive enhancement, not foundation.</div>
+  <div class="note gotcha"><b>4 · Interop detail: shorthand ordering.</b> <code>text-box: trim-both cap alphabetic</code> and <code>text-box: cap alphabetic</code> (implies trim-both) both work in current engines; prefer <b>longhands in production CSS</b> — drafts changed shape twice (it began life as <code>leading-trim</code>/<code>grapheme-trim</code>) and tooling/polyfills target the longhands.</div>
+</section>
+
+<!-- ============ 10 ============ -->
+<section class="card" id="s10">
+  <div class="kicker">§10 · Support &amp; adoption</div>
+  <h2>Matrix (Aug 2026) &amp; the zero-risk gate</h2>
+  <table>
+    <tr><th>Engine</th><th>Since</th><th>Status</th></tr>
+    <tr><td>Chrome</td><td class="mono">133 (Feb 2025)</td><td class="yes">✓ stable · flag 128–132</td></tr>
+    <tr><td>Edge</td><td class="mono">132 (Jan 2025)</td><td class="yes">✓ stable</td></tr>
+    <tr><td>Safari (all platforms)</td><td class="mono">18.2 (Dec 2024)</td><td class="yes">✓ stable — shipped first</td></tr>
+    <tr><td>Firefox</td><td class="mono">154 (≈Jun 30 2026)</td><td class="yes">✓ stable — the engine-set completer</td></tr>
+    <tr><td>Samsung Internet</td><td class="mono">— (v30 = n)</td><td class="no">✗ last holdout</td></tr>
+  </table>
+  <p><b>Adoption posture: ship today, ungated.</b> Worst case in a non-supporting browser is… today's rendering — the exact spacing we already ship. There is no layout cliff, no IACVT trap, no declaration-drop hazard: the property simply doesn't exist there. The one discipline worth keeping is <b>don't bake pixel offsets that assume the trim landed</b> (e.g. negative margins sized to the phantom air) — keep padding/margins neutral so both modes look intentional.</p>
+  <pre><span class="c">/* optional explicit gate — only if you want to vary padding per mode */</span>
+<span class="k">@supports</span> (text-box-trim: trim-both) {
+  .chip { padding-block: <span class="y">8px</span>; text-box-trim: trim-both; text-box-edge: cap alphabetic; }
+}
+<span class="k">@supports</span> not (text-box-trim: trim-both) {
+  .chip { padding-block: <span class="y">10px</span>; }  <span class="c">/* compensate optical size */</span>
+}</pre>
+  <div class="note">Re-check trigger: Samsung Internet &gt;30 and the official Baseline flag (Firefox 154 completed the set ~7 weeks ago; MDN/BDL lag). Also watch Tailwind — open discussion to promote <code>text-box</code> utilities is underway.</div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section class="card" id="s11">
+  <div class="kicker">§11 · Where we use it</div>
+  <h2>Molt / OpenDrones production slots</h2>
+  <table>
+    <tr><th>Slot</th><th>Recipe</th><th>Why</th></tr>
+    <tr><td>Buttons &amp; CTAs</td><td class="mono">trim-both · cap alphabetic</td><td>True optical centering in fixed-height controls</td></tr>
+    <tr><td>Badges / status chips</td><td class="mono">trim-both · cap alphabetic</td><td>Chips align to icons &amp; grid across fonts (uppercase → no descenders)</td></tr>
+    <tr><td>Mixed labels (descenders)</td><td class="mono">trim-both · cap text</td><td>Safe under-edge keeps g/y/p inside the pill</td></tr>
+    <tr><td>Section headings</td><td class="mono">trim-both · cap alphabetic</td><td>Margin = visual space; the end of the "why is the gap 62px not 48px" era</td></tr>
+    <tr><td>H1 hero display type</td><td class="mono">trim-start · cap + trim-end · text</td><td>Flush top for overlays; keep descender room on last line</td></tr>
+    <tr><td>OpenDrones HUD rows</td><td class="mono">trim-both · per-chip edge</td><td>Multi-font telemetry rows share one optical grid</td></tr>
+    <tr><td>CJK manual panels</td><td class="mono">trim-both · ideographic ideographic</td><td>Flush CJK blocks — the original Apple motivation</td></tr>
+  </table>
+</section>
+
+<!-- ============ 12 ============ -->
+<section class="card" id="s12">
+  <div class="kicker">§12 · Cheat sheet</div>
+  <h2>Copy-paste kit</h2>
+  <pre><span class="c">/* 1 · the workhorse: uppercase UI labels */</span>
+.ui { text-box-trim: trim-both; text-box-edge: <span class="g">cap alphabetic</span>; }
+
+<span class="c">/* 2 · anything that may contain descenders */</span>
+.mixed { text-box-trim: trim-both; text-box-edge: <span class="g">cap text</span>; }
+
+<span class="c">/* 3 · optically centered fixed-height button */</span>
+.btn { display:flex; align-items:center; height:56px;
+       text-box-trim: trim-both; text-box-edge: <span class="g">cap alphabetic</span>; }
+
+<span class="c">/* 4 · honest heading margins */</span>
+h1,h2,h3 { text-box-trim: trim-both; text-box-edge: <span class="g">cap alphabetic</span>; }
+
+<span class="c">/* 5 · CJK flush blocks */</span>
+.cjk { text-box: trim-both <span class="g">ideographic ideographic</span>; }
+
+<span class="c">/* 6 · hero: flush top, breathing bottom */</span>
+.hero-title { text-box-trim: <span class="y">trim-start</span>; text-box-edge: <span class="g">cap text</span>; }</pre>
+  <p style="font-size:13.5px;color:var(--muted)">Pair with <code>text-wrap: balance</code> (already in our toolkit) for headlines that are both optically boxed and optically wrapped — the two halves of the 2026 typography tier.</p>
+</section>
+
+</main>
+<footer>
+  Researched &amp; live-verified by Jin · Molt Studios research hub · CSS Inline Layout Module Level 3 (<code style="font-size:12px">text-box-trim</code> / <code style="font-size:12px">text-box-edge</code>) · 2026-08-20
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var $=function(s){return document.querySelector(s)};
+  var fmt=function(n){return (Math.round(n*100)/100)};
+
+  /* ---------- capability badges ---------- */
+  var probes=[
+    ["text-box-trim", (typeof CSS!=="undefined")&&CSS.supports("text-box-trim","trim-both")],
+    ["text-box-edge", (typeof CSS!=="undefined")&&CSS.supports("text-box-edge","cap alphabetic")],
+    ["text-box shorthand", (typeof CSS!=="undefined")&&CSS.supports("text-box","trim-both cap alphabetic")]
+  ];
+  var b=$("#badges");
+  probes.forEach(function(p){
+    var d=document.createElement("span");
+    d.className="badge "+(p[1]?"ok":"no");
+    d.innerHTML='<span class="dot"></span>'+p[0]+" "+(p[1]?"✓ native":"✗ missing");
+    b.appendChild(d);
+  });
+  var sup=probes[0][1];
+
+  /* ---------- §1 live measure ---------- */
+  function measurePair(a,b,ca,cb){
+    if(!a||!b)return;
+    var r1=a.getBoundingClientRect(),r2=b.getBoundingClientRect();
+    ca.textContent="raw box: "+fmt(r1.height)+"px tall · glyph ink floats inside";
+    cb.textContent="trimmed box: "+fmt(r2.height)+"px tall"+(sup?(" · Δ "+fmt(r1.height-r2.height)+"px of phantom air removed"):" · (untrimmed — engine lacks support)");
+  }
+  measurePair($("#rawSpec"),$("#trimSpec"),$("#rawCap"),$("#trimCap"));
+
+  /* ---------- §2 quick toggle ---------- */
+  var qb=$("#quickBtn"),on=false;
+  qb.addEventListener("click",function(){
+    on=!on;
+    document.body.classList.toggle("chiptrim",on);
+    qb.textContent=on?"Untrim the chips →":"Trim the chips →";
+  });
+
+  /* ---------- §4 edge lab ---------- */
+  var trimMode="none", edgePair="text text";
+  var tSeg=$("#trimSeg"),eSeg=$("#edgeSeg"),tgt=$("#edgeTarget"),met=$("#edgeMetric"),enote=$("#edgeNote");
+  function setSeg(seg,val){seg.querySelectorAll("button").forEach(function(x){x.classList.toggle("on",x.dataset.v===val)})}
+  function applyEdge(){
+    var use=sup&&trimMode!=="none";
+    tgt.classList.toggle("trimOn",use);
+    tgt.classList.toggle("trimOff",!use);
+    tgt.style.textBoxTrim=use?trimMode:"none";
+    if(use){tgt.style.textBoxEdge=edgePair}else{tgt.style.textBoxEdge="normal"}
+    var r=tgt.getBoundingClientRect();
+    var s="requested: text-box-trim: "+trimMode+" · text-box-edge: "+edgePair+
+      "\nrendered height: "+fmt(r.height)+"px"+(use?" (trimmed)":" (untrimmed)");
+    if(!sup){s+="\nengine support: ✗ — lab renders raw box in both modes"}
+    met.textContent=s;
+    var risk=(edgePair==="cap alphabetic"&&/y|g|j/.test(tgt.textContent));
+    enote.hidden=!(use&&risk);
+    if(use&&risk){enote.innerHTML="<b>Descender watch:</b> under-edge is <code>alphabetic</code> (baseline) and the specimen contains g/j/y — their tails now paint <i>outside</i> the green box. Fine here; would clip under <code>overflow:hidden</code>."}
+  }
+  tSeg.addEventListener("click",function(e){var b2=e.target.closest("button");if(!b2)return;trimMode=b2.dataset.v;setSeg(tSeg,trimMode);applyEdge()});
+  eSeg.addEventListener("click",function(e){var b2=e.target.closest("button");if(!b2)return;edgePair=b2.dataset.v;setSeg(eSeg,edgePair);applyEdge()});
+  applyEdge();
+
+  /* ---------- §6 hud toggle ---------- */
+  var hb=$("#hudBtn"),hud=$("#hudPanel"),hon=false;
+  hb.addEventListener("click",function(){
+    hon=!hon;hud.querySelectorAll(".chip").forEach(function(c){
+      c.style.textBoxTrim=hon?"trim-both":"none";
+      c.style.textBoxEdge=hon?(c.classList.contains("haslow")?"cap text":"cap alphabetic"):"normal";
+    });
+    hb.textContent=hon?"Untrim panel":"Toggle trim (whole panel)";
+  });
+
+  /* ---------- §7 rhythm measure ---------- */
+  function measureRhythm(){
+    var h1=$("#rhyRaw h4"),h2=$("#rhyTrim h4");
+    var r1=h1.getBoundingClientRect(),r2=h2.getBoundingClientRect();
+    $("#gapRaw").style.height=Math.max(4,fmt(r1.height))+"px";
+    $("#gapTrim").style.height=Math.max(4,fmt(r2.height))+"px";
+    $("#rhyMetric").textContent=
+      "untrimmed h4 box: "+fmt(r1.height)+"px  ·  trimmed h4 box: "+fmt(r2.height)+"px"+
+      (sup?("  ·  Δ "+fmt(r1.height-r2.height)+"px (≈ "+fmt((r1.height-r2.height)/2)+"px per edge)"):"  ·  engine lacks support — identical boxes");
+  }
+  measureRhythm();
+  window.addEventListener("load",measureRhythm);
+  if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){measurePair($("#rawSpec"),$("#trimSpec"),$("#rawCap"),$("#trimCap"));measureRhythm();applyEdge()})}
+})();
+</script>
+</body>
+</html>
