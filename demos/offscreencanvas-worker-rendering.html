@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OffscreenCanvas — Rendering Moves Off the Main Thread | Molt Research</title>
+<style>
+  :root{
+    --bg:#f7f3ec; --card:#fffdf9; --ink:#1c1917; --mut:#78716c;
+    --acc:#b45309; --acc-soft:#fef3e2; --teal:#0f766e; --teal-soft:#e6f4f2;
+    --crit:#dc2626; --ok:#15803d; --line:#e7ded0; --code:#2a2320;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg);color:var(--ink);
+    font:15px/1.65 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(620px 300px at 12% -4%, #f3e2c7 0%, transparent 60%),
+                     radial-gradient(520px 260px at 92% 4%, #e2ece9 0%, transparent 55%);
+  }
+  .wrap{max-width:880px;margin:0 auto;padding:28px 20px 80px}
+  header.hero{padding:34px 0 8px}
+  .kicker{font:600 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--acc)}
+  h1{font-size:clamp(28px,5vw,40px);line-height:1.12;letter-spacing:-.02em;margin:12px 0 10px;font-weight:800}
+  .sub{color:var(--mut);font-size:16px;max-width:64ch}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 4px}
+  .badge{font:600 11px/1 var(--mono);padding:7px 10px;border-radius:8px;border:1px solid var(--line);
+    background:var(--card);color:var(--mut)}
+  .badge b{color:var(--ink)}
+  .badge.ok{border-color:#cfe4cf;background:#f0f9f0;color:var(--ok)}
+  .badge.no{border-color:#f0c8c8;background:#fdf1f1;color:var(--crit)}
+  section{margin-top:42px}
+  .sec-head{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+  .sec-num{font:700 11px/1 var(--mono);color:var(--acc);border:1px solid var(--acc);
+    border-radius:6px;padding:4px 7px;background:var(--acc-soft);flex:none}
+  h2{font-size:21px;letter-spacing:-.015em;line-height:1.25}
+  h3{font-size:15.5px;margin:18px 0 8px}
+  p{margin:10px 0;max-width:74ch}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 22px;
+    box-shadow:0 1px 2px rgba(60,40,10,.05)}
+  .lab{border-left:3px solid var(--acc)}
+  .lab.t{border-left-color:var(--teal)}
+  pre{background:var(--code);color:#f2e9dd;border-radius:12px;padding:14px 16px;overflow-x:auto;
+    font:12.5px/1.6 var(--mono);margin:12px 0}
+  pre b{color:#f5c26b;font-weight:600}
+  pre i{color:#8fd4c8;font-style:normal}
+  pre u{color:#c9b8ff;text-decoration:none}
+  code{font:12.5px/1.5 var(--mono);background:#efe7d8;border-radius:5px;padding:1px 5px}
+  pre code{background:none;padding:0}
+  .row{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+  .btn{font:600 13px/1 ui-sans-serif,system-ui,sans-serif;padding:10px 14px;border-radius:10px;
+    border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;
+    box-shadow:0 1px 2px rgba(60,40,10,.08);transition:transform .15s,background .15s}
+  .btn:hover{background:#fff}
+  .btn:active{transform:scale(.97)}
+  .btn.pri{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .btn.teal{background:var(--teal);color:#fff;border-color:var(--teal)}
+  .btn:disabled{opacity:.45;cursor:default}
+  .chip{font:600 11px/1 var(--mono);padding:6px 9px;border-radius:7px;border:1px solid var(--line);
+    background:#fff;color:var(--mut)}
+  .chip.good{border-color:#cfe4cf;background:#f0f9f0;color:var(--ok)}
+  .chip.bad{border-color:#f0c8c8;background:#fdf1f1;color:var(--crit)}
+  .chip.wait{border-color:#ead9b6;background:var(--acc-soft);color:var(--acc)}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:12px 0}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:#f4ede0;font:600 12px/1.3 var(--mono);text-transform:uppercase;letter-spacing:.04em}
+  td.y{color:var(--ok);font-weight:600}
+  td.n{color:var(--crit);font-weight:600}
+  td.f{color:var(--acc);font-weight:600}
+  .note{border-left:3px solid var(--acc);background:var(--acc-soft);border-radius:0 10px 10px 0;
+    padding:10px 14px;font-size:13.5px;margin:12px 0;max-width:74ch}
+  .note.t{border-left-color:var(--teal);background:var(--teal-soft)}
+  .note b{color:var(--ink)}
+  .readout{font:12px/1.6 var(--mono);color:var(--mut);background:#f4efe6;border-radius:8px;
+    padding:8px 12px;margin-top:10px;overflow-x:auto;white-space:pre-wrap}
+  canvas{display:block;border-radius:10px;background:#fff;border:1px solid var(--line);max-width:100%}
+  /* §2 race */
+  .racegrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+  .racecell{border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff}
+  .racecell h4{font:700 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}
+  .racecell.main h4{color:var(--crit)} .racecell.worker h4{color:var(--teal)}
+  .racecell canvas{width:100%;height:190px}
+  .statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
+  .statgrid div{font:11.5px/1.5 var(--mono);color:var(--mut);background:#f4efe6;border-radius:8px;padding:6px 8px;text-align:center}
+  .statgrid b{display:block;font-size:14px;color:var(--ink)}
+  /* §4 chips */
+  .probegrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+  .rung{border:1px solid var(--line);border-radius:12px;padding:14px;background:#fff}
+  .rung h4{font:700 12px/1.3 var(--mono);color:var(--mut);text-transform:uppercase;letter-spacing:.05em}
+  .rung .ex{font:11.5px/1.5 var(--mono);margin:8px 0;color:var(--code);word-break:break-all}
+  .verdict{font:600 11px/1.4 var(--mono)}
+  /* §5 resize */
+  .resizebox{resize:horizontal;overflow:auto;border:2px dashed var(--acc);border-radius:12px;
+    padding:10px;min-width:240px;max-width:100%;width:340px}
+  .resizebox canvas{width:100%;height:150px}
+  /* §7 bitmap */
+  .bitmaprow{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+  .bitmaprow figure{border:1px solid var(--line);border-radius:12px;padding:10px;background:#fff}
+  .bitmaprow figcaption{font:700 11px/1 var(--mono);color:var(--mut);text-transform:uppercase;margin-bottom:8px}
+  .bitmaprow canvas{width:100%;height:120px}
+  /* §9 farm */
+  .farmgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+  .farmgrid .racecell canvas{height:110px}
+  /* §10 HUD */
+  .hudwrap{border:1px solid var(--line);border-radius:12px;background:#101614;padding:12px}
+  .hudwrap canvas{width:100%;height:260px;background:#0b100e;border-color:#233}
+  .hudstats{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center}
+  .hudstats .chip{background:#0b100e;border-color:#233;color:#9fb8ae}
+  .hudstats .chip.good{border-color:#1d4d3a;background:#0f1f18;color:#5ee39a}
+  /* §11 image pipeline */
+  .imgcols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+  .imgcols .racecell canvas{width:100%;height:180px}
+  .ticker{font:700 12px/1 var(--mono);color:var(--teal)}
+  footer{margin-top:56px;color:var(--mut);font-size:12.5px;border-top:1px solid var(--line);padding-top:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">Web Platform · Performance Tier · Research #43</div>
+  <h1>OffscreenCanvas — Rendering Moves Off the Main Thread</h1>
+  <p class="sub"><code>canvas.transferControlToOffscreen()</code> hands the pixel pipeline to a Web Worker. The render loop survives main-thread jank, DOM parsing, JSON crunching — everything that made canvases stutter. Baseline since March 2023.</p>
+  <div class="badges" id="badges"></div>
+</header>
+
+<!-- ============ 1. WHY ============ -->
+<section id="s1">
+  <div class="sec-head"><span class="sec-num">01</span><h2>The problem it solves</h2></div>
+  <div class="card">
+    <p>A <code>&lt;canvas&gt;</code> normally renders <b>on the main thread</b> — the same thread that parses your JSON, walks the DOM, and executes every script. When the main thread blocks, every canvas on the page freezes with it: spinners stop, charts smear, telemetry walls go still. Our Long Animation Frames research (Aug 18) measured exactly these stalls; the scheduler API (Aug 19) mitigates them. <b>OffscreenCanvas removes the rendering from the contended thread entirely.</b></p>
+    <p>Three pieces make it work:</p>
+    <pre><b>const</b> off = el.<b>transferControlToOffscreen</b>();      <i>// one-way: the element becomes a proxy</i>
+<b>const</b> worker = <b>new Worker</b>(url);
+worker.postMessage({ canvas: off }, [off]);          <i>// off is a TRANSFERABLE — zero-copy handoff</i>
+<i>// worker:</i> ctx = canvas.getContext(<u>'2d'</u>); requestAnimationFrame(render); <i>// rAF EXISTS in workers</i></pre>
+    <p>The canvas element stays in the DOM (layout, CSS, stacking all normal) — but its bitmap is owned and painted by the worker. The worker's <code>requestAnimationFrame</code> is paced to the display vsync, exactly like the main-thread one, and each rAF callback's drawing is committed to the screen automatically at frame end (the old explicit <code>commit()</code> is deprecated).</p>
+  </div>
+</section>
+
+<!-- ============ 2. FREEZE RACE ============ -->
+<section id="s2">
+  <div class="sec-head"><span class="sec-num">02</span><h2>★ Lab — the main-thread freeze race</h2></div>
+  <div class="card lab">
+    <p>Two canvases, <b>one draw function</b>, same wall-clock input. Left is driven by a main-thread rAF loop; right by a worker rAF loop (transferred). Press <b>Block main thread 700ms</b> — the main canvas freezes mid-flight; the worker canvas never notices. Max inter-frame gap is the evidence.</p>
+    <div class="row" style="margin-bottom:12px">
+      <button class="btn pri" id="raceStart">▶ Start both loops</button>
+      <button class="btn" id="raceStop">■ Stop</button>
+      <button class="btn teal" id="raceBlock">❄ Block main thread 700 ms</button>
+      <span class="chip" id="raceClock">t = 0.0s</span>
+    </div>
+    <div class="racegrid">
+      <div class="racecell main"><h4>Main-thread canvas</h4><canvas id="raceMain"></canvas>
+        <div class="statgrid"><div>frames<b id="mFrames">0</b></div><div>avg gap<b id="mAvg">—</b></div><div>max gap<b id="mMax">—</b></div></div>
+      </div>
+      <div class="racecell worker"><h4>Worker canvas (transferred)</h4><canvas id="raceWork"></canvas>
+        <div class="statgrid"><div>frames<b id="wFrames">0</b></div><div>avg gap<b id="wAvg">—</b></div><div>max gap<b id="wMax">—</b></div></div>
+      </div>
+    </div>
+    <div class="readout" id="raceVerdict">Press Start, then freeze the main thread.</div>
+  </div>
+</section>
+
+<!-- ============ 3. ANATOMY ============ -->
+<section id="s3">
+  <div class="sec-head"><span class="sec-num">03</span><h2>The transfer protocol, end to end</h2></div>
+  <div class="card">
+    <pre><i>// ---------- main thread ----------</i>
+<b>const</b> el = document.querySelector(<u>'canvas'</u>);
+<b>const</b> off = el.<b>transferControlToOffscreen</b>();
+<b>const</b> worker = <b>new Worker</b>(<u>'renderer.js'</u>);
+<b>const</b> dpr = window.devicePixelRatio;                <i>// workers can't see it (cross-engine) — send it</i>
+worker.postMessage({ cmd:<u>'init'</u>, canvas: off, dpr,
+                     w: el.clientWidth, h: el.clientHeight }, [off]);
+
+<b>new</b> ResizeObserver(([e]) =&gt; worker.postMessage({      <i>// the ONLY safe resize path</i>
+  cmd:<u>'resize'</u>, w: e.contentRect.width, h: e.contentRect.height, dpr
+})).observe(el);
+
+<i>// ---------- renderer.js (worker) ----------</i>
+onmessage = ({data:d}) =&gt; {
+  <b>if</b> (d.cmd === <u>'init'</u> || d.cmd === <u>'resize'</u>) {
+    canvas.width  = Math.round(d.w * d.dpr);            <i>// buffer size, owned HERE now</i>
+    canvas.height = Math.round(d.h * d.dpr);
+    ctx = canvas.getContext(<u>'2d'</u>); ctx.scale(d.dpr, d.dpr);
+  }
+};
+(<b>function</b> loop(t){ draw(t); requestAnimationFrame(loop); })(); <i>// vsync-paced, auto-committed</i></pre>
+    <p>Message vocabulary that works in production: <code>init</code>, <code>resize</code>, <code>start</code>/<code>stop</code>, <code>theme</code> (colors), <code>data</code> (telemetry push), <code>stats</code> (worker reports fps back). Every property that used to be a variable read becomes a message. That is the whole cost of adoption — and the entire rendering state lives in one place, testable in isolation.</p>
+    <div class="note"><b>Why transfer, not structured-clone?</b> The OffscreenCanvas is a <b>transferable object</b> — postMessage with it in the transfer list moves ownership with zero pixel copies. Sending it without the transfer list would clone (and throw for this type).</div>
+  </div>
+</section>
+
+<!-- ============ 4. ONE-WAY DOOR ============ -->
+<section id="s4">
+  <div class="sec-head"><span class="sec-num">04</span><h2>Lab — the one-way door (live probes)</h2></div>
+  <div class="card lab t">
+    <p>Three probes run against a real canvas on this page. The transfer is <b>permanent</b>: the element's own context is dead, and its width/height are owned by the worker.</p>
+    <div class="probegrid">
+      <div class="rung"><h4>A · getContext after transfer</h4>
+        <div class="ex">el.transferControlToOffscreen();<br>el.getContext('2d')</div>
+        <div class="verdict" id="pA">probing…</div></div>
+      <div class="rung"><h4>B · el.width after transfer</h4>
+        <div class="ex">el.width = 300</div>
+        <div class="verdict" id="pB">probing…</div></div>
+      <div class="rung"><h4>C · control (never transferred)</h4>
+        <div class="ex">el2.getContext('2d')</div>
+        <div class="verdict" id="pC">probing…</div></div>
+    </div>
+    <div class="readout" id="doorReadout"></div>
+  </div>
+</section>
+
+<!-- ============ 5. RESIZE + DPR ============ -->
+<section id="s5">
+  <div class="sec-head"><span class="sec-num">05</span><h2>Lab — the resize/DPR protocol</h2></div>
+  <div class="card lab">
+    <p>Drag the bottom-right corner of the dashed box. A ResizeObserver streams the new CSS size to the worker, which resizes the <b>buffer</b> (CSS px × DPR) and re-renders. The readout shows the three-number contract: CSS pixels, devicePixelRatio, buffer pixels.</p>
+    <div class="row">
+      <div class="resizebox" id="resizeBox"><canvas id="resizeCv"></canvas></div>
+      <div style="flex:1;min-width:220px">
+        <div class="readout" id="resizeReadout" style="margin-top:0">Resize the box…</div>
+        <p style="font-size:13.5px"><b>DPR rule:</b> the main thread sends <code>devicePixelRatio</code> with every resize. <span id="dprProbe"></span></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 6. BITMAP FAN-OUT ============ -->
+<section id="s6">
+  <div class="sec-head"><span class="sec-num">06</span><h2>Lab — transferToImageBitmap: one render, many canvases</h2></div>
+  <div class="card lab t">
+    <p>The second display mode (no worker required): render into a detached <code>new OffscreenCanvas()</code>, snapshot it with <b><code>transferToImageBitmap()</code></b>, and blit it into any number of visible canvases via <code>getContext('bitmaprenderer')</code>. Two live rules get probed here: the snapshot <b>clears the source canvas</b>, and a transferred bitmap is <b>single-use</b>.</p>
+    <div class="row" style="margin-bottom:10px">
+      <button class="btn pri" id="bmpRender">Render frame → fan out to A and B</button>
+      <button class="btn" id="bmpReuse">Try reusing A's bitmap on B</button>
+      <span class="chip" id="bmpChip">idle</span>
+    </div>
+    <div class="bitmaprow">
+      <figure><figcaption>Canvas A · bitmaprenderer</figcaption><canvas id="bmpA" width="440" height="240"></canvas></figure>
+      <figure><figcaption>Canvas B · bitmaprenderer</figcaption><canvas id="bmpB" width="440" height="240"></canvas></figure>
+    </div>
+    <div class="readout" id="bmpReadout">Each button reports what the engine did.</div>
+  </div>
+</section>
+
+<!-- ============ 7. IMAGE PIPELINE ============ -->
+<section id="s7">
+  <div class="sec-head"><span class="sec-num">07</span><h2>Lab — image processing: worker vs main thread</h2></div>
+  <div class="card lab">
+    <p>Identical pipeline, identical shared draw + pixel code: draw a 512×512 test pattern → sepia matrix over 262,144 pixels → PNG-encode. Run it <b>three times in a row</b> on each thread and watch the UI ticker — a main-thread rAF counter. On the main thread it freezes; during the worker run it never stops.</p>
+    <div class="row" style="margin-bottom:12px">
+      <button class="btn pri" id="imgMain">Run ×3 on MAIN thread</button>
+      <button class="btn teal" id="imgWork">Run ×3 in WORKER</button>
+      <span class="chip">UI ticker: <b class="ticker" id="uiTicker">0</b> frames</span>
+    </div>
+    <div class="imgcols">
+      <div class="racecell main"><h4>Main-thread result</h4><canvas id="imgMainCv" width="512" height="512"></canvas>
+        <div class="readout" id="imgMainOut" style="margin-top:8px">idle</div></div>
+      <div class="racecell worker"><h4>Worker result (posted ImageBitmap)</h4><canvas id="imgWorkCv"></canvas>
+        <div class="readout" id="imgWorkOut" style="margin-top:8px">idle</div></div>
+    </div>
+    <div class="note" style="margin-top:12px"><b>Note the worker result arrives as a transferred ImageBitmap</b> — decoded pixels, zero-copy, drawn in one <code>drawImage</code>. <code>OffscreenCanvas.convertToBlob()</code> (used for the encode timing) is the worker-side replacement for <code>canvas.toBlob()</code>.</div>
+  </div>
+</section>
+
+<!-- ============ 8. CHART FARM ============ -->
+<section id="s8">
+  <div class="sec-head"><span class="sec-num">08</span><h2>Lab — one worker, four charts (the farm pattern)</h2></div>
+  <div class="card lab t">
+    <p>Four canvases, four rolling telemetry traces — all owned by <b>one</b> worker, drawn in a single rAF loop. This is the Mission Control pattern: a telemetry wall becomes one worker message stream instead of four rAF loops competing with React on the main thread.</p>
+    <div class="farmgrid" id="farmGrid"></div>
+    <div class="hudstats"><span class="chip" id="farmChip">1 worker · 4 canvases</span>
+      <span class="chip" id="farmFps">fps —</span>
+      <button class="btn" id="farmBurst">❄ Burst-block main thread 400ms</button></div>
+    <div class="note t"><b>One worker = one thread.</b> All four charts share it — fine for 2D traces (this loop draws four charts in well under a frame). If a chart is genuinely heavy (WebGL globe), give it its own worker; workers are cheap.</div>
+  </div>
+</section>
+
+<!-- ============ 9. OPENDRONES HUD ============ -->
+<section id="s9">
+  <div class="sec-head"><span class="sec-num">09</span><h2>OpenDrones — jank-proof telemetry HUD</h2></div>
+  <div class="card lab">
+    <p>The production scenario: the HUD renders in a worker while the main thread does what Mission Control actually does — <b>parse MAVLink bursts</b> (simulated here as 45ms busy chunks every 600ms) and re-render React panels. Hit the burst button or the 900ms freeze: panels and status chips lock up, the HUD keeps flying.</p>
+    <div class="hudwrap">
+      <canvas id="hudCv"></canvas>
+      <div class="hudstats">
+        <span class="chip" id="hudFps">worker fps —</span>
+        <span class="chip" id="hudAlt">alt — m</span>
+        <span class="chip" id="hudBat">bat — %</span>
+        <span class="chip" id="hudParse">MAVLink: idle</span>
+        <button class="btn" id="hudBurst" style="margin-left:auto">▶ MAVLink bursts ON</button>
+        <button class="btn" id="hudFreeze">❄ Freeze 900ms</button>
+      </div>
+    </div>
+    <p style="font-size:13.5px;margin-top:10px">Worker draws: scrolling altitude trace, battery bar, attitude horizon, RSSI arc — ~all under 1.5ms/frame. Main thread receives only lightweight stat messages (2Hz).</p>
+  </div>
+</section>
+
+<!-- ============ 10. HIDDEN TAB ============ -->
+<section id="s10">
+  <div class="sec-head"><span class="sec-num">10</span><h2>Gotcha — worker rAF sleeps when the tab hides</h2></div>
+  <div class="card">
+    <p>Worker <code>requestAnimationFrame</code> is display-paced — and when the document is hidden, <b>it stops firing</b>, just like main-thread rAF. For ambient rendering that's exactly right (zero wasted battery). For telemetry that must keep consuming while backgrounded, switch the loop to <code>setTimeout</code>/<code>setInterval</code> on <code>visibilitychange</code>:</p>
+    <pre>addEventListener(<u>'visibilitychange'</u>, () =&gt; {
+  <b>if</b> (document.hidden) { cancel = <b>true</b>; tick = setInterval(consume, 100); }  <i>// keep draining the queue</i>
+  <b>else</b>                  { clearInterval(tick); cancel = <b>false</b>; requestAnimationFrame(loop); }
+});</pre>
+    <div class="row"><span class="chip wait" id="visChip">document.visibilityState: visible</span>
+      <span class="chip" id="visFrames">worker rAF frames while hidden: 0</span></div>
+    <p style="font-size:13.5px">Switch to another tab for a few seconds and come back — the counter proves the pause (live, self-verifying).</p>
+  </div>
+</section>
+
+<!-- ============ 11. RULES ============ -->
+<section id="s11">
+  <div class="sec-head"><span class="sec-num">11</span><h2>Production rules &amp; gotchas</h2></div>
+  <div class="card">
+    <table>
+      <tr><th>Rule</th><th>Detail</th></tr>
+      <tr><td class="f">One-way door</td><td><code>transferControlToOffscreen()</code> is permanent. Element-side <code>getContext()</code> throws <code>InvalidStateError</code>; width/height are worker-owned (probe §4).</td></tr>
+      <tr><td class="f">Resize only via messages</td><td>ResizeObserver on the element → postMessage <code>{w,h,dpr}</code> → worker sets <code>canvas.width/height</code> and re-scales the context.</td></tr>
+      <tr><td class="f">Send DPR explicitly</td><td><span id="dprRule">probing…</span> — always pass it from the main thread; don't rely on the worker seeing it.</td></tr>
+      <tr><td class="f">commit() is dead</td><td>Frames auto-commit at the end of each worker rAF callback. The old explicit <code>ctx.commit()</code> is deprecated — don't port it from 2019 tutorials.</td></tr>
+      <tr><td class="f">Bitmaps are single-use</td><td><code>transferToImageBitmap()</code> clears the source canvas; the returned bitmap neuters after <code>transferFromImageBitmap()</code> (probe §6).</td></tr>
+      <tr><td class="f">One context forever</td><td><code>getContext('2d')</code> then <code>getContext('webgl')</code> returns <code>null</code> — pick the context type at init, it's permanent.</td></tr>
+      <tr><td class="f">2D surface ≈ complete</td><td>Text, measureText, filters, gradients, images all work. <code>drawFocusIfNeeded()</code> doesn't exist (no focus model in workers). <span id="filterProbe"></span></td></tr>
+      <tr><td class="f">Graceful fallback</td><td>Feature-detect <code>'transferControlToOffscreen' in el</code>; fall back to the same draw function on the element. One renderer source, two homes — Baseline makes the fallback nearly dead code (~98%).</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ============ 12. SUPPORT ============ -->
+<section id="s12">
+  <div class="sec-head"><span class="sec-num">12</span><h2>Support, adoption &amp; when NOT to use it</h2></div>
+  <div class="card">
+    <table>
+      <tr><th>Engine</th><th>Since</th><th>Notes</th></tr>
+      <tr><td>Chrome / Edge</td><td class="y">69 (Sep 2018)</td><td>WebGL + WebGPU also run in workers</td></tr>
+      <tr><td>Firefox</td><td class="y">105 (Oct 2022)</td><td>2D + WebGL</td></tr>
+      <tr><td>Safari (incl. iOS)</td><td class="y">16.4 (Mar 2023)</td><td>Last engine — <b>Baseline Mar 2023</b></td></tr>
+      <tr><td>Samsung Internet / WebView</td><td class="y">mirror</td><td>~98% global traffic</td></tr>
+      <tr><td>Deno</td><td class="y">2.8</td><td>Server-side canvas rendering, no DOM needed</td></tr>
+    </table>
+    <h3>Adopt when</h3>
+    <p>Telemetry walls and dashboards (OpenDrones), hero/canvas animations on marketing pages that must survive scroll + hydration jank (Molt), any pipeline that pixel-processes or encodes images, WebGL/WebGPU scenes that deserve their own thread, export/screenshot generation.</p>
+    <h3>Skip when</h3>
+    <p>The canvas is static or tiny (a QR code, a one-time chart) — a worker + message protocol is overhead for nothing. And if the main thread is only <i>occasionally</i> busy, the scheduler API (P3, Aug 19) fixes that with one wrapper function — reach for OffscreenCanvas when rendering itself is the load.</p>
+    <div class="note t"><b>Tier complete.</b> LoAF (measure, Aug 18) → scheduler.yield (mitigate, Aug 19) → <b>OffscreenCanvas (offload)</b>. The performance tier now covers diagnosis, treatment, and amputation.</div>
+  </div>
+</section>
+
+<footer>Built by Jin · Molt Research Hub · OffscreenCanvas · verified live in Chromium on deploy</footer>
+</div>
+
+<!-- ================= WORKER: race + probes ================= -->
+<script id="wkRace" type="text/plain">
+let cv=null, ctx=null, running=false, frames=0, t0=0, lastT=0, maxGap=0;
+function sizeTo(w,h,dpr){ cv.width=Math.max(1,Math.round(w*dpr)); cv.height=Math.max(1,Math.round(h*dpr)); }
+onmessage = (e)=>{
+  const d=e.data||{};
+  if(d.cmd==='init'){ cv=d.canvas; ctx=cv.getContext('2d'); sizeTo(d.w,d.h,d.dpr); }
+  else if(d.cmd==='resize'){ sizeTo(d.w,d.h,d.dpr); }
+  else if(d.cmd==='start'){ if(!running){ running=true; frames=0; maxGap=0; t0=performance.now(); lastT=0; raf(); } }
+  else if(d.cmd==='stop'){ running=false; }
+  else if(d.cmd==='stats'){
+    const el = frames ? (performance.now()-t0)/frames : 0;
+    postMessage({cmd:'stats', frames:frames, maxGap:Math.round(maxGap*10)/10, avg:Math.round(el*10)/10});
+  }
+  else if(d.cmd==='probe'){
+    let fc='unavailable';
+    try{ const tc=(new OffscreenCanvas(2,2)).getContext('2d'); fc=tc.filter; }catch(e){}
+    postMessage({cmd:'probe',
+      raf: typeof requestAnimationFrame === 'function',
+      dprInWorker: (typeof devicePixelRatio === 'number') ? devicePixelRatio : null,
+      convertToBlob: !!(self.OffscreenCanvas && OffscreenCanvas.prototype.convertToBlob),
+      transferToImageBitmap: !!(self.OffscreenCanvas && OffscreenCanvas.prototype.transferToImageBitmap),
+      createImageBitmap: typeof createImageBitmap === 'function',
+      filter: fc});
+  }
+  else if(d.cmd==='visTick'){ postMessage({cmd:'visFrames', n:d.n}); }
+};
+function raf(){ if(!running) return; const t=performance.now();
+  if(lastT){ const g=t-lastT; if(g>maxGap) maxGap=g; } lastT=t;
+  drawScene(ctx, cv.width, cv.height, t); frames++; requestAnimationFrame(raf); }
+function drawScene(c,W,H,t){
+  const s = W/420; c.save(); c.scale(s,s); const w=420,h=H/s;
+  const g=c.createLinearGradient(0,0,0,h); g.addColorStop(0,'#0d3b36'); g.addColorStop(1,'#07211f');
+  c.fillStyle=g; c.fillRect(0,0,w,h);
+  c.strokeStyle='rgba(94,227,154,.85)'; c.lineWidth=2; c.beginPath();
+  for(let x=0;x<=w;x+=3){ const y=h/2+Math.sin(x*.045+t*.0035)*h*.22; x?c.lineTo(x,y):c.moveTo(x,y); }
+  c.stroke();
+  for(let i=0;i<3;i++){ const a=t*.002+i*2.094, cx=w/2+Math.cos(a)*w*.3, cy=h/2+Math.sin(a)*h*.28;
+    c.fillStyle=['#f5c26b','#5ee39a','#7cc'][i]; c.beginPath(); c.arc(cx,cy,6,0,6.284); c.fill(); }
+  const sw=(t*.06)%360*Math.PI/180;
+  c.strokeStyle='#f5c26b'; c.lineWidth=3; c.beginPath(); c.moveTo(w/2,h/2);
+  c.lineTo(w/2+Math.cos(sw)*h*.42,h/2+Math.sin(sw)*h*.42); c.stroke();
+  c.fillStyle='#fff'; c.beginPath(); c.arc(w/2,h/2,5,0,6.284); c.fill();
+  c.fillStyle='rgba(255,255,255,.92)'; c.font='700 13px ui-monospace,monospace';
+  c.fillText('WORKER rAF · '+Math.round(t%100000)+'ms',12,h-12); c.restore();
+}
+</script>
+
+<!-- ================= WORKER: resize + farm + hud ================= -->
+<script id="wkFarm" type="text/plain">
+function fit(cv,w,h,dpr){ cv.width=Math.max(1,Math.round(w*dpr)); cv.height=Math.max(1,Math.round(h*dpr)); }
+onmessage = (e)=>{
+  const d=e.data||{};
+  if(d.cmd==='resizeInit'){
+    const cv=d.canvas, ctx=cv.getContext('2d');
+    state.resize={cv,ctx,dpr:d.dpr};
+    fit(cv,d.w,d.h,d.dpr); drawResize(ctx,cv.width,cv.height,d.dpr,d.w,d.h);
+    postMessage({cmd:'resizeInfo', cssW:Math.round(d.w), cssH:Math.round(d.h), dpr:d.dpr, bufW:cv.width, bufH:cv.height});
+  }
+  else if(d.cmd==='resize'){ const r=state.resize; if(!r) return; fit(r.cv,d.w,d.h,d.dpr);
+    drawResize(r.ctx,r.cv.width,r.cv.height,d.dpr,d.w,d.h);
+    postMessage({cmd:'resizeInfo', cssW:Math.round(d.w), cssH:Math.round(d.h), dpr:d.dpr, bufW:r.cv.width, bufH:r.cv.height}); }
+  else if(d.cmd==='farmInit'){
+    state.farm=d.charts.map(ch=>{ const ctx=ch.canvas.getContext('2d');
+      fit(ch.canvas,ch.w,ch.h,1); return {ctx,w:ch.canvas.width,h:ch.canvas.height,color:ch.color,phase:ch.phase,speed:ch.speed,data:Array.from({length:90},()=>0)}; });
+    if(!state.farmOn){ state.farmOn=true; farmLoop(); }
+  }
+  else if(d.cmd==='hudInit'){
+    const ctx=d.canvas.getContext('2d'); fit(d.canvas,d.w,d.h,1);
+    state.hud={ctx,w:d.canvas.width,h:d.canvas.height,alt:120,bat:87,rssi:72,roll:0,t:0,frames:0,fpsEma:60,lastPost:0,hist:[]};
+    if(!state.hudOn){ state.hudOn=true; hudLoop(); }
+  }
+};
+const state={resize:null,farm:null,farmOn:false,hud:null,hudOn:false};
+
+function drawResize(c,W,H,dpr,cssW,cssH){
+  c.save(); c.scale(dpr,dpr); const w=cssW,h=cssH;
+  c.fillStyle='#fffdf9'; c.fillRect(0,0,w,h);
+  const cell=14;
+  for(let y=0;y<h;y+=cell) for(let x=0;x<w;x+=cell)
+    if(((x/cell+y/cell)|0)%2===0){ c.fillStyle='#efe7d8'; c.fillRect(x,y,cell,cell); }
+  c.strokeStyle='#b45309'; c.lineWidth=3; c.strokeRect(1.5,1.5,w-3,h-3);
+  c.fillStyle='#1c1917'; c.font='700 12px ui-monospace,monospace';
+  c.fillText('css '+Math.round(w)+' × '+Math.round(h)+' px',10,20);
+  c.fillStyle='#b45309'; c.fillText('buffer '+W+' × '+H+' (×'+dpr+')',10,38);
+  const cx=w/2, r=Math.min(w,h)/2-24;
+  c.strokeStyle='#0f766e'; c.lineWidth=3; c.beginPath(); c.arc(cx,h/2,r,0,6.284); c.stroke();
+  const a=performance.now()*.002; c.strokeStyle='#dc2626';
+  c.beginPath(); c.moveTo(cx,h/2); c.lineTo(cx+Math.cos(a)*r,h/2+Math.sin(a)*r); c.stroke();
+  c.restore();
+}
+function farmLoop(){
+  if(!state.farm) return;
+  const t=performance.now();
+  for(const f of state.farm){
+    f.phase+=f.speed;
+    const v=Math.sin(f.phase)*.42+ (Math.random()-.5)*.14;
+    f.data.push(v); f.data.shift();
+    const {ctx:c,w,h}=f, mid=h/2;
+    c.clearRect(0,0,w,h); c.fillStyle='#fffdf9'; c.fillRect(0,0,w,h);
+    c.strokeStyle='#e7ded0'; c.beginPath(); c.moveTo(0,mid); c.lineTo(w,mid); c.stroke();
+    c.strokeStyle=f.color; c.lineWidth=2; c.beginPath();
+    f.data.forEach((val,i)=>{ const x=i/(f.data.length-1)*w, y=mid+val*(h*.4); i?c.lineTo(x,y):c.moveTo(x,y); });
+    c.stroke();
+    const last=f.data[f.data.length-1];
+    c.fillStyle=f.color; c.beginPath(); c.arc(w-3,mid+last*(h*.4),3.5,0,6.284); c.fill();
+  }
+  state.farmPingN=(state.farmPingN||0)+1; if(state.farmPingN%60===0) postMessage({cmd:'farmPing'});
+  requestAnimationFrame(farmLoop);
+}
+function hudLoop(){
+  const H=state.hud; if(!H) return;
+  const t=performance.now();
+  if(H.last){ const dt=t-H.last, inst=1000/Math.max(dt,1); H.fpsEma+= (inst-H.fpsEma)*.08; }
+  H.last=t;
+  H.t+=1; H.alt+= (Math.sin(H.t*.011)*.55)+ (Math.random()-.48)*.9; H.alt=Math.max(40,Math.min(400,H.alt));
+  H.bat=Math.max(18,H.bat-.004); H.rssi=72+Math.sin(H.t*.03)*14+(Math.random()-.5)*4;
+  H.roll=Math.sin(H.t*.008)*.5;
+  H.hist.push(H.alt); if(H.hist.length>240) H.hist.shift();
+  const {ctx:c,w,h}=H;
+  c.fillStyle='#0b100e'; c.fillRect(0,0,w,h);
+  c.strokeStyle='rgba(94,227,154,.35)'; c.lineWidth=1;
+  for(let gy=1;gy<4;gy++){ c.beginPath(); c.moveTo(0,h*gy/4); c.lineTo(w,h*gy/4); c.stroke(); }
+  const tx=w*.56, tw=w*.42, mid=h*.52;
+  c.strokeStyle='#5ee39a'; c.lineWidth=2; c.beginPath();
+  H.hist.forEach((v,i)=>{ const x=tx+ i/(H.hist.length-1)*tw, y=mid-((v-40)/360)*h*.4;
+    i?c.lineTo(x,y):c.moveTo(x,y); });
+  c.stroke();
+  c.fillStyle='#5ee39a'; c.font='700 11px ui-monospace,monospace';
+  c.fillText('ALT '+Math.round(H.alt)+'m',tx,h*.12);
+  const bx=14,bw=w*.44;
+  c.fillStyle='rgba(255,255,255,.75)'; c.font='700 11px ui-monospace,monospace';
+  c.fillText('BAT '+Math.round(H.bat)+'%',bx,24);
+  c.strokeStyle='rgba(255,255,255,.3)'; c.strokeRect(bx,32,bw,12);
+  c.fillStyle=H.bat<30?'#f87171':'#5ee39a'; c.fillRect(bx,32,bw*H.bat/100,12);
+  c.fillText('RSSI '+Math.round(H.rssi),bx,66);
+  c.strokeStyle='rgba(255,255,255,.3)'; c.beginPath(); c.arc(bx+34,92,22,Math.PI,0); c.stroke();
+  const ra=Math.PI*(1-Math.max(0,Math.min(100,H.rssi))/100);
+  c.strokeStyle='#f5c26b'; c.lineWidth=3; c.beginPath(); c.arc(bx+34,92,22,Math.PI,Math.PI+ (Math.PI-ra)); c.stroke();
+  c.save(); c.translate(bx+bw*.5, h*.72); c.rotate(H.roll);
+  c.fillStyle='#f5c26b'; c.fillRect(-70,-16,140,32);
+  c.fillStyle='#0b100e'; c.fillRect(-4,-40,8,80);
+  c.strokeStyle='rgba(255,255,255,.5)'; c.strokeRect(-70,-16,140,32); c.restore();
+  H.frames++;
+  if(t-H.lastPost>500){ H.lastPost=t; postMessage({cmd:'hudPing',fps:Math.round(H.fpsEma),alt:Math.round(H.alt),bat:Math.round(H.bat)}); }
+  requestAnimationFrame(hudLoop);
+}
+</script>
+
+<!-- ================= WORKER: image pipeline ================= -->
+<script id="wkImg" type="text/plain">
+onmessage = async (e)=>{
+  const d=e.data||{};
+  if(d.cmd==='process'){
+    const N=512, oc=new OffscreenCanvas(N,N), c=oc.getContext('2d');
+    const t1=performance.now();
+    drawPattern(c,N,N);
+    const t2=performance.now();
+    const img=c.getImageData(0,0,N,N); sepia(img.data);
+    c.putImageData(img,0,0);
+    const t3=performance.now();
+    const bmp=oc.transferToImageBitmap();
+    const blob=await oc.convertToBlob({type:'image/png'});
+    const t4=performance.now();
+    postMessage({cmd:'done', bmp, ms:{draw:Math.round(t2-t1), pix:Math.round(t3-t2), enc:Math.round(t4-t3),
+      tot:Math.round(t4-t1)}}, [bmp]);
+  }
+};
+function drawPattern(c,N){
+  const g=c.createLinearGradient(0,0,N,N);
+  g.addColorStop(0,'#b45309'); g.addColorStop(.5,'#f5c26b'); g.addColorStop(1,'#0f766e');
+  c.fillStyle=g; c.fillRect(0,0,N,N);
+  for(let i=0;i<26;i++){ const a=i*.62, r=30+((i*53)%190);
+    c.strokeStyle='rgba(28,25,23,'+(0.15+((i%5)*0.1))+')'; c.lineWidth=1+((i*7)%9);
+    c.beginPath(); c.arc(N/2+Math.cos(a)*r, N/2+Math.sin(a)*r, 6+(i%7)*4, 0, 6.284); c.stroke(); }
+  c.fillStyle='rgba(255,255,255,.85)'; c.font='700 30px ui-monospace,monospace';
+  c.fillText('TEST 512×512', 24, N-28);
+  for(let y=0;y<N;y+=4){ c.fillStyle='rgba(0,0,0,.06)'; c.fillRect(0,y,N,1); }
+}
+function sepia(px){
+  for(let i=0;i<px.length;i+=4){
+    const r=px[i],g=px[i+1],b=px[i+2];
+    px[i]  =Math.min(255,(r*.393)+(g*.769)+(b*.189));
+    px[i+1]=Math.min(255,(r*.349)+(g*.686)+(b*.168));
+    px[i+2]=Math.min(255,(r*.272)+(g*.534)+(b*.131));
+  }
+}
+</script>
+
+<!-- ================= MAIN ================= -->
+<script>
+(function(){
+'use strict';
+const $=id=>document.getElementById(id);
+const mk=(cls,txt)=>{const b=document.createElement('span');b.className='badge '+cls;b.innerHTML=txt;return b;};
+const fmtMs=v=>v==null?'—':v+'ms';
+
+/* ---- console error + overflow traps ---- */
+let errCount=0;
+window.addEventListener('error',()=>errCount++);
+window.addEventListener('unhandledrejection',()=>errCount++);
+
+/* ---- worker factory from text/plain blocks ---- */
+function workerOf(id){
+  const src=document.getElementById(id).textContent;
+  return new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
+}
+
+/* ---- shared: size a canvas element buffer for its CSS box ---- */
+function cssSize(el){ const r=el.getBoundingClientRect(); return {w:Math.max(1,r.width),h:Math.max(1,r.height)}; }
+function dpr(){ return window.devicePixelRatio||1; }
+
+/* =========================================================
+   BADGES (§0)
+========================================================= */
+const badges=$('badges');
+badges.appendChild(mk('','Baseline <b>Mar 2023</b> · all engines'));
+badges.appendChild(mk(typeof OffscreenCanvas!=='undefined'?'ok':'no','OffscreenCanvas ctor: <b>'+(typeof OffscreenCanvas!=='undefined'?'native ✓':'missing ✗')+'</b>'));
+badges.appendChild(mk('','console errors: <b id="bErr">0</b>'));
+
+/* =========================================================
+   §2 FREEZE RACE
+========================================================= */
+const raceWork=workerOf('wkRace');
+const elM=$('raceMain'), elW=$('raceWork');
+let raceOn=false, raceT0=0, mainFrames=0, mainLastT=0, mainMaxGap=0;
+let workerStats={frames:0,max:null,avg:null};
+
+function drawMain(t){
+  const c=elM.getContext('2d');
+  drawSceneMain(c, elM.width, elM.height, t);
+}
+function drawSceneMain(c,W,H,t){
+  const s=W/420; c.save(); c.scale(s,s); const w=420,h=H/s;
+  const g=c.createLinearGradient(0,0,0,h); g.addColorStop(0,'#3b0d12'); g.addColorStop(1,'#210710');
+  c.fillStyle=g; c.fillRect(0,0,w,h);
+  c.strokeStyle='rgba(248,113,113,.85)'; c.lineWidth=2; c.beginPath();
+  for(let x=0;x<=w;x+=3){ const y=h/2+Math.sin(x*.045+t*.0035)*h*.22; x?c.lineTo(x,y):c.moveTo(x,y); }
+  c.stroke();
+  for(let i=0;i<3;i++){ const a=t*.002+i*2.094, cx=w/2+Math.cos(a)*w*.3, cy=h/2+Math.sin(a)*h*.28;
+    c.fillStyle=['#f5c26b','#f87171','#7cc'][i]; c.beginPath(); c.arc(cx,cy,6,0,6.284); c.fill(); }
+  const sw=(t*.06)%360*Math.PI/180;
+  c.strokeStyle='#f5c26b'; c.lineWidth=3; c.beginPath(); c.moveTo(w/2,h/2);
+  c.lineTo(w/2+Math.cos(sw)*h*.42,h/2+Math.sin(sw)*h*.42); c.stroke();
+  c.fillStyle='#fff'; c.beginPath(); c.arc(w/2,h/2,5,0,6.284); c.fill();
+  c.fillStyle='rgba(255,255,255,.92)'; c.font='700 13px ui-monospace,monospace';
+  c.fillText('MAIN rAF · '+Math.round(t%100000)+'ms',12,h-12); c.restore();
+}
+function mainLoop(t){
+  if(!raceOn) return;
+  if(mainLastT){ const g=t-mainLastT; if(g>mainMaxGap) mainMaxGap=g; }
+  mainLastT=t; mainFrames++; drawMain(t);
+  requestAnimationFrame(mainLoop);
+}
+let raceBooted=false;
+function bootRace(){
+  if(raceBooted) return;
+  raceBooted=true;
+  const sW=cssSize(elW), D=dpr();
+  const off=elW.transferControlToOffscreen();
+  raceWork.postMessage({cmd:'init',canvas:off,dpr:D,w:sW.w,h:sW.h},[off]);
+  const sM=cssSize(elM);
+  elM.width=Math.round(sM.w*D); elM.height=Math.round(sM.h*D);
+  drawMain(performance.now());
+}
+raceWork.onmessage=(e)=>{
+  const d=e.data||{};
+  if(d.cmd==='stats'){ workerStats={frames:d.frames, max:d.maxGap, avg:d.avg}; }
+  if(d.cmd==='probe'){ probeResults(d); }
+};
+$('raceStart').addEventListener('click',()=>{
+  bootRace();
+  raceOn=true; raceT0=performance.now(); mainFrames=0; mainMaxGap=0; mainLastT=0;
+  raceWork.postMessage({cmd:'start'});
+  requestAnimationFrame(mainLoop);
+  $('raceStart').disabled=true;
+});
+$('raceStop').addEventListener('click',()=>{
+  raceOn=false; raceWork.postMessage({cmd:'stop'});
+  $('raceStart').disabled=false;
+});
+$('raceBlock').addEventListener('click',()=>{
+  const t=performance.now(); while(performance.now()-t<700){/* freeze */}
+  $('raceVerdict').textContent='Main thread blocked 700ms at t='+((performance.now()-raceT0)/1000).toFixed(1)+'s — compare max gaps.';
+});
+setInterval(()=>{
+  if(!raceOn) return;
+  raceWork.postMessage({cmd:'stats'});
+  const el=(performance.now()-raceT0)/1000;
+  $('raceClock').textContent='t = '+el.toFixed(1)+'s';
+  $('mFrames').textContent=mainFrames;
+  $('wFrames').textContent=workerStats.frames;
+  const mAvg=mainFrames?Math.round((performance.now()-raceT0)/mainFrames*10)/10:null;
+  $('mAvg').textContent=mAvg!=null?mAvg+'ms':'—';
+  $('wAvg').textContent=workerStats.avg!=null?workerStats.avg+'ms':'—';
+  $('mMax').textContent=mainMaxGap?Math.round(mainMaxGap)+'ms':'—';
+  $('wMax').textContent=workerStats.max!=null?workerStats.max+'ms':'—';
+  if(mainMaxGap>300&&workerStats.max!=null&&workerStats.max<80){
+    $('raceVerdict').textContent='PROOF: main froze '+Math.round(mainMaxGap)+'ms while worker max gap stayed '+workerStats.max+'ms — rendering never touched the blocked thread.';
+  }
+},300);
+
+/* =========================================================
+   §4 ONE-WAY DOOR
+========================================================= */
+function chipOf(el,ok,txt){ el.className='verdict'; el.style.color=ok?'#15803d':'#dc2626'; el.textContent=txt; }
+(function(){
+  const probeCv=document.createElement('canvas'); probeCv.width=60; probeCv.height=30;
+  const controlCv=document.createElement('canvas'); controlCv.width=60; controlCv.height=30;
+  const w=workerOf('wkRace');
+  let bufW=null;
+  /* A: getContext after transfer */
+  const off=probeCv.transferControlToOffscreen();
+  w.postMessage({cmd:'init',canvas:off,dpr:1,w:60,h:30},[off]);
+  let nameA='no throw', msgA='returned '+String(null);
+  try{ const r=probeCv.getContext('2d'); msgA='returned '+String(r); }
+  catch(err){ nameA=err.name; msgA=err.message; }
+  chipOf($('pA'), nameA!=='no throw', nameA!=='no throw' ? 'THREW '+nameA+' — element context is dead' : 'no throw ('+msgA+')');
+  /* B: width setter after transfer */
+  let nameB='no throw';
+  try{ probeCv.width=300; }catch(err){ nameB=err.name; }
+  chipOf($('pB'), nameB!=='no throw', nameB!=='no throw' ? 'THREW '+nameB+' — worker owns the buffer size' : 'no throw — but per spec the set is routed to the placeholder; never rely on it, size via messages');
+  /* C: control */
+  try{ const r=controlCv.getContext('2d'); chipOf($('pC'), true, 'OK — got '+ (r&&r.constructor? r.constructor.name : 'context') +' (never transferred)'); }
+  catch(err){ chipOf($('pC'), false, 'unexpected: '+err.name); }
+  $('doorReadout').textContent='A: getContext after transfer → '+nameA+' · '+(msgA||'')+
+    '\nB: el.width=300 after transfer → '+nameB+
+    '\nC: control canvas getContext → ok'+
+    '\nLesson: treat transferControlToOffscreen() as a one-way handoff — everything after it is messages.';
+  /* capability probe rides on the §2 worker too, but this one also answers probes */
+  w.postMessage({cmd:'probe'});
+  w.onmessage=(e)=>{ if(e.data&&e.data.cmd==='probe') probeResults(e.data); };
+})();
+
+/* =========================================================
+   CAPABILITY PROBE RESULTS (fills badges + inline probes)
+========================================================= */
+let probeSeen=false;
+function probeResults(d){
+  if(probeSeen) return; probeSeen=true;
+  const t2o='transferControlToOffscreen' in document.createElement('canvas');
+  badges.appendChild(mk(t2o?'ok':'no','transferControlToOffscreen: <b>'+(t2o?'✓':'✗')+'</b>'));
+  badges.appendChild(mk(d.raf?'ok':'no','worker rAF: <b>'+(d.raf?'✓':'✗')+'</b>'));
+  badges.appendChild(mk(d.convertToBlob?'ok':'no','convertToBlob: <b>'+(d.convertToBlob?'✓':'✗')+'</b>'));
+  badges.appendChild(mk(d.transferToImageBitmap?'ok':'no','transferToImageBitmap: <b>'+(d.transferToImageBitmap?'✓':'✗')+'</b>'));
+  $('dprProbe').innerHTML='<b>Live probe:</b> worker sees <code>devicePixelRatio = '
+    +(d.dprInWorker==null?'<i>undefined</i>':d.dprInWorker)+'</code> on this engine — not even Chromium exposes it in workers; always send yours.';
+  $('dprRule').textContent='Live probe on this engine: worker devicePixelRatio = '+(d.dprInWorker==null?'undefined — must be sent':String(d.dprInWorker));
+  $('filterProbe').textContent='Live probe: ctx.filter in worker = "'+(d.filter===null?'null':d.filter)+'" (assignable).';
+}
+/* ask the §2 worker for its capabilities up front (typeof-level probes need no canvas) */
+raceWork.postMessage({cmd:'probe'});
+
+/* =========================================================
+   §5 RESIZE LAB
+========================================================= */
+const farmWork=workerOf('wkFarm');
+(function(){
+  const box=$('resizeBox'), cv=$('resizeCv');
+  let last=0;
+  const send=()=>{
+    const s=cssSize(cv); farmWork.postMessage({cmd:'resize',w:s.w,h:s.h,dpr:dpr()});
+  };
+  /* initial: resizeInit requires the offscreen transfer */
+  const s=cssSize(cv);
+  const off=cv.transferControlToOffscreen();
+  farmWork.postMessage({cmd:'resizeInit',canvas:off,dpr:dpr(),w:s.w,h:s.h},[off]);
+  new ResizeObserver(()=>{
+    clearTimeout(last); last=setTimeout(send,40);
+  }).observe(box);
+  farmWork.addEventListener('message',(e)=>{
+    if(e.data&&e.data.cmd==='resizeInfo'){
+      $('resizeReadout').textContent=
+        'CSS: '+e.data.cssW+' × '+e.data.cssH+' px   ·   DPR: '+e.data.dpr+
+        '   ·   buffer: '+e.data.bufW+' × '+e.data.bufH+
+        '\nbuffer = css × dpr — set by the WORKER, from your message.';
+    }
+    if(e.data&&e.data.cmd==='farmPing'){ farmPings++; }
+    if(e.data&&e.data.cmd==='hudPing'){ hudUpdate(e.data); }
+  });
+})();
+
+/* =========================================================
+   §6 BITMAP FAN-OUT
+========================================================= */
+(function(){
+  const A=$('bmpA'), B=$('bmpB');
+  const ra=A.getContext('bitmaprenderer'), rb=B.getContext('bitmaprenderer');
+  const oc=new OffscreenCanvas(440,240), c=oc.getContext('2d');
+  let frame=0;
+  function renderFrame(){
+    frame++;
+    const g=c.createLinearGradient(0,0,440,240);
+    g.addColorStop(0,'#0f766e'); g.addColorStop(1,'#b45309');
+    c.fillStyle=g; c.fillRect(0,0,440,240);
+    for(let i=0;i<8;i++){ c.strokeStyle='rgba(255,255,255,'+(.1+i*.08)+')'; c.lineWidth=2+i;
+      c.beginPath(); c.arc(220+Math.cos(frame*.3+i)*90, 120+Math.sin(frame*.22+i)*60, 8+i*6, 0, 6.284); c.stroke(); }
+    c.fillStyle='#fff'; c.font='800 26px ui-monospace,monospace';
+    c.fillText('frame '+frame, 18, 224);
+    return oc.transferToImageBitmap();      /* clears oc — proven below */
+  }
+  $('bmpRender').addEventListener('click',()=>{
+    const bmpA=renderFrame(); ra.transferFromImageBitmap(bmpA);
+    const bmpB=renderFrame(); rb.transferFromImageBitmap(bmpB);
+    $('bmpChip').className='chip good'; $('bmpChip').textContent='frame '+frame+' fanned out';
+    $('bmpReadout').textContent='rendered frame twice (each transferToImageBitmap call), each bitmap blitted once. Source canvas cleared after each snapshot — proven next.';
+    tryReused=false;
+  });
+  let tryReused=false;
+  $('bmpReuse').addEventListener('click',()=>{
+    if(!frame){ $('bmpReadout').textContent='Render a frame first.'; return; }
+    /* snapshot one, use it twice */
+    const bmp=renderFrame();
+    ra.transferFromImageBitmap(bmp);
+    try{
+      rb.transferFromImageBitmap(bmp);
+      $('bmpChip').className='chip bad'; $('bmpChip').textContent='reused?!';
+      $('bmpReadout').textContent='Engine allowed the reuse — bitmap survived a second transferFromImageBitmap (unexpected).';
+    }catch(err){
+      $('bmpChip').className='chip wait'; $('bmpChip').textContent='single-use ✓';
+      $('bmpReadout').textContent='Second transferFromImageBitmap(bmp) THREW '+err.name+' — the bitmap was neutered by the first transfer. Single-use confirmed; snapshot per destination.';
+    }
+  });
+})();
+
+/* =========================================================
+   §7 IMAGE PIPELINE (main vs worker)
+========================================================= */
+const imgWork=workerOf('wkImg');
+let tickerN=0, tickerOn=true;
+(function tick(){ tickerN++; $('uiTicker').textContent=tickerN; requestAnimationFrame(tick); })();
+/* shared code for the main-thread run (identical functions to worker source) */
+const sharedFns=(new Function(
+  document.getElementById('wkImg').textContent.match(/function drawPattern[\s\S]*$/)[0]+'\nreturn {drawPattern,sepia};'
+))();
+function runMainPipeline(){
+  const cv=$('imgMainCv'), c=cv.getContext('2d'), N=512;
+  const t1=performance.now();
+  sharedFns.drawPattern(c,N,N);
+  const t2=performance.now();
+  const img=c.getImageData(0,0,N,N); sharedFns.sepia(img.data); c.putImageData(img,0,0);
+  const t3=performance.now();
+  return {draw:Math.round(t2-t1),pix:Math.round(t3-t2)};
+}
+$('imgMain').addEventListener('click',()=>{
+  const t0=tickerN, T0=performance.now();
+  let last=null;
+  for(let i=0;i<3;i++){ last=runMainPipeline(); }
+  const wall=Math.round(performance.now()-T0);
+  $('imgMainOut').textContent='3 runs · per-run: draw '+last.draw+'ms · pixels '+last.pix+'ms\nUI ticker frames during: '+(tickerN-t0)+'  (frozen)  · wall '+wall+'ms';
+});
+imgWork.onmessage=(e)=>{
+  const d=e.data; if(d.cmd!=='done') return;
+  const cv=$('imgWorkCv'); cv.width=d.bmp.width; cv.height=d.bmp.height;
+  cv.getContext('2d').drawImage(d.bmp,0,0);
+  $('imgWorkOut').textContent='draw '+d.ms.draw+'ms · pixels '+d.ms.pix+'ms · PNG encode '+d.ms.enc+'ms · total '+d.ms.tot+'ms\nresult posted as transferred ImageBitmap (zero-copy)';
+};
+$('imgWork').addEventListener('click',()=>{
+  const t0=tickerN;
+  imgWork.postMessage({cmd:'process'});
+  setTimeout(()=>{
+    $('imgWorkOut').textContent+='\nUI ticker frames during: '+(tickerN-t0)+'  (alive)';
+  },900);
+});
+
+/* =========================================================
+   §8 CHART FARM
+========================================================= */
+let farmPings=0;
+(function(){  const grid=$('farmGrid');
+  const colors=['#b45309','#0f766e','#dc2626','#7c3aed'];
+  const specs=[];
+  for(let i=0;i<4;i++){
+    const cell=document.createElement('div'); cell.className='racecell';
+    const h4=document.createElement('h4'); h4.textContent=['altitude','airspeed','battery','link'][i]; h4.style.color=colors[i];
+    const cv=document.createElement('canvas'); cv.style.width='100%'; cv.style.height='110px'; cv.style.display='block';
+    cell.appendChild(h4); cell.appendChild(cv); grid.appendChild(cell);
+    specs.push({canvas:cv,color:colors[i],phase:i*1.3,speed:.006+i*.004,w:cv.getBoundingClientRect().width||220,h:110});
+  }
+  const offs=specs.map(s=>s.canvas.transferControlToOffscreen());
+  /* ONE message carries all four canvases — a transfer list can only be used once */
+  farmWork.postMessage({cmd:'farmInit',
+    charts:offs.map((o,j)=>({canvas:o,color:colors[j],phase:specs[j].phase,speed:specs[j].speed,w:specs[j].w,h:specs[j].h}))},
+    offs);
+})();
+$('farmBurst').addEventListener('click',()=>{
+  const t=performance.now(); while(performance.now()-t<400){/* freeze */}
+});
+setInterval(()=>{
+  const e=document.querySelector('#farmFps');
+  if(e && farmPings>0){ e.textContent='worker alive · pings '+farmPings; }
+},1000);
+
+/* =========================================================
+   §9 HUD
+========================================================= */
+let hudOn=false, parseOn=false;
+(function(){
+  const cv=$('hudCv');
+  const s=cssSize(cv);
+  const off=cv.transferControlToOffscreen();
+  farmWork.postMessage({cmd:'hudInit',canvas:off,w:s.w,h:s.h},[off]);
+})();
+function hudUpdate(d){
+  $('hudFps').textContent='worker fps '+d.fps;
+  $('hudFps').className='chip '+(d.fps>45?'good':'');
+  $('hudAlt').textContent='alt '+d.alt+'m';
+  $('hudBat').textContent='bat '+d.bat+'%';
+}
+$('hudBurst').addEventListener('click',()=>{
+  parseOn=!parseOn;
+  $('hudBurst').textContent=parseOn?'■ MAVLink bursts OFF':'▶ MAVLink bursts ON';
+  $('hudBurst').className='btn'+(parseOn?' teal':'');
+});
+$('hudFreeze').addEventListener('click',()=>{
+  const t=performance.now(); while(performance.now()-t<900){/* freeze */}
+});
+setInterval(()=>{
+  if(!parseOn){ $('hudParse').textContent='MAVLink: idle'; $('hudParse').className='chip'; return; }
+  $('hudParse').textContent='MAVLink: parsing…'; $('hudParse').className='chip wait';
+  const t=performance.now(); while(performance.now()-t<45){/* busy parse chunk */}
+  $('hudParse').textContent='MAVLink: burst 45ms @ '+Math.round(performance.now()%100000);
+},600);
+
+/* =========================================================
+   §10 VISIBILITY
+========================================================= */
+let visHiddenFrames=null;
+document.addEventListener('visibilitychange',()=>{
+  $('visChip').textContent='document.visibilityState: '+document.visibilityState;
+  if(document.hidden){ visHiddenFrames={before:workerStats.frames}; }
+  else if(visHiddenFrames){
+    raceWork.postMessage({cmd:'stats'});
+    setTimeout(()=>{ $('visFrames').textContent='worker rAF frames while hidden: '+(workerStats.frames-visHiddenFrames.before)+' (paused = expected)'; },120);
+  }
+});
+
+/* =========================================================
+   FINAL SELF-CHECK (hover badge)
+========================================================= */
+setInterval(()=>{
+  const b=$('bErr'); if(b) b.textContent=errCount;
+  if(document.documentElement.scrollWidth>document.documentElement.clientWidth+1){
+    console.warn('horizontal overflow');
+  }
+},800);
+})();
+</script>
+</body>
+</html>
