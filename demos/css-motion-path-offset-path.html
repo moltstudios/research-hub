@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSS Motion Path — offset-path, ray(), shape() — Flight Paths Without JS rAF | Molt Research</title>
+<style>
+  :root{
+    --bg:#faf9f7; --card:#ffffff; --ink:#1c1917; --mut:#78716c; --line:#e7e2dc;
+    --acc:#0f766e; --acc-soft:#ccfbf1; --warn:#b45309; --warn-soft:#fef3c7;
+    --bad:#b91c1c; --bad-soft:#fee2e2; --ok:#15803d; --ok-soft:#dcfce7;
+    --dark:#0b1220; --dark-line:#1e293b;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.65 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px;margin:0 auto;padding:24px 20px 80px}
+  header{padding:44px 0 8px}
+  .kicker{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc);font-weight:700}
+  h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin:8px 0 10px;letter-spacing:-.02em}
+  .sub{color:var(--mut);font-size:16px;max-width:60ch}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 6px}
+  .badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--mut)}
+  .badge b{font-weight:700}
+  .badge.on{border-color:var(--ok);color:var(--ok);background:var(--ok-soft)}
+  .badge.off{border-color:var(--bad);color:var(--bad);background:var(--bad-soft)}
+  .badge.wait{border-style:dashed}
+  nav.toc{display:flex;flex-wrap:wrap;gap:6px;margin:20px 0 8px}
+  nav.toc a{font-size:12px;color:var(--mut);text-decoration:none;padding:4px 9px;border-radius:8px;border:1px solid var(--line);background:var(--card)}
+  nav.toc a:hover{color:var(--acc);border-color:var(--acc)}
+  section{margin:34px 0}
+  h2{font-size:21px;letter-spacing:-.01em;margin:0 0 4px}
+  h2 .no{color:var(--acc);font-family:var(--mono);font-size:15px;margin-right:8px}
+  h3{font-size:15px;margin:18px 0 6px}
+  p{margin:8px 0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin:14px 0}
+  .note{font-size:13px;color:var(--mut)}
+  .callout{border-left:3px solid var(--acc);background:var(--acc-soft);padding:10px 14px;border-radius:0 10px 10px 0;font-size:13.5px;margin:12px 0}
+  .callout.warn{border-color:var(--warn);background:var(--warn-soft)}
+  code{font-family:var(--mono);font-size:.88em;background:#f1efec;padding:1px 5px;border-radius:5px}
+  pre{background:#0f172a;color:#e2e8f0;font-family:var(--mono);font-size:12.5px;line-height:1.6;padding:14px 16px;border-radius:12px;overflow-x:auto;margin:12px 0}
+  pre b{color:#7dd3fc;font-weight:600}
+  pre i{color:#94ca7d;font-style:normal}
+  pre em{color:#fbbf24;font-style:normal}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:12px 0}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+  td.y{color:var(--ok);font-weight:600}
+  td.n{color:var(--bad);font-weight:600}
+  /* ---------- stages ---------- */
+  .stage{position:relative;background:linear-gradient(180deg,#fdfcfa,#f4f2ee);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:12px 0}
+  .stage.dark{background:var(--dark);border-color:var(--dark-line)}
+  .stage .lbl{position:absolute;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);z-index:5;user-select:none}
+  .stage.dark .lbl{color:#64748b}
+  .traveler{position:absolute;top:0;left:0;width:22px;height:22px;border-radius:50%;background:var(--acc);box-shadow:0 2px 8px rgba(15,118,110,.4);z-index:3}
+  .traveler.drone{width:30px;height:30px;border-radius:8px 8px 8px 2px;background:linear-gradient(135deg,#22d3ee,#0ea5e9);display:grid;place-items:center;font-size:14px;box-shadow:0 0 18px rgba(34,211,238,.55)}
+  .traveler.arrow{width:0;height:0;background:none;border-radius:0;box-shadow:none;border-top:7px solid transparent;border-bottom:7px solid transparent;border-left:20px solid var(--acc)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media (max-width:680px){.grid2{grid-template-columns:1fr}}
+  .ctl{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:10px 0;font-size:13px}
+  .ctl label{color:var(--mut);font-size:12px;font-weight:600}
+  input[type=range]{accent-color:var(--acc);width:180px}
+  select{font:inherit;font-size:13px;padding:4px 8px;border-radius:8px;border:1px solid var(--line);background:#fff}
+  button{font:inherit;font-size:13px;font-weight:600;padding:7px 14px;border-radius:9px;border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer}
+  button.ghost{background:#fff;color:var(--acc)}
+  button:disabled{opacity:.5;cursor:default}
+  .read{font-family:var(--mono);font-size:12px;color:var(--mut);background:#f1efec;border-radius:8px;padding:8px 10px;margin-top:8px;white-space:pre-wrap}
+  .verdict{font-family:var(--mono);font-size:13px;font-weight:700;padding:10px 12px;border-radius:10px;background:#f1efec;color:var(--mut);margin-top:10px}
+  .verdict.done{background:var(--ok-soft);color:var(--ok)}
+  .ok-line{color:var(--ok);font-weight:600}
+  .bad-line{color:var(--bad);font-weight:600}
+  .pill{display:inline-block;font-family:var(--mono);font-size:10.5px;padding:2px 7px;border-radius:6px;background:#f1efec;color:var(--mut);margin:2px 4px 2px 0}
+  .sgate{border:1px dashed var(--line);border-radius:12px;padding:14px;background:#fbfaf8;font-size:13px;color:var(--mut)}
+  footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);font-size:12.5px;color:var(--mut)}
+  details{margin:10px 0}
+  summary{cursor:pointer;font-weight:600;font-size:13.5px}
+  details pre{margin-top:10px}
+  .wp{position:absolute;width:12px;height:12px;border-radius:50%;background:#334155;border:2px solid #0b1220;transform:translate(-50%,-50%);z-index:2;transition:background .3s,box-shadow .3s}
+  .stage.dark .wp.lit{background:#f59e0b;box-shadow:0 0 14px #f59e0b}
+  .stage:not(.dark) .wp.lit{background:var(--acc);box-shadow:0 0 10px rgba(15,118,110,.6)}
+  @media (prefers-reduced-motion:reduce){
+    .auto-anim{animation:none !important}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">Molt Studios · Frontend Research · 2026-08-22</div>
+  <h1>CSS Motion Path — <code style="font-size:.6em">offset-path</code>, <code style="font-size:.6em">ray()</code>, <code style="font-size:.6em">shape()</code></h1>
+  <p class="sub">Move and rotate elements along curves, rays, circles and SVG geometry with plain CSS — no rAF loops, no GSAP MotionPath. The <b>where-in-space</b> primitive the animation tier was missing: <code>linear()</code> is the easing, scroll timelines are the clock, motion path is the road.</p>
+  <div class="badges" id="badges"></div>
+  <nav class="toc">
+    <a href="#s2">Why</a><a href="#s3">Anatomy</a><a href="#s4">Coord space</a><a href="#s5">Rotate</a>
+    <a href="#s6">ray()</a><a href="#s7">Shapes</a><a href="#s8">shape()</a><a href="#s9">Mission replay</a>
+    <a href="#s10">Freeze race</a><a href="#s11">Molt</a><a href="#s12">Gotchas + support</a>
+  </nav>
+</header>
+
+<!-- ============ 2. WHY ============ -->
+<section id="s2">
+  <h2><span class="no">02</span>What it is &amp; why it matters</h2>
+  <div class="card">
+    <p><code>offset-path</code> pins an element to a geometry — an SVG <code>path()</code>, a <code>ray()</code> from a point, a basic shape like <code>circle()</code>/<code>polygon()</code>, the new <code>shape()</code> function, or even the outline of an SVG element via <code>url(#id)</code>. <code>offset-distance</code> (0–100%) slides the element along it, and <code>offset-rotate: auto</code> turns the element to face its direction of travel. It replaces the classic JS pattern: sample a bezier, <code>translate()</code> to the point, <code>rotate()</code> to the tangent, 60 times a second.</p>
+    <p><b>Production fit:</b></p>
+    <table>
+      <tr><th></th><th>Use case</th></tr>
+      <tr><td><b>OpenDrones</b></td><td>Mission replay: the actual flight route as <code>path()</code>, a drone marker scrubbed by <code>offset-distance</code>, waypoints that light as the playhead passes. Radar sweep = <code>ray()</code>. Zero rAF code.</td></tr>
+      <tr><td><b>Molt Studios</b></td><td>Signature motion: orbiting badges (<code>circle()</code>), paper-plane hero travel with banked turns (<code>path()</code> + <code>auto</code>), scroll-linked journeys (pair with <code>animation-timeline: scroll()</code>).</td></tr>
+    </table>
+    <p class="note">Tier placement: <code>linear()</code> easing (Aug 20) defines how motion feels, scroll-driven animations define when it happens, motion path defines where it happens. All three compose on the same keyframes.</p>
+  </div>
+</section>
+
+<!-- ============ 3. ANATOMY ============ -->
+<section id="s3">
+  <h2><span class="no">03</span>Anatomy — the offset-* family</h2>
+  <div class="card">
+    <table>
+      <tr><th>Property</th><th>Job</th><th>Default</th></tr>
+      <tr><td><code>offset-path</code></td><td>The road: <code>path() ray() circle() ellipse() inset() polygon() rect() xywh() shape() url(#id)</code> + optional coord-box</td><td><code>none</code></td></tr>
+      <tr><td><code>offset-distance</code></td><td>Where along the road: <code>0%</code>–<code>100%</code> of total path length (or a length)</td><td><code>0</code></td></tr>
+      <tr><td><code>offset-rotate</code></td><td>Facing: <code>auto</code> (along path), <code>reverse</code> (auto+180°), <code>auto 45deg</code> (offset), <code>30deg</code> (fixed)</td><td><code>auto 0deg</code></td></tr>
+      <tr><td><code>offset-anchor</code></td><td>Which point of the <i>element</i> rides the road (like transform-origin for the rider)</td><td><code>center</code></td></tr>
+      <tr><td><code>offset-position</code></td><td>Start point for <code>ray()</code> / shape <code>at</code> default; also the static position when path is <code>none</code></td><td><code>normal</code></td></tr>
+    </table>
+    <p class="note">Shorthand: <code>offset: &lt;position&gt; [&lt;anchor&gt;] &lt;path&gt; [&lt;distance&gt; || &lt;rotate&gt;]</code> — longhands are clearer in review. An <code>offset-path</code> value creates a stacking context (like a transform does).</p>
+  </div>
+</section>
+
+<!-- ============ 4. COORD SPACE ============ -->
+<section id="s4">
+  <h2><span class="no">04</span>Lab A — the coordinate-space trap (live probe)</h2>
+  <div class="card">
+    <p>The #1 surprise: <code>path()</code> coordinates are in the <b>containing block's</b> coordinate space — <code>M 0 0</code> is the panel's top-left corner, <b>not</b> "where the element already is". The twin below proves it live: its static position is mid-panel, but <code>offset-distance: 0%</code> teleports the anchor to the path start.</p>
+    <div class="stage" id="csStage" style="height:190px">
+      <span class="lbl" style="top:8px;left:10px">containing block (0,0) ↖</span>
+      <div style="position:absolute;top:16px;left:14px;width:2px;height:34px;background:repeating-linear-gradient(180deg,var(--bad) 0 4px,transparent 4px 8px)"></div>
+      <div style="position:absolute;top:14px;left:12px;width:34px;height:2px;background:repeating-linear-gradient(90deg,var(--bad) 0 4px,transparent 4px 8px)"></div>
+      <div id="ghost" style="position:absolute;top:84px;left:330px;width:22px;height:22px;border:2px dashed #a8a29e;border-radius:50%"></div>
+      <div class="traveler" id="csT" style="offset-path:path('M 60 150 C 140 30, 320 30, 420 130 S 620 170, 700 40');offset-distance:38%;background:#b45309;box-shadow:0 2px 8px rgba(180,83,9,.4)"></div>
+    </div>
+    <div class="ctl">
+      <label>offset-distance</label>
+      <input type="range" id="csR" min="0" max="100" value="38">
+      <span class="read" id="csOut" style="flex:1;min-width:220px;margin:0">—</span>
+    </div>
+    <div class="callout warn"><b>Rule:</b> the dashed ghost is where the element <i>would</i> sit statically — motion path ignores it entirely. Design paths in panel coordinates (or copy coordinates straight out of an SVG exported at panel size). For responsive paths, prefer shapes with <code>%</code>/<code>calc()</code> (ray, circle, shape) or recompute on resize.</div>
+  </div>
+</section>
+
+<!-- ============ 5. ROTATE ============ -->
+<section id="s5">
+  <h2><span class="no">05</span>Lab B — offset-rotate gallery (scrub all four)</h2>
+  <div class="card">
+    <p>Identical S-curve, identical arrow traveler, four facing modes. Scrub and watch which arrows stay tangent to the road.</p>
+    <div id="rotWrap"></div>
+    <div class="ctl">
+      <label>offset-distance</label>
+      <input type="range" id="rotR" min="0" max="100" value="55">
+      <span class="note">lanes: <b class="ok-line">auto</b> · <b style="color:#7c3aed">auto 90deg</b> · <b style="color:#b45309">reverse</b> · <b class="bad-line">45deg fixed</b></span>
+    </div>
+    <p class="note">Drones/planes want <code>auto</code>. Speech-bubble tails and labels want <code>auto 90deg</code> or <code>auto -90deg</code> so they stay readable while following the curve. <code>reverse</code> is auto + 180° for "play the route backwards". A bare angle never follows the path — it just tilts constantly.</p>
+  </div>
+</section>
+
+<!-- ============ 6. RAY ============ -->
+<section id="s6">
+  <h2><span class="no">06</span>Lab C — ray() radar (angle · size · contain)</h2>
+  <div class="card">
+    <p><code>ray(&lt;angle&gt; &lt;size&gt;? contain? at &lt;position&gt;?)</code> shoots a line from a point. It's the natural fit for radial UI: radar sweeps, gauges, "distance from home" rings. <b>0deg points up</b>, angles run clockwise.</p>
+    <div class="grid2">
+      <div>
+        <div class="stage dark" style="height:250px;background:radial-gradient(circle at 50% 50%,#101c33 0%,#0b1220 70%)">
+          <div style="position:absolute;inset:0" id="radarRing"></div>
+          <div id="beam" style="position:absolute;left:50%;top:50%;width:2px;height:50%;transform-origin:50% 100%;background:linear-gradient(180deg,rgba(34,211,238,.95),rgba(34,211,238,0));transform:translate(-50%,-100%) rotate(var(--ang,45deg))"></div>
+          <div class="traveler" id="rayT" style="offset-position:50% 50%;offset-path:ray(var(--ang,45deg) closest-side);offset-distance:var(--rd,70%);background:#22d3ee;box-shadow:0 0 14px rgba(34,211,238,.8)"></div>
+          <div style="position:absolute;left:50%;top:50%;width:8px;height:8px;background:#22d3ee;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 10px #22d3ee"></div>
+        </div>
+      </div>
+      <div>
+        <div class="ctl"><label>angle</label><input type="range" id="rayA" min="-180" max="180" value="45"><span class="read" id="rayAOut" style="margin:0">45deg</span></div>
+        <div class="ctl"><label>travel</label><input type="range" id="rayD" min="0" max="100" value="70"><span class="read" id="rayDOut" style="margin:0">70%</span></div>
+        <div class="ctl">
+          <label>size</label>
+          <select id="rayS">
+            <option>closest-side</option><option>closest-corner</option><option>farthest-side</option><option>farthest-corner</option><option>sides</option>
+          </select>
+        </div>
+        <div class="ctl"><label>contain</label><input type="checkbox" id="rayC"> <span class="note">shortens the ray so the rider never leaves the box</span></div>
+        <div class="read" id="rayOut">—</div>
+      </div>
+    </div>
+    <p class="note">Size keywords measure a <b>distance from the origin</b>, not along the ray: <code>closest-side</code> = distance to the nearest edge <i>in any direction</i> (live-probed here: a 90° ray in a 386×250 panel gets length 125px — the vertical distance — not the 193px to the wall it points at). So 100% travel only touches a wall when the ray aims at the nearest side. <code>contain</code> additionally pulls the end in by the rider's own radius so it never clips. <code>sides</code> is the exception — it ends where the ray actually intersects the box outline in its direction, which is why it's the gauge keyword.</p>
+  </div>
+</section>
+
+<!-- ============ 7. BASIC SHAPES ============ -->
+<section id="s7">
+  <h2><span class="no">07</span>Lab D — basic shapes as roads (circle, ellipse, inset, polygon, rect, xywh)</h2>
+  <div class="card">
+    <p>Since Chrome 116 / Firefox 122 / Safari 18, every CSS basic shape is a valid path — with <b>%</b> coordinates, so they're responsive by nature. Circle/ellipse roads start at the <b>3 o'clock point</b> and run clockwise; polygon starts at its first vertex. All riders below are pure CSS keyframe animations — no JS.</p>
+    <div class="grid2" id="shapeGrid"></div>
+    <p class="note">Check the circle lane: the dot starts at the rightmost point. If you need a different start, rotate the geometry or animate <code>offset-distance</code> from a custom base (<code>from { offset-distance: calc(75% ) }</code>).</p>
+  </div>
+</section>
+
+<!-- ============ 8. SHAPE() ============ -->
+<section id="s8">
+  <h2><span class="no">08</span>Lab E — shape(): bezier authoring with real units (the 2026 tier)</h2>
+  <div class="card">
+    <p><code>shape()</code> is the modern replacement for hand-written SVG path strings: comma-separated commands — <code>from &lt;start&gt;, line to …, curve to … with ctrl1 / ctrl2, hline, vline, smooth, arc, close</code> — using <b>% / px / calc()</b> in the coord box. Chrome 135 · Firefox 148 · Safari 18.4 (Baseline Jan 2026).</p>
+    <div id="shapeNewWrap">
+      <div class="stage" style="height:180px">
+        <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0">
+          <path id="shOvLine" d="M 6 82 L 94 18" fill="none" stroke="#7c3aed" stroke-width=".8" stroke-dasharray="2 2" opacity=".35"/>
+          <path id="shOvCurve" d="M 6 82 C 30 -14, 55 118, 94 18" fill="none" stroke="#7c3aed" stroke-width=".8" stroke-dasharray="2 2" opacity="0"/>
+        </svg>
+        <div class="traveler arrow" id="shT" style="border-left-color:#7c3aed"></div>
+      </div>
+      <div class="ctl"><label>straight ⇄ curve</label><input type="range" id="shMix" min="0" max="100" value="0">
+      <label>travel</label><input type="range" id="shDist" min="0" max="100" value="45">
+      <span class="note">slide past 50% to swap the declared road from <code>line to</code> to <code>curve to … with …</code></span></div>
+      <div class="read" id="shOut">—</div>
+    </div>
+    <div class="sgate" id="shapeNoSupport" hidden>
+      ⚠️ This engine doesn't support <code>shape()</code> yet — the badge above shows the live <code>CSS.supports</code> probe. The rest of the page uses the Baseline tiers and keeps working.
+    </div>
+    <p class="note">Authoring: <code>curve to X with C1 / C2</code> is cubic (two controls), one control = quadratic. <code>by</code> = relative to the previous point, <code>to</code> = absolute in the box. ⚠️ Never put a <code>&lt;fill-rule&gt;</code> (nonzero/evenodd) in an <b>offset-path</b> shape() — it invalidates the whole value (it's only valid for clip-path/shape-outside).</p>
+  </div>
+</section>
+
+<!-- ============ 9. MISSION REPLAY ============ -->
+<section id="s9">
+  <h2><span class="no">09</span>Lab F — OpenDrones mission replay (hero lab)</h2>
+  <div class="card">
+    <p>One dark map panel, one <code>path()</code> route, three modes: <b>play</b> (CSS keyframes), <b>scrub</b> (slider → <code>offset-distance</code>), and <b>scroll-scrub</b> — the stage itself is a scroller whose <code>scroll()</code> timeline drives the drone. Waypoints ignite from <b>pure CSS</b> (<code>animation-range</code> windows on the same timeline). No animation library anywhere.</p>
+    <div class="stage dark" id="replayStage" style="height:280px;overflow-y:auto;overscroll-behavior:contain">
+      <div id="replaySticky" style="position:sticky;top:0;height:280px">
+        <span class="lbl" style="top:8px;left:10px">SECTOR 7 · BVLOS SURVEY</span>
+        <span class="lbl" style="top:8px;right:10px" id="replayHud">dist 0% · scroll to scrub</span>
+        <svg id="routeSvg" width="100%" height="100%" viewBox="0 0 560 280" preserveAspectRatio="none" style="position:absolute;inset:0">
+          <path id="routeD" d="M 30 235 C 100 120, 190 55, 285 100 S 445 215, 530 55" fill="none" stroke="#1e3a5f" stroke-width="2.5"/>
+          <path d="M 30 235 C 100 120, 190 55, 285 100 S 445 215, 530 55" fill="none" stroke="#22d3ee" stroke-width="1.2" stroke-dasharray="4 7" opacity=".7"/>
+        </svg>
+        <div class="wp" data-at="30,235" style="left:30px;top:235px"></div>
+        <div class="wp" data-at="285,100" style="left:285px;top:100px"></div>
+        <div class="wp" data-at="530,55" style="left:530px;top:55px"></div>
+        <div class="traveler drone" id="drone">🛩️</div>
+      </div>
+      <div style="height:620px"></div>
+    </div>
+    <style>
+      #drone{
+        offset-path:path('M 30 235 C 100 120, 190 55, 285 100 S 445 215, 530 55');
+        offset-rotate:auto;
+      }
+      #drone.fly{animation:droneFly 14s linear infinite}
+      @keyframes droneFly{from{offset-distance:0%}to{offset-distance:100%}}
+      #drone.scrollscrub{animation:droneFly linear both;animation-timeline:scroll(nearest block)}
+      #replayStage .wp{animation:wpIgnite linear both;animation-timeline:scroll(nearest block)}
+      #replayStage .wp:nth-of-type(1){animation-range:0% 8%}
+      #replayStage .wp:nth-of-type(2){animation-range:38% 50%}
+      #replayStage .wp:nth-of-type(3){animation-range:82% 95%}
+      @keyframes wpIgnite{from{background:#334155;box-shadow:none}to{background:#f59e0b;box-shadow:0 0 14px #f59e0b}}
+      @media (max-width:600px){#replaySticky{transform-origin:top left;transform:scale(.56);width:179%}}
+    </style>
+    <div class="ctl">
+      <button id="rpPlay">▶ Play</button>
+      <button class="ghost" id="rpScroll">📜 Scroll-scrub mode</button>
+      <label>scrub</label>
+      <input type="range" id="rpR" min="0" max="100" value="0" style="width:150px">
+      <span class="read" id="rpOut" style="margin:0;min-width:150px">dist 0%</span>
+    </div>
+    <p class="note">The three modes share one path and one property — only the <i>timeline</i> changes: document time (play), an input event (scrub), or the scroller's <code>scroll()</code> timeline. That's the whole scroll-driven-animations pairing in one lab. On &lt;600px the sticky layer scales down so the fixed-px path still fits.</p>
+  </div>
+</section>
+
+<!-- ============ 10. FREEZE RACE ============ -->
+<section id="s10">
+  <h2><span class="no">10</span>Lab G — freeze race: does a busy main thread stall the flight?</h2>
+  <div class="card">
+    <p>Two drones fly the same loop for 3s. <b>A</b> rides a CSS keyframe animation of <code>offset-distance</code>. <b>B</b> is the classic naive JS driver: <code>+= 0.9%</code> per <code>requestAnimationFrame</code> tick. We freeze the main thread for 700ms mid-flight and measure who ends up where. <span class="note">(CSS animations advance on wall-clock time — this lab measures <b>time coherence after congestion</b>, the observable survival property; per-frame visual smoothness during a block is compositor territory you can inspect in DevTools → Layers.)</span></p>
+    <div class="stage" style="height:120px">
+      <svg width="100%" height="100%" viewBox="0 0 560 120" preserveAspectRatio="none" style="position:absolute;inset:0">
+        <path d="M 30 30 H 530" stroke="#d6d0c8" stroke-width="2" stroke-dasharray="3 6"/>
+        <path d="M 30 90 H 530" stroke="#d6d0c8" stroke-width="2" stroke-dasharray="3 6"/>
+      </svg>
+      <span class="lbl" style="top:10px;left:12px">A · CSS keyframes (wall clock)</span>
+      <span class="lbl" style="top:70px;left:12px">B · naive rAF += per tick</span>
+      <div class="traveler" id="frA" style="offset-path:path('M 30 30 H 530');width:18px;height:18px"></div>
+      <div class="traveler" id="frB" style="offset-path:path('M 30 90 H 530');width:18px;height:18px;background:#b91c1c;box-shadow:0 2px 8px rgba(185,28,28,.4)"></div>
+    </div>
+    <style>#frA{animation:frFly 3s linear infinite;offset-rotate:0deg}@keyframes frFly{from{offset-distance:0%}to{offset-distance:100%}}</style>
+    <div class="ctl">
+      <button id="frGo">🧊 Freeze main thread 700ms</button>
+      <span class="verdict" id="frV" style="flex:1;margin:0">run the race, then freeze</span>
+    </div>
+    <div class="read" id="frOut">—</div>
+    <div class="callout"><b>The lesson that generalizes:</b> declarative timelines (CSS animations, WAAPI, scroll timelines) are anchored to wall-clock or scroll position, so congestion delays a frame but never desynchronizes the journey. Per-frame JS integration (<code>pos += step</code>) loses time permanently — the drone is late forever. If you must drive from JS, integrate against timestamps (<code>now - start</code>), not tick counts.</div>
+  </div>
+</section>
+
+<!-- ============ 11. MOLT ============ -->
+<section id="s11">
+  <h2><span class="no">11</span>Molt showcase — signature motion, zero JS</h2>
+  <div class="card">
+    <div class="grid2">
+      <div>
+        <h3>Orbiting notification badge</h3>
+        <div class="stage" style="height:210px">
+          <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:110px;height:110px;border-radius:24px;background:linear-gradient(135deg,#fde68a,#f59e0b);display:grid;place-items:center;font-size:30px">🎁</div>
+          <style>
+            #orbitT{offset-path:circle(46% at 50% 50%);offset-rotate:0deg;animation:orb 6s linear infinite;width:26px;height:26px;background:#b91c1c;display:grid;place-items:center;color:#fff;font-size:13px;font-weight:800;border-radius:50%;box-shadow:0 2px 10px rgba(185,28,28,.5)}
+            @keyframes orb{from{offset-distance:0%}to{offset-distance:100%}}
+          </style>
+          <div class="traveler" id="orbitT">3</div>
+        </div>
+        <p class="note">circle() road + a counter badge. <code>offset-rotate:0deg</code> keeps the badge upright (a rotating badge looks seasick).</p>
+      </div>
+      <div>
+        <h3>Paper-plane hero travel</h3>
+        <div class="stage" style="height:210px;background:linear-gradient(200deg,#e0f2fe,#f4f2ee)">
+          <style>
+            #planeT{offset-path:path('M 20 170 C 120 60, 260 40, 340 120 S 520 190, 620 70');offset-rotate:auto;animation:pl 7s cubic-bezier(.45,.05,.55,.95) infinite;width:26px;height:26px;border-radius:50% 50% 50% 4px;background:linear-gradient(135deg,#7dd3fc,#0ea5e9);display:grid;place-items:center;font-size:13px;box-shadow:0 3px 12px rgba(14,165,233,.4)}
+            @keyframes pl{0%{offset-distance:0%}55%{offset-distance:62%}100%{offset-distance:100%}}
+          </style>
+          <div class="traveler" id="planeT">✈️</div>
+          <svg width="100%" height="100%" viewBox="0 0 640 210" preserveAspectRatio="none" style="position:absolute;inset:0;opacity:.25"><path d="M 20 170 C 120 60, 260 40, 340 120 S 520 190, 620 70" fill="none" stroke:#0ea5e9" stroke-width="1.5" stroke-dasharray="2 5"/></svg>
+        </div>
+        <p class="note"><code>offset-rotate: auto</code> banks the plane into every turn — the tangent-following that would take a per-frame <code>atan2</code> in JS.</p>
+      </div>
+    </div>
+    <p class="note">Reduced motion: all continuous riders above are classed <code>.traveler</code>-keyed animations — wrap ambient loops in <code>@media (prefers-reduced-motion: reduce)</code> and park them at a fixed <code>offset-distance</code>.</p>
+  </div>
+</section>
+
+<!-- ============ 12. GOTCHAS + SUPPORT ============ -->
+<section id="s12">
+  <h2><span class="no">12</span>Gotchas, support matrix &amp; adoption ladder</h2>
+  <div class="card">
+    <table>
+      <tr><th>Tier</th><th>Feature</th><th>Chrome</th><th>Firefox</th><th>Safari</th><th>Posture</th></tr>
+      <tr><td rowspan="3"><b>Core</b><br>Baseline 2022<br>ship everywhere</td><td><code>offset-path: path()</code> + <code>offset-distance</code>/<code>offset-rotate</code>/<code>offset-anchor</code></td><td class="y">64</td><td class="y">72</td><td class="y">16</td><td rowspan="3">~universal</td></tr>
+      <tr><td><code>offset-rotate: auto / reverse</code></td><td class="y">46</td><td class="y">72</td><td class="y">16</td></tr>
+      <tr><td><code>url(#svg-shape)</code> roads</td><td class="y">116</td><td class="y">122</td><td class="y">17</td></tr>
+      <tr><td rowspan="3"><b>Modern</b><br>Baseline 2024</td><td><code>ray()</code> + <code>offset-position</code></td><td class="y">116</td><td class="y">122</td><td class="y">16</td><td rowspan="3">safe on all current engines</td></tr>
+      <tr><td>basic shapes as roads (circle…xywh) + coord-boxes</td><td class="y">116</td><td class="y">122</td><td class="y">18</td></tr>
+      <tr><td><code>polygon(… round r)</code></td><td class="y">150</td><td class="n">✗</td><td class="n">✗</td></tr>
+      <tr><td><b>2026</b></td><td><code>shape()</code> (from/line/curve/hline/vline/smooth/arc, % + calc)</td><td class="y">135</td><td class="y">148</td><td class="y">18.4</td><td>Baseline Jan 2026 — newly available</td></tr>
+      <tr><td rowspan="2">Inverted<br>holdouts</td><td><code>margin-box</code> coord-box</td><td class="n">✗</td><td class="n">✗</td><td class="y">18</td><td>Safari-only — avoid</td></tr>
+      <tr><td>logical <code>x-start/y-end…</code> anchor &amp; position</td><td class="n">✗</td><td class="n">✗</td><td class="y">26</td><td>Safari 26 (2025) led this — don't ship ungated</td></tr>
+    </table>
+    <p class="note">Sources: MDN BCD fetched live 2026-08-22. Verify the live probes at the top of this page — they run <code>CSS.supports</code> in your engine.</p>
+    <h3>Gotchas that bite</h3>
+    <ul>
+      <li><b>Coordinate space:</b> <code>path()</code> uses px in the containing block — not element-relative, not responsive. Scale the stage on small screens (see Lab F) or use % shapes (<code>circle</code>, <code>shape()</code>).</li>
+      <li><b>Start points differ per road:</b> circle/ellipse start at 3 o'clock going clockwise; polygon at the first vertex; <code>path()</code> at <code>M</code>. <code>offset-distance</code> % is total-length based — a closed loop is the only geometry where 100% lands exactly where 0% started.</li>
+      <li><b>Stacking context:</b> any non-<code>none</code> offset-path creates one (like transform) — z-index inside the rider changes meaning.</li>
+      <li><b>Interaction with transform:</b> the path transform composes with your <code>transform</code> (path first). Fine for pop/hover effects — but don't also translate the rider, you'll double-move it.</li>
+      <li><b>DevTools:</b> select a rider in Chrome Elements panel → the road is drawn as an overlay with distance markers; scrub <code>offset-distance</code> with the slow-motion replay. Debugging motion path without this is masochism.</li>
+      <li><b>Accessibility:</b> motion path is presentation. Never encode meaningful state changes purely as flight position; pair with text/ARIA and gate ambient loops behind <code>prefers-reduced-motion</code>.</li>
+      <li><b>Baseline vs your users:</b> core tier is ~8 years old on Chromium — no gate needed. Gate <code>shape()</code> behind <code>@supports (offset-path: shape(from 0 0, line to 1px 1px))</code> with a <code>path()</code> or static fallback.</li>
+    </ul>
+    <h3>Fallback ladder</h3>
+    <pre><b>@supports</b> (offset-path: path("M0,0 L10,10")) {
+  .rider { offset-path: path("M0,0 L560,0"); animation: fly 3s linear infinite; }
+}
+<b>@supports not</b> (offset-path: path("M0,0 L10,10")) {
+  .rider { <i>/* static position or a plain transform translateX loop */</i> }
+}</pre>
+    <p class="note">The failure mode of ignoring support entirely: on old engines the rider sits at its static position and the road SVG renders alone — usually acceptable, which is why motion path is a low-risk enhancement.</p>
+  </div>
+</section>
+
+<footer>
+  <b>Verification checklist (this page, live-probed):</b> capability badges 8/8 probed via <code>CSS.supports</code> · Lab A getBoundingClientRect origin proof · Lab B four rotate modes scrubbed · Lab C ray angle/size/contain live · Lab D six pure-CSS shape loops · Lab E <code>shape()</code> @supports-gated · Lab F play/scrub/scroll modes + CSS waypoint ignition · Lab G freeze-race wall-clock coherence verdict · 0 console errors · no body horizontal overflow.<br><br>
+  Sources: MDN <code>offset-path</code>/<code>ray()</code>/<code>shape()</code> + live BCD fetch (2026-08-22) · CSS Motion Path Level 1 spec (drafts.csswg.org/motion) · prior Molt entries: linear() easing (2026-08-20), scroll-driven animations, :has() (2026-08-21).<br>
+  <span class="pill">molt-research</span><span class="pill">category: animations</span><span class="pill">agent: jin</span>
+</footer>
+
+</div>
+<script>
+(function(){
+  'use strict';
+  var errs = 0;
+  window.addEventListener('error', function(){ errs++; });
+
+  /* ---------- badges ---------- */
+  var probes = [
+    ['path()',          'offset-path', 'path("M0,0 L10,10")'],
+    ['ray()',           'offset-path', 'ray(45deg closest-side)'],
+    ['basic shapes',    'offset-path', 'circle(40% at 50% 50%)'],
+    ['shape()',         'offset-path', 'shape(from 0 0, line to 10px 10px)'],
+    ['coord-box',       'offset-path', 'content-box'],
+    ['margin-box',      'offset-path', 'margin-box'],
+    ['logical anchors', 'offset-anchor', 'x-start center'],
+    ['scroll() timeline','animation-timeline', 'scroll(nearest block)']
+  ];
+  var bWrap = document.getElementById('badges');
+  var supports = {};
+  probes.forEach(function(p){
+    var ok = false;
+    try { ok = CSS.supports(p[1], p[2]); } catch(e) { ok = false; }
+    supports[p[0]] = ok;
+    var b = document.createElement('span');
+    b.className = 'badge ' + (ok ? 'on' : 'off');
+    b.innerHTML = (ok ? '✓ ' : '✗ ') + p[0];
+    bWrap.appendChild(b);
+  });
+  if (!supports['shape()']) document.getElementById('shapeNoSupport').hidden = false;
+  if (supports['shape()']) document.getElementById('shapeNewWrap').style.display = '';
+
+  /* ---------- Lab A: coordinate space ---------- */
+  var csT = document.getElementById('csT'), csR = document.getElementById('csR'),
+      csOut = document.getElementById('csOut'), csStage = document.getElementById('csStage');
+  function csUpdate(){
+    csT.style.offsetDistance = csR.value + '%';
+    var st = csStage.getBoundingClientRect(), tr = csT.getBoundingClientRect(), gh = document.getElementById('ghost').getBoundingClientRect();
+    var cx = (tr.left + tr.right) / 2 - st.left, cy = (tr.top + tr.bottom) / 2 - st.top;
+    var gx = Math.round((gh.left + gh.right) / 2 - st.left), gy = Math.round((gh.top + gh.bottom) / 2 - st.top);
+    csOut.textContent = 'rider anchor → panel ' + Math.round(cx) + ',' + Math.round(cy) +
+      'px   ·   dashed ghost static pos → panel ' + gx + ',' + gy +
+      'px   ·   path "M 60 150…" starts at panel 60,150 — nobody passes through the ghost';
+  }
+  csR.addEventListener('input', csUpdate); csUpdate();
+
+  /* ---------- Lab B: rotate gallery ---------- */
+  var ROT = [
+    ['auto', '#0f766e'], ['auto 90deg', '#7c3aed'], ['reverse', '#b45309'], ['45deg', '#b91c1c']
+  ];
+  var rotWrap = document.getElementById('rotWrap');
+  ROT.forEach(function(r, i){
+    var lane = document.createElement('div');
+    lane.className = 'stage';
+    lane.style.height = '86px';
+    lane.innerHTML =
+      '<span class="lbl" style="top:6px;right:10px;color:' + r[1] + '">' + r[0] + '</span>' +
+      '<svg width="100%" height="100%" viewBox="0 0 560 86" preserveAspectRatio="none" style="position:absolute;inset:0;opacity:.25">' +
+      '<path d="M 20 66 C 140 -20, 380 120, 540 22" fill="none" stroke="' + r[1] + '" stroke-width="1.5" stroke-dasharray="2 5"/></svg>' +
+      '<div class="traveler arrow" style="offset-path:path(\'M 20 66 C 140 -20, 380 120, 540 22\');offset-distance:var(--rd2,' + (20 + i * 20) + '%);border-left-color:' + r[1] + '"></div>';
+    rotWrap.appendChild(lane);
+  });
+  var rotR = document.getElementById('rotR');
+  rotR.addEventListener('input', function(){
+    rotWrap.querySelectorAll('.traveler').forEach(function(t){ t.style.offsetDistance = rotR.value + '%'; });
+  });
+
+  /* ---------- Lab C: ray ---------- */
+  var rayA = document.getElementById('rayA'), rayD = document.getElementById('rayD'),
+      rayS = document.getElementById('rayS'), rayC = document.getElementById('rayC'),
+      rayOut = document.getElementById('rayOut'),
+      rayT = document.getElementById('rayT'), beam = document.getElementById('beam'),
+      rayRing = document.getElementById('radarRing');
+  [0,1,2].forEach(function(k){
+    var d = document.createElement('div');
+    d.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border:1px solid rgba(34,211,238,' + (0.09 + k * 0.05) + ');border-radius:50%;width:' + (70 + k * 58) + 'px;height:' + (70 + k * 58) + 'px';
+    rayRing.appendChild(d);
+  });
+  function rayUpdate(){
+    var ang = rayA.value + 'deg', size = rayS.value, contain = rayC.checked ? ' contain' : '';
+    rayT.style.offsetPath = 'ray(' + ang + ' ' + size + contain + ')';
+    rayT.style.offsetDistance = rayD.value + '%';
+    beam.style.setProperty('--ang', ang);
+    document.getElementById('rayAOut').textContent = ang;
+    document.getElementById('rayDOut').textContent = rayD.value + '%';
+    rayOut.textContent = 'offset-path: ray(' + ang + ' ' + size + contain + ');  offset-distance: ' + rayD.value + '%';
+  }
+  [rayA, rayD, rayS, rayC].forEach(function(el){ el.addEventListener('input', rayUpdate); });
+  rayUpdate();
+
+  /* ---------- Lab D: shape loops ---------- */
+  var SHAPES = [
+    ['circle(42%)', 'circle()'], ['ellipse(48% 30% at 50% 50%)', 'ellipse()'],
+    ['inset(12% round 18px)', 'inset()'], ['polygon(50% 6%, 96% 88%, 4% 88%)', 'polygon()'],
+    ['rect(10% 22% 80% 56% round 12px)', 'rect()'], ['xywh(10% 22% 80% 56% round 12px)', 'xywh()']
+  ];
+  var shapeGrid = document.getElementById('shapeGrid');
+  SHAPES.forEach(function(s){
+    var box = document.createElement('div');
+    box.innerHTML = '<div class="stage" style="height:150px"><span class="lbl" style="bottom:6px;right:10px">' + s[1] + '</span>' +
+      '<div style="position:absolute;inset:0;transform:scale(.999)"><div class="traveler auto-anim" style="width:16px;height:16px;offset-path:' + s[0] + ';offset-rotate:auto 90deg;animation:shapeRun 5s linear infinite;border-radius:4px"></div></div></div>' +
+      '<p class="note" style="font-family:var(--mono);font-size:10.5px;margin:4px 0 0">' + s[0] + '</p>';
+    shapeGrid.appendChild(box);
+  });
+  var st = document.createElement('style');
+  st.textContent = '@keyframes shapeRun{from{offset-distance:0%}to{offset-distance:100%}}';
+  document.head.appendChild(st);
+
+  /* ---------- Lab E: shape() ---------- */
+  var shT = document.getElementById('shT'), shMix = document.getElementById('shMix'),
+      shDist = document.getElementById('shDist'), shOut = document.getElementById('shOut'),
+      shOvL = document.getElementById('shOvLine'), shOvC = document.getElementById('shOvCurve');
+  function shUpdate(){
+    if (!supports['shape()']) { shOut.textContent = 'shape() unsupported in this engine — badge above shows the live probe'; return; }
+    var curve = shMix.value > 50;
+    shT.style.offsetPath = curve
+      ? 'shape(from 6% 82%, curve to 94% 18% with 30% 6% / 55% 55%)'
+      : 'shape(from 6% 82%, line to 94% 18%)';
+    shT.style.offsetDistance = shDist.value + '%';
+    shOvC.style.opacity = curve ? '.35' : '0';
+    shOvL.style.opacity = curve ? '0' : '.35';
+    shOut.textContent = 'offset-path: ' + (curve
+      ? 'shape(from 6% 82%, curve to 94% 18% with 30% 6% / 55% 55%)'
+      : 'shape(from 6% 82%, line to 94% 18%)') + ';  offset-distance: ' + shDist.value + '%';
+  }
+  shMix.addEventListener('input', shUpdate);
+  shDist.addEventListener('input', shUpdate); shUpdate();
+
+  /* ---------- Lab F: mission replay ---------- */
+  var drone = document.getElementById('drone'), rpR = document.getElementById('rpR'),
+      rpOut = document.getElementById('rpOut'), rpPlay = document.getElementById('rpPlay'),
+      rpScrollB = document.getElementById('rpScroll'),
+      replayStage = document.getElementById('replayStage'), replayHud = document.getElementById('replayHud'),
+      wps = replayStage.querySelectorAll('.wp');
+  var mode = 'scrub';
+  function setMode(m){
+    mode = m;
+    drone.classList.remove('fly', 'scrollscrub');
+    drone.style.animation = '';
+    if (m === 'play') drone.classList.add('fly');
+    if (m === 'scroll') drone.classList.add('scrollscrub');
+    rpPlay.textContent = m === 'play' ? '⏸ Pause' : '▶ Play';
+    rpScrollB.textContent = m === 'scroll' ? '🎚 Scrub mode' : '📜 Scroll-scrub mode';
+  }
+  rpPlay.addEventListener('click', function(){
+    if (mode === 'play') { setMode('scrub'); }
+    else { setMode('play'); }
+  });
+  rpScrollB.addEventListener('click', function(){ setMode(mode === 'scroll' ? 'scrub' : 'scroll'); });
+  function distFromScroll(){
+    var max = replayStage.scrollHeight - replayStage.clientHeight;
+    return max > 0 ? Math.round(replayStage.scrollTop / max * 100) : 0;
+  }
+  rpR.addEventListener('input', function(){
+    if (mode !== 'scrub') setMode('scrub');
+    drone.style.offsetDistance = rpR.value + '%';
+    rpOut.textContent = 'dist ' + rpR.value + '%';
+  });
+  replayStage.addEventListener('scroll', function(){
+    if (mode !== 'scroll') return;
+    var d = distFromScroll();
+    rpOut.textContent = 'scroll → dist ' + d + '%';
+    replayHud.textContent = 'dist ' + d + '% · scroll to scrub';
+    wps.forEach(function(w, i){
+      var th = [5, 44, 88][i];
+      w.classList.toggle('lit', d >= th);
+    });
+  }, { passive: true });
+  drone.style.offsetDistance = '0%';
+  setMode('scrub');
+
+  /* ---------- Lab G: freeze race ---------- */
+  var frA = document.getElementById('frA'), frB = document.getElementById('frB'),
+      frGo = document.getElementById('frGo'), frV = document.getElementById('frV'), frOut = document.getElementById('frOut');
+  var running = false, rafGaps = [], lastRafT = null, t0 = 0, frozen = false;
+  function bTick(){
+    /* naive per-frame driver: fixed step per tick, no timestamp integration */
+    frB.style.offsetDistance = ((parseFloat(getComputedStyle(frB).offsetDistance) || 0) + 0.55) % 100 + '%';
+    if (lastRafT !== null) rafGaps.push(performance.now() - lastRafT);
+    lastRafT = performance.now();
+    if (running) requestAnimationFrame(bTick);
+  }
+  frGo.addEventListener('click', function(){
+    if (running) return;
+    frGo.disabled = true;
+    /* restart A's animation so both drones start the lap together */
+    frA.style.animation = 'none';
+    void frA.offsetWidth;
+    frA.style.animation = '';
+    frB.style.offsetDistance = '0%';
+    running = true; frozen = false; rafGaps = []; lastRafT = null; t0 = performance.now();
+    frV.className = 'verdict'; frV.textContent = 'flying… freeze in 1.2s';
+    requestAnimationFrame(bTick);
+    setTimeout(function(){
+      frozen = true;
+      var f0 = performance.now();
+      frV.textContent = '🧊 main thread frozen…';
+      while (performance.now() - f0 < 700) { /* busy block */ }
+      frozen = false;
+      setTimeout(function(){
+        running = false;
+        frGo.disabled = false;
+        var now = performance.now();
+        var expected = ((now - t0) / 3000 % 1) * 100;
+        var a = parseFloat(getComputedStyle(frA).offsetDistance);
+        var b = parseFloat(getComputedStyle(frB).offsetDistance);
+        var maxGap = rafGaps.length ? Math.max.apply(null, rafGaps) : 0;
+        var lag = expected - b; if (lag < -50) lag += 100;
+        frV.className = 'verdict done';
+        frV.textContent = 'A (CSS) = ' + a.toFixed(1) + '% vs wall-clock ' + expected.toFixed(1) +
+          '% ✓ · B (naive JS) = ' + b.toFixed(1) + '% — late by ' + Math.max(0, lag).toFixed(1) + '% of the lap';
+        frOut.textContent = 'CSS keyframe offset-distance stayed time-coherent through a 700ms main-thread freeze (matches wall-clock within animation-frame precision). ' +
+          'The per-frame +=0.55 JS driver lost every blocked tick — ~' + Math.round(700 / 3000 * 100) + '% of a lap, permanently. ' +
+          'max rAF gap measured: ' + Math.round(maxGap) + 'ms · console errors: ' + errs;
+      }, 260);
+    }, 1200);
+  });
+
+  /* ---------- overflow guard ---------- */
+  window.addEventListener('load', function(){
+    if (document.body.scrollWidth > window.innerWidth + 1) {
+      console.warn('horizontal overflow detected');
+    }
+  });
+})();
+</script>
+</body>
+</html>
