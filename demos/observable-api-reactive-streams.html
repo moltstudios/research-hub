@@ -151,30 +151,34 @@
 <section id="s2">
   <h2><span class="no">02</span>Anatomy — subscriber, observer, teardown</h2>
   <p><code>new Observable(subscriberFn)</code> does <b>nothing</b> until <code>.subscribe()</code> is called. Each subscription invokes <code>subscriberFn</code> with a <b>subscriber</b> object: <code>.next(v)</code> feeds values, <code>.error(e)</code> / <code>.complete()</code> each fire at most once and end the stream, <code>.addTeardown(fn)</code> registers cleanup that runs on <i>any</i> termination, and <code>subscriber.signal</code> is an <code>AbortSignal</code> that aborts when the subscription dies — so cleanup logic and async work can react to it.</p>
+  <div class="callout bad"><b>Live-falsified on this page (Chrome 151):</b> <code>subscribe()</code> returns <b>undefined</b> — there is no Subscription object to call <code>.unsubscribe()</code> on, and a teardown function <b>returned</b> from the subscriber callback is <b>ignored</b>. The second-argument <code>{ signal }</code> AbortController is the <b>only</b> unsubscribe handle in the shipped API. Every RxJS muscle-memory habit about subscription objects must be re-routed through AbortSignals. The verdict chips below prove all of this live.</div>
 <pre><b>const</b> obs = <b>new</b> <i>Observable</i>(sub => {
   sub.next(1);  sub.next(2);  sub.complete();
   sub.<em>addTeardown</em>(() => log(<i>'cleanup'</i>));   <span style="color:#64748b">// runs on complete | error | unsubscribe</span>
 });
-<b>const</b> subscription = obs.subscribe({
+<b>const</b> ctl = <b>new</b> AbortController();
+obs.subscribe({
   next:     v => …,   <span style="color:#64748b">// or a bare fn:  obs.subscribe(v => …)</span>
   error:    e => …,
   complete: () => …
-}, { signal: myAbortController.signal });   <span style="color:#64748b">// unsubscribe = abort()</span>
-subscription.unsubscribe();  subscription.closed;</pre>
+}, { signal: ctl.signal });   <span style="color:#64748b">// THE unsubscribe handle</span>
+<span style="color:#64748b">// no Subscription object: subscribe() returns undefined.</span>
+<span style="color:#64748b">// unsubscribe = abort the signal you passed in:</span>
+ctl.abort();  <span style="color:#64748b">// → teardown runs → subscriber.signal aborts</span></pre>
   <div class="card">
     <h3>Lab — teardown fires on all three exits</h3>
     <p class="note">One observable, three buttons. Watch the log: <span class="mini">next → (exit) → teardown</span>, and note teardown runs <i>after</i> the complete/error handler, per spec.</p>
     <div class="btnrow">
       <button class="primary" id="an-run">Run 1–3, complete()</button>
       <button id="an-err">Run 1–2, error()</button>
-      <button class="danger" id="an-unsub">Run 1–2, unsubscribe()</button>
+      <button class="danger" id="an-unsub">Run 1–2, abort signal</button>
       <button id="an-late">next() after complete?</button>
     </div>
     <div class="log" id="an-log"></div>
     <div id="an-verdicts" class="chiprow"></div>
     <p class="note" id="an-note"></p>
   </div>
-  <div class="callout">Teardown timing, live-probed: teardown runs <b>after</b> the complete/error handler — and an already-aborted teardown registration (<code>addTeardown</code> called post-exit) runs the function <b>immediately</b>. The verdict chips above capture what this engine does.</div>
+  <div class="callout">Teardown timing, live-probed: teardown runs <b>after</b> the complete/error handler — and an already-aborted teardown registration (<code>addTeardown</code> called post-exit) runs the function <b>immediately</b>. Abort-unsubscribe runs teardown the moment <code>ctl.abort()</code> fires, and <code>finally()</code> operators run on that path too — "any reason" means any reason.</div>
 </section>
 
 <!-- ============ 3. LAZY / COLD / SYNC ============ -->
@@ -471,7 +475,8 @@ if (HAS_OBS) {
   /* --- ponyfill: lazy, per-subscription, sync start, teardown, signal --- */
   var PSub_controller = function(){ return (typeof AbortController !== "undefined") ? new AbortController() : { signal:{aborted:false}, abort:function(){} }; };
   function ObservablePony(cb){ this._cb = cb; }
-  ObservablePony.prototype.subscribe = function(target, opts){
+  ObservablePony.prototype.subscribe = function(target, opts){ this._subscribe(target, opts); };
+  ObservablePony.prototype._subscribe = function(target, opts){
     var handler = (typeof target === "function") ? { next: target } : (target || {});
     var ext = opts && opts.signal;
     var sub = { _finished:false, _cleaned:false, _tds:[], _ctl:PSub_controller() };
@@ -493,7 +498,6 @@ if (HAS_OBS) {
     var ret = { get closed(){ return sub._finished || sub._cleaned; }, unsubscribe:function(){ sub._finished = true; cleanup(); } };
     var r;
     try { r = this._cb(sub); } catch(e){ sub.error(e); return ret; }
-    if (typeof r === "function") sub.addTeardown(r);
     if (ext && ext.aborted && !(sub._finished || sub._cleaned)) { sub._finished = true; cleanup(); }
     return ret;
   };
@@ -503,20 +507,21 @@ if (HAS_OBS) {
   ObservablePony.prototype.take = function(n){ return lift(this, function(d){ var i=0; return { next:function(v){ if (i < n) { d.next(v); if (++i >= n) d.complete(); } }, error:function(e){ d.error(e); }, complete:function(){ d.complete(); } }; }); };
   ObservablePony.prototype.takeUntil = function(other){ return lift(this, function(d){
       var done=false;
-      var u2 = other.subscribe({ next:function(){ if(!done){ done=true; d.complete(); } }, error:function(e){ d.error(e); }, complete:function(){} });
-      d.addTeardown(function(){ u2.unsubscribe(); });
+      var c2 = PSub_controller();
+      other._subscribe({ next:function(){ if(!done){ done=true; d.complete(); } }, error:function(e){ d.error(e); }, complete:function(){} }, { signal: c2.signal });
+      d.addTeardown(function(){ c2.abort(); });
       return { next:function(v){ if(!done) d.next(v); }, error:function(e){ if(!done) d.error(e); }, complete:function(){ if(!done){ done=true; d.complete(); } } };
     }); };
   ObservablePony.prototype.flatMap = function(fn){ return lift(this, function(d){
       var inners=[], dead=false;
-      d.addTeardown(function(){ dead=true; inners.forEach(function(u){ u.unsubscribe(); }); });
-      return { next:function(v){ if(dead) return; var inner = toObs(fn(v)); var u = inner.subscribe({ next:function(x){ if(!dead) d.next(x); }, error:function(e){ if(!dead){ dead=true; d.error(e); } }, complete:function(){} }); inners.push(u); },
+      d.addTeardown(function(){ dead=true; inners.forEach(function(c){ c.abort(); }); });
+      return { next:function(v){ if(dead) return; var inner = toObs(fn(v)); var ic = PSub_controller(); inner._subscribe({ next:function(x){ if(!dead) d.next(x); }, error:function(e){ if(!dead){ dead=true; d.error(e); } }, complete:function(){} }, { signal: ic.signal }); inners.push(ic); },
                error:function(e){ d.error(e); }, complete:function(){ d.complete(); } };
     }); };
   ObservablePony.prototype.switchMap = function(fn){ return lift(this, function(d){
       var cur=null, dead=false;
-      d.addTeardown(function(){ dead=true; if (cur) cur.unsubscribe(); });
-      return { next:function(v){ if(dead) return; if (cur) { cur.unsubscribe(); } var inner = toObs(fn(v)); cur = inner.subscribe({ next:function(x){ if(!dead) d.next(x); }, error:function(e){ if(!dead){ dead=true; d.error(e); } }, complete:function(){} }); },
+      d.addTeardown(function(){ dead=true; if (cur) cur.abort(); });
+      return { next:function(v){ if(dead) return; if (cur) { cur.abort(); } var inner = toObs(fn(v)); cur = PSub_controller(); inner._subscribe({ next:function(x){ if(!dead) d.next(x); }, error:function(e){ if(!dead){ dead=true; d.error(e); } }, complete:function(){} }, { signal: cur.signal }); },
                error:function(e){ d.error(e); }, complete:function(){ d.complete(); } };
     }); };
   ObservablePony.prototype.finally = function(fn){ return lift(this, function(d){ d.addTeardown(fn); return { next:function(v){ d.next(v); }, error:function(e){ d.error(e); }, complete:function(){ d.complete(); } }; }); };
@@ -555,12 +560,13 @@ if (HAS_OBS) {
   ObservablePony.prototype.first = function(){
     var src = this;
     return new Promise(function(res, rej){
-      var u = src.subscribe({ next:function(v){ res(v); try { u.unsubscribe(); } catch(_){} u = null; },
-        error:function(e){ rej(e); }, complete:function(){ if (u) rej(new Error("empty")); } });
+      var c = PSub_controller();
+      src.subscribe({ next:function(v){ res(v); try { c.abort(); } catch(_){} },
+        error:function(e){ rej(e); }, complete:function(){ rej(new Error("empty")); } }, { signal: c.signal });
     });
   };
   function toObs(x){ if (x instanceof ObservablePony) return x; return fromAny(x); }
-  function lift(src, make){ return new ObservablePony(function(dest){ var h = make(dest); var u = src.subscribe(h); dest.addTeardown(function(){ u.unsubscribe(); }); }); }
+  function lift(src, make){ return new ObservablePony(function(dest){ var h = make(dest); var c = PSub_controller(); src._subscribe(h, { signal: c.signal }); dest.addTeardown(function(){ c.abort(); }); }); }
   function fromAny(x){
     if (x instanceof ObservablePony) return x;
     if (x && typeof x.subscribe === "function") return x;
@@ -657,11 +663,16 @@ function marble(id, vals, endTxt){
     o.subscribe({ complete:function(){}, next:function(v){ if (v === 99) lateN = "delivered(!)"; } });
     vs.push(["late next() after complete", lateN && lateN.indexOf("delivered") === -1 ? "silently ignored ✓" : "DELIVERED ✗", lateN && lateN.indexOf("delivered") === -1]);
     vs.push(["addTeardown after exit", lateTD === "ran-immediately" ? "runs immediately ✓" : String(lateTD), lateTD === "ran-immediately"]);
-    /* return-fn teardown */
+    /* return-fn teardown — falsified live */
     var viaReturn = null;
     var o2 = new Obs(function(sub){ return function(){ viaReturn = "ran"; }; });
-    var s2 = o2.subscribe({}); s2.unsubscribe();
-    vs.push(["subscriber return-fn teardown", viaReturn === "ran" ? "works ✓" : "ignored ✗", viaReturn === "ran"]);
+    o2.subscribe({});
+    vs.push(["subscriber return-fn teardown", viaReturn === "ran" ? "works ✓" : "IGNORED — addTeardown() only (falsified)", viaReturn === "ran"]);
+    /* subscribe() return value — the headline probe */
+    var retSub = null;
+    var o4 = new Obs(function(sub){ sub.next(1); });
+    retSub = o4.subscribe({});
+    vs.push(["subscribe() returns", retSub === undefined ? "undefined — AbortSignal is the ONLY unsubscribe handle ✓" : String(retSub), retSub === undefined]);
     /* subscriber.signal */
     var sigOK = null;
     var o3 = new Obs(function(sub){ sigOK = (sub.signal && typeof sub.signal.aborted === "boolean") ? ("aborted=" + sub.signal.aborted) : "absent"; });
@@ -674,7 +685,7 @@ function marble(id, vals, endTxt){
   }
   $("an-run").onclick = function(){ log("an-log", "— subscribe (mode: complete) —", "hi"); window.__anMode = "run"; makeObs().subscribe({ error:function(e){ log("an-log", "handler error " + e.message, "er"); } }); probeVerdicts(); };
   $("an-err").onclick = function(){ log("an-log", "— subscribe (mode: error) —", "hi"); window.__anMode = "err"; makeObs().subscribe({ error:function(e){ log("an-log", "handler error " + e.message, "er"); } }); probeVerdicts(); };
-  $("an-unsub").onclick = function(){ log("an-log", "— subscribe (mode: unsubscribe) —", "hi"); window.__anMode = "unsub"; var u = makeObs().subscribe({}); setTimeout(function(){ u.unsubscribe(); log("an-log", "subscription.unsubscribe()", "hi"); }, 420); probeVerdicts(); };
+  $("an-unsub").onclick = function(){ log("an-log", "— subscribe (mode: abort signal) —", "hi"); window.__anMode = "unsub"; var c = new AbortController(); makeObs().subscribe({}, { signal: c.signal }); setTimeout(function(){ log("an-log", "ctl.abort()", "hi"); c.abort(); }, 420); probeVerdicts(); };
   $("an-late").onclick = function(){ probeVerdicts(); log("an-log", "— late-call probes re-run (chips above) —", "hi"); };
 })();
 
@@ -699,14 +710,15 @@ function marble(id, vals, endTxt){
     var order = [];
     var target = el("button"); document.body.appendChild(target); target.style.display = "none";
     var clicks = whenOn(target, "click");
-    var sub = clicks.subscribe(function(){ order.push("One"); log("ord-log", "One · sync handler (during dispatch)", "nx"); });
+    var ctl = new AbortController();
+    clicks.subscribe(function(){ order.push("One"); log("ord-log", "One · sync handler (during dispatch)", "nx"); }, { signal: ctl.signal });
     clicks.first().then(function(){ order.push("Three"); log("ord-log", "Three · first() Promise (microtask)", "cp"); });
     target.click();
     order.push("Two"); log("ord-log", "Two · statement after click()", null);
     setTimeout(function(){
       log("ord-log", "order: " + order.join(" → "), "hi");
       verdict("ord-verdict", order.join(" → ") + (order.join("") === "OneTwoThree" ? "  ✓ sync delivery beats the statement, Promise goes to microtask" : "  (unusual ordering)"), order.join("") === "OneTwoThree" ? "ok" : "warn");
-      sub.unsubscribe(); document.body.removeChild(target);
+      ctl.abort(); document.body.removeChild(target);
     }, 60);
   };
 })();
@@ -774,12 +786,12 @@ function marble(id, vals, endTxt){
   $("tm-run").onclick = function(){
     var lg = $("tm-log"); lg.innerHTML = ""; delete logs["tm-log"];
     var seq = [];
-    var inp = $("ta-input");
     var keys = whenOn(document, "keydown");
-    var sub = keys
+    var tctl = new AbortController();
+    keys
       .filter(function(e){ return e.demoKey; })
       .map(function(e){ seq.push("sync-map"); log("tm-log", "sync map handler — e.preventDefault() WOULD work here", "nx"); return e.key; })
-      .subscribe(function(){});
+      .subscribe(function(){}, { signal: tctl.signal });
     keys.filter(function(e){ return e.demoKey; }).first().then(function(k){
       seq.push("promise-first"); log("tm-log", "first() Promise resolved (key: " + k + ") — microtask, after default-action window", "cp");
     });
@@ -791,25 +803,26 @@ function marble(id, vals, endTxt){
       var syncOk = seq.indexOf("sync-map") < seq.indexOf("after-dispatch");
       verdict("tm-verdict", "sync handler: " + (syncOk ? "during dispatch ✓" : "late ✗") + " · first() Promise: " + (seq.indexOf("promise-first") > seq.indexOf("after-dispatch") ? "AFTER dispatch (microtask)" : "unexpected"), syncOk ? "ok" : "bad");
       $("tm-note").textContent = "sequence: " + seq.join(" → ") + (syncOk ? " — put preventDefault in the sync stages only." : "");
-      sub.unsubscribe();
+      tctl.abort();
     }, 40);
   };
 })();
 
 /* ---------- §07 when() ---------- */
 (function whenLab(){
-  var pad = $("when-pad"), all = 0, pass = 0, sub = null, live = false;
+  var pad = $("when-pad"), all = 0, pass = 0, ctl = null, live = false;
   var clicks = whenOn(pad, "click");
   function subscribe(){
-    sub = clicks
+    ctl = new AbortController();
+    clicks
       .filter(function(e){ var r = pad.getBoundingClientRect(); return (e.clientX - r.left) < r.width * 0.67; })
       .map(function(e){ var r = pad.getBoundingClientRect(); return { x: Math.round(e.clientX - r.left), y: Math.round(e.clientY - r.top) }; })
-      .subscribe(function(p){ pass++; chip("when-pass", "passed filter: <b>" + pass + "</b>"); chip("when-last", "last: (" + p.x + ", " + p.y + ")"); });
+      .subscribe(function(p){ pass++; chip("when-pass", "passed filter: <b>" + pass + "</b>"); chip("when-last", "last: (" + p.x + ", " + p.y + ")"); }, { signal: ctl.signal });
     live = true;
     verdict("when-verdict", "subscribed — real listener attached ✓", "ok");
   }
   pad.addEventListener("click", function(){ all++; chip("when-all", "raw clicks: <b>" + all + "</b>"); if (live) verdict("when-verdict", "raw " + all + " → passed " + pass + (pass <= all ? " ✓ filter is dropping the right third" : " ✗"), pass <= all ? "ok" : "bad"); });
-  $("when-unsub").onclick = function(){ if (sub) { sub.unsubscribe(); live = false; verdict("when-verdict", "unsubscribed — listener removed (clicks below count raw only)", "warn"); } };
+  $("when-unsub").onclick = function(){ if (ctl) { ctl.abort(); ctl = null; live = false; verdict("when-verdict", "aborted — listener removed via teardown (raw clicks keep counting; passed does not)", "warn"); } };
   $("when-resub").onclick = function(){ if (!live) subscribe(); };
   subscribe();
 })();
@@ -819,7 +832,7 @@ function marble(id, vals, endTxt){
   var pad = $("drag-pad"), svg = $("drag-svg"), dot = $("drag-dot"), hint = $("drag-hint");
   var drags = 0, moves = 0, pts = 0, poly = null;
   var down = whenOn(pad, "pointerdown");
-  var sub = down.flatMap(function(){
+  down.flatMap(function(){
     drags++; pts = 0; chip("drag-drags", "drags: <b>" + drags + "</b>"); chip("drag-pts", "points this drag: <b>0</b>");
     hint.style.display = "none"; dot.style.display = "block";
     log("drag-log", "pointerdown — flatMap opens inner move stream", "hi");
@@ -838,7 +851,6 @@ function marble(id, vals, endTxt){
       return acc + 1; }, 0).then(function(n){ chip("drag-len", "last gesture length: " + n + " pts (awaited reduce)"); if (!svg.firstChild || svg.children.length > 6) svg.removeChild(svg.firstChild); });
     return inner;
   }).subscribe(function(){}, function(e){ log("drag-log", "error " + e.message, "er"); });
-  window.__dragSub = sub;
 })();
 
 /* ---------- §09 typeahead ---------- */
@@ -847,7 +859,7 @@ function marble(id, vals, endTxt){
   function fakeFetch(q){
     return new Promise(function(res){ setTimeout(function(){ res({ q: q, at: Date.now() }); }, 250 + Math.random() * 450); });
   }
-  var sub = whenOn(input, "input")
+  whenOn(input, "input")
     .map(function(){ return input.value.trim(); })
     .filter(function(q){ return q.length >= 2; })
     .switchMap(function(q){
@@ -860,7 +872,6 @@ function marble(id, vals, endTxt){
       else { rendered++; chip("ta-ren", "rendered: <b>" + rendered + "</b>"); log("ta-log", "render ← " + JSON.stringify(r.q), "cp"); }
       verdict("ta-verdict", "requests " + reqs + " · rendered " + rendered + " · stale leaked through: " + stale, stale === 0 ? "ok" : "bad");
     });
-  window.__taSub = sub;
 })();
 
 /* ---------- §10 race ---------- */
@@ -982,11 +993,11 @@ function marble(id, vals, endTxt){
       teardowns++; chip("mc-td", "teardowns: <b>" + teardowns + "</b>");
       log("mc-log", "TEARDOWN · " + LABELS[k] + " — chain detached, listeners gone", "td");
       livePanels = Math.max(0, livePanels - 1); chip("mc-live", "panels live: <b>" + livePanels + "</b>/3");
-      flipBtn(k, false); delete subs[k];
+      flipBtn(k, false); delete subs[k]; delete ctls[k];
     };
   }
   var attachers = {
-    att: function(onTd){ return window.__bus.filter(function(f){ return f.t === "ATT"; })
+    att: function(onTd, sig){ return window.__bus.filter(function(f){ return f.t === "ATT"; })
         .map(function(f){ return f.roll; })
         .finally(onTd)
         .subscribe(function(roll){
@@ -994,35 +1005,39 @@ function marble(id, vals, endTxt){
           $("mc-hline").style.transform = "rotate(" + roll.toFixed(1) + "deg)";
           $("mc-hline").style.transformOrigin = "50% 60%";
           $("mc-att-out").textContent = "roll " + roll.toFixed(1) + "° · bus.filter(ATT).map(roll)";
-        }); },
-    bat: function(onTd){ return window.__bus.filter(function(f){ return f.t === "BAT"; })
+        }, { signal: sig }); },
+    bat: function(onTd, sig){ return window.__bus.filter(function(f){ return f.t === "BAT"; })
         .map(function(f){ return f.v; })
         .finally(onTd)
         .subscribe(function(v){
           $("mc-bat-v").innerHTML = v.toFixed(2) + "<small> V</small>";
           var pct = Math.max(0, Math.min(100, (v - 13.9) / (16.8 - 13.9) * 100));
           var bar = $("mc-bat-bar"); bar.className = "bar" + (v < 14.4 ? (v < 14.1 ? " bad" : " warn") : ""); bar.firstElementChild.style.width = pct + "%";
-        }); },
-    alt: function(onTd){
+        }, { signal: sig }); },
+    alt: function(onTd, sig){
       var landing = new Obs(function(sb){ window.__landNow = function(){ sb.next(0); sb.complete(); }; sb.addTeardown(function(){ log("mc-log", "landing$ teardown", "td"); }); });
       return window.__bus.filter(function(f){ return f.t === "ALT"; })
         .takeUntil(landing)
         .finally(onTd)
-        .subscribe(function(f){ drawAlt(f.alt); $("mc-alt-out").textContent = "alt " + f.alt + " m · takeUntil(landing)"; }); }
+        .subscribe(function(f){ drawAlt(f.alt); $("mc-alt-out").textContent = "alt " + f.alt + " m · takeUntil(landing)"; }, { signal: sig }); }
   };
+  var ctls = {};
   function attach(k){
     if (subs[k] || !window.__bus) return;
-    subs[k] = attachers[k](makeOnTd(k));
+    ctls[k] = new AbortController();
+    subs[k] = true;
+    attachers[k](makeOnTd(k), ctls[k].signal);
     livePanels++; chip("mc-live", "panels live: <b>" + livePanels + "</b>/3");
     flipBtn(k, true);
   }
-  function detach(k){ if (subs[k]) subs[k].unsubscribe(); }
+  function detach(k){ if (ctls[k]) { ctls[k].abort(); } }
   function startAll(){
     if (running) return;
     running = true; frames = 0; altSeries = []; batLowFired = false;
     window.__bus = makeBus(); busCtl = new AbortController();
+    busCtl.signal.addEventListener("abort", function(){ Object.keys(ctls).forEach(function(k){ ctls[k].abort(); }); });
     chip("mc-frames", "frames on bus: <b>0</b>");
-    window.__bus.subscribe({ next: function(){ frames++; if (frames % 25 === 0) chip("mc-frames", "frames on bus: <b>" + frames + "</b>"); } });
+    window.__bus.subscribe({ next: function(){ frames++; if (frames % 25 === 0) chip("mc-frames", "frames on bus: <b>" + frames + "</b>"); } }, { signal: busCtl.signal });
     attach("att"); attach("bat"); attach("alt");
     var wd = window.__bus.filter(function(f){ return f.t === "BAT"; }).map(function(f){ return f.v; })
       .filter(function(v){ return v < 14.4; }).first();
