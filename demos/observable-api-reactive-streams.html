@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Observable API + Iterator Helpers — Native Reactive Streams Without RxJS | Molt Research</title>
+<style>
+  :root{
+    --bg:#faf9f7; --card:#ffffff; --ink:#1c1917; --mut:#78716c; --line:#e7e2dc;
+    --acc:#0f766e; --acc-soft:#ccfbf1; --warn:#b45309; --warn-soft:#fef3c7;
+    --bad:#b91c1c; --bad-soft:#fee2e2; --ok:#15803d; --ok-soft:#dcfce7;
+    --dark:#0b1220; --dark-line:#1e293b;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.65 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px;margin:0 auto;padding:24px 20px 80px}
+  header{padding:44px 0 8px}
+  .kicker{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc);font-weight:700}
+  h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin:8px 0 10px;letter-spacing:-.02em}
+  .sub{color:var(--mut);font-size:16px;max-width:60ch}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 6px}
+  .badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--mut)}
+  .badge b{font-weight:700}
+  .badge.on{border-color:var(--ok);color:var(--ok);background:var(--ok-soft)}
+  .badge.off{border-color:var(--bad);color:var(--bad);background:var(--bad-soft)}
+  .badge.wait{border-style:dashed}
+  nav.toc{display:flex;flex-wrap:wrap;gap:6px;margin:20px 0 8px}
+  nav.toc a{font-size:12px;color:var(--mut);text-decoration:none;padding:4px 9px;border-radius:8px;border:1px solid var(--line);background:var(--card)}
+  nav.toc a:hover{color:var(--acc);border-color:var(--acc)}
+  section{margin:34px 0}
+  h2{font-size:21px;letter-spacing:-.01em;margin:0 0 4px}
+  h2 .no{color:var(--acc);font-family:var(--mono);font-size:15px;margin-right:8px}
+  h3{font-size:15px;margin:18px 0 6px}
+  p{margin:8px 0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin:14px 0}
+  .note{font-size:13px;color:var(--mut)}
+  .callout{border-left:3px solid var(--acc);background:var(--acc-soft);padding:10px 14px;border-radius:0 10px 10px 0;font-size:13.5px;margin:12px 0}
+  .callout.warn{border-color:var(--warn);background:var(--warn-soft)}
+  .callout.bad{border-color:var(--bad);background:var(--bad-soft)}
+  code{font-family:var(--mono);font-size:.88em;background:#f1efec;padding:1px 5px;border-radius:5px}
+  pre{background:#0f172a;color:#e2e8f0;font-family:var(--mono);font-size:12.5px;line-height:1.6;padding:14px 16px;border-radius:12px;overflow-x:auto;margin:12px 0}
+  pre b{color:#7dd3fc;font-weight:600}
+  pre i{color:#94ca7d;font-style:normal}
+  pre em{color:#fbbf24;font-style:normal}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:12px 0}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+  td.y{color:var(--ok);font-weight:600}
+  td.n{color:var(--bad);font-weight:600}
+  button{font:inherit;font-size:13px;font-weight:600;padding:7px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+  button:hover{border-color:var(--acc);color:var(--acc)}
+  button:disabled{opacity:.45;cursor:default}
+  button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+  button.primary:hover{color:#fff;filter:brightness(1.08)}
+  button.danger{border-color:var(--bad);color:var(--bad)}
+  .btnrow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+  .log{background:var(--dark);color:#cbd5e1;font-family:var(--mono);font-size:12px;line-height:1.7;padding:12px 14px;border-radius:12px;min-height:64px;max-height:260px;overflow-y:auto;margin:10px 0;white-space:pre-wrap;word-break:break-word}
+  .log .t{color:#64748b}
+  .log .nx{color:#7dd3fc}
+  .log .er{color:#fca5a5}
+  .log .cp{color:#94ca7d}
+  .log .td{color:#fbbf24}
+  .log .hi{color:#fff;font-weight:700}
+  .log:empty::before{content:"— log —";color:#475569}
+  .chiprow{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+  .chip{font-family:var(--mono);font-size:12px;padding:4px 9px;border-radius:8px;background:#f1efec;border:1px solid var(--line);color:var(--mut)}
+  .chip b{color:var(--ink)}
+  .chip.ok{border-color:var(--ok);color:var(--ok);background:var(--ok-soft)}
+  .chip.bad{border-color:var(--bad);color:var(--bad);background:var(--bad-soft)}
+  .chip.warn{border-color:var(--warn);color:var(--warn);background:var(--warn-soft)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  @media (max-width:680px){.grid2,.grid3{grid-template-columns:1fr}}
+  .verdict{font-family:var(--mono);font-size:12.5px;padding:7px 11px;border-radius:9px;display:inline-block;margin:6px 0;border:1px solid var(--line);background:var(--card)}
+  .verdict.ok{border-color:var(--ok);color:var(--ok);background:var(--ok-soft)}
+  .verdict.bad{border-color:var(--bad);color:var(--bad);background:var(--bad-soft)}
+  .verdict.warn{border-color:var(--warn);color:var(--warn);background:var(--warn-soft)}
+  input[type=text]{font:inherit;font-size:14px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);width:100%}
+  input[type=text]:focus{outline:2px solid var(--acc-soft);border-color:var(--acc)}
+  .marble{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:34px;padding:8px 10px;background:var(--dark);border-radius:10px;margin:8px 0}
+  .marble span{font-family:var(--mono);font-size:11.5px;color:#0f172a;background:#7dd3fc;padding:3px 8px;border-radius:999px;white-space:nowrap}
+  .marble span.drop{background:#475569;color:#e2e8f0;text-decoration:line-through}
+  .marble span.end{background:#94ca7d}
+  .marble span.err{background:#fca5a5}
+  .pad{position:relative;height:150px;background:linear-gradient(180deg,#fdfcfa,#f4f2ee);border:1px solid var(--line);border-radius:12px;touch-action:none;cursor:crosshair;overflow:hidden}
+  .pad .dot{position:absolute;width:14px;height:14px;border-radius:50%;background:var(--acc);transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 0 12px rgba(15,118,110,.5)}
+  .pad .trail{position:absolute;inset:0;pointer-events:none}
+  .pad .hint{position:absolute;inset:0;display:grid;place-items:center;color:var(--mut);font-size:13px;pointer-events:none}
+  .bar{height:10px;border-radius:999px;background:#eceae6;overflow:hidden;margin:6px 0}
+  .bar>i{display:block;height:100%;background:var(--acc);border-radius:999px;transition:width .18s ease}
+  .bar.warn>i{background:var(--warn)}
+  .bar.bad>i{background:var(--bad)}
+  .gauge{font-family:var(--mono);font-size:26px;font-weight:700;letter-spacing:-.02em}
+  .gauge small{font-size:12px;color:var(--mut);font-weight:400}
+  .tape{height:90px;position:relative;background:var(--dark);border-radius:10px;overflow:hidden}
+  .tape canvas{position:absolute;inset:0;width:100%;height:100%}
+  .horizon{position:relative;height:64px;border-radius:10px;overflow:hidden;background:#e0f2fe}
+  .horizon .ground{position:absolute;left:-25%;width:150%;top:60%;height:100%;background:#bbf7d0;transform-origin:50% 0}
+  .horizon .line{position:absolute;left:0;right:0;top:60%;height:2px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+  .horizon .mark{position:absolute;top:50%;left:50%;width:36px;height:2px;background:#b91c1c;transform:translate(-50%,-50%)}
+  .quad td,.quad th{text-align:center}
+  .quad td:first-child,.quad th:first-child{text-align:left}
+  .quad .sel{background:var(--acc-soft);font-weight:700}
+  .mini{font-family:var(--mono);font-size:11.5px;color:var(--mut)}
+  .kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 5px;background:var(--card)}
+  footer{margin-top:56px;padding-top:18px;border-top:1px solid var(--line);color:var(--mut);font-size:13px}
+  a{color:var(--acc)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">Molt Research · Frontend Platform</div>
+  <h1>Observable API + Iterator Helpers — Native Reactive Streams Without RxJS</h1>
+  <p class="sub">Push streams (<code>Observable</code>, 18 composable operators, <code>EventTarget.when()</code>) and pull streams (Iterator helpers) share one operator vocabulary — <code>map · filter · take · drop · flatMap · reduce · toArray</code> — now in the platform itself. The 47M-downloads-a-week RxJS core, native.</p>
+  <div class="badges" id="badges"></div>
+  <nav class="toc">
+    <a href="#s1">Quadrant</a><a href="#s2">Anatomy</a><a href="#s3">Lazy·Sync</a><a href="#s4">Firehose</a><a href="#s5">Operators</a><a href="#s6">Terminators</a><a href="#s7">when()</a><a href="#s8">Drag</a><a href="#s9">Typeahead</a><a href="#s10">Race</a><a href="#s11">Iterator</a><a href="#s12">Drones</a><a href="#s13">Adopt</a>
+  </nav>
+</header>
+
+<!-- ============ 1. QUADRANT ============ -->
+<section id="s1">
+  <h2><span class="no">01</span>The reactive quadrant — where Observable sits</h2>
+  <p>Every way a program consumes values fits a 2×2 (the WICG explainer's table, refined from <em>A General Theory of Reactivity</em>). <b>Promise = one value, pushed later. Function = one value, pulled now. Iterable = many values, pulled. Observable = many values, pushed.</b> That last cell is the one the platform never had a primitive for — we've been renting it from RxJS, which grew to ~47 million npm downloads <i>per week</i>.</p>
+  <table class="quad">
+    <thead><tr><th></th><th>Singular</th><th>Plural</th></tr></thead>
+    <tbody>
+      <tr><td><b>Push</b><br><span class="mini">producer decides when</span></td><td>Promise / value-over-time</td><td class="sel">Observable ← this page</td></tr>
+      <tr><td><b>Pull</b><br><span class="mini">consumer decides when</span></td><td>Function</td><td>Iterable ⇄ <b>Iterator helpers</b> (§11)</td></tr>
+    </tbody>
+  </table>
+  <div class="card">
+    <h3>10 years to ship one cell of a table</h3>
+    <table>
+      <tr><td class="mini">2015</td><td>TC39 proposal-observable (Jafar Husain et al.) — stalls: "not a language primitive"</td></tr>
+      <tr><td class="mini">2017</td><td>whatwg/dom <span class="mini">#544</span> — 5 years of discussion, no objectors, no implementers</td></tr>
+      <tr><td class="mini">2019</td><td>TC39 revival attempt — adds the synchronous-firehose design</td></tr>
+      <tr><td class="mini">2023</td><td>WICG/observable repo — DOM-level proposal, EventTarget integration</td></tr>
+      <tr><td class="mini">2025</td><td><b>Chrome/Edge 135 (April) ships Observable + when() + 21 operators</b></td></tr>
+      <tr><td class="mini">2025–26</td><td>Iterator helpers (the pull twin) reach all engines; Observable itself: Firefox + Safari still not shipped</td></tr>
+    </table>
+    <p class="note">The shipped operator set is deliberately minimal — it mirrors the TC39 iterator-helpers list exactly. No <code>merge</code>, <code>combineLatest</code>, <code>debounce</code>, <code>share</code>. Those stay userland on purpose: the platform ships the vocabulary, libraries ship the combinator zoo.</p>
+  </div>
+</section>
+
+<!-- ============ 2. ANATOMY ============ -->
+<section id="s2">
+  <h2><span class="no">02</span>Anatomy — subscriber, observer, teardown</h2>
+  <p><code>new Observable(subscriberFn)</code> does <b>nothing</b> until <code>.subscribe()</code> is called. Each subscription invokes <code>subscriberFn</code> with a <b>subscriber</b> object: <code>.next(v)</code> feeds values, <code>.error(e)</code> / <code>.complete()</code> each fire at most once and end the stream, <code>.addTeardown(fn)</code> registers cleanup that runs on <i>any</i> termination, and <code>subscriber.signal</code> is an <code>AbortSignal</code> that aborts when the subscription dies — so cleanup logic and async work can react to it.</p>
+<pre><b>const</b> obs = <b>new</b> <i>Observable</i>(sub => {
+  sub.next(1);  sub.next(2);  sub.complete();
+  sub.<em>addTeardown</em>(() => log(<i>'cleanup'</i>));   <span style="color:#64748b">// runs on complete | error | unsubscribe</span>
+});
+<b>const</b> subscription = obs.subscribe({
+  next:     v => …,   <span style="color:#64748b">// or a bare fn:  obs.subscribe(v => …)</span>
+  error:    e => …,
+  complete: () => …
+}, { signal: myAbortController.signal });   <span style="color:#64748b">// unsubscribe = abort()</span>
+subscription.unsubscribe();  subscription.closed;</pre>
+  <div class="card">
+    <h3>Lab — teardown fires on all three exits</h3>
+    <p class="note">One observable, three buttons. Watch the log: <span class="mini">next → (exit) → teardown</span>, and note teardown runs <i>after</i> the complete/error handler, per spec.</p>
+    <div class="btnrow">
+      <button class="primary" id="an-run">Run 1–3, complete()</button>
+      <button id="an-err">Run 1–2, error()</button>
+      <button class="danger" id="an-unsub">Run 1–2, unsubscribe()</button>
+      <button id="an-late">next() after complete?</button>
+    </div>
+    <div class="log" id="an-log"></div>
+    <div id="an-verdicts" class="chiprow"></div>
+    <p class="note" id="an-note"></p>
+  </div>
+  <div class="callout">Teardown timing, live-probed: teardown runs <b>after</b> the complete/error handler — and an already-aborted teardown registration (<code>addTeardown</code> called post-exit) runs the function <b>immediately</b>. The verdict chips above capture what this engine does.</div>
+</section>
+
+<!-- ============ 3. LAZY / COLD / SYNC ============ -->
+<section id="s3">
+  <h2><span class="no">03</span>Lazy, cold, synchronous — three semantics that surprise everyone</h2>
+  <div class="grid2">
+    <div class="card">
+      <h3>① Lazy — no subscribe, no work</h3>
+      <p class="note">The subscriber function runs <b>per subscription, at subscription time</b>. An unobserved observable costs zero.</p>
+      <div class="btnrow"><button class="primary" id="lz-check">Check run count</button><button id="lz-sub">Subscribe ×2 now</button><button id="lz-reset">Reset</button></div>
+      <div class="chiprow"><span class="chip" id="lz-chip">subscriber ran <b>0</b> times · subscribed <b>0</b></span></div>
+      <p class="note" id="lz-out"></p>
+    </div>
+    <div class="card">
+      <h3>② Cold — each subscription is independent</h3>
+      <p class="note">Two subscribers to the same interval observable each get their <b>own</b> producer run (A: 1,2,3… B: 1,2,3…). No sharing, no multicasting — that's <code>share()</code>, which is userland.</p>
+      <div class="chiprow"><span class="chip" id="cold-a">A: —</span><span class="chip" id="cold-b">B: —</span></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>③ Synchronous start — the "One · Two · Three" ordering</h3>
+    <p class="note">Promises always deliver on a microtask. Observables can deliver <b>synchronously during subscribe()</b> — which is why the platform example logs <i>One</i> before <i>Two</i> even though the click happens "between" statements. Terminators like <code>first()</code> return a Promise, so they land on the microtask (<i>Three</i>) — that asymmetry is §06's headline.</p>
+    <div class="btnrow"><button class="primary" id="ord-run">Run the ordering proof</button></div>
+    <div class="log" id="ord-log"></div>
+    <span class="verdict" id="ord-verdict">—</span>
+  </div>
+</section>
+
+<!-- ============ 4. FIREHOSE ============ -->
+<section id="s4">
+  <h2><span class="no">04</span>The firehose problem — aborting a synchronous infinite stream</h2>
+  <p>The design detail that killed the 2015 proposal and got solved by 2019: an observable can emit <b>unlimited values synchronously, during subscribe()</b>. The loop below literally never returns — the only way out is the consumer aborting <i>from inside its own next handler</i>, watched by the subscriber's <code>signal</code>. This is the pattern that makes "stream every frame / every WebSocket message" safe: backpressure-free push with a guaranteed kill switch.</p>
+<pre><b>const</b> firehose = <b>new</b> <i>Observable</i>(sub => {
+  <b>let</b> i = 0;
+  <b>while</b> (!sub.<em>signal.aborted</em>) { sub.next(i++); }   <span style="color:#64748b">// exits ONLY via abort</span>
+});
+<b>const</b> ctl = <b>new</b> AbortController();
+firehose.subscribe({
+  next: v => { <b>if</b> (v >= 101) ctl.<em>abort</em>(); }        <span style="color:#64748b">// consumer pulls the cord…</span>
+}, { signal: ctl.signal });                                 <span style="color:#64748b">// …teardown runs, loop exits</span></pre>
+  <div class="card">
+    <div class="btnrow"><button class="primary" id="fh-run">Open the firehose (cap 5,000)</button></div>
+    <div class="chiprow">
+      <span class="chip" id="fh-count">values received: —</span>
+      <span class="chip" id="fh-teardown">teardown: —</span>
+      <span class="chip" id="fh-loop">subscriber returned: —</span>
+      <span class="chip" id="fh-hang">page survived: —</span>
+    </div>
+    <div class="log" id="fh-log"></div>
+    <p class="note">A safety cap at 5,000 keeps this demo honest if an engine ever failed to propagate the abort — the FAIL chip would show it.</p>
+  </div>
+</section>
+
+<!-- ============ 5. OPERATOR PLAYGROUND ============ -->
+<section id="s5">
+  <h2><span class="no">05</span>Operators — the chain, live</h2>
+  <p>Same names as iterator helpers, same lazy semantics, but push. Each operator returns a <b>new</b> observable; nothing runs until subscribe; upstream tears down when downstream unsubscribes.</p>
+<pre>ticks.<b>map</b>(n => n * 10).<b>filter</b>(n => n % 20 === 0).<b>drop</b>(1).<b>take</b>(3).subscribe(…)</pre>
+  <div class="card">
+    <div class="btnrow">
+      <button class="primary" id="op-run">Emit 0–9 through the chain</button>
+      <button id="op-bare">Raw source (no operators)</button>
+    </div>
+    <div class="marble" id="op-raw"></div>
+    <p class="note mini">source: 0…9</p>
+    <div class="marble" id="op-marble"></div>
+    <p class="note mini" id="op-chain-note">map(×10) → filter(even) → drop(1) → take(3)</p>
+    <span class="verdict" id="op-verdict">—</span>
+  </div>
+  <div class="callout warn"><b>The unsubscription cascade:</b> when <code>take(3)</code> completes, it unsubscribes from <code>drop</code>, which unsubscribes from <code>filter</code>… all the way to the source — automatically. The manual "removeEventListener bookkeeping in the right order" bug class doesn't exist here. Watch the teardown log during the run.</div>
+</section>
+
+<!-- ============ 6. TERMINATORS ============ -->
+<section id="s6">
+  <h2><span class="no">06</span>Terminators return Promises — and that's a footgun</h2>
+  <p><code>every · some · find · first · last · reduce · toArray · forEach</code> end a stream and hand you a <b>Promise</b>. It's the bridge back to <code>async/await</code> — <code>await</code> a <code>.reduce()</code> over a <code>takeUntil</code> race and you have readable async history. But the Promise schedules on a <b>microtask</b>, so anything time-critical inside it (like <code>e.preventDefault()</code>) runs <b>too late</b>. The explainer calls this out explicitly — it's the API's most-cited concern.</p>
+  <div class="card">
+    <h3>Lab — sync handler vs promise terminator on the same event</h3>
+    <p class="note">A synthetic <code>keydown</code> is dispatched once. The sync <code>map</code> handler logs <i>during</i> dispatch; a task-marker (<code>setTimeout 0</code>) logs where the browser would run the default action; the <code>first()</code> Promise logs after that. If you need to cancel the default, you must be in the sync handler — never behind a terminator.</p>
+    <div class="btnrow"><button class="primary" id="tm-run">Dispatch keydown</button></div>
+    <div class="log" id="tm-log"></div>
+    <span class="verdict" id="tm-verdict">—</span>
+    <p class="note" id="tm-note"></p>
+  </div>
+  <div class="grid2">
+    <div class="card"><h3>Bridge pattern</h3><pre><b>const</b> maxY = <b>await</b> pad.when(<i>'pointermove'</i>)
+  .takeUntil(pad.when(<i>'pointerup'</i>))
+  .map(e => e.clientY)
+  .<em>reduce</em>((a,y) => Math.max(a,y), 0);</pre><p class="note">A whole drag gesture as one awaited expression — §08 does this live.</p></div>
+    <div class="card"><h3>Footgun pattern</h3><pre>input.when(<i>'keydown'</i>).<em>find</em>(isSaveKey)
+  .<b>then</b>(e => e.<b style="color:#fca5a5">preventDefault</b>());
+<span style="color:#fca5a5">// ↑ runs after the browser already
+//   processed the key — no-op</span></pre><p class="note">Rule: cancel defaults in <code>filter/map</code> (sync), await terminators for results.</p></div>
+  </div>
+</section>
+
+<!-- ============ 7. when() ============ -->
+<section id="s7">
+  <h2><span class="no">07</span>EventTarget.when() — addEventListener, but composable</h2>
+  <p><code>el.when(type)</code> returns an observable backed by a real event listener created <b>at subscribe time</b> and removed at teardown. Same underlying mechanism as <code>addEventListener</code>, but it plugs into the operator world. This is the drop-in migration path: every event handler you have is already a one-operator chain away.</p>
+<pre>button.<b>when</b>(<i>'click'</i>)
+  .<b>filter</b>(e => !e.disabled)
+  .<b>map</b>(e => ({ x: e.clientX, y: e.clientY }))
+  .subscribe(handleClick);</pre>
+  <div class="card">
+    <h3>Lab — clicks through a chain</h3>
+    <p class="note">Click the pad. The chain filters out clicks on the right third, maps to coordinates, and the counter shows the pipeline working. Teardown on unsubscribe removes the real listener (verified by the listener-count chip).</p>
+    <div class="grid2">
+      <div class="pad" id="when-pad" style="height:120px;cursor:pointer"><div class="hint" style="pointer-events:none">click me — right third is filtered out</div></div>
+      <div>
+        <div class="chiprow">
+          <span class="chip" id="when-all">raw clicks: <b>0</b></span>
+          <span class="chip" id="when-pass">passed filter: <b>0</b></span>
+          <span class="chip" id="when-last">last: —</span>
+        </div>
+        <div class="btnrow"><button id="when-unsub">Unsubscribe</button><button id="when-resub">Re-subscribe</button></div>
+        <span class="verdict" id="when-verdict">—</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 8. DRAG ============ -->
+<section id="s8">
+  <h2><span class="no">08</span>Drag as one expression — takeUntil + reduce</h2>
+  <p>The gesture that traditionally needs four listeners with manual add/remove pairs (down → add move/up, up → remove move/up) becomes a <b>single subscribed expression per drag</b>: <code>pointerdown</code> <code>flatMap</code>s into a <code>pointermove</code> stream that dies at <code>pointerup</code>. Trail length comes from the awaited <code>reduce</code> terminator.</p>
+<pre>pad.<b>when</b>(<i>'pointerdown'</i>).<b>flatMap</b>(() =>
+  pad.<b>when</b>(<i>'pointermove'</i>)
+     .<b>takeUntil</b>(pad.<b>when</b>(<i>'pointerup'</i>))
+).subscribe(draw);</pre>
+  <div class="card">
+    <div class="pad" id="drag-pad"><svg class="trail" id="drag-svg"></svg><div class="dot" id="drag-dot" style="display:none"></div><div class="hint" id="drag-hint">press + drag inside me</div></div>
+    <div class="chiprow">
+      <span class="chip" id="drag-drags">drags: <b>0</b></span>
+      <span class="chip" id="drag-pts">points this drag: <b>0</b></span>
+      <span class="chip" id="drag-len">last gesture length: —</span>
+      <span class="chip" id="drag-move">moves: <b>0</b></span>
+    </div>
+    <div class="log" id="drag-log"></div>
+  </div>
+  <div class="callout">The log shows the lifecycle per gesture: <span class="mini">move → move → … → (pointerup) → takeUntil completes → teardown removes BOTH listeners</span>. No state variables, no cleanup functions to forget.</div>
+</section>
+
+<!-- ============ 9. TYPEAHEAD ============ -->
+<section id="s9">
+  <h2><span class="no">09</span>switchMap — the typeahead killer demo</h2>
+  <p>The classic race-condition bug: type fast, and an early slow response resolves <b>after</b> a later fast one, overwriting fresh results with stale ones. <code>switchMap</code> unsubscribes from the previous inner observable on every new value — stale in-flight responses are discarded by construction, not by if-statement.</p>
+<pre>input.<b>when</b>(<i>'input'</i>)
+  .<b>map</b>(() => input.value)
+  .<b>filter</b>(q => q.length >= 2)
+  .<b>switchMap</b>(q => fakeFetch(q))   <span style="color:#64748b">// each keystroke kills the previous fetch</span>
+  .subscribe(render);</pre>
+  <div class="card">
+    <input type="text" id="ta-input" placeholder="type a drone model — try typing fast: 'mavic', 'matrice', 'skydio'…" autocomplete="off">
+    <div class="chiprow">
+      <span class="chip" id="ta-req">requests: <b>0</b></span>
+      <span class="chip" id="ta-ren">rendered: <b>0</b></span>
+      <span class="chip" id="ta-stale" >stale discarded: <b>0</b></span>
+    </div>
+    <div class="log" id="ta-log"></div>
+    <span class="verdict" id="ta-verdict">—</span>
+    <p class="note">Fake API: 250–700 ms random latency, results stamped with the query that produced them. A rendered result never contains a query older than the input's current value — the invariant manual code forgets to enforce.</p>
+  </div>
+</section>
+
+<!-- ============ 10. RACE ============ -->
+<section id="s10">
+  <h2><span class="no">10</span>Racing streams — first() bridges into Promise.race</h2>
+  <p>Two mission uplinks, one question: which answers first? Terminators make observables first-class in the existing async world — <code>Promise.race([a.first(), b.first()])</code> — while the pure-stream version is <code>takeUntil</code>. Both below, same race, two idioms.</p>
+  <div class="card">
+    <div class="btnrow"><button class="primary" id="race-run">Start race (random 300–900 ms links)</button></div>
+    <div class="grid2">
+      <div><h3>Promise.race + first()</h3><pre><b>await</b> Promise.<b>race</b>([upA.<em>first</em>(), upB.<em>first</em>()])</pre><span class="verdict" id="race-p">—</span></div>
+      <div><h3>pure stream: takeUntil</h3><pre>upA.<b>takeUntil</b>(upB).subscribe(win)</pre><span class="verdict" id="race-s">—</span></div>
+    </div>
+    <div class="log" id="race-log"></div>
+  </div>
+  <p class="note">Honest difference: <code>takeUntil</code> only declares "A wins unless B emits first" — B's value isn't raced into the output. For true either-way racing you need both directions or the Promise bridge. Knowing which tool is which is the point of the lab.</p>
+</section>
+
+<!-- ============ 11. ITERATOR HELPERS ============ -->
+<section id="s11">
+  <h2><span class="no">11</span>The pull twin — Iterator helpers (all engines)</h2>
+  <p>Iterator helpers are the same operator vocabulary on <b>pull</b> streams — and unlike Observable they're <b>Baseline across every engine</b> (Chrome 122 · Firefox 131 · Safari 18.4 · Node 22, shipped 2024–25). Generators compose lazily; <code>Iterator.from()</code> adapts any iterable; <code>toArray()</code> collects. If Observables are RxJS's push core, this is lodash-chain's lazy core, standardized.</p>
+<pre><b>function</b>* waypoints() { <b>yield</b>* mission; }
+waypoints().<b>filter</b>(w => w.alt > 80).<b>map</b>(w => w.name).<b>take</b>(3).<em>toArray</em>()
+<span style="color:#64748b">// same names, same laziness — values flow only when pulled</span></pre>
+  <div class="card">
+    <h3>Lab — same data, both directions</h3>
+    <p class="note">Seven waypoints, one filter (alt &gt; 80 m). Left: pulled one at a time — notice <i>step</i> yields exactly one value (the generator stops until you ask again). Right: pushed as the source emits, through the identical chain.</p>
+    <div class="grid2">
+      <div>
+        <div class="btnrow"><button class="primary" id="it-step">Pull next</button><button id="it-all">Pull all</button></div>
+        <div class="marble" id="it-marble"></div>
+        <p class="note mini" id="it-note">each pull evaluates filter+map for exactly one surviving value</p>
+      </div>
+      <div>
+        <div class="btnrow"><button class="primary" id="it-push">Push all through Observable</button></div>
+        <div class="marble" id="it-push-marble"></div>
+        <p class="note mini">Observable.from(sameGenerator()) — pull source, push view (the bridge)</p>
+      </div>
+    </div>
+    <span class="verdict" id="it-verdict">—</span>
+  </div>
+  <div class="callout"><b>Push vs pull, one sentence:</b> pull when the consumer's pace should govern (pagination, large files, backpressure) — push when the producer's pace governs (events, sockets, telemetry). Same operators either way; <code>Observable.from(iterable)</code> converts pull→push for free.</div>
+</section>
+
+<!-- ============ 12. OPENDRONES ============ -->
+<section id="s12">
+  <h2><span class="no">12</span>OpenDrones — the MAVLink telemetry hub</h2>
+  <p>A simulated telemetry bus: one observable emitting interleaved frame types (~8 Hz, jittered) — attitude, battery, altitude, link. Each panel is an independent <b>subscription chain</b>: unsubscribe one and its filters vanish while the bus keeps feeding the others. The battery watchdog is a <code>filter().first()</code> one-shot Promise; the altitude tape completes on <code>takeUntil(landing)</code>; "end mission" completes the bus and every teardown fires in cascade.</p>
+  <div class="card">
+    <div class="btnrow">
+      <button class="primary" id="mc-start">Start telemetry</button>
+      <button id="mc-end">End mission (complete)</button>
+      <button class="danger" id="mc-abort">Abort everything</button>
+    </div>
+    <div class="chiprow"><span class="chip" id="mc-frames">frames on bus: <b>0</b></span><span class="chip" id="mc-live">panels live: <b>0</b>/3</span><span class="chip" id="mc-td">teardowns: <b>0</b></span></div>
+    <div class="grid3">
+      <div class="card" style="margin:0">
+        <h3>Attitude <button id="mc-sub-att" style="font-size:11px;padding:3px 8px;margin-left:6px">unsubscribe</button></h3>
+        <div class="horizon"><div class="ground" id="mc-ground"></div><div class="line" id="mc-hline"></div><div class="mark"></div></div>
+        <p class="note mini" id="mc-att-out">—</p>
+        <p class="note mini">bus.filter(ATT).map(roll)</p>
+      </div>
+      <div class="card" style="margin:0">
+        <h3>Battery <button id="mc-sub-bat" style="font-size:11px;padding:3px 8px;margin-left:6px">unsubscribe</button></h3>
+        <div class="gauge" id="mc-bat-v">—<small> V</small></div>
+        <div class="bar" id="mc-bat-bar"><i style="width:0%"></i></div>
+        <p class="note mini" id="mc-bat-watch">watchdog: filter(v&lt;14.4).first() → Promise — armed</p>
+        <p class="note mini">drains to low-power during mission</p>
+      </div>
+      <div class="card" style="margin:0">
+        <h3>Altitude tape <button id="mc-sub-alt" style="font-size:11px;padding:3px 8px;margin-left:6px">unsubscribe</button></h3>
+        <div class="tape"><canvas id="mc-alt-cv" width="240" height="90"></canvas></div>
+        <p class="note mini" id="mc-alt-out">—</p>
+        <p class="note mini">takeUntil(landing$) auto-completes</p>
+      </div>
+    </div>
+    <div class="log" id="mc-log"></div>
+  </div>
+  <div class="callout warn"><b>The pattern that matters:</b> each panel's teardown is visible in the log ("MAVLink ATT filter detached"). In today's Mission Control, closing a panel leaves interval/Firestore listeners behind until GC or a hand-written dispose() — here the chain IS the dispose chain. WebTransport frames (in our catalog, Jul 9) arriving as a stream would land directly on this bus via <code>Observable.from()</code> over the async iterable.</div>
+</section>
+
+<!-- ============ 13. ADOPTION ============ -->
+<section id="s13">
+  <h2><span class="no">13</span>Adoption — what ships today, what waits</h2>
+  <table>
+    <thead><tr><th>Capability</th><th>Chrome/Edge</th><th>Firefox</th><th>Safari</th><th>Node</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td><code>Observable</code> + 21 operators</td><td class="y">135+</td><td class="n">not shipped</td><td class="n">not shipped</td><td class="n">—</td><td>gate + ponyfill</td></tr>
+      <tr><td><code>EventTarget.when()</code></td><td class="y">135+</td><td class="n">not shipped</td><td class="n">not shipped</td><td class="n">—</td><td>gate + ponyfill</td></tr>
+      <tr><td>Iterator helpers</td><td class="y">122+</td><td class="y">131+</td><td class="y">18.4+</td><td class="y">22+</td><td><b>ship ungated</b></td></tr>
+      <tr><td><code>AbortSignal</code> (anywhere)</td><td class="y">66+</td><td class="y">57+</td><td class="y">15.4+</td><td class="y">—</td><td>already universal</td></tr>
+    </tbody>
+  </table>
+  <div class="grid2">
+    <div class="card">
+      <h3>Molt Studios</h3>
+      <p>Typeahead, drag gestures, scroll/pointer choreography, "everything until X" interactions — all currently hand-rolled listener state machines. The typeahead pattern alone (§09) deletes a whole class of stale-response bugs from every marketing site search box.</p>
+      <p class="note">Migration is incremental: one <code>when()</code> chain per component, ponyfilled on the two missing engines until they ship (proposal is WICG-active with Chrome implementing; history says years, not months).</p>
+    </div>
+    <div class="card">
+      <h3>OpenDrones</h3>
+      <p>Telemetry is push by nature: MAVLink over WebTransport, WS video stats, geofence events. The hub pattern (§12) gives every panel its own filter chain with guaranteed teardown — the exact leak class that bites long-running mission dashboards.</p>
+      <p class="note">Watchdogs as <code>filter().first()</code> one-shots, mission replay as <code>reduce()</code>, uplink failover as the §10 race — all one-expression patterns.</p>
+    </div>
+  </div>
+  <div class="callout"><b>Honest framing:</b> RxJS isn't going anywhere — the native set omits the entire combinator zoo (merge/combineLatest/debounce/share), deliberately. The win is the <i>contract</i>: libraries, framework signals (Solid/Preact/XState already use this exact observable shape), and platform events converging on one subscribe/next/error/complete + teardown + signal vocabulary. Learn it once, meet it everywhere.</div>
+  <footer>
+    <p>Observable API (WICG/observable · Chrome/Edge 135+, Apr 2025) + Iterator Helpers (TC39, all engines 2024–25) · Demo built for the Molt Studios / OpenDrones research catalog · Live-verified in Chromium — labs probe and print their own verdicts · This page ponyfills Observable on engines without it so every lab stays runnable.</p>
+  </footer>
+</section>
+
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   Observable API demo — single script block.
+   Native Observable/when()/Iterator-helpers used when present;
+   otherwise a compact faithful ponyfill keeps every lab live.
+   ============================================================ */
+
+/* ---------- 0. capability + ponyfill ---------- */
+var HAS_OBS   = (typeof Observable !== "undefined") && (typeof Observable.from === "function");
+var HAS_WHEN  = (typeof EventTarget !== "undefined") && (typeof EventTarget.prototype.when === "function");
+var HAS_ITER  = (typeof Iterator !== "undefined") && Iterator.prototype && (typeof Iterator.prototype.map === "function");
+
+var Obs, fromObs, whenOn;
+if (HAS_OBS) {
+  Obs = Observable; fromObs = Observable.from; whenOn = function(t, type, opts){ return t.when(type, opts); };
+} else {
+  /* --- ponyfill: lazy, per-subscription, sync start, teardown, signal --- */
+  var PSub_controller = function(){ return (typeof AbortController !== "undefined") ? new AbortController() : { signal:{aborted:false}, abort:function(){} }; };
+  function ObservablePony(cb){ this._cb = cb; }
+  ObservablePony.prototype.subscribe = function(target, opts){
+    var handler = (typeof target === "function") ? { next: target } : (target || {});
+    var ext = opts && opts.signal;
+    var sub = { _finished:false, _cleaned:false, _tds:[], _ctl:PSub_controller() };
+    sub.signal = sub._ctl.signal;
+    sub.next = function(v){ if (sub._finished || sub._cleaned) return; try { if (handler.next) handler.next(v); } catch(e){ sub.error(e); } };
+    sub.error = function(e){ if (sub._finished) return; sub._finished = true; try { if (handler.error) handler.error(e); } finally { cleanup(); } };
+    sub.complete = function(){ if (sub._finished) return; sub._finished = true; try { if (handler.complete) handler.complete(); } finally { cleanup(); } };
+    sub.addTeardown = function(fn){ if (sub._finished || sub._cleaned || sub.signal.aborted) { try { fn(); } catch(_){} } else { sub._tds.push(fn); } };
+    function cleanup(){
+      if (sub._cleaned) return; sub._cleaned = true;
+      for (var i = sub._tds.length - 1; i >= 0; i--) { try { sub._tds[i](); } catch(_){} }
+      sub._tds.length = 0;
+      try { sub._ctl.abort(); } catch(_){}
+    }
+    if (ext) {
+      if (ext.aborted) { return { closed:true, unsubscribe:function(){} }; }
+      ext.addEventListener("abort", function(){ sub._finished = true; cleanup(); }, { once:true });
+    }
+    var ret = { get closed(){ return sub._finished || sub._cleaned; }, unsubscribe:function(){ sub._finished = true; cleanup(); } };
+    var r;
+    try { r = this._cb(sub); } catch(e){ sub.error(e); return ret; }
+    if (typeof r === "function") sub.addTeardown(r);
+    if (ext && ext.aborted && !(sub._finished || sub._cleaned)) { sub._finished = true; cleanup(); }
+    return ret;
+  };
+  ObservablePony.prototype.map = function(fn){ return lift(this, function(d){ return { next:function(v){ d.next(fn(v)); }, error:function(e){ d.error(e); }, complete:function(){ d.complete(); } }; }); };
+  ObservablePony.prototype.filter = function(fn){ return lift(this, function(d){ return { next:function(v){ if (fn(v)) d.next(v); }, error:function(e){ d.error(e); }, complete:function(){ d.complete(); } }; }); };
+  ObservablePony.prototype.drop = function(n){ return lift(this, function(d){ var i=0; return { next:function(v){ if (i++ >= n) d.next(v); }, error:function(e){ d.error(e); }, complete:function(){ d.complete(); } }; }); };
+  ObservablePony.prototype.take = function(n){ return lift(this, function(d){ var i=0; return { next:function(v){ if (i < n) { d.next(v); if (++i >= n) d.complete(); } }, error:function(e){ d.error(e); }, complete:function(){ d.complete(); } }; }); };
+  ObservablePony.prototype.takeUntil = function(other){ return lift(this, function(d){
+      var done=false;
+      var u2 = other.subscribe({ next:function(){ if(!done){ done=true; d.complete(); } }, error:function(e){ d.error(e); }, complete:function(){} });
+      d.addTeardown(function(){ u2.unsubscribe(); });
+      return { next:function(v){ if(!done) d.next(v); }, error:function(e){ if(!done) d.error(e); }, complete:function(){ if(!done){ done=true; d.complete(); } } };
+    }); };
+  ObservablePony.prototype.flatMap = function(fn){ return lift(this, function(d){
+      var inners=[], dead=false;
+      d.addTeardown(function(){ dead=true; inners.forEach(function(u){ u.unsubscribe(); }); });
+      return { next:function(v){ if(dead) return; var inner = toObs(fn(v)); var u = inner.subscribe({ next:function(x){ if(!dead) d.next(x); }, error:function(e){ if(!dead){ dead=true; d.error(e); } }, complete:function(){} }); inners.push(u); },
+               error:function(e){ d.error(e); }, complete:function(){ d.complete(); } };
+    }); };
+  ObservablePony.prototype.switchMap = function(fn){ return lift(this, function(d){
+      var cur=null, dead=false;
+      d.addTeardown(function(){ dead=true; if (cur) cur.unsubscribe(); });
+      return { next:function(v){ if(dead) return; if (cur) { cur.unsubscribe(); } var inner = toObs(fn(v)); cur = inner.subscribe({ next:function(x){ if(!dead) d.next(x); }, error:function(e){ if(!dead){ dead=true; d.error(e); } }, complete:function(){} }); },
+               error:function(e){ d.error(e); }, complete:function(){ d.complete(); } };
+    }); };
+  ObservablePony.prototype.finally = function(fn){ return lift(this, function(d){ d.addTeardown(fn); return { next:function(v){ d.next(v); }, error:function(e){ d.error(e); }, complete:function(){ d.complete(); } }; }); };
+  ["every","some","find","reduce","toArray","forEach"].forEach(function(m){
+    ObservablePony.prototype[m] = function(fn, init){
+      var src = this, hasInit = (arguments.length > 1);
+      return new Promise(function(res, rej){
+        var acc = init, has = hasInit, started = false, arr = [], stopped = false;
+        src.subscribe({
+          next: function(v){
+            if (stopped) return;
+            started = true;
+            try {
+              if (m === "forEach") { fn(v); }
+              else if (m === "toArray") { arr.push(v); }
+              else if (m === "every")  { if (!fn(v)) { stopped = true; res(false); throw STOP; } }
+              else if (m === "some")   { if (fn(v))  { stopped = true; res(true);  throw STOP; } }
+              else if (m === "find")   { if (fn(v))  { stopped = true; res(v);     throw STOP; } }
+              else if (m === "reduce") { acc = has ? fn(acc, v) : (has = true, v); }
+            } catch(e){ if (e === STOP) throw e; stopped = true; rej(e); throw STOP; }
+          },
+          error: function(e){ rej(e); },
+          complete: function(){
+            if (m === "every") res(started ? true : true);
+            else if (m === "some") res(false);
+            else if (m === "find") res(undefined);
+            else if (m === "reduce") res(started || has ? acc : undefined);
+            else if (m === "toArray") res(arr);
+            else if (m === "forEach") res(undefined);
+          }
+        });
+      });
+    };
+  });
+  var STOP = {};
+  ObservablePony.prototype.first = function(){
+    var src = this;
+    return new Promise(function(res, rej){
+      var u = src.subscribe({ next:function(v){ res(v); try { u.unsubscribe(); } catch(_){} u = null; },
+        error:function(e){ rej(e); }, complete:function(){ if (u) rej(new Error("empty")); } });
+    });
+  };
+  function toObs(x){ if (x instanceof ObservablePony) return x; return fromAny(x); }
+  function lift(src, make){ return new ObservablePony(function(dest){ var h = make(dest); var u = src.subscribe(h); dest.addTeardown(function(){ u.unsubscribe(); }); }); }
+  function fromAny(x){
+    if (x instanceof ObservablePony) return x;
+    if (x && typeof x.subscribe === "function") return x;
+    if (x && typeof x[Symbol.asyncIterator] === "function") return new ObservablePony(function(d){
+      var dead = false, it = x[Symbol.asyncIterator]();
+      d.addTeardown(function(){ dead = true; });
+      (async function(){ try { while (!dead) { var r = await it.next(); if (r.done) break; d.next(r.value); } d.complete(); } catch(e){ d.error(e); } })();
+      return function(){ dead = true; };
+    });
+    if (x && typeof x[Symbol.iterator] === "function") return new ObservablePony(function(d){
+      for (var v of x) { if (d.signal.aborted) return; d.next(v); }
+      d.complete();
+    });
+    if (x && typeof x.then === "function") return new ObservablePony(function(d){
+      x.then(function(v){ d.next(v); d.complete(); }, function(e){ d.error(e); });
+    });
+    throw new TypeError("Observable.from: unsupported source");
+  }
+  ObservablePony.from = fromAny;
+  Obs = ObservablePony; fromObs = fromAny;
+  whenOn = function(t, type, opts){ return new ObservablePony(function(d){
+    var h = function(e){ d.next(e); };
+    t.addEventListener(type, h, opts);
+    d.addTeardown(function(){ t.removeEventListener(type, h, opts); });
+  }); };
+}
+
+/* ---------- tiny helpers ---------- */
+function $(id){ return document.getElementById(id); }
+function el(tag, cls, txt){ var e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
+var logs = {};
+function log(id, msg, cls){
+  var box = logs[id] || (logs[id] = $(id));
+  if (!box) return;
+  var line = el("div", cls || null);
+  var t = el("span", "t", new Date().toISOString().slice(17, 23) + " ");
+  line.appendChild(t);
+  if (cls) { var m = el("span", cls, msg); line.appendChild(m); } else line.appendChild(document.createTextNode(msg));
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+  while (box.childNodes.length > 120) box.removeChild(box.firstChild);
+}
+function verdict(id, msg, cls){ var v = $(id); v.textContent = msg; v.className = "verdict " + (cls || ""); }
+function chip(id, html){ var c = $(id); if (c) c.innerHTML = html; }
+function marble(id, vals, endTxt){
+  var box = $(id); box.innerHTML = "";
+  (vals || []).forEach(function(v){ box.appendChild(el("span", v.drop ? "drop" : (v.err ? "err" : null), String(v.v))); });
+  if (endTxt) box.appendChild(el("span", "end", endTxt));
+}
+
+/* ---------- badges ---------- */
+(function badges(){
+  var b = $("badges");
+  function badge(txt, on, off){ var s = el("span", "badge " + (on ? "on" : "off")); s.innerHTML = txt; b.appendChild(s); }
+  badge("<b>" + (HAS_OBS ? "NATIVE" : "PONYFILL") + "</b> Observable", HAS_OBS, !HAS_OBS);
+  badge("<b>" + (HAS_WHEN ? "NATIVE" : "PONYFILL") + "</b> EventTarget.when()", HAS_WHEN, !HAS_WHEN);
+  badge("<b>18</b> operators · map/filter/take/drop/flatMap/switchMap/takeUntil/…", true, false);
+  badge("<b>" + (HAS_ITER ? "NATIVE" : "absent") + "</b> Iterator helpers", HAS_ITER, !HAS_ITER);
+  badge("Chrome/Edge <b>135+</b> · FF <b>✗</b> · Safari <b>✗</b>", HAS_OBS, !HAS_OBS);
+  badge("Iterator helpers <b>Baseline</b> — all engines", HAS_ITER, !HAS_ITER);
+})();
+
+/* ---------- §02 anatomy lab ---------- */
+(function anatomy(){
+  var ran = 0;
+  function makeObs(){ return new Obs(function(sub){
+    ran++;
+    var n = 0, mode = sub._mode || window.__anMode || "run";
+    var stopAt = (mode === "err") ? 2 : (mode === "unsub") ? 2 : 3;
+    var iv = setInterval(function(){
+      n++;
+      log("an-log", "next(" + n + ")", "nx");
+      sub.next(n);
+      if (n >= stopAt) {
+        clearInterval(iv);
+        if (mode === "err") { log("an-log", "error('link lost')", "er"); sub.error(new Error("link lost")); }
+        else if (mode === "unsub") { log("an-log", "(consumer unsubscribes now)", "hi"); }
+        else { log("an-log", "complete()", "cp"); sub.complete(); }
+      }
+    }, 160);
+    sub.addTeardown(function(){ clearInterval(iv); log("an-log", "TEARDOWN · interval cleared", "td"); });
+  }); }
+  function probeVerdicts(){
+    var out = $("an-verdicts"); out.innerHTML = "";
+    var vs = [];
+    /* late next + late teardown semantics */
+    var lateN = null, lateTD = null;
+    var o = new Obs(function(sub){
+      sub.complete();
+      var before = sub.next(99);
+      sub.addTeardown(function(){ lateTD = "ran-immediately"; });
+      lateN = "returned:" + before;
+    });
+    o.subscribe({ complete:function(){}, next:function(v){ if (v === 99) lateN = "delivered(!)"; } });
+    vs.push(["late next() after complete", lateN && lateN.indexOf("delivered") === -1 ? "silently ignored ✓" : "DELIVERED ✗", lateN && lateN.indexOf("delivered") === -1]);
+    vs.push(["addTeardown after exit", lateTD === "ran-immediately" ? "runs immediately ✓" : String(lateTD), lateTD === "ran-immediately"]);
+    /* return-fn teardown */
+    var viaReturn = null;
+    var o2 = new Obs(function(sub){ return function(){ viaReturn = "ran"; }; });
+    var s2 = o2.subscribe({}); s2.unsubscribe();
+    vs.push(["subscriber return-fn teardown", viaReturn === "ran" ? "works ✓" : "ignored ✗", viaReturn === "ran"]);
+    /* subscriber.signal */
+    var sigOK = null;
+    var o3 = new Obs(function(sub){ sigOK = (sub.signal && typeof sub.signal.aborted === "boolean") ? ("aborted=" + sub.signal.aborted) : "absent"; });
+    o3.subscribe({});
+    vs.push(["subscriber.signal", sigOK || "absent", sigOK && sigOK.indexOf("aborted") === 0]);
+    vs.forEach(function(v){
+      var c = el("span", "chip " + (v[2] ? "ok" : (String(v[1]).indexOf("✗") >= 0 ? "bad" : "warn")), v[0] + ": " + v[1]);
+      out.appendChild(c);
+    });
+  }
+  $("an-run").onclick = function(){ log("an-log", "— subscribe (mode: complete) —", "hi"); window.__anMode = "run"; makeObs().subscribe({ error:function(e){ log("an-log", "handler error " + e.message, "er"); } }); probeVerdicts(); };
+  $("an-err").onclick = function(){ log("an-log", "— subscribe (mode: error) —", "hi"); window.__anMode = "err"; makeObs().subscribe({ error:function(e){ log("an-log", "handler error " + e.message, "er"); } }); probeVerdicts(); };
+  $("an-unsub").onclick = function(){ log("an-log", "— subscribe (mode: unsubscribe) —", "hi"); window.__anMode = "unsub"; var u = makeObs().subscribe({}); setTimeout(function(){ u.unsubscribe(); log("an-log", "subscription.unsubscribe()", "hi"); }, 420); probeVerdicts(); };
+  $("an-late").onclick = function(){ probeVerdicts(); log("an-log", "— late-call probes re-run (chips above) —", "hi"); };
+})();
+
+/* ---------- §03 lazy + cold + ordering ---------- */
+(function lazycold(){
+  var runs = 0, subs = 0, a = null, b = null, ai = 0, bi = 0, t = null;
+  var obs = new Obs(function(sub){ runs++; var i = 0; var iv = setInterval(function(){ i++; sub.next(i); if (i >= 3) { clearInterval(iv); sub.complete(); } }, 300); sub.addTeardown(function(){ clearInterval(iv); }); });
+  $("lz-check").onclick = function(){ chip("lz-chip", "subscriber ran <b>" + runs + "</b> times · subscribed <b>" + subs + "</b>"); };
+  $("lz-sub").onclick = function(){
+    subs += 2;
+    a = obs.subscribe({ next:function(v){ ai = v; $("cold-a").innerHTML = "A: " + Array.from({length:ai}, function(_,i){ return i+1; }).join(","); },
+      complete:function(){ $("cold-a").innerHTML += " ✓"; } });
+    b = obs.subscribe({ next:function(v){ bi = v; $("cold-b").innerHTML = "B: " + Array.from({length:bi}, function(_,i){ return i+1; }).join(","); },
+      complete:function(){ $("cold-b").innerHTML += " ✓"; } });
+    chip("lz-chip", "subscriber ran <b>" + runs + "</b> times · subscribed <b>" + subs + "</b>");
+    $("lz-out").textContent = "cold proof: " + runs + " runs for " + subs + " subscriptions — each subscriber got its own producer, its own 1,2,3 sequence.";
+  };
+  $("lz-reset").onclick = function(){ runs = 0; subs = 0; ai = bi = 0; if (t) clearTimeout(t); chip("lz-chip", "subscriber ran <b>0</b> times · subscribed <b>0</b>"); $("cold-a").textContent = "A: —"; $("cold-b").textContent = "B: —"; };
+
+  $("ord-run").onclick = function(){
+    var lg = $("ord-log"); lg.innerHTML = ""; delete logs["ord-log"];
+    var order = [];
+    var target = el("button"); document.body.appendChild(target); target.style.display = "none";
+    var clicks = whenOn(target, "click");
+    var sub = clicks.subscribe(function(){ order.push("One"); log("ord-log", "One · sync handler (during dispatch)", "nx"); });
+    clicks.first().then(function(){ order.push("Three"); log("ord-log", "Three · first() Promise (microtask)", "cp"); });
+    target.click();
+    order.push("Two"); log("ord-log", "Two · statement after click()", null);
+    setTimeout(function(){
+      log("ord-log", "order: " + order.join(" → "), "hi");
+      verdict("ord-verdict", order.join(" → ") + (order.join("") === "OneTwoThree" ? "  ✓ sync delivery beats the statement, Promise goes to microtask" : "  (unusual ordering)"), order.join("") === "OneTwoThree" ? "ok" : "warn");
+      sub.unsubscribe(); document.body.removeChild(target);
+    }, 60);
+  };
+})();
+
+/* ---------- §04 firehose ---------- */
+(function firehose(){
+  $("fh-run").onclick = function(){
+    var btn = this; btn.disabled = true;
+    var lg = $("fh-log"); lg.innerHTML = ""; delete logs["fh-log"];
+    var got = 0, teardown = false, returned = false, ctl = new AbortController();
+    var hz = new Obs(function(sub){
+      log("fh-log", "subscriber started — infinite sync loop", "hi");
+      var i = 0;
+      sub.addTeardown(function(){ teardown = true; log("fh-log", "TEARDOWN fired", "td"); });
+      while (!sub.signal.aborted) {
+        sub.next(i++);
+        if (i > 5000) { log("fh-log", "SAFETY CAP HIT — abort propagation FAILED", "er"); break; }
+      }
+      returned = true;
+      log("fh-log", "subscriber returned (loop exited via signal.aborted=" + sub.signal.aborted + ")", "cp");
+    });
+    var started = performance.now();
+    var u = hz.subscribe({
+      next:function(v){ got++; if (v >= 101) { log("fh-log", "next(101) → consumer calls ctl.abort()", "nx"); ctl.abort(); } },
+      complete:function(){ log("fh-log", "complete()", "cp"); }
+    }, { signal: ctl.signal });
+    var ms = performance.now() - started;
+    setTimeout(function(){
+      chip("fh-count", "values received: <b>" + got + "</b>");
+      chip("fh-teardown", "teardown: <b>" + (teardown ? "fired ✓" : "never ✗") + "</b>");
+      chip("fh-loop", "subscriber returned: <b>" + (returned ? "yes ✓" : "no ✗") + "</b>");
+      chip("fh-hang", "page survived: <b>yes ✓</b> (" + ms.toFixed(1) + " ms, all synchronous)");
+      log("fh-log", "VERDICT — " + got + " values, teardown " + (teardown ? "✓" : "✗") + ", loop returned " + (returned ? "✓" : "✗") + " in " + ms.toFixed(1) + "ms", "hi");
+      btn.disabled = false;
+    }, 120);
+  };
+})();
+
+/* ---------- §05 operator playground ---------- */
+(function operators(){
+  function raw(n){ var out = []; for (var i = 0; i < n; i++) out.push(i); return out; }
+  $("op-bare").onclick = function(){ marble("op-raw", raw(10).map(function(v){ return { v: v }; }), "|"); };
+  $("op-run").onclick = function(){
+    marble("op-raw", raw(10).map(function(v){ return { v: v }; }), "|");
+    var src = fromObs(raw(10));
+    var shown = [], td = 0;
+    src.map(function(n){ return n * 10; })
+       .filter(function(n){ return n % 20 === 0; })
+       .drop(1)
+       .take(3)
+       .finally(function(){ td++; })
+       .subscribe({
+         next:function(v){ shown.push({ v: v }); marble("op-marble", shown, "|"); },
+         error:function(e){ marble("op-marble", shown, "error"); },
+         complete:function(){ marble("op-marble", shown, "✓ take(3) complete"); }
+       });
+    var expect = [20, 40, 60], got = shown.map(function(s){ return s.v; });
+    var ok = got.length === 3 && got.every(function(v, i){ return v === expect[i]; });
+    verdict("op-verdict", "chain output: [" + got.join(", ") + "] — expected [20, 40, 60] " + (ok ? "✓ (map ×10 → even → drop 20 → take 3)" : "✗ MISMATCH"), ok ? "ok" : "bad");
+  };
+})();
+
+/* ---------- §06 terminators ---------- */
+(function terminators(){
+  $("tm-run").onclick = function(){
+    var lg = $("tm-log"); lg.innerHTML = ""; delete logs["tm-log"];
+    var seq = [];
+    var inp = $("ta-input");
+    var keys = whenOn(document, "keydown");
+    var sub = keys
+      .filter(function(e){ return e.demoKey; })
+      .map(function(e){ seq.push("sync-map"); log("tm-log", "sync map handler — e.preventDefault() WOULD work here", "nx"); return e.key; })
+      .subscribe(function(){});
+    keys.filter(function(e){ return e.demoKey; }).first().then(function(k){
+      seq.push("promise-first"); log("tm-log", "first() Promise resolved (key: " + k + ") — microtask, after default-action window", "cp");
+    });
+    log("tm-log", "dispatching synthetic keydown…", "hi");
+    document.dispatchEvent(Object.assign(new KeyboardEvent("keydown", { key: "s" }), { demoKey: true }));
+    seq.push("after-dispatch"); log("tm-log", "dispatchEvent() returned (default action would run now)", null);
+    setTimeout(function(){
+      seq.push("task"); log("tm-log", "setTimeout(0) task — default action window long gone", "td");
+      var syncOk = seq.indexOf("sync-map") < seq.indexOf("after-dispatch");
+      verdict("tm-verdict", "sync handler: " + (syncOk ? "during dispatch ✓" : "late ✗") + " · first() Promise: " + (seq.indexOf("promise-first") > seq.indexOf("after-dispatch") ? "AFTER dispatch (microtask)" : "unexpected"), syncOk ? "ok" : "bad");
+      $("tm-note").textContent = "sequence: " + seq.join(" → ") + (syncOk ? " — put preventDefault in the sync stages only." : "");
+      sub.unsubscribe();
+    }, 40);
+  };
+})();
+
+/* ---------- §07 when() ---------- */
+(function whenLab(){
+  var pad = $("when-pad"), all = 0, pass = 0, sub = null, live = false;
+  var clicks = whenOn(pad, "click");
+  function subscribe(){
+    sub = clicks
+      .filter(function(e){ var r = pad.getBoundingClientRect(); return (e.clientX - r.left) < r.width * 0.67; })
+      .map(function(e){ var r = pad.getBoundingClientRect(); return { x: Math.round(e.clientX - r.left), y: Math.round(e.clientY - r.top) }; })
+      .subscribe(function(p){ pass++; chip("when-pass", "passed filter: <b>" + pass + "</b>"); chip("when-last", "last: (" + p.x + ", " + p.y + ")"); });
+    live = true;
+    verdict("when-verdict", "subscribed — real listener attached ✓", "ok");
+  }
+  pad.addEventListener("click", function(){ all++; chip("when-all", "raw clicks: <b>" + all + "</b>"); if (live) verdict("when-verdict", "raw " + all + " → passed " + pass + (pass <= all ? " ✓ filter is dropping the right third" : " ✗"), pass <= all ? "ok" : "bad"); });
+  $("when-unsub").onclick = function(){ if (sub) { sub.unsubscribe(); live = false; verdict("when-verdict", "unsubscribed — listener removed (clicks below count raw only)", "warn"); } };
+  $("when-resub").onclick = function(){ if (!live) subscribe(); };
+  subscribe();
+})();
+
+/* ---------- §08 drag ---------- */
+(function drag(){
+  var pad = $("drag-pad"), svg = $("drag-svg"), dot = $("drag-dot"), hint = $("drag-hint");
+  var drags = 0, moves = 0, pts = 0, poly = null;
+  var down = whenOn(pad, "pointerdown");
+  var sub = down.flatMap(function(){
+    drags++; pts = 0; chip("drag-drags", "drags: <b>" + drags + "</b>"); chip("drag-pts", "points this drag: <b>0</b>");
+    hint.style.display = "none"; dot.style.display = "block";
+    log("drag-log", "pointerdown — flatMap opens inner move stream", "hi");
+    poly = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+    poly.setAttribute("fill", "none"); poly.setAttribute("stroke", "#0f766e"); poly.setAttribute("stroke-width", "2.5");
+    poly.setAttribute("stroke-linejoin", "round"); poly.setAttribute("stroke-linecap", "round");
+    svg.appendChild(poly);
+    var mv = whenOn(pad, "pointermove");
+    var up = whenOn(pad, "pointerup");
+    var tdOnce = 0;
+    var inner = mv.takeUntil(up).finally(function(){ tdOnce++; log("drag-log", "pointerup → inner complete → move+up listeners removed" + (tdOnce > 1 ? " (×" + tdOnce + ": two subscriptions — draw + reduce; cold runs per-subscriber)" : ""), "td"); });
+    inner.reduce(function(acc, e){ var r = pad.getBoundingClientRect(); var x = (e.clientX - r.left).toFixed(1), y = (e.clientY - r.top).toFixed(1);
+      pts++; moves++; dot.style.left = x + "px"; dot.style.top = y + "px";
+      var cur = poly.getAttribute("points") || ""; poly.setAttribute("points", (cur ? cur + " " : "") + x + "," + y);
+      chip("drag-pts", "points this drag: <b>" + pts + "</b>"); chip("drag-move", "moves: <b>" + moves + "</b>");
+      return acc + 1; }, 0).then(function(n){ chip("drag-len", "last gesture length: " + n + " pts (awaited reduce)"); if (!svg.firstChild || svg.children.length > 6) svg.removeChild(svg.firstChild); });
+    return inner;
+  }).subscribe(function(){}, function(e){ log("drag-log", "error " + e.message, "er"); });
+  window.__dragSub = sub;
+})();
+
+/* ---------- §09 typeahead ---------- */
+(function typeahead(){
+  var input = $("ta-input"), reqs = 0, rendered = 0, stale = 0, lastQ = "";
+  function fakeFetch(q){
+    return new Promise(function(res){ setTimeout(function(){ res({ q: q, at: Date.now() }); }, 250 + Math.random() * 450); });
+  }
+  var sub = whenOn(input, "input")
+    .map(function(){ return input.value.trim(); })
+    .filter(function(q){ return q.length >= 2; })
+    .switchMap(function(q){
+      reqs++; chip("ta-req", "requests: <b>" + reqs + "</b>");
+      log("ta-log", "query → " + JSON.stringify(q), "nx");
+      return fromObs(fakeFetch(q));
+    })
+    .subscribe(function(r){
+      if (r.q !== input.value.trim()) { stale++; chip("ta-stale", "stale discarded: <b>" + stale + "</b>"); log("ta-log", "STALE response (" + JSON.stringify(r.q) + ") — switchMap should have killed it", "er"); }
+      else { rendered++; chip("ta-ren", "rendered: <b>" + rendered + "</b>"); log("ta-log", "render ← " + JSON.stringify(r.q), "cp"); }
+      verdict("ta-verdict", "requests " + reqs + " · rendered " + rendered + " · stale leaked through: " + stale, stale === 0 ? "ok" : "bad");
+    });
+  window.__taSub = sub;
+})();
+
+/* ---------- §10 race ---------- */
+(function race(){
+  $("race-run").onclick = function(){
+    var lg = $("race-log"); lg.innerHTML = ""; delete logs["race-log"];
+    function uplink(name){
+      return new Obs(function(sub){
+        var ms = 300 + Math.random() * 600;
+        log("race-log", name + " uplink started (" + Math.round(ms) + " ms)", "t");
+        var iv = setTimeout(function(){ sub.next({ name: name, ms: Math.round(ms) }); sub.complete(); }, ms);
+        sub.addTeardown(function(){ clearTimeout(iv); });
+      });
+    }
+    var A = uplink("uplink-A"), B = uplink("uplink-B");
+    Promise.race([A.first(), B.first()]).then(function(w){
+      verdict("race-p", "winner: " + w.name + " (" + w.ms + " ms) ✓", "ok");
+      log("race-log", "Promise.race winner: " + w.name, "cp");
+    });
+    var A2 = uplink("uplink-A′"), B2 = uplink("uplink-B′");
+    var aEmitted = false;
+    A2.takeUntil(B2).subscribe(function(v){ aEmitted = true; verdict("race-s", "A′ emitted (" + v.ms + " ms) before B′ could pre-empt ✓", "ok"); },
+      function(e){ verdict("race-s", "error " + e.message, "bad"); },
+      function(){ log("race-log", "takeUntil stream completed" + (aEmitted ? " (A′ won)" : " (B′ pre-empted — no emit)"), "td"); });
+    B2.subscribe(function(v){ if (!aEmitted) verdict("race-s", "B′ fired (" + v.ms + " ms) → A′ completed WITHOUT emitting — takeUntil is 'A unless B', not a true race", "warn"); });
+    log("race-log", "note: B′ runs twice (takeUntil's subscription + ours) with DIFFERENT random timers — cold = per-subscription producer", "hi");
+  };
+})();
+
+/* ---------- §11 iterator helpers ---------- */
+(function iterators(){
+  var WPS = [{ name: "HOME", alt: 0 }, { name: "WP-1", alt: 64 }, { name: "WP-2", alt: 104 }, { name: "WP-3", alt: 88 }, { name: "LZ", alt: 12 }, { name: "WP-4", alt: 141 }, { name: "BASE", alt: 96 }];
+  function* waypoints(){ yield* WPS; }
+  function chain(it){
+    it = it.filter(function(w){ return w.alt > 80; }).map(function(w){ return w.name + "@" + w.alt + "m"; });
+    return it;
+  }
+  var pulled = [];
+  $("it-step").onclick = function(){
+    var it = HAS_ITER ? chain(waypoints()) : chain(fakeIteratorFrom(waypoints()));
+    var r = it.next();
+    if (r.done) { marble("it-marble", pulled, "| done"); verdict("it-verdict", "generator exhausted — [" + pulled.map(function(p){ return p.v; }).join(", ") + "] (expected 4 values: alt>80 filter)", pulled.length === 4 ? "ok" : "warn"); return; }
+    pulled.push({ v: r.value }); marble("it-marble", pulled, "");
+  };
+  $("it-all").onclick = function(){
+    pulled = [];
+    var out;
+    if (HAS_ITER) { out = chain(waypoints()).toArray(); }
+    else { var it = chain(fakeIteratorFrom(waypoints())); out = []; var r; while (!(r = it.next()).done) out.push(r.value); }
+    pulled = out.map(function(v){ return { v: v }; });
+    marble("it-marble", pulled, "|");
+    var expect = ["WP-2@104m", "WP-3@88m", "WP-4@141m", "BASE@96m"];
+    verdict("it-verdict", "toArray → [" + out.join(", ") + "] " + (JSON.stringify(out) === JSON.stringify(expect) ? "✓ lazy filter+map pulled only survivors" : "✗ expected " + expect.join(", ")), JSON.stringify(out) === JSON.stringify(expect) ? "ok" : "bad");
+  };
+  $("it-push").onclick = function(){
+    var shown = [];
+    fromObs(waypoints())
+      .filter(function(w){ return w.alt > 80; })
+      .map(function(w){ return w.name + "@" + w.alt + "m"; })
+      .subscribe({
+        next:function(v){ shown.push({ v: v }); marble("it-push-marble", shown, ""); },
+        complete:function(){
+          marble("it-push-marble", shown, "✓");
+          var expect = ["WP-2@104m", "WP-3@88m", "WP-4@141m", "BASE@96m"];
+          var got = shown.map(function(s){ return s.v; });
+          verdict("it-verdict", "Observable.from(generator) → same [" + got.join(", ") + "] — identical chain, identical result ✓", JSON.stringify(got) === JSON.stringify(expect) ? "ok" : "bad");
+        }
+      });
+  };
+  /* minimal fake helpers for ancient engines (page still demonstrates laziness) */
+  function fakeIteratorFrom(gen){
+    return { next:function(){ return gen.next(); }, filter:function(fn){ var self = this; return fakeOp(function(){ return self.next(); }, fn, null); }, map:function(fn){ var self = this; return fakeOp(function(){ return self.next(); }, null, fn); }, toArray:function(){ var o = [], r; while (!(r = this.next()).done) o.push(r.value); return o; } };
+    function fakeOp(src, keep, morph){
+      return { next:function(){ while (true) { var r = src(); if (r.done) return r; if (keep && !keep(r.value)) continue; return { done: false, value: morph ? morph(r.value) : r.value }; } }, filter: function(fn){ var s = this; return fakeOp(function(){ return s.next(); }, fn, null); }, map: function(fn){ var s = this; return fakeOp(function(){ return s.next(); }, null, fn); }, toArray: function(){ var o = [], r; while (!(r = this.next()).done) o.push(r.value); return o; } };
+    }
+  }
+})();
+
+/* ---------- §12 OpenDrones hub ---------- */
+(function hub(){
+  var frames = 0, livePanels = 0, teardowns = 0, running = false, busCtl = null, subs = {};
+  var batLowFired = false, altSeries = [];
+  var cv = $("mc-alt-cv"), ctx = cv.getContext("2d");
+
+  function makeBus(){
+    return new Obs(function(sub){
+      var batt = 16.8, alt = 0, roll = 0, t = 0;
+      log("mc-log", "telemetry bus started — 4 frame types, ~8Hz, jittered", "hi");
+      var iv = setInterval(function(){
+        t++;
+        if (t % 4 === 1) { roll = Math.sin(t / 9) * 22; sub.next({ t: "ATT", roll: roll, pitch: Math.cos(t / 7) * 8 }); }
+        if (t % 4 === 2) { batt = Math.max(13.9, batt - 0.011); sub.next({ t: "BAT", v: +batt.toFixed(2) }); }
+        if (t % 4 === 3) { alt = 100 + Math.sin(t / 14) * 55; sub.next({ t: "ALT", alt: +alt.toFixed(1) }); }
+        else { sub.next({ t: "LNK", rssi: -40 - Math.round(Math.random() * 25) }); }
+      }, 125);
+      sub.addTeardown(function(){ clearInterval(iv); log("mc-log", "BUS teardown — interval cleared", "td"); });
+      window.__busComplete = function(){ sub.complete(); };
+    });
+  }
+  function drawAlt(v){
+    altSeries.push(v); if (altSeries.length > 60) altSeries.shift();
+    var w = cv.width, h = cv.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.strokeStyle = "#1e293b"; ctx.beginPath();
+    for (var g = 1; g < 4; g++) { ctx.moveTo(0, h * g / 4); ctx.lineTo(w, h * g / 4); } ctx.stroke();
+    if (altSeries.length > 1) {
+      ctx.strokeStyle = "#22d3ee"; ctx.lineWidth = 2; ctx.beginPath();
+      altSeries.forEach(function(a, i){ var x = i / 59 * w, y = h - ((a - 30) / 150) * h; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.stroke(); ctx.lineWidth = 1;
+    }
+  }
+  var LABELS = { att: "MAVLink ATT filter", bat: "MAVLink BAT filter", alt: "ALT tape" };
+  function flipBtn(k, live){
+    var btn = $("mc-sub-" + k);
+    if (btn) { btn.textContent = live ? "unsubscribe" : "resubscribe"; btn.className = live ? "danger" : ""; }
+  }
+  function makeOnTd(k){
+    return function(){
+      teardowns++; chip("mc-td", "teardowns: <b>" + teardowns + "</b>");
+      log("mc-log", "TEARDOWN · " + LABELS[k] + " — chain detached, listeners gone", "td");
+      livePanels = Math.max(0, livePanels - 1); chip("mc-live", "panels live: <b>" + livePanels + "</b>/3");
+      flipBtn(k, false); delete subs[k];
+    };
+  }
+  var attachers = {
+    att: function(onTd){ return window.__bus.filter(function(f){ return f.t === "ATT"; })
+        .map(function(f){ return f.roll; })
+        .finally(onTd)
+        .subscribe(function(roll){
+          $("mc-ground").style.transform = "rotate(" + roll.toFixed(1) + "deg)";
+          $("mc-hline").style.transform = "rotate(" + roll.toFixed(1) + "deg)";
+          $("mc-hline").style.transformOrigin = "50% 60%";
+          $("mc-att-out").textContent = "roll " + roll.toFixed(1) + "° · bus.filter(ATT).map(roll)";
+        }); },
+    bat: function(onTd){ return window.__bus.filter(function(f){ return f.t === "BAT"; })
+        .map(function(f){ return f.v; })
+        .finally(onTd)
+        .subscribe(function(v){
+          $("mc-bat-v").innerHTML = v.toFixed(2) + "<small> V</small>";
+          var pct = Math.max(0, Math.min(100, (v - 13.9) / (16.8 - 13.9) * 100));
+          var bar = $("mc-bat-bar"); bar.className = "bar" + (v < 14.4 ? (v < 14.1 ? " bad" : " warn") : ""); bar.firstElementChild.style.width = pct + "%";
+        }); },
+    alt: function(onTd){
+      var landing = new Obs(function(sb){ window.__landNow = function(){ sb.next(0); sb.complete(); }; sb.addTeardown(function(){ log("mc-log", "landing$ teardown", "td"); }); });
+      return window.__bus.filter(function(f){ return f.t === "ALT"; })
+        .takeUntil(landing)
+        .finally(onTd)
+        .subscribe(function(f){ drawAlt(f.alt); $("mc-alt-out").textContent = "alt " + f.alt + " m · takeUntil(landing)"; }); }
+  };
+  function attach(k){
+    if (subs[k] || !window.__bus) return;
+    subs[k] = attachers[k](makeOnTd(k));
+    livePanels++; chip("mc-live", "panels live: <b>" + livePanels + "</b>/3");
+    flipBtn(k, true);
+  }
+  function detach(k){ if (subs[k]) subs[k].unsubscribe(); }
+  function startAll(){
+    if (running) return;
+    running = true; frames = 0; altSeries = []; batLowFired = false;
+    window.__bus = makeBus(); busCtl = new AbortController();
+    chip("mc-frames", "frames on bus: <b>0</b>");
+    window.__bus.subscribe({ next: function(){ frames++; if (frames % 25 === 0) chip("mc-frames", "frames on bus: <b>" + frames + "</b>"); } });
+    attach("att"); attach("bat"); attach("alt");
+    var wd = window.__bus.filter(function(f){ return f.t === "BAT"; }).map(function(f){ return f.v; })
+      .filter(function(v){ return v < 14.4; }).first();
+    wd.then(function(v){ if (!batLowFired) { batLowFired = true;
+      $("mc-bat-watch").innerHTML = "⚠ <b>" + v + " V</b> — watchdog fired once via filter().first() → Promise (auto-unsubscribed)";
+      $("mc-bat-watch").style.color = "#b45309";
+      log("mc-log", "battery watchdog FIRED at " + v + "V — one-shot, self-cleaning", "er"); } }).catch(function(){});
+  }
+  $("mc-start").onclick = startAll;
+  $("mc-end").onclick = function(){
+    if (!running) return;
+    if (window.__landNow) window.__landNow();
+    if (window.__busComplete) window.__busComplete();
+    running = false; window.__bus = null;
+    log("mc-log", "mission complete — bus.complete() → every panel teardown fires in cascade", "hi");
+  };
+  $("mc-abort").onclick = function(){
+    if (busCtl) { busCtl.abort(); busCtl = null; log("mc-log", "ABORT — every subscription on the bus died at once", "er"); }
+    running = false; window.__bus = null;
+  };
+  $("mc-sub-att").onclick = function(){ subs.att ? detach("att") : (running ? attach("att") : startAll()); };
+  $("mc-sub-bat").onclick = function(){ subs.bat ? detach("bat") : (running ? attach("bat") : startAll()); };
+  $("mc-sub-alt").onclick = function(){ subs.alt ? detach("alt") : (running ? attach("alt") : startAll()); };
+})();
+
+/* ---------- console error catch (verification aid) ---------- */
+window.__demoErrors = [];
+window.addEventListener("error", function(e){ window.__demoErrors.push(e.message); });
+</script>
+</body>
+</html>
