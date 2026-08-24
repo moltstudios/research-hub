@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MediaRecorder API — In-Browser DVR: Record Canvas, Mic & Screen to Video Files | Molt Research</title>
+<style>
+  :root{
+    --bg:#faf9f7; --card:#ffffff; --ink:#1c1917; --mut:#78716c; --line:#e7e2dc;
+    --acc:#0f766e; --acc-soft:#ccfbf1; --warn:#b45309; --warn-soft:#fef3c7;
+    --bad:#b91c1c; --bad-soft:#fee2e2; --ok:#15803d; --ok-soft:#dcfce7;
+    --dark:#0f172a; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.65 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px;margin:0 auto;padding:24px 20px 80px}
+  header{padding:44px 0 8px}
+  .kicker{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc);font-weight:700}
+  h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin:8px 0 10px;letter-spacing:-.02em}
+  .sub{color:var(--mut);font-size:16px;max-width:62ch}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 6px}
+  .badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--mut)}
+  .badge b{font-weight:700}
+  .badge.on{border-color:var(--ok);color:var(--ok);background:var(--ok-soft)}
+  .badge.off{border-color:var(--bad);color:var(--bad);background:var(--bad-soft)}
+  nav.toc{display:flex;flex-wrap:wrap;gap:6px;margin:20px 0 8px}
+  nav.toc a{font-size:12px;color:var(--mut);text-decoration:none;padding:4px 9px;border-radius:8px;border:1px solid var(--line);background:var(--card)}
+  nav.toc a:hover{color:var(--acc);border-color:var(--acc)}
+  section{margin:34px 0}
+  h2{font-size:21px;letter-spacing:-.01em;margin:0 0 4px}
+  h2 .no{color:var(--acc);font-family:var(--mono);font-size:15px;margin-right:8px}
+  h3{font-size:15px;margin:18px 0 6px}
+  p{margin:8px 0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin:14px 0}
+  .note{font-size:13px;color:var(--mut)}
+  .callout{border-left:3px solid var(--acc);background:var(--acc-soft);padding:10px 14px;border-radius:0 10px 10px 0;font-size:13.5px;margin:12px 0}
+  .callout.warn{border-color:var(--warn);background:var(--warn-soft)}
+  .callout.bad{border-color:var(--bad);background:var(--bad-soft)}
+  code{font-family:var(--mono);font-size:.88em;background:#f1efec;padding:1px 5px;border-radius:5px}
+  pre{background:var(--dark);color:#e2e8f0;font-family:var(--mono);font-size:12.5px;line-height:1.6;padding:14px 16px;border-radius:12px;overflow-x:auto;margin:12px 0}
+  pre b{color:#7dd3fc;font-weight:600}
+  pre i{color:#94ca7d;font-style:normal}
+  pre em{color:#fbbf24;font-style:normal}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:12px 0}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+  td.y{color:var(--ok);font-weight:600}
+  td.n{color:var(--bad);font-weight:600}
+  button{font:inherit;font-size:13px;font-weight:600;padding:7px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+  button:hover:not(:disabled){border-color:var(--acc);color:var(--acc)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+  button.primary:hover:not(:disabled){color:#fff;filter:brightness(1.08)}
+  button.danger{background:var(--bad);border-color:var(--bad);color:#fff}
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0}
+  .log{background:var(--dark);color:#cbd5e1;font-family:var(--mono);font-size:12px;line-height:1.7;padding:12px 14px;border-radius:12px;max-height:240px;overflow-y:auto;margin:10px 0}
+  .log .t{color:#64748b}
+  .log .ev{color:#7dd3fc;font-weight:600}
+  .log .ok{color:#94ca7d}
+  .log .bad{color:#fca5a5}
+  .log .warn{color:#fbbf24}
+  canvas.demo{background:#0b1220;border-radius:12px;display:block;width:100%;max-width:480px;border:1px solid var(--line)}
+  video.demo{background:#0b1220;border-radius:12px;display:block;width:100%;max-width:480px;border:1px solid var(--line)}
+  .readout{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:10px 0}
+  .stat{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+  .stat .k{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mut)}
+  .stat .v{font-family:var(--mono);font-size:15px;font-weight:600;margin-top:2px}
+  .stat .v.bad{color:var(--bad)} .stat .v.ok{color:var(--ok)} .stat .v.warn{color:var(--warn)}
+  input[type=range]{accent-color:var(--acc)}
+  .meter{height:10px;border-radius:6px;background:#e7e2dc;overflow:hidden;max-width:320px}
+  .meter i{display:block;height:100%;background:linear-gradient(90deg,var(--acc),#f59e0b);width:0%}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--acc-soft);color:var(--acc);margin-left:6px}
+  .rec-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--bad);margin-right:6px;animation:blink 1s infinite}
+  @keyframes blink{50%{opacity:.25}}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:680px){.split{grid-template-columns:1fr}}
+  footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);color:var(--mut);font-size:13px}
+  a{color:var(--acc)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="kicker">Molt Research · Web Platform API · Media Tier</div>
+  <h1>MediaRecorder API — In-Browser DVR: Record Canvas, Mic &amp; Screen to Video Files</h1>
+  <p class="sub"><code>new MediaRecorder(stream)</code> turns any <code>MediaStream</code> — canvas, webcam, mic, screen share, a Web Audio graph — into an encoded video/audio <code>Blob</code> entirely client-side. The missing RECORD button of the media tier: WebRTC streams it live, WebCodecs gives frame-level control, <b>MediaRecorder is the one-liner DVR</b>.</p>
+  <div class="badges" id="badges"></div>
+</header>
+
+<nav class="toc">
+  <a href="#s1">1 Why</a><a href="#s2">2 Anatomy</a><a href="#s3">3 Lifecycle Proof</a>
+  <a href="#s4">4 Codec Matrix</a><a href="#s5">5 Canvas DVR</a><a href="#s6">6 Ring Buffer</a>
+  <a href="#s7">7 Audio</a><a href="#s8">8 Screen &amp; Cam</a><a href="#s9">9 Freeze &amp; Pause</a>
+  <a href="#s10">10 ∞ Duration</a><a href="#s11">11 vs WebCodecs</a><a href="#s12">12 Mission DVR</a>
+</nav>
+
+<!-- ══════════════ §1 WHY ══════════════ -->
+<section id="s1">
+  <h2><span class="no">01</span>Why this matters</h2>
+  <div class="card">
+    <p>Every project we ship already generates the raw material for video: animated heroes, canvas telemetry, live feeds. Today that material dies in the tab. MediaRecorder closes the loop with <b>zero server, zero encoding pipeline, zero npm packages</b> — the browser's own hardware encoder writes the file.</p>
+    <table>
+      <tr><th>Consumer</th><th>Use case</th></tr>
+      <tr><td><b>Molt Studios</b></td><td>Export interactive case studies / hero animations as shareable MP4/WebM reels for socials &amp; proposals; client testimonial capture (mic + slides canvas); "record your configuration" on 3D configurators.</td></tr>
+      <tr><td><b>OpenDrones</b></td><td><b>Mission DVR:</b> a rolling buffer that keeps only the last N seconds, so an INCIDENT button saves pre-roll evidence <i>after</i> the event — without recording (and storing) entire flights. Pairs with WebRTC feeds (8c498f00) and the WAAPI mission replay (93ff8f41).</td></tr>
+    </table>
+    <div class="callout"><b>The tier story:</b> <code>getUserMedia</code>/<code>getDisplayMedia</code> acquire → <b>WebRTC</b> transports live → <b>MediaRecorder</b> captures to file → <b>WebCodecs</b> (§11) is the escape hatch when you need frame-accurate control or faster-than-realtime export.</div>
+  </div>
+</section>
+
+<!-- ══════════════ §2 ANATOMY ══════════════ -->
+<section id="s2">
+  <h2><span class="no">02</span>Anatomy — five methods, six events, one Blob</h2>
+  <div class="card">
+    <pre><b>const</b> stream = canvas.<b>captureStream</b>(30);            <i>// or getUserMedia / getDisplayMedia / audio graph</i>
+<b>const</b> rec = <b>new MediaRecorder</b>(stream, {
+  mimeType: <em>pickMime()</em>,                             <i>// MUST be probed — see §4</i>
+  videoBitsPerSecond: 2_500_000, audioBitsPerSecond: 128_000
+});
+rec.<b>ondataavailable</b> = e =&gt; chunks.push(e.data);       <i>// BlobEvent — collect EVERY chunk</i>
+rec.<b>onstop</b> = () =&gt; {
+  <b>const</b> blob = <b>new Blob</b>(chunks, { type: rec.mimeType });
+  video.src = URL.createObjectURL(blob);                <i>// play / download / upload</i>
+};
+rec.<b>start</b>(1000);                                      <i>// timeslice ms → chunk per second</i>
+rec.<b>pause</b>(); rec.<b>resume</b>(); rec.<b>requestData</b>(); rec.<b>stop</b>();</pre>
+    <p class="note">State machine: <code>inactive → recording ⇄ paused → inactive</code>. <code>requestData()</code> force-emits a chunk without stopping. <code>videoBitsPerSecond</code>/<code>audioBitsPerSecond</code> are <i>requests</i> — read back the actual values after construction (they differ per engine; §5 prints them live).</p>
+    <div class="callout warn"><b>Three sources of MediaStreams:</b> ① device — <code>getUserMedia</code>/<code>getDisplayMedia</code>; ② any <code>&lt;canvas&gt;</code> — <code>canvas.captureStream(fps)</code> (2D, WebGL, WebGPU — the animation itself becomes the video track); ③ Web Audio — <code>AudioContext.createMediaStreamDestination()</code> lets you <i>mix</i> mic + synthesized sound into one track (§7).</div>
+  </div>
+</section>
+
+<!-- ══════════════ §3 LIFECYCLE ══════════════ -->
+<section id="s3">
+  <h2><span class="no">03</span>Lifecycle proof — event order, live</h2>
+  <div class="card">
+    <p>The classic MediaRecorder bug is assuming <code>onstop</code> means "blob is ready". It doesn't — <b>the final <code>dataavailable</code> fires BEFORE <code>stop</code></b>. Build the Blob in <code>onstop</code> only because <code>stop</code> is ordered after the last <code>dataavailable</code>; never build it on a timer. Watch it happen:</p>
+    <div class="row">
+      <canvas id="c3" class="demo" width="480" height="270"></canvas>
+    </div>
+    <div class="row">
+      <button class="primary" id="b3rec">Record 2s, auto-stop</button>
+      <span class="note" id="s3state">state: idle</span>
+    </div>
+    <div class="log" id="l3">— press the button —</div>
+    <p class="note" id="o3"></p>
+  </div>
+</section>
+
+<!-- ══════════════ §4 CODEC MATRIX ══════════════ -->
+<section id="s4">
+  <h2><span class="no">04</span>The codec matrix — ask the browser, not the blog post</h2>
+  <div class="card">
+    <p><code>MediaRecorder.isTypeSupported(mime)</code> is the ONLY reliable feature test. The landscape (probed live below on <i>your</i> engine):</p>
+    <ul>
+      <li><b>Chromium &amp; Firefox</b>: WebM containers — VP8/VP9/AV1 video + Opus audio (FF also records Ogg/Opus audio).</li>
+      <li><b>Safari 14.1 → 18.3</b>: MP4 / H.264 + AAC <i>only</i>. WebM requests returned <code>false</code>, full stop.</li>
+      <li><b>Safari 18.4 (Mar 2025)+</b>: the dam broke — WebM (VP8/VP9 + Opus), Ogg, fragmented MP4, PCM/ALAC lossless, HEVC and AV1 recording. Safari flipped from the most restrictive recorder to arguably the most permissive.</li>
+    </ul>
+    <table id="t4"><tr><th>MIME</th><th>Supported here</th><th>Note</th></tr></table>
+    <div class="callout"><b>Production picker</b> — order candidates best-first, take the first hit, let the tail be the universal fallback:
+    <pre><b>const</b> CANDIDATES = [
+  <em>'video/mp4;codecs="avc1.42E01E,mp4a.40.2"'</em>,  <i>// H.264+AAC — plays everywhere incl. Safari&lt;18.4, editors</i>
+  <em>'video/webm;codecs="vp9,opus"'</em>,                <i>// Chromium/FF, best quality-per-bit</i>
+  <em>'video/webm;codecs="vp8,opus"'</em>,                <i>// universal WebM floor</i>
+  <em>'video/webm'</em>                                   <i>// last resort</i>
+];
+<b>const</b> mimeType = CANDIDATES.<b>find</b>(m =&gt; MediaRecorder.<b>isTypeSupported</b>(m)) ?? '';</pre>
+    Why MP4 first when Chrome can also record MP4 (H.264): <b>one file format across the whole client base</b> — socials, iMessage, and Premiere all accept it, and MP4 carries real duration metadata (§10).</div>
+  </div>
+</section>
+
+<!-- ══════════════ §5 CANVAS DVR ══════════════ -->
+<section id="s5">
+  <h2><span class="no">05</span>Canvas DVR lab — record the animation itself</h2>
+  <div class="card">
+    <p>A HUD canvas animates on rAF; <code>captureStream(30)</code> mirrors it into a 30fps video track. Record it, watch it back, read the <i>actual</i> encoder settings:</p>
+    <div class="row"><canvas id="c5" class="demo" width="480" height="270"></canvas></div>
+    <div class="row">
+      <button class="primary" id="b5rec">● Record</button>
+      <button class="danger" id="b5stop" disabled>■ Stop</button>
+      <label class="note">bitrate <input type="range" id="r5" min="500" max="6000" step="250" value="2500"> <b id="r5v">2.5</b> Mbps</label>
+    </div>
+    <div class="readout" id="ro5"></div>
+    <video id="v5" class="demo" controls playsinline style="display:none"></video>
+    <div class="row" id="dl5" style="display:none"><button id="b5dl">⬇ Download recording</button><span class="note" id="m5note"></span></div>
+    <div class="callout warn"><b>Gotchas baked into this lab:</b> ① the stream fps caps smoothness — animate faster than <code>captureStream(n)</code> and frames merge; ② WebGL canvases need <code>preserveDrawingBuffer:true</code> or capture-on-composite misses frames; ③ actual <code>videoBitsPerSecond</code> may differ from your request — always read it back (above).</div>
+  </div>
+</section>
+
+<!-- ══════════════ §6 RING BUFFER ══════════════ -->
+<section id="s6">
+  <h2><span class="no">06</span>Rolling buffer — "save the last 8 seconds" AFTER it happened</h2>
+  <div class="card">
+    <p>The OpenDrones killer pattern: with <code>start(1000)</code> you get a chunk per second. Keep a <b>ring of the last N chunks</b>, throw the rest away, and an INCIDENT button freezes evidence with pre-roll — recording 24/7 costs nothing because nothing is retained.</p>
+    <pre><b>const</b> KEEP = 8, ring = [];
+rec.ondataavailable = e =&gt; {
+  ring.push(e.data);
+  <b>if</b> (ring.length &gt; KEEP + 1) ring.<b>splice</b>(1, 1);   <i>// evict from index 1 — NEVER index 0!</i>
+};
+saveBtn.onclick = () =&gt; <b>new Blob</b>(ring, { type: rec.mimeType }); <i>// init segment + recent clusters</i></pre>
+    <div class="row"><canvas id="c6" class="demo" width="480" height="270"></canvas></div>
+    <div class="row">
+      <button class="primary" id="b6start">Start rolling buffer</button>
+      <button id="b6save" disabled>💾 Save last ~8s</button>
+      <span class="note" id="s6ring">ring: —</span>
+    </div>
+    <video id="v6" class="demo" controls playsinline style="display:none"></video>
+    <div class="row" id="d6" style="display:none">
+      <button id="b6noinit">☠ Replay WITHOUT the first chunk</button>
+      <span class="note" id="s6noinit"></span>
+    </div>
+    <div class="callout bad"><b>Live falsification target:</b> the WebM <i>init segment (EBML header + track info) lives in chunk #0</i>. Evict it like any other chunk and the saved file is garbage. That's why the eviction above starts at index 1 — and the ☠ button proves it by replaying a header-less blob.</div>
+  </div>
+</section>
+
+<!-- ══════════════ §7 AUDIO ══════════════ -->
+<section id="s7">
+  <h2><span class="no">07</span>Audio — mix mic + synthesis through a Web Audio destination</h2>
+  <div class="card">
+    <p><code>AudioContext.createMediaStreamDestination()</code> is a virtual speaker you can record. Route a mic (permission-gated) and an oscillator through it, meter it live, capture audio-only:</p>
+    <div class="row">
+      <button class="primary" id="b7mic">🎙 Enable mic</button>
+      <button id="b7osc">Add 440Hz tone (mic-free fallback)</button>
+      <button class="danger" id="b7stop" disabled>■ Stop sources</button>
+    </div>
+    <div class="row"><div class="meter"><i id="m7"></i></div><span class="note" id="s7">sources: none</span></div>
+    <div class="row">
+      <button class="primary" id="b7rec" disabled>● Record audio</button>
+      <button id="b7play" disabled>▶ Play back</button>
+    </div>
+    <p class="note">MIME: <code>audio/webm;codecs=opus</code> on Chromium/FF/Safari 18.4+, falling back to <code>audio/mp4</code> on older Safari — same picker discipline as §4.</p>
+  </div>
+</section>
+
+<!-- ══════════════ §8 SCREEN & CAM ══════════════ -->
+<section id="s8">
+  <h2><span class="no">08</span>Screen &amp; webcam — the other two faucets</h2>
+  <div class="card">
+    <p><code>getDisplayMedia()</code> (screen/tab/window picker — Chrome supports <code>preferCurrentTab</code> for in-app recording) and <code>getUserMedia({video:true})</code> both hand you recordable streams. Permission-gated, so these buttons just work when you grant:</p>
+    <div class="row">
+      <button class="primary" id="b8screen">🖥 Record screen — 8s</button>
+      <button class="primary" id="b8cam">📷 Record webcam — 8s</button>
+    </div>
+    <video id="v8" class="demo" controls playsinline style="display:none"></video>
+    <p class="note" id="s8"></p>
+    <div class="callout warn">Stopping the shared track (browser UI "Stop sharing") ends the stream — <code>MediaRecorder</code> fires <code>stop</code> automatically. Listen for track <code>ended</code> to flush UI state, or your REC badge keeps blinking over a dead file.</div>
+  </div>
+</section>
+
+<!-- ══════════════ §9 FREEZE & PAUSE ══════════════ -->
+<section id="s9">
+  <h2><span class="no">09</span>The hidden-tab freeze — and pause/resume</h2>
+  <div class="card">
+    <p>Canvas animation runs on rAF; <b>rAF suspends in background tabs</b>. Record, switch tabs for ~5s, come back: the WebM shows a frozen frame while wall-clock (and audio, if any) runs on. The recorder never stops — your source just stops painting.</p>
+    <div class="row"><canvas id="c9" class="demo" width="480" height="270"></canvas></div>
+    <div class="row">
+      <button class="primary" id="b9rec">● Record (10s)</button>
+      <button id="b9pause" disabled>⏸ Pause</button>
+      <button id="b9resume" disabled>⏵ Resume</button>
+      <span class="note" id="s9"></span>
+    </div>
+    <video id="v9" class="demo" controls playsinline style="display:none"></video>
+    <div class="log" id="l9"></div>
+    <div class="callout"><b>Fix for mission-critical recording:</b> paint from a Worker via <code>transferControlToOffscreen()</code> — worker rAF keeps running in background tabs, so the stream never freezes. That's the OffscreenCanvas entry (d73ebc12) doing DVR duty. Pause/resume, by contrast, is clean: a paused recorder emits NOTHING (no gap encoded), timestamps stay continuous.</div>
+  </div>
+</section>
+
+<!-- ══════════════ §10 DURATION ══════════════ -->
+<section id="s10">
+  <h2><span class="no">10</span>The <code>duration: Infinity</code> file — live falsification</h2>
+  <div class="card">
+    <p>Chromium's WebM muxer streams clusters without a final <code>Duration</code> element. The recorded FILE has no duration metadata — scrub bars break, editors complain, <code>&lt;video&gt;.duration</code> reports <b>Infinity</b>. Still true in 2026 (three repair libraries are actively maintained: ts-ebml, fix-webm-duration, webm-duration-fix). Probe it:</p>
+    <div class="row"><button class="primary" id="b10">Record 3s → probe duration → apply fix</button></div>
+    <div class="readout" id="ro10"></div>
+    <pre><b>const</b> v = document.querySelector(<i>'video'</i>);
+v.src = URL.createObjectURL(webmBlob);
+v.onloadedmetadata = () =&gt; {
+  <b>if</b> (v.duration === <em>Infinity</em>) {
+    v.<b>currentTime</b> = <em>1e101</em>;                    <i>// force seek past EOF — engine computes real length</i>
+    v.ontimeupdate = v.ontimeupdate || (() =&gt; {
+      v.ontimeupdate = <b>null</b>; v.currentTime = 0;   <i>// now v.duration is the REAL number</i>
+    });
+  }
+};</pre>
+    <div class="callout bad"><b>Honest limits:</b> the 1e101 trick repairs the <i>element</i>, not the <i>file</i> — the downloaded WebM still lacks metadata. For file-level repair append the duration element with <code>fix-webm-duration</code> (pure JS, ~2KB), or sidestep the whole class of bugs by recording MP4 when the engine allows (§4 picker puts H.264 MP4 first for exactly this reason).</div>
+  </div>
+</section>
+
+<!-- ══════════════ §11 VS WEBCODECS ══════════════ -->
+<section id="s11">
+  <h2><span class="no">11</span>MediaRecorder vs WebCodecs — when to reach higher</h2>
+  <div class="card">
+    <table>
+      <tr><th></th><th>MediaRecorder</th><th>WebCodecs + muxer</th><th>ffmpeg.wasm</th></tr>
+      <tr><td><b>Model</b></td><td>Realtime black box: stream in → encoded Blob out</td><td>Frame-accurate: you feed VideoFrames, get EncodedVideoChunks, mux yourself (mediabunny, formerly mp4-muxer)</td><td>Transcode anything, ~25MB wasm</td></tr>
+      <tr><td><b>Speed</b></td><td>1× (wall clock)</td><td><b>Faster than realtime</b> — render 1000 frames, encode, done</td><td>Slow (wasm single-thread unless COOP/COEP)</td></tr>
+      <tr><td><b>Control</b></td><td>mime, bitrates, timeslice — that's it</td><td>Per-frame keyframes, GOP, size changes, HDR, precise seeking</td><td>Everything ffmpeg does</td></tr>
+      <tr><td><b>Effort</b></td><td><b>~10 lines</b></td><td>~150 lines + muxer lib</td><td>Pipeline glue + memory</td></tr>
+      <tr><td><b>Use when</b></td><td>Recording live/interactive sessions (DVR, testimonials, screen capture)</td><td>Exporting rendered content (reels, GIF-ish clips, offline render)</td><td>Transcoding existing files client-side</td></tr>
+    </table>
+    <p class="note">Real-world datapoint: apps that shipped MediaRecorder→WebM→ffmpeg.wasm transcode pipelines have publicly replaced the ffmpeg leg with WebCodecs+MP4 muxing for 5-20× faster exports. Rule of thumb: <b>if a human watches it happen live, MediaRecorder; if a machine renders it, WebCodecs.</b></p>
+  </div>
+</section>
+
+<!-- ══════════════ §12 MISSION DVR ══════════════ -->
+<section id="s12">
+  <h2><span class="no">12</span>Capstone — OpenDrones Mission DVR + Molt reel export</h2>
+  <div class="card">
+    <p>Everything composed: synthetic MAVLink-style telemetry paints a HUD canvas, a 10-second ring buffer rolls underneath, and one button saves pre-roll evidence. The Molt card records the same canvas as a branded reel — this is the entire production feature, in one section.</p>
+    <div class="row"><canvas id="c12" class="demo" width="640" height="360" style="max-width:640px"></canvas></div>
+    <div class="readout" id="ro12"></div>
+    <div class="row">
+      <button class="primary" id="b12arm">Arm &amp; start DVR</button>
+      <button class="danger" id="b12inc" disabled>⚠ INCIDENT — save last 10s</button>
+      <button id="b12reel" disabled>🎬 Molt: export 6s reel</button>
+      <span class="note" id="s12"></span>
+    </div>
+    <video id="v12" class="demo" controls playsinline style="display:none"></video>
+    <div class="row" id="d12" style="display:none"><a id="a12" class="note" download>⬇ download evidence clip</a></div>
+  </div>
+  <div class="card">
+    <h3>Adoption matrix &amp; rules</h3>
+    <table>
+      <tr><th>Capability</th><th>Status (Aug 2026)</th><th>Ship?</th></tr>
+      <tr><td>MediaRecorder core</td><td class="y">Baseline — Chrome 49+ (2016), Edge 79+, Firefox 29+ (2013!), Safari 14.1 / iOS 14.5+, Samsung 5+ ≈ 98%</td><td class="y">Ungated</td></tr>
+      <tr><td><code>isTypeSupported</code> probing</td><td class="y">All engines</td><td class="y">Always — never UA-sniff</td></tr>
+      <tr><td>WebM recording in Safari</td><td class="y">18.4+ (Mar 2025); MP4-only before</td><td class="y">via picker</td></tr>
+      <tr><td>canvas.captureStream()</td><td class="y">All three engines</td><td class="y">Probe-then-use</td></tr>
+      <tr><td>WebM duration metadata</td><td class="n">Missing on Chromium to this day</td><td class="y">1e101 trick / repair lib / prefer MP4</td></tr>
+    </table>
+    <p class="note"><b>Rules:</b> ① collect chunks in <code>dataavailable</code>, assemble in <code>stop</code> — no timers. ② Probe every MIME with <code>isTypeSupported</code>; order MP4 first for shareability. ③ Ring buffers evict from index 1, never 0. ④ Hidden tabs freeze rAF-painted sources — OffscreenCanvas workers for always-on DVR. ⑤ Revoke <code>createObjectURL</code>s after download. ⑥ Secure context required for device capture; canvas→file works anywhere.</p>
+    <p class="note"><b>Pairs with:</b> WebRTC + WebCodecs streaming (8c498f00) · OffscreenCanvas worker paint (d73ebc12) · WAAPI mission replay (93ff8f41) · Web Locks for single-recorder coordination across tabs (ddb4cb2c) · OPFS to persist evidence offline (c19904de).</p>
+  </div>
+  <footer>Research entry: MediaRecorder API — In-Browser DVR · Molt Research · 2026-08-24 · all labs run 100% client-side — no network calls after page load.</footer>
+</section>
+</div>
+
+<script>
+'use strict';
+/* ─── helpers ─────────────────────────────────────────── */
+const $ = id => document.getElementById(id);
+const fmtB = b => b < 1024 ? b + ' B' : b < 1048576 ? (b/1024).toFixed(1) + ' KB' : (b/1048576).toFixed(2) + ' MB';
+const CAND = ['video/mp4;codecs="avc1.42E01E,mp4a.40.2"','video/webm;codecs="vp9,opus"','video/webm;codecs="vp8,opus"','video/webm'];
+const pickMime = () => ('MediaRecorder' in window) ? (CAND.find(m => MediaRecorder.isTypeSupported(m)) ?? '') : '';
+const MIME = pickMime();
+const has = 'MediaRecorder' in window;
+
+/* ─── §0 badges ───────────────────────────────────────── */
+(function(){
+  const b = $('badges'); const add = (label, on, txt) => {
+    const s = document.createElement('span');
+    s.className = 'badge ' + (on === null ? 'wait' : on ? 'on' : 'off');
+    s.innerHTML = '<b>' + (on === null ? '?' : on ? '✓' : '✗') + '</b> ' + label + (txt ? ' · ' + txt : '');
+    b.appendChild(s);
+  };
+  add('MediaRecorder', has, has ? 'Baseline' : 'unsupported');
+  add('canvas.captureStream', !!HTMLCanvasElement.prototype.captureStream);
+  add('isSecureContext', window.isSecureContext);
+  const tags = [['MP4/H.264', CAND[0]], ['WebM/VP9', CAND[1]], ['WebM/VP8', CAND[2]]];
+  tags.forEach(([n, m]) => add(n, has && MediaRecorder.isTypeSupported(m)));
+  const el = document.createElement('span'); el.className = 'badge';
+  el.innerHTML = 'picked: <b>' + (MIME ? MIME.replace('codecs=','').slice(0, 44) : 'none') + '</b>';
+  b.appendChild(el);
+})();
+
+/* ─── HUD painter factory (shared by §3/§5/§6/§9/§12) ─── */
+function hudPainter(canvas, opts = {}) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  let t = 0, raf = 0, running = false;
+  const draw = () => {
+    t += 1/30;
+    const alt = 120 + 40 * Math.sin(t * .7), spd = 14 + 4 * Math.sin(t * .5 + 1);
+    const pitch = 12 * Math.sin(t * .8), roll = 18 * Math.sin(t * .45);
+    ctx.fillStyle = '#0b1220'; ctx.fillRect(0, 0, W, H);
+    // horizon
+    ctx.save(); ctx.translate(W/2, H/2); ctx.rotate(roll * Math.PI/180);
+    const g = ctx.createLinearGradient(0, -H, 0, H);
+    g.addColorStop(.5, '#123a5c'); g.addColorStop(.5, '#3f2d14'); 
+    ctx.fillStyle = g; ctx.fillRect(-W, -H + pitch * 2, W*2, H*2);
+    ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(-W, 0); ctx.lineTo(W, 0); ctx.stroke();
+    for (let i = -4; i <= 4; i++) { if (!i) continue;
+      ctx.beginPath(); ctx.moveTo(i*40, -14); ctx.lineTo(i*40, 14); ctx.stroke(); }
+    ctx.restore();
+    // center reticle
+    ctx.strokeStyle = '#4ade80'; ctx.lineWidth = 2;
+    ctx.strokeRect(W/2-38, H/2-4, 22, 8); ctx.strokeRect(W/2+16, H/2-4, 22, 8);
+    ctx.beginPath(); ctx.moveTo(W/2-6, H/2); ctx.lineTo(W/2+6, H/2); ctx.stroke();
+    // drone dot path
+    const dx = W/2 + (W*.36) * Math.sin(t * .6), dy = H/2 + (H*.3) * Math.sin(t * .9 + 2);
+    ctx.fillStyle = '#fbbf24'; ctx.beginPath(); ctx.arc(dx, dy, 5, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(251,191,36,.35)';
+    ctx.beginPath(); ctx.arc(dx, dy, 11 + 6 * Math.sin(t*3), 0, 7); ctx.stroke();
+    // telemetry column
+    ctx.fillStyle = 'rgba(2,6,23,.55)'; ctx.fillRect(8, 8, 118, 74);
+    ctx.fillStyle = '#94ca7d'; ctx.font = '600 11px ' + 'ui-monospace,monospace';
+    const batt = Math.max(20, 100 - Math.floor(t * .8));
+    ctx.fillText('ALT ' + alt.toFixed(0) + ' m', 16, 26);
+    ctx.fillText('SPD ' + spd.toFixed(1) + ' m/s', 16, 42);
+    ctx.fillText('BAT ' + batt + '%', 16, 58);
+    ctx.fillStyle = batt < 35 ? '#fca5a5' : '#7dd3fc';
+    ctx.fillText(opts.label || 'REC', 16, 74);
+    if (opts.clock !== false) {
+      ctx.fillStyle = 'rgba(148,163,184,.9)'; ctx.textAlign = 'right';
+      ctx.fillText(new Date().toLocaleTimeString('en-US', {hour12:false}), W-12, H-12);
+      ctx.textAlign = 'left';
+    }
+  };
+  return {
+    start(){ if (running) return; running = true;
+      const loop = () => { if (!running) return; draw(); raf = requestAnimationFrame(loop); };
+      loop(); },
+    stop(){ running = false; cancelAnimationFrame(raf); },
+    draw
+  };
+}
+
+/* ─── §3 lifecycle ────────────────────────────────────── */
+(function(){
+  const p = hudPainter($('c3'), {label:'LIFE', clock:false});
+  p.start(); const log = $('l3'); const t0 = () => (performance.now()/1000).toFixed(3);
+  const line = (cls, txt) => { const d = document.createElement('div');
+    d.innerHTML = '<span class="t">[' + t0() + 's]</span> <span class="' + cls + '">' + txt + '</span>';
+    log.appendChild(d); log.scrollTop = 1e6; };
+  $('b3rec').onclick = async () => {
+    log.innerHTML = ''; $('o3').textContent = '';
+    if (!has) { line('bad', 'MediaRecorder missing'); return; }
+    const rec = new MediaRecorder($('c3').captureStream(30), { mimeType: MIME });
+    const chunks = [];
+    line('warn', 'construct — state=' + rec.state);
+    rec.onstart   = () => line('ev', 'start       → state=' + rec.state);
+    rec.onpause   = () => line('ev', 'pause       → state=' + rec.state);
+    rec.onresume  = () => line('ev', 'resume      → state=' + rec.state);
+    rec.ondataavailable = e => line('ok', 'dataavailable — ' + fmtB(e.data.size));
+    rec.onstop    = () => { line('ev', 'stop        → state=' + rec.state);
+      line('ok', 'BLOB ready: ' + fmtB(chunks.reduce((a,c)=>a+c.size,0)) + ' (' + chunks.length + ' chunks)');
+      $('o3').innerHTML = 'Verdict: the final <b>dataavailable</b> fired <b>before</b> <b>stop</b> — assemble in onstop, never on a timer. Chunks: ' + chunks.length + '.'; };
+    rec.start(700);
+    setTimeout(() => { $('s3state').textContent = 'state: pausing…'; rec.pause();
+      setTimeout(() => { $('s3state').textContent = 'state: resuming…'; rec.resume(); }, 400); }, 600);
+    setTimeout(() => { $('s3state').textContent = 'state: stopping…'; rec.stop(); $('s3state').textContent = 'state: idle'; }, 2200);
+  };
+})();
+
+/* ─── §4 codec matrix ─────────────────────────────────── */
+(function(){
+  const rows = [
+    ['video/mp4;codecs="avc1.42E01E,mp4a.40.2"', 'H.264+AAC — Safari classic, universal playback'],
+    ['video/mp4', 'MP4 bare — Safari accepts'],
+    ['video/webm;codecs="vp9,opus"', 'Chromium/FF best quality-per-bit'],
+    ['video/webm;codecs="vp8,opus"', 'WebM floor'],
+    ['video/webm;codecs="av1,opus"', 'AV1 — Chromium'],
+    ['video/webm;codecs="h264,opus"', 'H.264 inside WebM — Chromium'],
+    ['audio/webm;codecs=opus', 'audio-only everywhere but old Safari'],
+    ['audio/mp4', 'old-Safari audio fallback'],
+    ['audio/ogg;codecs=opus', 'Firefox extra'],
+  ];
+  const t = $('t4');
+  rows.forEach(([m, note]) => {
+    const ok = has && MediaRecorder.isTypeSupported(m);
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td><code>' + m + '</code></td><td class="' + (ok?'y':'n') + '">' + (ok ? '✓ YES' : '✗ no') + '</td><td class="note">' + note + '</td>';
+    t.appendChild(tr);
+  });
+})();
+
+/* ─── §5 canvas DVR ───────────────────────────────────── */
+let lastBlob5 = null, lastType5 = '';
+(function(){
+  const p = hudPainter($('c5'), {label:'DVR-5'}); p.start();
+  const upd = v => $('r5v').textContent = (v/1000).toFixed(1);
+  $('r5').oninput = e => upd(e.target.value);
+  let rec = null; const chunks = [];
+  $('b5rec').onclick = () => {
+    if (!has) return alert('MediaRecorder unsupported');
+    const vbr = +$('r5').value * 1000;
+    rec = new MediaRecorder($('c5').captureStream(30), { mimeType: MIME, videoBitsPerSecond: vbr });
+    chunks.length = 0;
+    rec.ondataavailable = e => chunks.push(e.data);
+    rec.onstop = () => {
+      lastType5 = rec.mimeType; lastBlob5 = new Blob(chunks, { type: lastType5 });
+      const realDur = new Date() - t0wall;
+      $('ro5').innerHTML = stat('file size', fmtB(lastBlob5.size)) + stat('chunks', chunks.length)
+        + stat('asked vbr', (vbr/1e6).toFixed(2) + ' Mbps')
+        + stat('ACTUAL vbr', (rec.videoBitsPerSecond/1e6).toFixed(2) + ' Mbps')
+        + stat('wall clock', (realDur/1000).toFixed(1) + 's')
+        + stat('blob type', lastType5.replace('codecs=',''));
+      const v = $('v5'); v.style.display = 'block';
+      v.src = URL.createObjectURL(lastBlob5);
+      $('dl5').style.display = 'flex';
+      $('b5dl').onclick = () => dl(lastBlob5, 'dvr-clip.' + ext(lastType5));
+      $('m5note').textContent = 'duration probe lives in §10 ↓ (spoiler: ' + (lastType5.includes('webm') ? 'Infinity on Chromium' : 'real number in MP4') + ')';
+    };
+    const t0wall = new Date();
+    rec.start(500);
+    $('b5rec').disabled = true; $('b5stop').disabled = false;
+    $('b5rec').innerHTML = '<span class="rec-dot"></span>Recording…';
+  };
+  $('b5stop').onclick = () => { try { rec.stop(); } catch(e){} $('b5rec').disabled = false; $('b5stop').disabled = true; $('b5rec').textContent = '● Record'; };
+})();
+const stat = (k, v, cls='') => '<div class="stat"><div class="k">' + k + '</div><div class="v ' + cls + '">' + v + '</div></div>';
+const dl = (blob, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); };
+const ext = t => t.includes('mp4') ? 'mp4' : 'webm';
+
+/* ─── §6 ring buffer ──────────────────────────────────── */
+(function(){
+  const p = hudPainter($('c6'), {label:'RING'}); p.start();
+  const KEEP = 9; let ring = [], rec = null, n = 0;
+  $('b6start').onclick = () => {
+    if (!has) return alert('MediaRecorder unsupported');
+    if (rec && rec.state === 'recording') { rec.stop(); return; }
+    ring = []; n = 0;
+    rec = new MediaRecorder($('c6').captureStream(30), { mimeType: MIME });
+    rec.ondataavailable = e => {
+      ring.push(e.data); n++;
+      if (ring.length > KEEP + 1) ring.splice(1, 1);   // evict index 1.. NEVER 0 (init segment)
+      $('s6ring').textContent = 'ring: ' + ring.length + ' chunks (~' + Math.min(n, KEEP) + 's) · total seen ' + n + 's';
+    };
+    rec.onstop = () => { $('b6start').textContent = 'Start rolling buffer'; };
+    rec.start(1000);
+    $('b6start').textContent = '■ Stop rolling';
+    $('b6save').disabled = false;
+  };
+  $('b6save').onclick = () => {
+    if (rec && rec.state === 'recording') rec.stop();
+    setTimeout(() => {
+      const blob = new Blob(ring, { type: MIME });
+      const v = $('v6'); v.style.display = 'block'; v.src = URL.createObjectURL(blob);
+      $('d6').style.display = 'flex'; $('s6noinit').textContent = 'blob: ' + fmtB(blob.size) + ' (' + ring.length + ' chunks incl. init)';
+    }, 150);
+  };
+  $('b6noinit').onclick = () => {
+    if (ring.length < 2) return;
+    const broken = new Blob(ring.slice(1), { type: MIME });
+    const v = $('v6'); v.style.display = 'block';
+    v.onerror = () => $('s6noinit').innerHTML = '<b style="color:var(--bad)">✗ video error — header-less WebM is unplayable</b> (' + fmtB(broken.size) + ' of data, dead on arrival)';
+    v.src = URL.createObjectURL(broken);
+    $('s6noinit').textContent = 'replaying without chunk #0…';
+  };
+})();
+
+/* ─── §7 audio ────────────────────────────────────────── */
+(function(){
+  let ac = null, dest = null, mic = null, osc = null, meter = null, raf = 0;
+  let rec = null; const chunks = [];
+  let tap = null;
+  const stopAll = () => {
+    cancelAnimationFrame(raf);
+    if (mic) { mic.getTracks().forEach(t => t.stop()); mic = null; }
+    if (osc) { try { osc.stop(); } catch(e){} osc = null; }
+    tap = null;
+    $('s7').textContent = 'sources: none'; $('m7').style.width = '0%';
+    $('b7stop').disabled = true; $('b7rec').disabled = true;
+  };
+  $('b7mic').onclick = async () => {
+    try {
+      mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) { $('s7').textContent = 'mic denied — use the tone button'; return; }
+    if (!ac) { ac = new AudioContext(); dest = ac.createMediaStreamDestination(); }
+    ac.createMediaStreamSource(mic).connect(dest);
+    $('s7').textContent = 'sources: mic'; wireMeter(); $('b7stop').disabled = false; $('b7rec').disabled = false;
+  };
+  $('b7osc').onclick = () => {
+    if (!ac) { ac = new AudioContext(); dest = ac.createMediaStreamDestination(); }
+    if (osc) return;
+    osc = ac.createOscillator(); osc.frequency.value = 440;
+    const g = ac.createGain(); g.gain.value = .08;
+    osc.connect(g); g.connect(dest); osc.start();
+    if (meter) osc.connect(tap);                       // late source → feed existing meter tap
+    $('s7').textContent = 'sources: ' + (mic ? 'mic + ' : '') + '440Hz'; wireMeter();
+    $('b7stop').disabled = false; $('b7rec').disabled = false;
+  };
+  $('b7stop').onclick = stopAll;
+  function wireMeter(){
+    if (meter) return;
+    meter = ac.createAnalyser(); meter.fftSize = 256;
+    // analyser taps the same graph via a parallel gain node
+    const tapNode = ac.createGain(); tapNode.gain.value = 1;
+    tap = tapNode;
+    if (osc) osc.connect(tapNode); if (mic) ac.createMediaStreamSource(mic).connect(tapNode);
+    tapNode.connect(meter);
+    const data = new Uint8Array(meter.frequencyBinCount);
+    const loop = () => { meter.getByteTimeDomainData(data);
+      let peak = 0; for (const d of data) peak = Math.max(peak, Math.abs(d - 128));
+      $('m7').style.width = Math.min(100, peak * 1.6) + '%';
+      raf = requestAnimationFrame(loop); };
+    loop();
+  }
+  $('b7rec').onclick = () => {
+    const aMime = ['audio/webm;codecs=opus','audio/mp4','audio/webm'].find(m => MediaRecorder.isTypeSupported(m));
+    rec = new MediaRecorder(dest.stream, { mimeType: aMime });
+    chunks.length = 0;
+    rec.ondataavailable = e => chunks.push(e.data);
+    rec.onstop = () => {
+      const blob = new Blob(chunks, { type: rec.mimeType });
+      const url = URL.createObjectURL(blob);
+      const old = $('a7'); if (old) old.remove();
+      const a = document.createElement('audio'); a.id = 'a7';
+      a.controls = true; a.src = url; a.style.width = '100%'; a.style.marginTop = '8px';
+      $('b7play').parentElement.appendChild(a);
+      $('b7play').disabled = false; $('b7play').onclick = () => a.play();
+    };
+    rec.start(); $('b7rec').disabled = true;
+    setTimeout(() => { rec.stop(); $('b7rec').disabled = false; }, 4000);
+    $('b7rec').textContent = '● Recording 4s…';
+    setTimeout(() => $('b7rec').textContent = '● Record audio', 4000);
+  };
+})();
+
+/* ─── §8 screen & cam ─────────────────────────────────── */
+(function(){
+  async function recordFrom(getStream, label){
+    try {
+      const stream = await getStream();
+      const rec = new MediaRecorder(stream, { mimeType: pickMime() || undefined, videoBitsPerSecond: 3e6 });
+      const chunks = [];
+      rec.ondataavailable = e => chunks.push(e.data);
+      rec.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunks, { type: rec.mimeType });
+        const v = $('v8'); v.style.display = 'block'; v.src = URL.createObjectURL(blob);
+        $('s8').textContent = label + ': recorded ' + fmtB(blob.size) + ' (' + rec.mimeType + ')';
+      };
+      rec.start(500);
+      $('s8').textContent = label + ': recording 8s… (stop sharing early also finalizes)';
+      setTimeout(() => rec.state === 'recording' && rec.stop(), 8000);
+    } catch (e) { $('s8').textContent = label + ': ' + (e.name === 'NotAllowedError' ? 'permission denied' : e.message); }
+  }
+  $('b8screen').onclick = () => recordFrom(() => navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: false, preferCurrentTab: false }), 'Screen');
+  $('b8cam').onclick = () => recordFrom(() => navigator.mediaDevices.getUserMedia({ video: { width: 640 } }), 'Webcam');
+})();
+
+/* ─── §9 freeze & pause ───────────────────────────────── */
+(function(){
+  const p = hudPainter($('c9'), {label:'FRZ-9'}); p.start();
+  const log = m => { const d = document.createElement('div'); d.innerHTML = m; $('l9').appendChild(d); $('l9').scrollTop = 1e6; };
+  document.addEventListener('visibilitychange', () =>
+    log('<span class="t">[' + new Date().toLocaleTimeString() + ']</span> visibilitychange → <span class="warn">' + document.visibilityState + '</span> (rAF ' + (document.hidden ? 'SUSPENDED' : 'resumed') + ')'));
+  let rec = null; const chunks = [];
+  $('b9rec').onclick = () => {
+    rec = new MediaRecorder($('c9').captureStream(30), { mimeType: MIME });
+    chunks.length = 0; $('l9').innerHTML = '';
+    rec.ondataavailable = e => chunks.push(e.data);
+    rec.onstop = () => {
+      const blob = new Blob(chunks, { type: rec.mimeType });
+      $('v9').style.display = 'block'; $('v9').src = URL.createObjectURL(blob);
+      log('<span class="ok">saved ' + fmtB(blob.size) + ' — scrub it and look for the frozen stretch (if you hid the tab)</span>');
+      $('s9').textContent = '';
+    };
+    rec.start(1000);
+    $('s9').innerHTML = '<span class="rec-dot"></span>recording 10s — <b>switch tabs now</b> for the freeze';
+    $('b9pause').disabled = false; $('b9rec').disabled = true;
+    setTimeout(() => { if (rec.state === 'recording') rec.stop(); $('b9pause').disabled = $('b9resume').disabled = true; $('b9rec').disabled = false; }, 10000);
+  };
+  $('b9pause').onclick = () => { rec.pause(); $('b9pause').disabled = true; $('b9resume').disabled = false; $('s9').textContent = 'paused — no chunks emitted, no gap encoded'; };
+  $('b9resume').onclick = () => { rec.resume(); $('b9pause').disabled = false; $('b9resume').disabled = true; $('s9').innerHTML = '<span class="rec-dot"></span>resumed'; };
+})();
+
+/* ─── §10 duration ∞ ──────────────────────────────────── */
+(function(){
+  $('b10').onclick = async () => {
+    $('ro10').innerHTML = '';
+    let blob = lastBlob5, type = lastType5;
+    if (!blob) {
+      const c = document.createElement('canvas'); c.width = 320; c.height = 180;
+      const pp = hudPainter(c, {label:'D-10'}); pp.start();
+      const rec = new MediaRecorder(c.captureStream(30), { mimeType: MIME });
+      const ch = []; rec.ondataavailable = e => ch.push(e.data);
+      rec.start(400);
+      await new Promise(r => setTimeout(r, 3000));
+      rec.stop(); pp.stop();
+      await new Promise(r => rec.onstop = r);
+      blob = new Blob(ch, { type: rec.mimeType }); type = rec.mimeType;
+    }
+    const v = document.createElement('video');
+    v.muted = true; v.playsInline = true;
+    v.src = URL.createObjectURL(blob);
+    await new Promise((res, rej) => { v.onloadedmetadata = res; v.onerror = rej; });
+    const before = v.duration;
+    $('ro10').innerHTML = stat('container', type.includes('mp4') ? 'MP4' : 'WebM')
+      + stat('duration BEFORE', before === Infinity ? 'Infinity' : before.toFixed(2) + 's', before === Infinity ? 'bad' : 'ok');
+    if (before === Infinity) {
+      await new Promise(res => {
+        v.ontimeupdate = () => { if (v.currentTime > 0) { v.ontimeupdate = null; res(); } };
+        v.currentTime = 1e101;
+      });
+      $('ro10').innerHTML += stat('duration AFTER 1e101', v.duration.toFixed(2) + 's', 'ok')
+        + stat('file still broken?', 'yes — element-only fix', 'warn');
+    } else {
+      $('ro10').innerHTML += stat('note', 'this engine wrote real duration', 'ok');
+    }
+  };
+})();
+
+/* ─── §12 mission DVR ─────────────────────────────────── */
+(function(){
+  const p = hudPainter($('c12'), {label:'MSN-DVR'}); p.start();
+  const KEEP = 11; let ring = [], rec = null, armed = 0, seen = 0;
+  const upd = () => {
+    $('ro12').innerHTML = stat('DVR state', armed ? 'ROLLING' : 'standby', armed ? 'bad' : '')
+      + stat('buffer', ring.length ? '~' + Math.min(seen, KEEP-1) + 's' : '—')
+      + stat('retained', ring.length ? fmtB(ring.reduce((a,c)=>a+c.size,0)) : '0 B')
+      + stat('discarded', armed ? (seen > KEEP-1 ? (seen-KEEP+1)+'s' : '0s') : '—');
+  };
+  $('b12arm').onclick = () => {
+    if (!has) return alert('MediaRecorder unsupported');
+    ring = []; seen = 0;
+    rec = new MediaRecorder($('c12').captureStream(30), { mimeType: MIME, videoBitsPerSecond: 4e6 });
+    rec.ondataavailable = e => { ring.push(e.data); seen++;
+      if (ring.length > KEEP) ring.splice(1, 1);
+      upd(); };
+    rec.start(1000); armed = 1; upd();
+    $('b12arm').disabled = true; $('b12inc').disabled = false; $('b12reel').disabled = false;
+    $('s12').innerHTML = '<span class="rec-dot"></span>rolling 10s pre-roll — nothing hits disk';
+  };
+  $('b12inc').onclick = () => {
+    if (armed && rec.state === 'recording') rec.stop();
+    setTimeout(() => {
+      const blob = new Blob(ring, { type: MIME });
+      const ts = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+      const name = 'mission-evidence-' + ts + '.' + ext(MIME);
+      $('a12').download = name; $('a12').href = URL.createObjectURL(blob);
+      $('a12').textContent = '⬇ ' + name + ' (' + fmtB(blob.size) + ')';
+      $('d12').style.display = 'block';
+      const v = $('v12'); v.style.display = 'block'; v.src = $('a12').href;
+      armed = 0; upd();
+      $('b12arm').disabled = false; $('b12inc').disabled = true;
+      $('s12').textContent = 'evidence frozen ✓';
+    }, 200);
+  };
+  $('b12reel').onclick = async () => {
+    $('b12reel').disabled = true; $('b12reel').textContent = '🎬 rendering reel…';
+    const ch = [];
+    const r2 = new MediaRecorder($('c12').captureStream(30), { mimeType: MIME, videoBitsPerSecond: 5e6 });
+    r2.ondataavailable = e => ch.push(e.data);
+    r2.start(500);
+    await new Promise(r => setTimeout(r, 6000));
+    r2.stop();
+    await new Promise(r => r2.onstop = r);
+    dl(new Blob(ch, { type: MIME }), 'molt-reel.' + ext(MIME));
+    $('b12reel').disabled = false; $('b12reel').textContent = '🎬 Molt: export 6s reel';
+  };
+})();
+</script>
+</body>
+</html>
