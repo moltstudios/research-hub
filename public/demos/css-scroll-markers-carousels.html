@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSS Scroll Markers &amp; scroll-button — Native Carousels Without JavaScript</title>
+<style>
+  :root{
+    --accent:#0f766e; --accent-soft:#ccfbf1; --accent-deep:#134e4a;
+    --ink:#1c1917; --muted:#78716c; --line:#e7e5e4; --bg:#fafaf9; --card:#ffffff;
+    --warn:#b45309; --warn-soft:#fef3c7; --bad:#b91c1c; --bad-soft:#fee2e2; --ok:#15803d;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.65 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;}
+  main{max-width:920px;margin:0 auto;padding:0 20px 90px}
+  h1{font-size:clamp(26px,4.5vw,38px);line-height:1.15;letter-spacing:-.02em;margin:14px 0 8px}
+  h2{font-size:21px;margin:0 0 4px;letter-spacing:-.01em}
+  h3{font-size:15.5px;margin:0 0 8px}
+  p{margin:8px 0}
+  .sec{margin-top:56px;border-top:1px solid var(--line);padding-top:26px}
+  .secnum{display:inline-block;font:600 11px/1 var(--mono);color:#fff;background:var(--accent);
+    border-radius:999px;padding:5px 10px;margin-bottom:10px;letter-spacing:.06em}
+  .lead{color:var(--muted);font-size:15px;max-width:70ch}
+  code{font-family:var(--mono);font-size:.92em;background:#f5f5f4;border:1px solid var(--line);
+    border-radius:5px;padding:1px 5px;white-space:nowrap}
+  pre{background:#1c1917;color:#e7e5e4;border-radius:12px;padding:16px 18px;overflow-x:auto;
+    font:12.5px/1.7 var(--mono);margin:12px 0}
+  pre b{color:#5eead4;font-weight:600}
+  pre i{color:#a8a29e;font-style:normal}
+  pre em{color:#fbbf24;font-style:normal}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:12px 0;
+    box-shadow:0 1px 2px rgba(0,0,0,.03)}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+  .badge{display:inline-flex;align-items:center;gap:6px;font:600 12px/1 var(--mono);
+    border:1px solid var(--line);border-radius:999px;padding:6px 11px;margin:3px 4px 3px 0;background:#fff}
+  .badge.y{border-color:#a7f3d0;background:#ecfdf5;color:#065f46}
+  .badge.n{border-color:#fecaca;background:#fef2f2;color:#991b1b}
+  .badge.p{border-color:#fde68a;background:#fffbeb;color:#92400e}
+  .chip{display:inline-block;font:600 11px/1.5 var(--mono);background:#f5f5f4;border:1px solid var(--line);
+    border-radius:7px;padding:4px 9px;margin:2px 4px 2px 0;white-space:nowrap}
+  .chip.ok{background:#ecfdf5;border-color:#a7f3d0;color:#065f46}
+  .chip.no{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+  .note{border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 10px 10px 0;
+    padding:10px 14px;font-size:13.5px;margin:12px 0}
+  .note.warn{border-left-color:var(--warn);background:var(--warn-soft)}
+  .note b{color:var(--accent-deep)}
+  .note.warn b{color:#7c2d12}
+  .verdict{background:linear-gradient(135deg,#134e4a,#0f766e);color:#fff;border-radius:16px;padding:20px 22px;margin:14px 0}
+  .verdict h2{color:#5eead4}
+  .verdict p,.verdict li{color:#d1fae5}
+  .verdict code{background:rgba(255,255,255,.12);border-color:transparent;color:#99f6e4}
+  table{border-collapse:collapse;width:100%;font-size:13px;margin:10px 0}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:#f5f5f4;font-size:12px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
+  .yes{color:var(--ok);font-weight:600}.no2{color:var(--bad);font-weight:600}
+  ul{margin:8px 0 8px 22px;padding:0}
+  li{margin:4px 0}
+  .tpl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0}
+  .tpl button.toggle{font:600 12px/1 var(--mono);border:1px solid var(--line);background:#fff;color:var(--ink);
+    border-radius:999px;padding:7px 13px;cursor:pointer}
+  .tpl button.toggle.on{background:var(--accent);border-color:var(--accent);color:#fff}
+
+  /* ============ shared carousel anatomy: the scroller IS the component ============ */
+  .car{display:flex;gap:12px;overflow-x:auto;overscroll-behavior-x:contain;
+    scroll-snap-type:x mandatory;padding:14px;scroll-behavior:smooth;
+    scrollbar-width:none;border-radius:14px;touch-action:pan-x pan-y}
+  .car::-webkit-scrollbar{display:none}
+  .car>*{scroll-snap-align:center;flex:0 0 auto}
+  .slide{width:min(72%,320px);min-height:150px;border-radius:10px;background:linear-gradient(135deg,#f0fdfa,#ccfbf1);
+    border:1px solid #99f6e4;display:flex;flex-direction:column;justify-content:center;align-items:center;
+    font-weight:600;color:#134e4a;padding:12px;text-align:center}
+  .slide small{font-weight:500;color:#0f766e;opacity:.8}
+  .slide.dark{background:linear-gradient(135deg,#1e293b,#0f172a);border-color:#334155;color:#e2e8f0}
+  .slide.dark small{color:#94a3b8}
+
+  /* ============ §2 minimal carousel — the documented anchor pattern ============ */
+  .mini{anchor-name:--mini}
+  .mini::scroll-button(*){border:0;background:#fff;color:var(--ink);font-size:1.45rem;width:38px;height:38px;
+    border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.14);cursor:pointer;opacity:.85;
+    position:absolute;position-anchor:--mini;top:calc(anchor(top) + 70px)}
+  .mini::scroll-button(*):hover{opacity:1}
+  .mini::scroll-button(*):disabled{opacity:.18;cursor:unset}
+  .mini::scroll-button(left){content:"◄"/"Previous";left:calc(anchor(left) + 8px)}
+  .mini::scroll-button(right){content:"►"/"Next";left:calc(anchor(right) - 46px)}
+  .mini{scroll-marker-group:after}
+  .mini>*::scroll-marker{content:" ";width:12px;height:12px;border-radius:50%;
+    border:2px solid var(--accent);background:transparent}
+  .mini>*::scroll-marker:target-current{background:var(--accent)}
+  .mini::scroll-marker-group{display:flex;gap:8px;justify-content:center;position:absolute;
+    position-anchor:--mini;top:calc(anchor(bottom) - 30px);justify-self:anchor-center}
+
+  /* ============ §3 flagship carousel ============ */
+  .flag{anchor-name:--flag}
+  .flag::scroll-button(*){border:0;background:var(--accent-deep);color:#5eead4;font-size:1.3rem;
+    width:42px;height:42px;border-radius:12px;cursor:pointer;position:absolute;position-anchor:--flag;
+    top:calc(anchor(top) + 68px);transition:opacity .2s}
+  .flag::scroll-button(*):hover{background:#0b3f3b}
+  .flag::scroll-button(*):focus-visible{outline:3px solid #5eead4;outline-offset:3px}
+  .flag::scroll-button(*):disabled{opacity:.15;cursor:unset}
+  .flag::scroll-button(left){content:"‹"/"Previous page";left:calc(anchor(left) + 8px)}
+  .flag::scroll-button(right){content:"›"/"Next page";left:calc(anchor(right) - 50px)}
+  .flag{scroll-marker-group:after}
+  .flag>*::scroll-marker{content:attr(data-accname);width:30px;height:30px;border-radius:50%;
+    border:2px solid var(--accent);font:600 12px/26px var(--mono);
+    text-indent:30px;overflow:hidden;background:#fff}
+  .flag>*::scroll-marker:target-current{background:var(--accent);border-color:var(--accent)}
+  .flag::scroll-marker-group{display:flex;gap:10px;justify-content:center;position:absolute;
+    position-anchor:--flag;top:calc(anchor(bottom) - 34px);justify-self:anchor-center}
+
+  /* §4 marker-content lab */
+  .labpt{anchor-name:--pt}
+  .labpt.aa{anchor-name:--ptA}
+  .labpt.ab{anchor-name:--ptB}
+  .labpt::scroll-button(*){border:0;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.14);
+    width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:1rem;color:var(--ink);
+    position:absolute;top:calc(anchor(top) + 60px)}
+  .labpt::scroll-button(*):disabled{opacity:.18}
+  .labpt::scroll-button(left){content:"◄"/"Previous";left:calc(anchor(left) + 6px)}
+  .labpt::scroll-button(right){content:"►"/"Next";left:calc(anchor(right) - 40px)}
+  .labpt{scroll-marker-group:after}
+  .labpt.aa>*::scroll-marker{content:" ";width:11px;height:11px;border-radius:50%;
+    border:2px solid #7c3aed;background:#fff}
+  .labpt.aa>*::scroll-marker:target-current{background:#7c3aed}
+  .labpt.ab>*::scroll-marker{content:attr(data-accname);font:600 10px/1 var(--mono);
+    color:transparent;text-indent:22px;overflow:hidden;width:20px;height:20px;border-radius:50%;
+    border:2px solid #7c3aed;background:#fff}
+  .labpt.ab>*::scroll-marker:target-current{background:#7c3aed}
+  .labpt.aa::scroll-marker-group,.labpt.ab::scroll-marker-group{display:flex;gap:7px;justify-content:center;
+    position:absolute;top:calc(anchor(bottom) - 28px);justify-self:anchor-center}
+
+  /* §5 group placement lab */
+  .place{anchor-name:--place}
+  .place::scroll-button(*){border:0;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.14);
+    width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:1rem;color:var(--ink);
+    position:absolute;position-anchor:--place;top:calc(anchor(top) + 58px)}
+  .place::scroll-button(*):disabled{opacity:.18}
+  .place::scroll-button(left){content:"◄"/"Previous";left:calc(anchor(left) + 6px)}
+  .place::scroll-button(right){content:"►"/"Next";left:calc(anchor(right) - 40px)}
+  .place[data-group="before"]{scroll-marker-group:before}
+  .place[data-group="after"]{scroll-marker-group:after}
+  .place[data-group="none"]{scroll-marker-group:none}
+  .place>*::scroll-marker{content:" ";width:11px;height:11px;border-radius:50%;border:2px solid #7c3aed;background:#fff}
+  .place>*::scroll-marker:target-current{background:#7c3aed}
+  .place::scroll-marker-group{display:flex;gap:7px;justify-content:center;position:absolute;
+    position-anchor:--place;top:calc(anchor(bottom) - 28px);justify-self:anchor-center}
+
+  /* §6 direction matrix 2D scroller (NO snap → raw 85% paging observable) */
+  .twod{anchor-name:--twod;display:block;overflow:auto;scroll-snap-type:none;height:240px;
+    border-radius:14px;overscroll-behavior:contain;scroll-behavior:smooth;scrollbar-width:none;touch-action:pan-x pan-y}
+  .twod::-webkit-scrollbar{display:none}
+  .twod .field{width:560px;height:400px;flex:none;position:relative;
+    background:
+      repeating-linear-gradient(0deg,#f0fdfa 0 39px,#ccfbf1 39px 40px),
+      repeating-linear-gradient(90deg,#f0fdfa 0 39px,#ccfbf1 39px 40px);
+    border-radius:10px;border:1px solid #99f6e4}
+  .twod .field b{position:absolute;font:700 11px var(--mono);color:#0f766e;opacity:.75}
+  .twod::scroll-button(*){border:0;background:#fff;color:#0f766e;font-size:1rem;width:32px;height:32px;
+    border-radius:9px;box-shadow:0 2px 8px rgba(0,0,0,.16);cursor:pointer;position:absolute;position-anchor:--twod}
+  .twod::scroll-button(*):disabled{opacity:.15}
+  .twod::scroll-button(left){content:"◄"/"Scroll left";left:calc(anchor(left) + 6px);top:calc(anchor(top) + 104px)}
+  .twod::scroll-button(right){content:"►"/"Scroll right";left:calc(anchor(right) - 38px);top:calc(anchor(top) + 104px)}
+  .twod::scroll-button(up){content:"▲"/"Scroll up";top:calc(anchor(top) + 6px);justify-self:anchor-center}
+  .twod::scroll-button(down){content:"▼"/"Scroll down";top:calc(anchor(bottom) - 38px);justify-self:anchor-center}
+
+  /* §7 progress lane */
+  .prog{anchor-name:--prog}
+  .prog::scroll-button(*){border:0;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.14);
+    width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:1rem;color:var(--ink);
+    position:absolute;position-anchor:--prog;top:calc(anchor(top) + 64px)}
+  .prog::scroll-button(*):disabled{opacity:.15}
+  .prog::scroll-button(left){content:"◄"/"Previous";left:calc(anchor(left) + 6px)}
+  .prog::scroll-button(right){content:"►"/"Next";left:calc(anchor(right) - 38px)}
+  .prog{scroll-marker-group:after}
+  .prog>*::scroll-marker{content:" ";width:26px;height:10px;border-radius:999px;border:1.5px solid #94a3b8;background:#fff}
+  .prog>*::scroll-marker:target-current{background:#0f766e;border-color:#0f766e}
+  .prog>*::scroll-marker:target-before{background:#99f6e4;border-color:#5eead4}
+  .prog>*::scroll-marker:target-after{opacity:.45}
+  .prog::scroll-marker-group{display:flex;gap:6px;justify-content:center;position:absolute;
+    position-anchor:--prog;top:calc(anchor(bottom) - 28px);justify-self:anchor-center}
+
+  /* §8 column markers */
+  .colcar{anchor-name:--colcar;column-width:200px;column-gap:14px;height:210px;overflow-x:auto;
+    overscroll-behavior-x:contain;scroll-snap-type:x proximity;padding:14px;scroll-behavior:smooth;
+    border-radius:14px;scrollbar-width:none;touch-action:pan-x pan-y}
+  .colcar::-webkit-scrollbar{display:none}
+  .colcar .colcard{break-inside:avoid;margin-bottom:12px;border-radius:10px;
+    background:linear-gradient(135deg,#eef2ff,#e0e7ff);border:1px solid #c7d2fe;color:#3730a3;
+    padding:12px;font-size:13px;font-weight:600}
+  .colcar{scroll-marker-group:after}
+  .colcar::column::scroll-marker{content:" ";width:12px;height:12px;border-radius:3px;border:2px solid #4f46e5;background:#fff}
+  .colcar::column::scroll-marker:target-current{background:#4f46e5}
+  .colcar::scroll-marker-group{display:flex;gap:8px;justify-content:center;position:absolute;
+    position-anchor:--colcar;top:calc(anchor(bottom) - 30px);justify-self:anchor-center}
+  .colcar::scroll-button(*){border:0;background:#4f46e5;color:#fff;font-size:.95rem;width:30px;height:30px;
+    border-radius:8px;cursor:pointer;position:absolute;position-anchor:--colcar;top:calc(anchor(top) + 90px)}
+  .colcar::scroll-button(*):disabled{opacity:.15}
+  .colcar::scroll-button(left){content:"◄"/"Previous column";left:calc(anchor(left) + 8px)}
+  .colcar::scroll-button(right){content:"►"/"Next column";left:calc(anchor(right) - 38px)}
+
+  /* §9 scroll-target-group — real links as markers */
+  .tg-rail{anchor-name:--tg;display:flex;gap:12px;overflow-x:auto;overscroll-behavior-x:contain;
+    scroll-snap-type:x mandatory;padding:14px;scroll-behavior:smooth;scrollbar-width:none;
+    border-radius:14px;touch-action:pan-x pan-y}
+  .tg-rail::-webkit-scrollbar{display:none}
+  .tg-rail>*{scroll-snap-align:center;flex:0 0 auto}
+  .tg-wrap{position:relative}
+  .tg-rail::scroll-button(*){border:0;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.14);
+    width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:1rem;color:var(--ink);
+    position:absolute;position-anchor:--tg;top:calc(anchor(top) + 72px);z-index:4}
+  .tg-rail::scroll-button(*):disabled{opacity:.15}
+  .tg-rail::scroll-button(left){content:"◄"/"Previous";left:calc(anchor(left) + 6px)}
+  .tg-rail::scroll-button(right){content:"►"/"Next";left:calc(anchor(right) - 40px)}
+  .tg-nav{position:absolute;left:0;right:0;bottom:8px;display:flex;gap:10px;justify-content:center;
+    scroll-target-group:auto;list-style:none;padding:0;margin:0;z-index:3}
+  .tg-nav a{width:28px;height:28px;border-radius:50%;border:2px solid var(--accent);color:transparent;
+    text-indent:28px;overflow:hidden;background:#fff;display:inline-block;font:600 11px/24px var(--mono)}
+  .tg-nav a:hover,.tg-nav a:focus{background:#ccfbf1}
+  .tg-nav a:target-current{background:var(--accent)}
+
+  /* §11 OpenDrones */
+  .fleet{anchor-name:--fleet;background:#0f172a}
+  .fleet::scroll-button(*){border:0;background:#1e293b;color:#38bdf8;font-size:1.1rem;width:36px;height:36px;
+    border-radius:10px;cursor:pointer;position:absolute;position-anchor:--fleet;top:calc(anchor(top) + 67px)}
+  .fleet::scroll-button(*):hover{background:#334155}
+  .fleet::scroll-button(*):disabled{opacity:.15}
+  .fleet::scroll-button(left){content:"◄"/"Previous waypoint";left:calc(anchor(left) + 8px)}
+  .fleet::scroll-button(right){content:"►"/"Next waypoint";left:calc(anchor(right) - 44px)}
+  .fleet{scroll-marker-group:after}
+  .fleet .wp::scroll-marker{content:attr(data-accname);font:700 10px/1 var(--mono);color:#7dd3fc;
+    border:1.5px solid #334155;background:#0f172a;border-radius:999px;padding:5px 9px}
+  .fleet .wp::scroll-marker:target-current{background:#0369a1;border-color:#38bdf8;color:#fff}
+  .fleet::scroll-marker-group{display:flex;gap:8px;justify-content:center;position:absolute;
+    position-anchor:--fleet;top:calc(anchor(bottom) - 32px);justify-self:anchor-center}
+  .drone-card{width:min(60%,240px);border-radius:12px;background:linear-gradient(160deg,#0f172a,#1e293b);
+    border:1px solid #334155;color:#e2e8f0;padding:14px;min-height:150px}
+  .drone-card h4{margin:0 0 4px;font:700 13px var(--mono);color:#38bdf8;letter-spacing:.05em}
+  .drone-card .meta{font:600 11px var(--mono);color:#94a3b8}
+  .drone-card .bar{height:6px;border-radius:99px;background:#334155;margin-top:10px;overflow:hidden}
+  .drone-card .bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#38bdf8,#22d3ee)}
+
+  .log{anchor-name:--log;height:190px;overflow-y:auto;overscroll-behavior-y:contain;
+    scroll-snap-type:y proximity;scroll-behavior:smooth;border-radius:12px;
+    background:#0f172a;color:#cbd5e1;font:12px/1.8 var(--mono);padding:12px 52px 12px 14px;scrollbar-width:none;
+    touch-action:pan-x pan-y}
+  .log::-webkit-scrollbar{display:none}
+  .log div{scroll-snap-align:start}
+  .log .t{color:#38bdf8}
+  .log .lvl{font-weight:700}
+  .log .lvl.WARN{color:#fbbf24}.log .lvl.INFO{color:#4ade80}.log .lvl.CRIT{color:#f87171}
+  .logwrap{position:relative;max-width:540px}
+  .log::scroll-button(*){border:0;background:#1e293b;color:#38bdf8;font-size:.85rem;width:30px;height:30px;
+    border-radius:9px;cursor:pointer;position:absolute;position-anchor:--log;left:calc(anchor(right) - 44px);z-index:4}
+  .log::scroll-button(*):disabled{opacity:.15}
+  .log::scroll-button(up){content:"▲"/"Scroll log up";top:calc(anchor(top) + 8px)}
+  .log::scroll-button(down){content:"▼"/"Scroll log down";top:calc(anchor(top) + 46px)}
+
+  /* §12 Molt */
+  .molt{anchor-name:--molt;background:linear-gradient(135deg,#fff7ed,#ffedd5)}
+  .molt::scroll-button(*){border:0;background:#fff;color:#9a3412;font-size:1.2rem;width:38px;height:38px;
+    border-radius:50%;box-shadow:0 4px 14px rgba(154,52,18,.18);cursor:pointer;position:absolute;
+    position-anchor:--molt;top:calc(anchor(top) + 55px)}
+  .molt::scroll-button(*):disabled{opacity:.15}
+  .molt::scroll-button(left){content:"❮"/"Previous story";left:calc(anchor(left) + 8px)}
+  .molt::scroll-button(right){content:"❯"/"Next story";left:calc(anchor(right) - 46px)}
+  .molt{scroll-marker-group:after}
+  .molt .chapter::scroll-marker{content:attr(data-accname);font:700 10.5px/1 var(--mono);color:#c2410c;
+    border:1.5px solid #fed7aa;background:#fff;border-radius:999px;padding:6px 11px}
+  .molt .chapter::scroll-marker:target-current{background:#c2410c;color:#fff;border-color:#c2410c}
+  .molt::scroll-marker-group{display:flex;gap:8px;justify-content:center;position:absolute;position-anchor:--molt;
+    top:calc(anchor(bottom) - 32px);justify-self:anchor-center;flex-wrap:wrap}
+  .quote{width:min(86%,420px);border-radius:14px;background:#fff;border:1px solid #fed7aa;padding:18px;
+    box-shadow:0 6px 18px rgba(154,52,18,.06);min-height:150px}
+  .quote p{font-size:14.5px;font-style:italic;color:#7c2d12;margin:0 0 10px}
+  .quote footer{font:700 11px var(--mono);color:#c2410c;letter-spacing:.05em}
+
+  .readout{font:600 11.5px/1.9 var(--mono);background:#1c1917;color:#5eead4;border-radius:10px;
+    padding:10px 14px;margin:10px 0;overflow-x:auto;white-space:nowrap}
+  .readout .dim{color:#a8a29e}
+  .nosupport{display:none;border-left:3px solid var(--bad);background:var(--bad-soft);border-radius:0 10px 10px 0;
+    padding:10px 14px;font-size:13px;margin:10px 0}
+  body.no-carousel .nosupport{display:block}
+  footer{margin-top:70px;border-top:1px solid var(--line);padding-top:18px;color:var(--muted);font-size:12.5px}
+</style>
+</head>
+<body>
+<main>
+
+<h1>CSS Scroll Markers &amp; <code style="white-space:nowrap">::scroll-button()</code></h1>
+<p class="lead">Native carousels — pagination dots, prev/next buttons, keyboard arrows, screen-reader
+<strong>tablist semantics</strong> and auto-disabling state — generated by the browser from pure CSS
+(CSS Overflow Level 5, Chrome/Edge 135+). The navigation layer of the JS-carousel stack, deleted:
+no library, no hydration, no re-render bookkeeping — and it works with JavaScript disabled.</p>
+
+<div id="badges" style="margin:14px 0"></div>
+<noscript><div class="note"><b>No JavaScript detected —</b> every carousel on this page still works: buttons page, dots highlight, keyboard arrows navigate. That is the entire point of this feature.</div></noscript>
+<div class="nosupport"><b>This engine hasn’t shipped CSS carousels</b> (Firefox/Safari as of Aug 2026). The scrollers below degrade to plain scroll areas — exactly the zero-risk fallback described in §10. See probe results in the badges above.</div>
+
+<div class="note"><b>The one-paragraph story:</b> a scroll container (<code>overflow:auto</code>) can grow browser-generated
+<em>buttons</em> (<code>::scroll-button(left|right|up|down)</code>) that page <b>85%</b> of the scroll area and auto-disable at the ends,
+and its children can grow <em>markers</em> (<code>::scroll-marker</code>) collected into a <code>::scroll-marker-group</code> —
+real focusable elements that jump to their item, highlight via <code>:target-current</code> when in view or snapped,
+and read as a tablist with arrow-key navigation. Everything below is labs proving each claim live.</div>
+
+<!-- ============ 2 ============ -->
+<div class="sec" id="s2">
+<span class="secnum">§2 · ANATOMY</span>
+<h2>The ~20-line carousel</h2>
+<p class="lead">Flex row + scroll container + snap points, then two pseudo-elements. This is the whole component — try the buttons, the dots, <kbd>Tab</kbd>, and the arrow keys:</p>
+
+<div class="car mini" id="mini">
+  <div class="slide">Slide 1<small>snap-align: center</small></div>
+  <div class="slide">Slide 2<small>buttons page 85%</small></div>
+  <div class="slide">Slide 3<small>dots = ::scroll-marker</small></div>
+  <div class="slide">Slide 4<small>zero JavaScript</small></div>
+  <div class="slide">Slide 5<small>tablist semantics</small></div>
+</div>
+
+<pre><i>/* 1 — the scroller (any scroll container qualifies) */</i>
+<b>.mini</b> { display:flex; overflow-x:auto; scroll-snap-type:x mandatory;
+        scroll-marker-group: <em>after</em>; anchor-name:--mini }
+.mini &gt; * { scroll-snap-align:center }
+
+<i>/* 2 — buttons: generated ONLY when content is non-none.
+      Position with anchor positioning — they pin to the scrollport
+      and never scroll away with the content. */</i>
+.mini::<b>scroll-button(left)</b>  { content:"◄" <em>/ "Previous"</em> }  <i>/* alt text = accessible name */</i>
+.mini::<b>scroll-button(right)</b> { content:"►" <em>/ "Next"</em> }
+.mini::<b>scroll-button(*)</b> { position:absolute; position-anchor:--mini; … }
+.mini::scroll-button(*):disabled { opacity:.18 }  <i>/* auto-disabled at the ends */</i>
+
+<i>/* 3 — markers: one per child (or per point of interest) */</i>
+.mini &gt; *::<b>scroll-marker</b> { content:" "; width:12px; height:12px;
+                             border-radius:50%; border:2px solid var(--accent) }
+.mini &gt; *::scroll-marker:<b>target-current</b> { background:var(--accent) }
+.mini::<b>scroll-marker-group</b> { position:absolute; position-anchor:--mini;
+        top:calc(anchor(bottom) - 30px); justify-self:<em>anchor-center</em>; display:flex; gap:8px }</pre>
+
+<p><span class="chip">CSS only</span><span class="chip">no event listeners</span><span class="chip">no state arrays</span><span class="chip">no library</span>
+<span class="chip">no hydration → no CLS from late-mounted dots</span></p>
+</div>
+
+<!-- ============ 3 ============ -->
+<div class="sec" id="s3">
+<span class="secnum">§3 · STATE PROOFS</span>
+<h2>Buttons page 85% · auto-disable · dots track position</h2>
+<p class="lead">Three claims you shouldn’t take on faith. Click <em>Next page</em> and watch the readout: with snap points, one click steps exactly one snap position; on a free scroller the raw step is <b>85% of the client width</b> (proven in §6). Buttons disable themselves at each end, and every dot swap is CSS reacting to scroll position with zero JS:</p>
+
+<div class="car flag" id="flag">
+  <div class="slide dark" data-accname="1">Payload specs<small>waypoint brief</small></div>
+  <div class="slide dark" data-accname="2">Flight plan<small>corridor + no-fly</small></div>
+  <div class="slide dark" data-accname="3">Ground station<small>antenna heading</small></div>
+  <div class="slide dark" data-accname="4">Recovery<small>RTL + catch net</small></div>
+  <div class="slide dark" data-accname="5">Debrief<small>telemetry export</small></div>
+</div>
+
+<div class="readout" id="flagRead">click a button → measuring…</div>
+
+<p><strong>Auto-disable is browser-enforced state:</strong> the generated button is a <em>real</em> button element — when no more scrolling is possible in its direction, the engine sets <code>:disabled</code> on it. No scroll handler computing <code>scrollLeft === 0</code> ever again.</p>
+<div class="note"><b>Why 85%, not 100%?</b> A full-page jump would hide the continuity cue — the sliver of the next/previous item that tells users which direction they’re moving. 85% keeps ~15% overlap. On single-item snap carousels it effectively steps one slide; on multi-item scrollers it steps “almost a page”.</div>
+</div>
+
+<!-- ============ 4 ============ -->
+<div class="sec" id="s4">
+<span class="secnum">§4 · MARKER CONTENT LAB</span>
+<h2>Dots are content — accessible names are mandatory</h2>
+<p class="lead">A marker exists only when its <code>content</code> is non-<code>none</code>. What you put there is its accessible name: <code>""</code> is a WCAG 4.1.2 violation (nameless control), a bare <code>" "</code> works but names nothing, and <code>attr()</code> pulls real names from markup. Compare two sibling carousels:</p>
+
+<div class="grid2">
+  <div class="card"><h3>A — content:" " (dot, unnamed)</h3>
+    <div class="car labpt aa">
+      <div class="slide" style="width:46%">A1</div><div class="slide" style="width:46%">A2</div><div class="slide" style="width:46%">A3</div>
+    </div>
+    <p style="font-size:12.5px;color:var(--muted)">Fast to write; screen reader announces “button” with no name. Ship only inside a labelled group.</p>
+  </div>
+  <div class="card"><h3>B — content:attr(data-accname)</h3>
+    <div class="car labpt ab">
+      <div class="slide" style="width:46%" data-accname="Prep">B1<small>Prep</small></div><div class="slide" style="width:46%" data-accname="Launch">B2<small>Launch</small></div><div class="slide" style="width:46%" data-accname="RTL">B3<small>RTL</small></div>
+    </div>
+    <p style="font-size:12.5px;color:var(--muted)">The text is visually hidden via <code>text-indent</code> overflow — name announced, dot shown. The production choice.</p>
+  </div>
+</div>
+<div class="note warn"><b>Marker ≠ item.</b> Markers attach to <em>points of interest</em>, not necessarily every child. A 10-episode series wants 2 “Season” markers, not 10 dots; a gallery wants thumbnail markers. The marker is an in-page link — “which content does this jump to?” is the only question that determines its count. (See §11: phase markers on a 6-card deck.)</div>
+</div>
+
+<!-- ============ 5 ============ -->
+<div class="sec" id="s5">
+<span class="secnum">§5 · GROUP PLACEMENT &amp; TAB ORDER</span>
+<h2><code>scroll-marker-group: before | after | none</code></h2>
+<p class="lead">The generated group is placed in <em>tab order and layout order</em> (not DOM structure). Toggle it and press <kbd>Tab</kbd> inside this card — with <code>before</code>, dots come before the scroller’s content; with <code>after</code>, they come after the buttons; with <code>none</code>, the group (and its tablist semantics) vanishes entirely:</p>
+
+<div class="tpl" id="placeTpl">
+  <button class="toggle on" data-v="after">after (default choice)</button>
+  <button class="toggle" data-v="before">before</button>
+  <button class="toggle" data-v="none">none</button>
+  <span class="chip" id="placeChip">group: after</span>
+</div>
+
+<div class="car place" id="place" data-group="after">
+  <div class="slide" style="width:52%">Focus me<small>then press Tab</small></div>
+  <div class="slide" style="width:52%">Dots are one tab stop<small>arrows move between them</small></div>
+  <div class="slide" style="width:52%">Buttons follow<small>per group placement</small></div>
+</div>
+
+<p><strong>Semantics you get for free:</strong> the group renders as <code>tablist</code>, each marker as a <code>tab</code> — one tab stop, arrow keys roam between markers (focusgroup behavior), screen readers announce position. The a11y rule baked into the spec: <em>match visual order to tab order</em> — dots displayed at the bottom of the carousel → use <code>after</code>.</p>
+</div>
+
+<!-- ============ 6 ============ -->
+<div class="sec" id="s6">
+<span class="secnum">§6 · DIRECTION MATRIX &amp; THE RAW 85%</span>
+<h2>Four buttons, one 2-D scroller, no snap</h2>
+<p class="lead">Up to four <code>::scroll-button()</code> per container — physical (<code>left/right/up/down</code>) and logical (<code>inline-start/inline-end/block-start/block-end</code>) arguments, plus <code>*</code> to style all. This scroller deliberately has <strong>no snap points</strong>, so clicking a button reveals the raw page step. Watch the readout: it should land near <b>85% of clientWidth</b> per click:</p>
+
+<div class="twod" id="twod">
+  <div class="field">
+    <b style="left:8px;top:8px">(0,0)</b><b style="right:8px;top:8px">+X →</b><b style="left:8px;bottom:8px">+Y ↓</b>
+    <b style="right:12px;bottom:12px">560 × 400 canvas</b>
+  </div>
+</div>
+<div class="readout" id="twodRead">click any arrow → scrollLeft 0 · scrollTop 0 · last step —</div>
+<p class="lead">Vertical carousels work identically — the features are axis-agnostic (the OpenDrones log scroller in §11 is a <code>y</code>-axis example with <code>up/down</code> buttons).</p>
+</div>
+
+<!-- ============ 7 ============ -->
+<div class="sec" id="s7">
+<span class="secnum">§7 · PROGRESS SEMANTICS (CH 142+)</span>
+<h2><code>:target-before</code> &amp; <code>:target-after</code></h2>
+<p class="lead">Chrome 142 added position-awareness to markers: style everything <em>before</em> the current stop differently from everything <em>after</em> — the “visited vs upcoming” progress bar in two selectors. The lane below: teal-filled = already viewed, solid = current, faded = upcoming:</p>
+
+<div class="car prog" id="prog">
+  <div class="slide">Waypoint 1</div><div class="slide">Waypoint 2</div><div class="slide">Waypoint 3</div>
+  <div class="slide">Waypoint 4</div><div class="slide">Waypoint 5</div><div class="slide">Waypoint 6</div>
+</div>
+<pre>.prog &gt; *::scroll-marker:<b>target-before</b>  { background:#99f6e4 }  <i>/* visited   (Ch 142+) */</i>
+.prog &gt; *::scroll-marker:<b>target-current</b> { background:#0f766e }  <i>/* current   (Ch 135+) */</i>
+.prog &gt; *::scroll-marker:<b>target-after</b>   { opacity:.45 }        <i>/* upcoming  (Ch 142+) */</i></pre>
+<p><span class="chip" id="progChip">checking engine…</span> On engines without 142+, the before/after rules are ignored — the current-dot still works (135+). Two-feature progressive enhancement inside one component.</p>
+</div>
+
+<!-- ============ 8 ============ -->
+<div class="sec" id="s8">
+<span class="secnum">§8 · COLUMN MARKERS</span>
+<h2><code>::column::scroll-marker</code> — markers per <em>column</em>, not per item</h2>
+<p class="lead">Multicol content inside a scroller fragments into columns — and each <em>column</em> can grow a marker (<code>::column::scroll-marker</code>). The reading-pattern carousel: paginated text/cards where a dot = one column of content, no item-level structure required:</p>
+
+<div class="colcar" id="colcar">
+  <div class="colcard">Sortie log — column 1: preflight checks, battery temps nominal, IMU cal OK…</div>
+  <div class="colcard">Column 2: launch at 14:02, climb-out 4.2 m/s, wind 9 kt NW…</div>
+  <div class="colcard">Column 3: survey grid 82% complete, gimbal −12° pitch…</div>
+  <div class="colcard">Column 4: RTL triggered, catch net armed, landing 14:31…</div>
+  <div class="colcard">Column 5: debrief notes, 3 retakes flagged, data offloaded…</div>
+  <div class="colcard">Column 6: pack voltage 44.1V, cycle #214 logged…</div>
+</div>
+<p class="lead" style="font-size:13px">The scroller is a <code>column-width</code> container — the browser fragments content, and each <code>::column</code> fragment gets a marker. Square dots = column markers; same <code>:target-current</code> highlight.</p>
+</div>
+
+<!-- ============ 9 ============ -->
+<div class="sec" id="s9">
+<span class="secnum">§9 · BRING YOUR OWN LINKS</span>
+<h2><code>scroll-target-group: auto</code> — real <code>&lt;a&gt;</code> tags as markers (Ch 140+)</h2>
+<p class="lead">The inverse of §2: instead of generating pseudo-markers, promote real markup. Any element containing
+<code>&lt;a href="#fragment"&gt;</code> links becomes a marker group when given <code>scroll-target-group:auto</code>; the links keep working as <em>plain in-page navigation</em> everywhere — including engines without carousel support. This is the progressive-enhancement ladder. You style the active link with the same <code>:target-current</code>:</p>
+
+<div class="tg-wrap">
+  <div class="tg-rail" id="tgRail">
+    <div class="slide" id="tg1">Section 1<small>&lt;a href="#tg1"&gt; owns this dot</small></div>
+    <div class="slide" id="tg2">Section 2<small>plain anchor target</small></div>
+    <div class="slide" id="tg3">Section 3<small>scroll-target-group: auto on &lt;ol&gt;</small></div>
+    <div class="slide" id="tg4">Section 4<small>link nav works without any carousel CSS</small></div>
+  </div>
+  <ol class="tg-nav">
+    <li><a href="#tg1">1</a></li><li><a href="#tg2">2</a></li><li><a href="#tg3">3</a></li><li><a href="#tg4">4</a></li>
+  </ol>
+</div>
+
+<table>
+<tr><th></th><th><code>scroll-marker-group</code> (pseudo)</th><th><code>scroll-target-group</code> (real links)</th></tr>
+<tr><td>Markup</td><td>none — browser generates everything</td><td>you write the <code>&lt;a&gt;</code> list</td></tr>
+<tr><td>Semantics</td><td>automatic <code>tablist</code>/<code>tab</code> + arrow keys</td><td>none imposed — you choose (nav, tabs, links)</td></tr>
+<tr><td>UNSUPPORTED engines</td><td class="no2">controls don’t exist at all</td><td class="yes">links still jump to the section</td></tr>
+<tr><td>Best for</td><td>image/product carousels</td><td>table-of-contents scrollspy, chapter nav</td></tr>
+</table>
+</div>
+
+<!-- ============ 10 ============ -->
+<div class="sec" id="s10">
+<span class="secnum">§10 · SHIP RULES &amp; TRAPS</span>
+<h2>The fallback ladder, and the ways this bites</h2>
+<div class="card"><h3>1 · It is a zero-risk enhancement</h3>
+<p>The unsupporting-engine experience is a plain scrollable area — content fully accessible via scroll/swipe/keyboard. There is no layout cliff, no broken state; you simply lose the buttons/dots affordance (or keep real-link navigation via §9). Never JS-gate the content itself.</p></div>
+<div class="card"><h3>2 · Gate styles, don’t gamble selectors</h3>
+<p>An unknown pseudo-element kills its whole selector list (same comma-death as <code>:has()</code>). Keep carousel styling in its own rules, or wrap with <code>@supports</code>:</p>
+<pre>@supports selector(<b>::scroll-marker</b>) { …carousel affordances… }</pre></div>
+<div class="card"><h3>3 · Snap is optional but strongly recommended</h3>
+<p>Buttons and markers <em>work</em> without <code>scroll-snap-type</code>, but navigation lands mid-item and feels broken. With mandatory snapping, markers land on snapped positions cleanly.</p></div>
+<div class="card"><h3>4 · What CSS carousels can NOT do yet (Aug 2026)</h3>
+<ul>
+  <li><b>No cyclical/infinite wrapping</b> — end-of-list stops; the Chrome team lists wrap-around as future platform work. Infinite logo reels still need JS (or accept the finite UX).</li>
+  <li><b>No autoplay</b> — no native auto-advance; scroll-driven animations can fake a progress indicator, but a true timed carousel still wants JS.</li>
+  <li><b>Firefox &amp; Safari: not shipped</b> — Chromium-only (~2/3 traffic). Cross-engine parity needs the §9 real-links pattern or a JS library fallback.</li>
+  <li><b>Marker count ≠ page count automatically</b> — with multiple items visible, markers attach to items, not “pages”; several markers can read as <code>:target-current</code> at once. Model points of interest (§4), or snap one item per view.</li>
+</ul></div>
+<div class="card"><h3>5 · Positioning pattern</h3>
+<p>Generated controls are siblings inside the scroller — the documented layout is <code>position:absolute</code> + <code>position-anchor</code> to the carousel (<code>anchor-name</code>), with <code>justify-self:anchor-center</code> for centered dot rows. Anchor() resolves against the scrollport, so controls pin visually and never scroll away with content. Anchor positioning itself is near-universal (Chrome 125 / Firefox 147 / Safari 26).</p></div>
+</div>
+
+<!-- ============ 11 ============ -->
+<div class="sec" id="s11">
+<span class="secnum">§11 · OPENDRONES</span>
+<h2>Mission Control — waypoint deck &amp; live log scroller</h2>
+<p class="lead">Waypoint cards with <em>phase</em> markers (PREP / FLY / RTB — chapters, not per-card dots: 6 cards, 3 markers), and a vertical telemetry log paged by <code>up/down</code> buttons. Keyboard: <kbd>Tab</kbd> reaches the marker row as one stop, arrow keys move within it.</p>
+
+<div class="car fleet" id="fleet">
+  <div class="drone-card wp" data-accname="PREP"><h4>ARC-2 · PREP</h4><div class="meta">PACK 44.6V · IMU CAL ✓</div><div class="bar"><i style="width:96%"></i></div></div>
+  <div class="drone-card wp" data-accname="PREP"><h4>ARC-7 · PREP</h4><div class="meta">PACK 45.1V · GPS 3D+ ✓</div><div class="bar"><i style="width:98%"></i></div></div>
+  <div class="drone-card wp" data-accname="FLY"><h4>ARC-2 · SURVEY</h4><div class="meta">ALT 118m · GS 12.4 m/s</div><div class="bar"><i style="width:64%"></i></div></div>
+  <div class="drone-card wp" data-accname="FLY"><h4>ARC-7 · CORRIDOR</h4><div class="meta">ALT 96m · GS 9.8 m/s</div><div class="bar"><i style="width:71%"></i></div></div>
+  <div class="drone-card wp" data-accname="RTB"><h4>ARC-2 · RTL</h4><div class="meta">LANDING PAD B · ETA 04:12</div><div class="bar"><i style="width:22%"></i></div></div>
+  <div class="drone-card wp" data-accname="RTB"><h4>ARC-7 · RTL</h4><div class="meta">CATCH NET · ETA 06:48</div><div class="bar"><i style="width:18%"></i></div></div>
+</div>
+
+<div style="height:14px"></div>
+<div class="logwrap">
+  <div class="log" id="log">
+    <div><span class="t">14:02:11</span> <span class="lvl INFO">INFO</span> ARM requested — interlocks clear</div>
+    <div><span class="t">14:02:12</span> <span class="lvl INFO">INFO</span> Motors idle · heading 214°</div>
+    <div><span class="t">14:02:40</span> <span class="lvl INFO">INFO</span> Takeoff — climb 4.2 m/s</div>
+    <div><span class="t">14:04:18</span> <span class="lvl WARN">WARN</span> Wind gust 14 kt — corridor hold</div>
+    <div><span class="t">14:09:55</span> <span class="lvl INFO">INFO</span> Survey grid 82% · gimbal −12°</div>
+    <div><span class="t">14:21:03</span> <span class="lvl CRIT">CRIT</span> ARC-7 link RSSI −92 dBm → relay</div>
+    <div><span class="t">14:24:47</span> <span class="lvl INFO">INFO</span> Relay uplink restored · 118 ms</div>
+    <div><span class="t">14:29:59</span> <span class="lvl INFO">INFO</span> RTL triggered — both units</div>
+    <div><span class="t">14:31:22</span> <span class="lvl INFO">INFO</span> ARC-2 landed · 44.1V cycle #214</div>
+    <div><span class="t">14:36:08</span> <span class="lvl INFO">INFO</span> Debrief export queued (OPFS)</div>
+  </div>
+</div>
+<p style="font-size:13px;color:var(--muted)">The log buttons page by 85% of its height and disable at top/bottom — same primitives, vertical axis. No JS observers, no virtualized-scroll bookkeeping for the controls.</p>
+</div>
+
+<!-- ============ 12 ============ -->
+<div class="sec" id="s12">
+<span class="secnum">§12 · MOLT STUDIOS</span>
+<h2>Client work — testimonial reel with chapter markers</h2>
+<p class="lead">Text-label markers (“chapters”, not dots) — the pattern for story/quote reels where a dot means nothing but a name (“Evosta”, “Nordal”) tells the user what they’re jumping to:</p>
+
+<div class="car molt" id="molt">
+  <div class="quote chapter" data-accname="Evosta"><p>“Molt rebuilt our landing page and conversions went up 38% in the first month. The page feels instant.”</p><footer>EVOSTA — CMO</footer></div>
+  <div class="quote chapter" data-accname="Nordal"><p>“Every interaction feels intentional. It finally looks like the brand we thought we had.”</p><footer>NORDAL — FOUNDER</footer></div>
+  <div class="quote chapter" data-accname="Skyport"><p>“The configurator loads before our old hero image did. That alone won the pitch.”</p><footer>SKYPORT — HEAD OF DIGITAL</footer></div>
+  <div class="quote chapter" data-accname="Loop"><p>“Zero-layout-shift carousels. Our CWV scores went green across the board.”</p><footer>LOOP — TECH LEAD</footer></div>
+</div>
+<p style="font-size:13px;color:var(--muted)">Replaces the Embla/Swiper + React wrapper + hydration chunk for this entire component class — and with it a leading CLS source on marketing builds (dots mounted late by JS). The chrome.dev carousel gallery showcasing these patterns is itself built entirely without JavaScript.</p>
+</div>
+
+<!-- ============ 13 ============ -->
+<div class="sec" id="s13">
+<span class="secnum">§13 · ADOPTION MATRIX</span>
+<h2>Support &amp; verdict — August 2026</h2>
+<table>
+<tr><th>Feature</th><th>Chrome/Edge</th><th>Firefox</th><th>Safari</th><th>Ship?</th></tr>
+<tr><td><code>::scroll-button()</code> · <code>::scroll-marker</code> · <code>::scroll-marker-group</code> · <code>:target-current</code> · <code>::column</code> markers</td><td class="yes">135 (Apr 2025)</td><td class="no2">—</td><td class="no2">—</td><td>enhancement-only</td></tr>
+<tr><td><code>scroll-target-group</code> (real-link markers)</td><td class="yes">140</td><td class="no2">—</td><td class="no2">—</td><td>enhancement + real links</td></tr>
+<tr><td><code>:target-before</code> / <code>:target-after</code></td><td class="yes">142</td><td class="no2">—</td><td class="no2">—</td><td>progress polish</td></tr>
+<tr><td>Anchor positioning (overlay layout)</td><td class="yes">125</td><td class="yes">147</td><td class="yes">26</td><td>universal</td></tr>
+<tr><td>Scroll snap (the pagination base)</td><td class="yes">69</td><td class="yes">68</td><td class="yes">11</td><td>universal</td></tr>
+</table>
+
+<div class="verdict">
+<h2>Verdict</h2>
+<p><b>Priority 3 — adopt on Molt builds now as progressive enhancement; keep a JS-library escape hatch until Firefox/Safari ship.</b></p>
+<ul>
+  <li><b>The win:</b> the entire carousel control layer — buttons, dots, active-state, keyboard, ARIA tablist, disabled states — becomes ~20 lines of CSS with zero JS, zero hydration, zero CLS. Accessible-by-default beats almost every hand-rolled or library carousel.</li>
+  <li><b>The constraint:</b> Chromium-only (~2/3 of traffic). Content must never depend on it; controls are the enhancement.</li>
+  <li><b>The ladder:</b> plain scroller everywhere → real-link markers (§9) where navigation must survive → generated buttons/markers (§2) where affordance is the cherry.</li>
+  <li><b>Pairs with:</b> scroll-snap (base), anchor positioning (overlay placement), scroll-driven animations (progress indicators), <code>scroll-state()</code> queries (edge reveals), <code>content</code> alt-text syntax for names.</li>
+  <li><b>Watch:</b> css-overflow-5 is actively growing — <code>links</code>/<code>tabs</code> group values are in the editor’s draft, and wrap-around scrolling is on the Chrome roadmap.</li>
+</ul>
+</div>
+</div>
+
+<footer>
+CSS Scroll Markers &amp; scroll-button research demo · Jin (Molt Studios / OpenDrones) · Aug 24, 2026 ·
+Spec: CSS Overflow Level 5 (drafts.csswg.org/css-overflow-5) · Gallery: chrome.dev/carousel ·
+Every carousel on this page is driven by CSS alone — this page’s JS only powers probes &amp; readouts.
+</footer>
+</main>
+
+<script>
+(function(){
+  var hasMarker = window.CSS && CSS.supports && CSS.supports('selector(::scroll-marker)');
+  var hasButton = window.CSS && CSS.supports && CSS.supports('selector(::scroll-button(left))');
+  var hasCurrent = window.CSS && CSS.supports && CSS.supports('selector(:target-current)');
+  var hasBefore = window.CSS && CSS.supports && CSS.supports('selector(:target-before)');
+  var hasTg = window.CSS && CSS.supports && CSS.supports('scroll-target-group','auto');
+  var hasGroup = window.CSS && CSS.supports && CSS.supports('scroll-marker-group','after');
+  var supported = hasMarker && hasButton && hasGroup;
+  if(!supported) document.body.classList.add('no-carousel');
+
+  var B = document.getElementById('badges');
+  function badge(label, ok, extra){
+    var s = document.createElement('span');
+    s.className = 'badge ' + (ok===true?'y':ok===false?'n':'p');
+    s.textContent = label + (ok===true?' ✓':ok===false?' ✗':'');
+    if(extra) s.title = extra;
+    B.appendChild(s);
+  }
+  badge('::scroll-marker / ::scroll-button', supported, 'core carousel pseudo-elements (Ch/Edge 135)');
+  badge(':target-current', hasCurrent);
+  badge('scroll-marker-group', hasGroup);
+  badge('scroll-target-group', hasTg, 'Ch/Edge 140');
+  badge(':target-before/:after', hasBefore, 'Ch/Edge 142');
+  var ua = (navigator.userAgent.match(/(Firefox|Edg|Chrome|Safari)\/[\d.]+/g)||['engine']).slice(0,2);
+  var eng = document.createElement('span');
+  eng.className='badge';
+  eng.textContent = ua.join(' · ');
+  B.appendChild(eng);
+
+  /* generic step tracker: measures scroll deltas between settle points */
+  function trackStep(el, render){
+    if(!el) return;
+    var settled = el.scrollLeft, axisX = true;
+    function val(){ return axisX ? el.scrollLeft : el.scrollTop; }
+    if('onscrollend' in el){
+      el.addEventListener('scrollend', function(){
+        var now = val();
+        var step = Math.abs(now - settled);
+        settled = now;
+        render(step, now);
+      });
+    }
+    el.__setAxisX = function(x){ axisX = x; settled = val(); };
+  }
+
+  /* §3: snap-adjusted step + at-ends state */
+  var flag = document.getElementById('flag');
+  var outF = document.getElementById('flagRead');
+  if(flag && supported){
+    trackStep(flag, function(step){
+      var cw = flag.clientWidth, max = flag.scrollWidth - cw;
+      var atStart = flag.scrollLeft <= 1, atEnd = flag.scrollLeft >= max - 1;
+      outF.innerHTML = 'snap step <b>' + Math.round(step) + 'px</b> = <b>' + (cw?Math.round(100*step/cw):0) +
+        '%</b> of clientWidth ' + cw + 'px <span class="dim">(snap-adjusted — raw page is 85%, see §6)</span> · scrollLeft ' +
+        Math.round(flag.scrollLeft) + '/' + Math.round(max) + ' · <span class="dim">prev ' +
+        (atStart?'<b>:disabled</b>':'active') + ' · next ' + (atEnd?'<b>:disabled</b>':'active') + '</span>';
+    });
+  }
+
+  /* §5 toggle */
+  var place = document.getElementById('place');
+  var chips = document.querySelectorAll('#placeTpl .toggle');
+  var placeChip = document.getElementById('placeChip');
+  Array.prototype.forEach.call(chips, function(b){
+    b.addEventListener('click', function(){
+      Array.prototype.forEach.call(chips, function(x){x.classList.remove('on')});
+      b.classList.add('on');
+      place.dataset.group = b.dataset.v;
+      placeChip.textContent = 'group: ' + b.dataset.v;
+    });
+  });
+
+  /* §6: raw 85% proof on the snap-free 2-D scroller */
+  var twod = document.getElementById('twod');
+  var out2 = document.getElementById('twodRead');
+  if(twod){
+    var lastStep = 0;
+    trackStep(twod, function(step){
+      var now = step || lastStep; lastStep = now;
+      var cw = twod.clientWidth;
+      out2.innerHTML = 'scrollLeft <b>' + Math.round(twod.scrollLeft) + '</b> · scrollTop <b>' + Math.round(twod.scrollTop) +
+        '</b> · last step <b>' + Math.round(now) + 'px</b> = <b>' + (cw?Math.round(100*now/cw):0) +
+        '%</b> of clientWidth ' + cw + 'px <span class="dim">(engine target: 85%)</span>';
+    });
+  }
+
+  /* §7 capability note */
+  var pc = document.getElementById('progChip');
+  if(pc){ pc.className = 'chip ' + (hasBefore?'ok':'no');
+    pc.textContent = hasBefore ? ':target-before live on this engine (142+)' : ':target-before not on this engine — current-dot only'; }
+})();
+</script>
+</body>
+</html>
