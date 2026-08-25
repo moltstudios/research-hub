@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:,">
 <title>WebCodecs API — Frame-Accurate Video: Decode, Transform &amp; Encode in the Browser</title>
 <style>
   :root{
@@ -390,7 +391,8 @@
     state.decCfg=await track.getDecoderConfig();
     const stats=await track.computePacketStats();
     state.baseTs=await track.getFirstTimestamp();
-    $('src-meta').innerHTML='duration <b>'+(state.duration).toFixed(3)+'s</b><br>bestGuess fps <b>'+state.fps+'</b><br>codec <b>'+(state.decCfg.codec||'?')+'</b><br>packets '+stats.packetCount+' ('+stats.keyPacketCount+' key)<br>display '+state.decCfg.displayWidth+'×'+state.decCfg.displayHeight+(state.decCfg.description?'<br>has decoderConfig.description ✓':'');
+    const dw=await track.getDisplayWidth(), dh=await track.getDisplayHeight();
+    $('src-meta').innerHTML='duration <b>'+(state.duration).toFixed(3)+'s</b><br>bestGuess fps <b>'+state.fps+'</b><br>codec <b>'+(state.decCfg.codec||'?')+'</b><br>packets '+stats.packetCount+' · avg '+Math.round(stats.averagePacketRate)+' pps · '+Math.round(stats.averageBitrate/1000)+' kbps<br>display '+dw+'×'+dh+(state.decCfg.description?'<br>has decoderConfig.description ✓':'');
     log('log-src','mediabunny metadata read — demux layer OK (packets ready for raw VideoDecoder)');
     log('log-src','expected frames ≈ '+(state.duration*state.fps).toFixed(0),'dim');
     ['b-dec','b-hold'].forEach(i=>$(i).disabled=false);
@@ -536,9 +538,9 @@
     try{
       const size=hit.allocationSize();
       const buf=new ArrayBuffer(size);
-      const layout=hit.copyTo(buf);
+      const layout=await hit.copyTo(buf);
       const bytes=new Uint8Array(buf);
-      const yOff=layout[0].offset, yStride=layout[0].rowStride, yRows=hit.displayHeight;
+      const yOff=layout[0].offset, yStride=layout[0].stride, yRows=hit.displayHeight;
       const bins=new Float64Array(64);
       for(let r=0;r<yRows;r+=2){ const row=yOff+r*yStride;
         for(let c=0;c<hit.displayWidth;c+=2){ const v=bytes[row+c]; bins[v>>2]++; } }
@@ -555,9 +557,10 @@
         'codedWidth×codedHeight <b>'+hit.codedWidth+'×'+hit.codedHeight+'</b><br>'+
         'displayWidth×displayHeight <b>'+hit.displayWidth+'×'+hit.displayHeight+'</b> (visible rect crops coded)<br>'+
         'allocationSize() <b>'+fmtBytes(size)+'</b><br>'+
-        'copyTo() returned '+layout.length+' plane layouts: '+layout.map(l=>'offset '+l.offset+', rowStride '+l.stride+', samplesPerPixel '+l.samplesPerPixel).join(' | ')+
+        'copyTo() returned '+layout.length+' plane layouts: '+layout.map(l=>'offset '+l.offset+', stride '+l.stride).join(' | ')+
         '<br>colorSpace.primaries '+(hit.colorSpace&&hit.colorSpace.primaries||'—');
       log('log-pix','Y-plane walked natively: '+Math.round(hit.displayWidth/2*hit.displayHeight/2)+' samples → 64-bin histogram, zero canvas involved','ok');
+      log('log-pix','live-falsified assumption: copyTo() returns a PROMISE (resolves to the plane layouts) — sync examples crash with \'reading offset\'. Always await it','hi');
       log('log-pix','stride ≠ width is the classic row-length trap — always read the returned layout','dim');
     } finally { hit.close(); }
   }));
@@ -623,8 +626,8 @@
     await output.start();
     let metaSent=false;
     for(const {chunk, meta} of chunks){
-      const data=new Uint8Array(chunk.copyTo(new ArrayBuffer(chunk.byteLength)));
-      const pkt=new EncodedPacket(data, chunk.type, chunk.timestamp/1e6, (chunk.duration||lastDur)/1e6);
+      const ab=new ArrayBuffer(chunk.byteLength); chunk.copyTo(ab);
+      const pkt=new EncodedPacket(new Uint8Array(ab), chunk.type, chunk.timestamp/1e6, (chunk.duration||lastDur)/1e6);
       await src.add(pkt, !metaSent&&firstMeta?meta:undefined);
       metaSent=true;
     }
@@ -642,7 +645,7 @@
     const v=$('enc-video');
     v.src=URL.createObjectURL(r.blob);
     $('enc-link').href=v.src; $('enc-dl').style.display='flex';
-    $('enc-stats').innerHTML='frames '+r.frames+' · key chunks '+r.keyChunks+'<br>encode wall '+ (r.wall/1000).toFixed(2)+'s = <b>'+(r.wall/1000/state.duration).toFixed(2)+'× realtime</b><br>output '+fmtBytes(r.size)+' (~'+Math.round(r.size*8/r.frames/(state.fps/1e3))+' kbps effective)<br>container MP4 · H.264 — plays anywhere, real duration metadata';
+    $('enc-stats').innerHTML='frames '+r.frames+' · key chunks '+r.keyChunks+'<br>encode wall '+ (r.wall/1000).toFixed(2)+'s = <b>'+(r.wall/1000/state.duration).toFixed(2)+'× realtime</b><br>output '+fmtBytes(r.size)+' (~'+Math.round(r.size*8/state.duration/1000)+' kbps effective)<br>container MP4 · H.264 — plays anywhere, real duration metadata';
     log('log-enc','done — '+r.frames+' frames re-encoded in '+(r.wall/1000).toFixed(2)+'s ('+(r.wall/1000/state.duration).toFixed(2)+'× realtime), '+fmtBytes(r.size),'ok');
     log('log-enc','note the VideoFrame lifecycle: canvas-wrapped frame closed right after encode() — encode() takes its own reference','dim');
   }));
@@ -761,8 +764,8 @@
     await output.start();
     let metaSent=false;
     for(const {chunk,meta} of chunks){
-      const data=new Uint8Array(chunk.copyTo(new ArrayBuffer(chunk.byteLength)));
-      await src.add(new EncodedPacket(data, chunk.type, chunk.timestamp/1e6, (chunk.duration||lastDur)/1e6), !metaSent&&firstMeta?meta:undefined);
+      const ab=new ArrayBuffer(chunk.byteLength); chunk.copyTo(ab);
+      await src.add(new EncodedPacket(new Uint8Array(ab), chunk.type, chunk.timestamp/1e6, (chunk.duration||lastDur)/1e6), !metaSent&&firstMeta?meta:undefined);
       metaSent=true;
     }
     src.close(); await output.finalize();
