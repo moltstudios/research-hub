@@ -1,0 +1,79 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Qwen3-TTS — Local Demo</title>
+<style>
+body{font-family:system-ui;max-width:720px;margin:40px auto;padding:0 20px;background:#111;color:#eee;line-height:1.5}
+h1{color:#7fb8ff;margin-bottom:6px}
+.subtitle{color:#9aa;margin-top:0;font-size:.95em}
+.ok{color:#7CFC00}
+.warn{color:#ffb347}
+.bad{color:#ff6b6b}
+code{background:#222;padding:2px 6px;border-radius:4px;font-size:.9em}
+pre{background:#1a1a1a;padding:12px;border-radius:8px;overflow:auto;border:1px solid #2a2a2a}
+pre code{background:transparent;padding:0}
+audio{width:100%;margin:8px 0}
+.box{background:#181818;border:1px solid #2a2a2a;border-radius:8px;padding:14px;margin:14px 0}
+.spec{display:grid;grid-template-columns:140px 1fr;gap:6px 14px;font-size:.92em}
+.spec dt{color:#9aa}
+.spec dd{margin:0}
+ul{margin:6px 0}
+li{margin:2px 0}
+a{color:#7fb8ff}
+</style>
+</head>
+<body>
+<h1>🐙 Qwen3-TTS — Local CustomVoice Demo</h1>
+<p class="subtitle"><span class="ok">✅ Installed &amp; verified</span> on GhostClaw's Mac mini (16GB M4, MPS) · venv: <code>~/agency/tools/qwen3-tts/.venv-tts</code> · node: <code>~/agency/tools/qwen3-tts</code> (symlinked into <code>~/ComfyUI/custom_nodes/comfyui-qwen-tts</code>)</p>
+
+<div class="box">
+  <strong>Prompt:</strong> <em>"Neo backend is online, secure, and ready to build. Qwen three text to speech, custom voice, running on the M four Mac mini."</em><br>
+  <strong>Model:</strong> <code>Qwen3-TTS-12Hz-0.6B-CustomVoice</code> · <strong>Voice:</strong> <code>Ryan</code> (preset) · <strong>Sample rate:</strong> 24 kHz · <strong>Generated:</strong> on MPS, float32, sdpa attention
+  <audio controls src="qwen3tts-sample.wav"></audio>
+</div>
+
+<h2>What's installed</h2>
+<ul>
+  <li><strong>3 of 6 official Qwen3-TTS models</strong> in <code>~/ComfyUI/models/qwen-tts/</code> (9.4 GB total): <code>0.6B-Base</code>, <code>0.6B-CustomVoice</code>, <code>1.7B-VoiceDesign</code> + shared <code>Tokenizer-12Hz</code>.</li>
+  <li><strong>9 ComfyUI nodes</strong> loaded under the <code>qwen3-tts-comfyui</code> cnr: <code>VoiceClone</code>, <code>VoiceDesign</code>, <code>CustomVoice</code>, <code>VoiceClonePrompt</code>, <code>RoleBank</code>, <code>DialogueInference</code>, <code>SaveVoice</code>, <code>LoadSpeaker</code>, <code>Train</code>.</li>
+  <li><strong>Two run paths</strong> that actually work today:
+    <ol>
+      <li><strong>Direct pipeline</strong> via <code>~/agency/tools/qwen3-tts/.venv-tts/bin/python</code> — see the script below. Loads the HF model and runs inference on MPS.</li>
+      <li><strong>ComfyUI</strong> via <code>~/ComfyUI/venv/bin/python main.py</code> — the node graph loads cleanly; runtime currently trips on a known PyTorch MPS <code>empty_cache()</code> watermark bug (raised inside <code>comfy.model_management.soft_empty_cache</code> at the start of <code>cleanup_models_gc</code>). Tracked as a known MPS issue — fallback script is the recommended path on Apple Silicon until upstream fixes it.</li>
+    </ol>
+  </li>
+</ul>
+
+<h2>Usage — direct pipeline (MPS, recommended)</h2>
+<pre><code>cd ~/agency/tools/qwen3-tts
+PYTHONPATH=. ./.venv-tts/bin/python -c "
+from qwen_tts import Qwen3TTSModel
+import torch
+model = Qwen3TTSModel.from_pretrained(
+    '~/ComfyUI/models/qwen-tts/Qwen3-TTS-12Hz-0.6B-CustomVoice',
+    device_map='mps', dtype=torch.float32, attn_implementation='sdpa',
+)
+wavs, sr = model.generate_custom_voice(
+    text='Hello from the M4 Mac mini.',
+    language='English', speaker='Ryan',
+    instruct='Speak clearly with a calm, confident delivery.',
+    max_new_tokens=512,
+)
+import soundfile as sf, numpy as np
+sf.write('out.wav', (np.clip(wavs[0],-1,1)*32767).astype('int16'), sr)
+"
+</code></pre>
+
+<h2>Usage — ComfyUI node graph</h2>
+<p>Drop a <code>FB_Qwen3TTSCustomVoice</code> node + <code>SaveAudio</code>, set <code>speaker=Ryan</code>, <code>model_choice=0.6B</code>, <code>device=mps</code>, <code>precision=fp32</code>, <code>attention=sdpa</code>, <code>unload_model_after_generate=true</code>. The 0.6B variant fits the 16 GB M4 in fp32; 1.7B-VoiceDesign needs bf16 once the MPS bug is cleared.</p>
+
+<h2>Specs</h2>
+<dl class="spec">
+  <dt>Source</dt><dd><a href="https://github.com/flybirdxx/ComfyUI-Qwen-TTS">flybirdxx/ComfyUI-Qwen-TTS</a> (custom node wrapping Alibaba's <a href="https://github.com/QwenLM/Qwen3-TTS">Qwen3-TTS</a>)</dd>
+  <dt>Models present</dt><dd>0.6B Base, 0.6B CustomVoice, 1.7B VoiceDesign + 12Hz tokenizer</dd>
+  <dt>Sample rate</dt><dd>24 kHz mono PCM</dd>
+  <dt>Hardware</dt><dd>16 GB unified M4 (Apple Silicon), MPS, float32 (bf16 unsupported on MPS for these weights)</dd>
+  <dt>Disk footprint</dt><dd>9.4 GB in <code>models/qwen-tts/</code>; isolated venv adds ~3 GB</dd>
+  <dt>Transformers pin</dt><dd><code>transformers==4.57.3</code> (5.x breaks the node — see README)</dd>
+  <dt>Known MPS issue</dt><dd><code>torch.mps.empty_cache()</code> can raise <code>RuntimeError: invalid low watermark ratio</code> on 2.13.0.dev; affects ComfyUI <code>cleanup_models_gc</code> before our node even runs.</dd>
+</dl>
+
+<p>Source: <a href="https://github.com/flybirdxx/ComfyUI-Qwen-TTS">GitHub — flybirdxx/ComfyUI-Qwen-TTS</a> · <a href="https://github.com/QwenLM/Qwen3-TTS">Qwen3-TTS</a> · Demo audio generated 2026-08-25.</p>
+</body></html>
