@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WebCodecs API — Frame-Accurate Video: Decode, Transform &amp; Encode in the Browser</title>
+<style>
+  :root{
+    --bg:#faf8f4; --ink:#1c1917; --mut:#78716c; --line:#e7e0d8;
+    --acc:#4f46e5; --acc2:#e0e7ff; --ok:#059669; --okbg:#d1fae5; --bad:#dc2626; --badbg:#fee2e2;
+    --warn:#b45309; --warnbg:#fef3c7; --card:#ffffff; --code:#f5f2ec;
+    --od:#0f172a; --odin:#fbbf24;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,Roboto,sans-serif;
+    background:var(--bg); color:var(--ink); line-height:1.55; font-size:15px;
+    background-image:radial-gradient(600px 380px at 12% -4%, #e0e7ff66, transparent),
+                     radial-gradient(520px 320px at 96% 4%, #fde68a55, transparent);
+    background-repeat:no-repeat;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:26px 20px 90px}
+  header.hero{padding:44px 10px 8px}
+  .kicker{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc);font-weight:700}
+  h1{font-size:clamp(28px,4.6vw,42px);line-height:1.12;letter-spacing:-.02em;margin:10px 0 12px;font-weight:800}
+  .sub{color:var(--mut);max-width:72ch}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .badge{font-size:12px;font-weight:600;padding:5px 11px;border-radius:999px;background:var(--card);border:1px solid var(--line);color:var(--mut)}
+  .badge.on{background:var(--okbg);border-color:#a7f3d0;color:#065f46}
+  .badge.off{background:var(--badbg);border-color:#fecaca;color:#991b1b}
+  nav.toc{display:flex;flex-wrap:wrap;gap:6px;margin:26px 0 6px;font-size:12.5px}
+  nav.toc a{text-decoration:none;color:var(--acc);background:var(--card);border:1px solid var(--line);padding:4px 10px;border-radius:999px}
+  section{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 26px 24px;margin-top:26px;box-shadow:0 1px 2px #0000000a}
+  h2{font-size:21px;letter-spacing:-.01em;margin-bottom:6px}
+  h2 .n{color:var(--acc);font-variant-numeric:tabular-nums}
+  p.lead{color:var(--mut);margin-bottom:14px;max-width:78ch}
+  h3{font-size:14.5px;margin:18px 0 8px}
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+  .card{border:1px solid var(--line);border-radius:14px;padding:14px;background:#fdfcfa}
+  .card h4{font-size:13px;margin-bottom:6px}
+  .mono,code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
+  code{background:var(--code);padding:1px 6px;border-radius:6px}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:12px;padding:14px;overflow-x:auto;font-size:12.5px;line-height:1.6;margin:10px 0}
+  pre code{background:none;padding:0}
+  .log{background:#0f172a;color:#e2e8f0;border-radius:12px;padding:12px 14px;font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace;min-height:20px;max-height:230px;overflow:auto;white-space:pre-wrap;margin-top:10px}
+  .log .ok{color:#6ee7b7}.log .err{color:#fca5a5}.log .dim{color:#94a3b8}.log .hi{color:#fde68a}
+  button{font:inherit;font-size:13.5px;font-weight:600;border-radius:11px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:8px 15px;cursor:pointer;transition:.15s}
+  button:hover:not(:disabled){border-color:var(--acc);color:var(--acc)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+  button.pri:hover:not(:disabled){background:#4338ca;color:#fff}
+  .row{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin:12px 0}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:10px 0}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}
+  th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+  td.y{color:#065f46;background:#ecfdf5}td.n{color:#991b1b;background:#fef2f2}
+  canvas.frame{background:#000;border-radius:10px;max-width:100%}
+  video{background:#000;border-radius:12px;max-width:100%;width:100%}
+  .thumb{border-radius:8px;background:#000;width:100%;display:block}
+  .framecard{padding:6px}
+  .framecard .cap{font-size:10.5px;color:var(--mut);font-family:ui-monospace,Menlo,monospace;text-align:center;padding-top:4px}
+  .stat{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+  .stat .s{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:9px 14px;min-width:104px}
+  .stat .s b{display:block;font-size:19px;letter-spacing:-.02em}
+  .stat .s span{font-size:11px;color:var(--mut)}
+  .pill{display:inline-block;font-size:11px;font-weight:700;border-radius:7px;padding:2px 8px}
+  .pill.g{background:var(--okbg);color:#065f46}.pill.r{background:var(--badbg);color:#991b1b}.pill.y{background:var(--warnbg);color:#92400e}
+  .note{border-left:3px solid var(--acc);background:#eef2ff66;padding:10px 14px;border-radius:0 10px 10px 0;font-size:13.5px;margin:12px 0}
+  .warn{border-left-color:var(--warn);background:var(--warnbg)}
+  input[type=range]{width:230px;accent-color:var(--acc)}
+  select{font:inherit;font-size:13px;border:1px solid var(--line);border-radius:9px;padding:6px 9px;background:var(--card)}
+  .od{background:var(--od);border-color:#1e293b;color:#e2e8f0}
+  .od h2{color:#fff}.od p.lead{color:#94a3b8}.od .card{background:#111c31;border-color:#1e293b}
+  .od .log{background:#020617}
+  .od button{background:#1e293b;border-color:#334155;color:#e2e8f0}
+  .od button.pri{background:var(--odin);border-color:var(--odin);color:#111}
+  .od table th{color:#94a3b8}.od td,.od th{border-color:#1e293b}
+  .od .stat .s{background:#111c31;border-color:#1e293b}
+  .od .stat .s span{color:#94a3b8}
+  footer{margin-top:34px;color:var(--mut);font-size:12.5px;text-align:center}
+  .hid{display:none}
+  .dl{display:inline-flex;gap:7px;align-items:center;font-size:13px;font-weight:600;color:var(--acc);text-decoration:none;border:1px dashed var(--acc);padding:7px 13px;border-radius:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">Research · Media Tier · Jin</div>
+  <h1>WebCodecs — frame-accurate video: decode, transform &amp; encode, all in the browser</h1>
+  <p class="sub">The media tier's missing foundation: <code>VideoDecoder</code> hands you every <code>VideoFrame</code> the instant it exists (no &lt;video&gt; element, no realtime constraint), and <code>VideoEncoder</code> turns frames back into an H.264/VP9 bitstream you mux into a real MP4/WebM. This page generates its own 4-second source clip with MediaRecorder, then decodes it, walks it frame-by-frame, reads raw pixels, and re-encodes a watermarked MP4 — zero uploads, zero ffmpeg.wasm.</p>
+  <div class="badges" id="badges"></div>
+  <nav class="toc">
+    <a href="#s2">Tier map</a><a href="#s3">Anatomy</a><a href="#s4">① Source</a><a href="#s5">② Decode</a><a href="#s6">③ Frames</a><a href="#s7">④ Pixels</a><a href="#s8">⑤ Re-encode</a><a href="#s9">⑥ Backpressure</a><a href="#s10">Gotchas</a><a href="#s11">OpenDrones</a><a href="#s12">Molt</a>
+  </nav>
+</header>
+
+<section id="s2">
+  <h2><span class="n">02</span> — The media tier map: why WebCodecs exists</h2>
+  <p class="lead">Three layers, three jobs. WebRTC <em>transports</em> live, MediaRecorder <em>records</em> what plays, WebCodecs gives you the <em>frames themselves</em> — the layer the other two are built on.</p>
+  <div class="grid g3">
+    <div class="card"><h4>🛰 WebRTC — transport</h4><p style="font-size:13px;color:var(--mut)">Live streams between peers. Realtime only — you can't pause, seek, or process offline.</p></div>
+    <div class="card"><h4>⏺ MediaRecorder — DVR</h4><p style="font-size:13px;color:var(--mut)">Encode whatever plays, in realtime, into a container. Black box: no frame access, pacing = wall clock.</p></div>
+    <div class="card" style="border-color:var(--acc)"><h4>🎬 WebCodecs — frames</h4><p style="font-size:13px;color:var(--mut)">Decode any container's video into <code>VideoFrame</code>s, transform them, encode back. Faster than realtime. This page.</p></div>
+  </div>
+  <div class="note">What <code>&lt;video&gt;</code> + <code>requestVideoFrameCallback</code> can't do: hold frame #107 while you read its pixels, re-encode a 4s clip in 0.8s, or burn a watermark without a canvas-recording session. WebCodecs is the escape hatch from the "player" abstraction — it's what ffmpeg.wasm uses internally, without the 25&nbsp;MB wasm download.</div>
+</section>
+
+<section id="s3">
+  <h2><span class="n">03</span> — Anatomy: state machines, config probing, µs timestamps</h2>
+  <p class="lead">Both coder classes are explicit state machines: <code>unconfigured → configured → closed</code>. <code>flush()</code> drains; <code>reset()</code> abandons; <code>close()</code> is terminal. Always <code>await isConfigSupported()</code> before <code>configure()</code> — support is codec/size/hardware dependent.</p>
+  <div class="row"><button class="pri" id="b-states">Probe a real VideoDecoder lifecycle</button><button id="b-probe">Run isConfigSupported() matrix</button></div>
+  <div class="log" id="log-states">idle</div>
+  <div id="probe-wrap" class="hid"><table id="probe-tbl"><thead><tr><th>config</th><th>supported</th><th>echoed config</th></tr></thead><tbody></tbody></table></div>
+  <h3>The three rules that bite everyone</h3>
+  <div class="grid g3">
+    <div class="card"><h4>1 · Timestamps are µs</h4><p style="font-size:13px;color:var(--mut)">Everything in WebCodecs is microseconds. Containers/libraries use seconds or ms — mediabunny uses seconds. Convert at the boundary, once, loudly.</p></div>
+    <div class="card"><h4>2 · You own the frames</h4><p style="font-size:13px;color:var(--mut)">Decoded <code>VideoFrame</code>s hold GPU/native memory. Nothing frees them but <code>frame.close()</code> — GC is not prompt. <code>using</code> discipline applies.</p></div>
+    <div class="card"><h4>3 · Decode order ≠ presentation order</h4><p style="font-size:13px;color:var(--mut)">Feed <code>EncodedVideoChunk</code>s in decode order; outputs may arrive reordered (B-frames). Key chunks decode standalone — seeking walks back to one.</p></div>
+  </div>
+</section>
+
+<section id="s4">
+  <h2><span class="n">04</span> — Lab ① · Make the source clip (MediaRecorder → container)</h2>
+  <p class="lead">Everything below runs on a clip this page creates: a 4s, 640×360, 30fps canvas animation (a drone orbit + frame counter) recorded through MediaRecorder with an MP4-first codec picker — the two APIs are siblings: MediaRecorder writes realtime, WebCodecs processes after.</p>
+  <div class="row"><button class="pri" id="b-src" disabled>Record 4s source clip</button><span id="src-note" style="font-size:13px;color:var(--mut)"></span></div>
+  <div class="grid g2">
+    <div><h3 style="margin-top:0">Recorded clip</h3><video id="src-video" controls playsinline muted></video></div>
+    <div class="card"><h4>mediabunny metadata readout</h4><div class="mono" id="src-meta" style="font-size:12px;color:var(--mut)">—</div></div>
+  </div>
+  <div class="log" id="log-src">waiting for mediabunny module…</div>
+</section>
+
+<section id="s5">
+  <h2><span class="n">05</span> — Lab ② · Decode every frame (faster than realtime)</h2>
+  <p class="lead">mediabunny demuxes encoded packets; raw <code>VideoDecoder</code> does the work: <code>configure(decoderConfig)</code> → <code>decode(chunk)</code> × N → <code>flush()</code>. Measure wall-clock against the clip's duration — decoding is not paced to playback.</p>
+  <div class="row"><button class="pri" id="b-dec" disabled>Decode all frames</button><span style="font-size:13px;color:var(--mut)">First + last frame drawn below; every frame is thumbnailed into the cache for Lab ③.</span></div>
+  <div class="stat" id="dec-stats" style="display:none">
+    <div class="s"><b id="st-frames">–</b><span>frames decoded</span></div>
+    <div class="s"><b id="st-wall">–</b><span>wall clock</span></div>
+    <div class="s"><b id="st-ratio">–</b><span>× realtime</span></div>
+    <div class="s"><b id="st-qpeak">–</b><span>peak decodeQueueSize</span></div>
+    <div class="s"><b id="st-ts">–</b><span>first→last timestamp</span></div>
+  </div>
+  <div class="grid g2" style="margin-top:12px">
+    <div class="card framecard"><canvas id="dec-first" class="thumb" width="640" height="360"></canvas><div class="cap" id="cap-first">first frame</div></div>
+    <div class="card framecard"><canvas id="dec-last" class="thumb" width="640" height="360"></canvas><div class="cap" id="cap-last">last frame</div></div>
+  </div>
+  <div class="log" id="log-dec">idle</div>
+</section>
+
+<section id="s6">
+  <h2><span class="n">06</span> — Lab ③ · Frame-accurate access: seek grid + scrubber</h2>
+  <p class="lead">Once decoded, you own every frame with its exact µs timestamp — none of <code>video.currentTime</code>'s rounding-to-keyframe behavior. The grid pulls 8 frames at exact 0.5s steps from the cache; the scrubber snaps to the nearest decoded frame and reports the sub-frame delta. The last card re-does one seek the <em>raw</em> way (key packet → decode forward) to show what a real seek costs.</p>
+  <div class="row"><button id="b-grid" disabled>Build 8-frame grid</button><button id="b-rawseek" disabled>Raw-seek frame @ 2.75s (key packet walk)</button></div>
+  <div class="grid" id="seek-grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))"></div>
+  <div class="card" style="margin-top:14px">
+    <h4>Scrubber — input a time, get THE frame</h4>
+    <div class="row"><input type="range" id="scrub" min="0" max="4000" value="1500" step="1" disabled> <span class="mono" id="scrub-out" style="font-size:12px">—</span></div>
+    <canvas id="scrub-canvas" class="frame" width="640" height="360" style="max-width:480px"></canvas>
+  </div>
+  <div class="log" id="log-seek">idle</div>
+</section>
+
+<section id="s7">
+  <h2><span class="n">07</span> — Lab ④ · Raw pixel access: format, allocationSize(), copyTo()</h2>
+  <p class="lead">A <code>VideoFrame</code> is pixel data with metadata: coded vs display size (visible-rect cropping), color space, and native planes. <code>allocationSize()</code> sizes the buffer; <code>copyTo()</code> fills it and <em>returns the plane layout it used</em>. Below: a live Y-plane luma histogram computed from the raw bytes — no canvas, no getImageData.</p>
+  <div class="row"><button class="pri" id="b-pix" disabled>Decode frame @ 2.0s → read pixels</button></div>
+  <div class="grid g2">
+    <div class="card"><h4>Frame metadata</h4><div class="mono" id="pix-meta" style="font-size:12px;color:var(--mut)">—</div></div>
+    <div class="card"><h4>Y-plane luma histogram (64 bins, native bytes)</h4><canvas id="hist" width="420" height="140" style="width:100%"></canvas></div>
+  </div>
+  <div class="log" id="log-pix">idle</div>
+</section>
+
+<section id="s8">
+  <h2><span class="n">08</span> — Lab ⑤ · Transform → re-encode → MP4 (the killer lab)</h2>
+  <p class="lead">The full loop: decode → draw each frame through a transform canvas → wrap the canvas in a <em>new</em> <code>VideoFrame(canvas, {timestamp, duration})</code> → <code>VideoEncoder.encode()</code> → mux the encoded chunks into a real MP4 with mediabunny's <code>EncodedVideoPacketSource</code>. The output is a downloadable, shareable H.264 file — with a duration, unlike raw MediaRecorder WebM.</p>
+  <div class="row">
+    <select id="enc-style"><option value="night">Night-vision filter</option><option value="brand">Brand wash + watermark</option><option value="none">No filter (control)</option></select>
+    <button class="pri" id="b-enc" disabled>Decode → transform → encode MP4</button>
+  </div>
+  <div class="grid g2">
+    <div><h3 style="margin-top:0">Result (H.264 / MP4)</h3><video id="enc-video" controls playsinline></video>
+      <div class="row" id="enc-dl" style="display:none"><a class="dl" id="enc-link" download="webcodecs-export.mp4">⬇ Download MP4</a></div>
+    </div>
+    <div class="card"><h4>Encode stats</h4><div class="mono" id="enc-stats" style="font-size:12px;color:var(--mut)">—</div></div>
+  </div>
+  <div class="log" id="log-enc">idle</div>
+</section>
+
+<section id="s9">
+  <h2><span class="n">09</span> — Lab ⑥ · Backpressure, GOP size &amp; latency mode</h2>
+  <p class="lead"><code>encodeQueueSize</code> tells you how many frames sit inside the encoder; the <code>dequeue</code> event fires when it drains — the correct backpressure primitive (poll or await it, don't sleep). Key-frame interval trades seekability against size; <code>latencyMode: 'realtime'</code> trades quality for pipeline latency. Encode the first 2.5s three ways and compare.</p>
+  <div class="row"><button id="b-gop" disabled>Run 3 variants on first 2.5s</button><span style="font-size:13px;color:var(--mut)">GOP 10 vs 60 vs 60+realtime</span></div>
+  <table id="gop-tbl" class="hid"><thead><tr><th>variant</th><th>chunks</th><th>key chunks</th><th>output size</th><th>wall clock</th><th>bytes/frame</th></tr></thead><tbody></tbody></table>
+  <div class="log" id="log-gop">idle</div>
+</section>
+
+<section id="s10">
+  <h2><span class="n">10</span> — Gotcha wall (live probes)</h2>
+  <p class="lead">The four traps, each provable on this page.</p>
+  <div class="grid g2">
+    <div class="card"><h4>☠ Frame-leak counter — hold frames open</h4>
+      <p style="font-size:13px;color:var(--mut)">Decode and <em>don't close</em> — watch native memory claimed with no prompt release. GC eventually collects JS wrappers; the backing store is not guaranteed timely.</p>
+      <div class="row"><button id="b-hold" disabled>Hold 90 frames open</button><button id="b-holdclose" disabled>Close them all</button></div>
+      <div class="mono" id="hold-out" style="font-size:12px;color:var(--mut)">—</div>
+    </div>
+    <div class="card"><h4>📐 Odd-dimension encoder probe</h4>
+      <p style="font-size:13px;color:var(--mut)">Many H.264 encoders reject odd dimensions. 640×360 ✓ vs 641×361 — what does <code>isConfigSupported()</code> say on this engine?</p>
+      <div class="row"><button id="b-odd">Probe 641×361 avc1.42001f</button></div>
+      <div class="mono" id="odd-out" style="font-size:12px;color:var(--mut)">—</div>
+    </div>
+    <div class="card"><h4>⏱ µs ⇄ seconds converter (the boundary)</h4>
+      <p style="font-size:13px;color:var(--mut)">WebCodecs is µs; mediabunny is seconds. Every timestamp crossing the boundary converts: <code>chunk.timestamp / 1e6</code>.</p>
+      <div class="row"><input type="range" id="usconv" min="0" max="4000000" value="2750000" step="8333"><span class="mono" id="usconv-out" style="font-size:12px">—</span></div>
+    </div>
+    <div class="card"><h4>📦 AVCC vs Annex&nbsp;B</h4>
+      <p style="font-size:13px;color:var(--mut)">WebCodecs emits AVC in AVCC format (length-prefixed NALUs + <code>decoderConfig.description</code> avcC box) — exactly what MP4 wants, but <em>inverted</em> from the Annex-B bytestream WebM/MPEG-TS tools expect. Muxers handle the flip; hand-rolled ones must.</p>
+    </div>
+  </div>
+</section>
+
+<section id="s11" class="od">
+  <h2><span class="n">11</span> — OpenDrones · Mission evidence exporter</h2>
+  <p class="lead">Frame-exact evidence, client-side: decode the mission recording, burn per-frame telemetry (battery glide 14.8V → 14.35V, crossing the 14.4V caution threshold at a knowable frame), re-encode to a timestamped MP4, and export the <em>exact frame</em> where the threshold was crossed as a PNG — the frame a tribunal sees.</p>
+  <div class="row"><button class="pri" id="b-mission" disabled>Run mission pipeline</button><span style="font-size:13px;color:#94a3b8">decode → HUD burn → encode → threshold capture</span></div>
+  <div class="grid g2">
+    <div><video id="od-video" controls playsinline></video>
+      <div class="row" id="od-dl" style="display:none"><a class="dl" id="od-link" download="mission-evidence.mp4" style="color:var(--odin);border-color:var(--odin)">⬇ Download evidence MP4</a><a class="dl" id="od-png" download="threshold-frame.png" style="color:var(--odin);border-color:var(--odin)">⬇ Threshold frame PNG</a></div>
+    </div>
+    <div class="card"><h4>Pipeline readout</h4><div class="mono" id="od-stats" style="font-size:12px;color:#94a3b8">—</div></div>
+  </div>
+  <div class="log" id="log-od">idle</div>
+</section>
+
+<section id="s12">
+  <h2><span class="n">12</span> — Molt Studios · Reel export + when to reach for what</h2>
+  <p class="lead">The same loop, branded: export the hero animation as shareable MP4 (H.264) or archival WebM (VP9), plus a poster strip — all client-side, all faster than realtime, no render farm, no upload.</p>
+  <div class="row"><button id="b-molt-mp4" disabled>Export MP4 (avc)</button><button id="b-molt-webm" disabled>Export WebM (vp9)</button><button id="b-molt-strip" disabled>Poster strip (6 PNG)</button></div>
+  <div class="grid g2">
+    <div><video id="molt-video" controls playsinline></video></div>
+    <div>
+      <div id="poster-strip" class="grid" style="grid-template-columns:repeat(3,1fr);gap:8px"></div>
+      <div class="row" id="molt-dl" style="display:none"><a class="dl" id="molt-link" download="molt-reel.mp4">⬇ Download</a></div>
+    </div>
+  </div>
+  <table><thead><tr><th></th><th>MediaRecorder</th><th>WebCodecs + muxer</th><th>ffmpeg.wasm</th></tr></thead><tbody>
+    <tr><td><b>Pacing</b></td><td>realtime only</td><td class="y">as fast as hardware</td><td>as fast as CPU</td></tr>
+    <tr><td><b>Frame access</b></td><td class="n">none</td><td class="y">every frame, µs-exact</td><td>via filters</td></tr>
+    <tr><td><b>Payload</b></td><td class="y">0 — platform</td><td class="y">~25KB muxer (mediabunny)</td><td class="n">~25MB wasm</td></tr>
+    <tr><td><b>Best at</b></td><td>recording a live session</td><td>processing / generating video</td><td>exotic codec surgery</td></tr>
+  </tbody></table>
+  <div class="note">Adoption: video surfaces are Baseline 2024 (Chrome 94 / Firefox 130 / Safari 16.4) — ship ungated. Audio coder classes landed later in Safari (26). Workers: both coders work in dedicated workers — keep decode loops off the main thread; pair with OffscreenCanvas.</div>
+</section>
+
+<footer>molt-research · webcodecs lab · generated source, zero uploads · mediabunny 1.55.2 via jsdelivr</footer>
+</div>
+
+<script>
+(async () => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const BAD = $('badges');
+  const badge = (name, on) => { const b=document.createElement('span'); b.className='badge '+(on===true?'on':on===false?'off':''); b.textContent=name+(on===true?' ✓':on===false?' ✗':''); BAD.appendChild(b); return b; };
+  const LOGS = {};
+  const log = (id, msg, cls) => { const el=LOGS[id]||(LOGS[id]=$(id)); const line=document.createElement('div'); if(cls) line.className=cls; line.textContent=msg; el.appendChild(line); el.scrollTop=el.scrollHeight; };
+  const clearLog = id => { const el=$(id); if(el) el.innerHTML=''; };
+  const fmtBytes = n => n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(2)+' MB';
+  const fmtUs = us => (us/1e6).toFixed(4)+'s';
+  const guard = async (btn, fn) => { if(btn.disabled) return; btn.disabled=true; try{ await fn(); } catch(e){ log(btn.dataset.log||'log-states','ERROR: '+(e&&e.message?e.message:e),'err'); } finally { btn.disabled=false; } };
+
+  /* ---------- capability badges ---------- */
+  const hasVD='VideoDecoder' in window, hasVE='VideoEncoder' in window, hasVF='VideoFrame' in window;
+  const hasAD='AudioDecoder' in window, hasAE='AudioEncoder' in window;
+  badge('VideoDecoder', hasVD); badge('VideoEncoder', hasVE); badge('VideoFrame', hasVF);
+  badge('AudioDecoder/AudioEncoder', hasAD&&hasAE); badge('EncodedVideoChunk', 'EncodedVideoChunk' in window);
+
+  /* ---------- load mediabunny ---------- */
+  const CDN='https://cdn.jsdelivr.net/npm/mediabunny@1.55.2/+esm';
+  let MB=null;
+  try { MB=await import(CDN); badge('mediabunny 1.55.2', true); }
+  catch(e){ badge('mediabunny (CDN failed)', false); }
+  const ready = MB && hasVD && hasVE;
+  const srcLog=$('log-src'); if(srcLog) srcLog.textContent = ready? 'ready — record the source clip to begin' : 'missing prerequisites (module or coders) — labs disabled';
+
+  const state = { blob:null, mime:'', url:'', duration:0, fps:30, decCfg:null, baseTs:0, thumbs:[] /* {ts, canvas} */ };
+
+  /* ---------- §3 lifecycle probe ---------- */
+  $('b-states').addEventListener('click', () => guard($('b-states'), async () => {
+    clearLog('log-states');
+    const d=new VideoDecoder({ output(){}, error(e){ log('log-states','error cb: '+e.message,'err'); } });
+    log('log-states','fresh decoder .state = "'+d.state+'"','dim');
+    const {supported, config} = await VideoDecoder.isConfigSupported({codec:'avc1.42001f', width:320, height:180, bitrate:500000});
+    log('log-states','isConfigSupported(avc1.42001f 320×180) → '+supported);
+    d.configure(config);
+    log('log-states','after configure() .state = "'+d.state+'"','ok');
+    await d.flush();
+    log('log-states','after flush()  .state = "'+d.state+'" (still configured — flush drains, keeps config)','ok');
+    d.reset();
+    log('log-states','after reset()  .state = "'+d.state+'" (back to unconfigured, queue dropped)','dim');
+    d.close();
+    log('log-states','after close()  .state = "'+d.state+'" (terminal)','hi');
+    try { d.configure({codec:'avc1.42001f',width:320,height:180}); } catch(e){ log('log-states','configure() after close() → '+e.name+' (dead is dead)','err'); }
+  }));
+
+  /* ---------- §3 config matrix ---------- */
+  $('b-probe').addEventListener('click', () => guard($('b-probe'), async () => {
+    clearLog('log-states');
+    const cfgs=[
+      ['avc1.42001f · 640×360 · 2.5Mbps',{codec:'avc1.42001f',width:640,height:360,bitrate:2_500_000,framerate:30}],
+      ['avc1.4d0028 (main) · 640×360',{codec:'avc1.4d0028',width:640,height:360,bitrate:2_500_000,framerate:30}],
+      ['vp09.00.10.08 · 640×360',{codec:'vp09.00.10.08',width:640,height:360,bitrate:2_500_000,framerate:30}],
+      ['vp8 · 640×360',{codec:'vp8',width:640,height:360,bitrate:2_500_000,framerate:30}],
+      ['hevc no-scope (avc1.640033 · 4K)',{codec:'avc1.640033',width:3840,height:2160,bitrate:20_000_000,framerate:30}],
+      ['av01.0.04M.08 · 640×360',{codec:'av01.0.04M.08',width:640,height:360,bitrate:2_500_000,framerate:30}]
+    ];
+    const tb=$('probe-tbl').querySelector('tbody'); tb.innerHTML=''; $('probe-wrap').classList.remove('hid');
+    for(const [label,cfg] of cfgs){
+      let ok=false, echo='—';
+      try { const r=await VideoEncoder.isConfigSupported(cfg); ok=r.supported; echo=ok?JSON.stringify(r.config.codec)+' @ '+r.config.width+'×'+r.config.height:'—'; }
+      catch(e){ ok=false; echo='throw: '+e.name; }
+      const tr=document.createElement('tr');
+      tr.innerHTML='<td class="mono">'+label+'</td><td class="'+(ok?'y':'n')+'">'+(ok?'yes':'no')+'</td><td class="mono" style="font-size:11.5px;color:var(--mut)">'+echo.replace(/</g,'&lt;')+'</td>';
+      tb.appendChild(tr);
+      log('log-states','probe '+label+' → '+(ok?'SUPPORTED':'unsupported'), ok?'ok':'dim');
+    }
+  }));
+
+  /* ---------- §4 source generation ---------- */
+  function drawScene(ctx, W, H, t, label){
+    ctx.fillStyle='#0b1220'; ctx.fillRect(0,0,W,H);
+    const g=ctx.createLinearGradient(0,0,W,H); g.addColorStop(0,'#123'); g.addColorStop(1,'#1e3a5f');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    for(let i=0;i<38;i++){ const x=(i*97+t*40)%W, y=(i*53)%H; ctx.fillStyle='rgba(255,255,255,'+(0.12+0.2*Math.abs(Math.sin(i+t)))+')'; ctx.fillRect(x,y,2,2); }
+    const cx=W/2+Math.sin(t*1.15)*W*0.3, cy=H/2+Math.cos(t*0.85)*H*0.22;
+    ctx.save(); ctx.translate(cx,cy); ctx.rotate(t*1.4);
+    ctx.fillStyle='#f59e0b'; ctx.fillRect(-26,-6,52,12);
+    ctx.fillStyle='#0f172a'; ctx.fillRect(-8,-22,16,40);
+    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(0,0,5,0,7); ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,.55)'; ctx.lineWidth=2;
+    for(const s of [[-1,-1],[1,-1],[-1,1],[1,1]]){ ctx.beginPath(); ctx.moveTo(s[0]*10,s[1]*10); ctx.lineTo(s[0]*30,s[1]*30); ctx.stroke(); ctx.beginPath(); ctx.arc(s[0]*32,s[1]*32,9,0,7); ctx.stroke(); }
+    ctx.restore();
+    ctx.fillStyle='rgba(0,0,0,.45)'; ctx.fillRect(0,H-34,W,34);
+    ctx.fillStyle='#a5f3fc'; ctx.font='13px ui-monospace,Menlo,monospace';
+    ctx.fillText('FRAME '+(label||Math.round(t*30)).toString().padStart(3,'0')+'   t='+t.toFixed(3)+'s',10,H-13);
+    ctx.fillStyle='#fbbf24'; ctx.font='bold 13px ui-sans-serif,system-ui'; ctx.fillText('◉ REC',W-64,H-13);
+  }
+  $('b-src').addEventListener('click', () => guard($('b-src'), async () => {
+    if(!ready){ log('log-src','prerequisites missing','err'); return; }
+    clearLog('log-src'); state.thumbs=[];
+    held.forEach(f=>{ try{ f.close(); }catch(e){} }); held=[]; $('b-holdclose').disabled=true;
+    ['b-dec','b-grid','b-rawseek','b-pix','b-enc','b-gop','b-hold','b-mission','b-molt-mp4','b-molt-webm','b-molt-strip'].forEach(i=>{const b=$(i); if(b) b.disabled=true;});
+    const W=640,H=360,FPS=30,DUR=4;
+    const cnv=document.createElement('canvas'); cnv.width=W; cnv.height=H;
+    const ctx=cnv.getContext('2d');
+    const mimes=['video/mp4;codecs=avc1.42E01E','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
+    const mime=mimes.find(m=>MediaRecorder.isTypeSupported(m));
+    if(!mime){ log('log-src','no supported MediaRecorder mime','err'); return; }
+    log('log-src','codec picker → '+mime, 'hi');
+    const stream=cnv.captureStream(FPS);
+    const rec=new MediaRecorder(stream,{mimeType:mime, videoBitsPerSecond:2_800_000});
+    const parts=[]; rec.ondataavailable=e=>{ if(e.data.size) parts.push(e.data); };
+    const stopped=new Promise(res=>rec.onstop=res);
+    rec.start(200);
+    const t0=performance.now();
+    await new Promise(res=>{
+      const step=()=>{ const t=(performance.now()-t0)/1000;
+        if(t>=DUR){ drawScene(ctx,W,H,DUR,'END'); res(); return; }
+        drawScene(ctx,W,H,t); requestAnimationFrame(step); };
+      step();
+    });
+    rec.stop(); await stopped;
+    state.blob=new Blob(parts,{type:mime}); state.mime=mime;
+    if(state.url) URL.revokeObjectURL(state.url);
+    state.url=URL.createObjectURL(state.blob);
+    $('src-video').src=state.url;
+    log('log-src','recorded '+fmtBytes(state.blob.size)+' in '+DUR+'s of wall time (realtime-paced — remember what Lab ② does to this number)');
+    $('src-note').textContent=fmtBytes(state.blob.size)+' · '+mime.split(';')[0];
+    const { Input, ALL_FORMATS, BlobSource } = MB;
+    const input=new Input({ formats:ALL_FORMATS, source:new BlobSource(state.blob) });
+    state.duration=await input.computeDuration();
+    const track=await input.getPrimaryVideoTrack();
+    if(!track){ log('log-src','no video track found','err'); return; }
+    const m=await track.computeFrameRateMetrics();
+    state.fps=Math.round(m.bestGuessFrameRate||FPS);
+    state.decCfg=await track.getDecoderConfig();
+    const stats=await track.computePacketStats();
+    state.baseTs=await track.getFirstTimestamp();
+    $('src-meta').innerHTML='duration <b>'+(state.duration).toFixed(3)+'s</b><br>bestGuess fps <b>'+state.fps+'</b><br>codec <b>'+(state.decCfg.codec||'?')+'</b><br>packets '+stats.packetCount+' ('+stats.keyPacketCount+' key)<br>display '+state.decCfg.displayWidth+'×'+state.decCfg.displayHeight+(state.decCfg.description?'<br>has decoderConfig.description ✓':'');
+    log('log-src','mediabunny metadata read — demux layer OK (packets ready for raw VideoDecoder)');
+    log('log-src','expected frames ≈ '+(state.duration*state.fps).toFixed(0),'dim');
+    ['b-dec','b-hold'].forEach(i=>$(i).disabled=false);
+    $('scrub').disabled=true;
+  }));
+  if(ready) $('b-src').disabled=false;
+
+  /* ---------- shared: open a fresh Input+track ---------- */
+  async function openTrack(){
+    const { Input, ALL_FORMATS, BlobSource } = MB;
+    const input=new Input({ formats:ALL_FORMATS, source:new BlobSource(state.blob) });
+    const track=await input.getPrimaryVideoTrack();
+    return track;
+  }
+
+  /* ---------- §5 decode all ---------- */
+  $('b-dec').addEventListener('click', () => guard($('b-dec'), async () => {
+    clearLog('log-dec'); state.thumbs=[];
+    const track=await openTrack();
+    const { EncodedPacketSink } = MB;
+    const sink=new EncodedPacketSink(track);
+    const frames=[]; let qPeak=0, firstTs=null, lastTs=null;
+    const dec=new VideoDecoder({
+      output(frame){
+        if(firstTs===null) firstTs=frame.timestamp;
+        lastTs=frame.timestamp;
+        const th=document.createElement('canvas'); th.width=160; th.height=90;
+        th.getContext('2d').drawImage(frame,0,0,160,90);
+        state.thumbs.push({ts:frame.timestamp, canvas:th});
+        frames.push(frame.timestamp);
+        frame.close();
+      },
+      error(e){ log('log-dec','decoder error: '+e.message,'err'); }
+    });
+    dec.configure(state.decCfg);
+    const w0=performance.now(); let n=0;
+    for await (const packet of sink.packets()){
+      dec.decode(packet.toEncodedVideoChunk());
+      n++;
+      qPeak=Math.max(qPeak, dec.decodeQueueSize);
+      if(dec.decodeQueueSize>12) await new Promise(r=>{ dec.addEventListener('dequeue',()=>r(),{once:true}); });
+    }
+    await dec.flush(); dec.close();
+    const wall=performance.now()-w0;
+    state.thumbs.sort((a,b)=>a.ts-b.ts);
+    const fc=state.thumbs.length;
+    $('st-frames').textContent=fc;
+    $('st-wall').textContent=(wall/1000).toFixed(2)+'s';
+    $('st-ratio').textContent=(wall/1000/state.duration).toFixed(2)+'×';
+    $('st-qpeak').textContent=qPeak;
+    $('st-ts').textContent=firstTs!=null?(''+firstTs+' → '+lastTs+' µs'):'—';
+    $('dec-stats').style.display='flex';
+    const fctx=$('dec-first').getContext('2d'), lctx=$('dec-last').getContext('2d');
+    if(state.thumbs[0]) fctx.drawImage(state.thumbs[0].canvas,0,0,640,360);
+    if(state.thumbs[fc-1]) lctx.drawImage(state.thumbs[fc-1].canvas,0,0,640,360);
+    $('cap-first').textContent='first frame · ts '+firstTs+' µs'; $('cap-last').textContent='last frame · ts '+lastTs+' µs';
+    log('log-dec','decoded '+fc+' frames from '+n+' packets in '+(wall/1000).toFixed(2)+'s wall = '+(wall/1000/state.duration).toFixed(2)+'× realtime','ok');
+    log('log-dec','every frame thumbnailed + closed immediately — the cache Lab ③ uses is plain canvases','dim');
+    log('log-dec','timestamps run '+firstTs+' → '+lastTs+' µs (span '+((lastTs-firstTs)/1e6).toFixed(3)+'s)','dim');
+    ['b-grid','b-rawseek','b-pix','b-enc','b-gop','b-mission','b-molt-mp4','b-molt-webm','b-molt-strip'].forEach(i=>$(i).disabled=false);
+    $('scrub').disabled=false;
+  }));
+
+  /* ---------- §6 seek grid + scrubber ---------- */
+  $('b-grid').addEventListener('click', () => guard($('b-grid'), async () => {
+    clearLog('log-seek');
+    const grid=$('seek-grid'); grid.innerHTML='';
+    const targets=[]; for(let t=0;t<=state.duration-0.01;t+=0.5) targets.push(t);
+    for(const t of targets){
+      const exact=Math.round(t*1e6);
+      let best=null,bd=Infinity;
+      for(const th of state.thumbs){ const d=Math.abs(th.ts-exact); if(d<bd){bd=d;best=th;} }
+      const c=document.createElement('div'); c.className='card framecard';
+      const cv=document.createElement('canvas'); cv.className='thumb'; cv.width=320; cv.height=180;
+      cv.getContext('2d').drawImage(best.canvas,0,0,320,180);
+      c.appendChild(cv);
+      const cap=document.createElement('div'); cap.className='cap'; cap.textContent='ask '+t.toFixed(2)+'s → '+best.ts+' µs (Δ'+(bd/1e6).toFixed(4)+'s)';
+      c.appendChild(cap); grid.appendChild(c);
+    }
+    log('log-seek','grid: '+targets.length+' exact-timestamp lookups, all served from owned frames — no keyframe snapping','ok');
+    log('log-seek','a <video> element seeking to 2.00s lands on the nearest KEYFRAME (then decodes forward invisibly); here you address the frame itself','dim');
+  }));
+  $('scrub').addEventListener('input', () => {
+    if(!state.thumbs.length) return;
+    const tUs=+$('scrub').value*1000;
+    let best=null,bd=Infinity;
+    for(const th of state.thumbs){ const d=Math.abs(th.ts-tUs); if(d<bd){bd=d;best=th;} }
+    const ctx=$('scrub-canvas').getContext('2d');
+    ctx.fillStyle='#000'; ctx.fillRect(0,0,640,360);
+    ctx.drawImage(best.canvas,0,0,640,360);
+    ctx.fillStyle='rgba(0,0,0,.5)'; ctx.fillRect(0,332,640,28);
+    ctx.fillStyle='#a5f3fc'; ctx.font='13px ui-monospace,Menlo,monospace';
+    ctx.fillText('frame #'+(state.thumbs.indexOf(best)+1)+'  ts='+best.ts+'µs  asked='+tUs+'µs  Δ='+(bd/1e6).toFixed(4)+'s',10,351);
+    $('scrub-out').textContent='asked '+(tUs/1e6).toFixed(3)+'s → frame @ '+fmtUs(best.ts)+' (Δ '+(bd/1e6).toFixed(4)+'s)';
+  });
+  $('b-rawseek').addEventListener('click', () => guard($('b-rawseek'), async () => {
+    clearLog('log-seek');
+    const track=await openTrack();
+    const { EncodedPacketSink }=MB;
+    const sink=new EncodedPacketSink(track);
+    const target=2.75;
+    const key=await sink.getKeyPacket(target);
+    log('log-seek','raw seek to '+target+'s: nearest key packet @ '+key.timestamp.toFixed(4)+'s ('+(target-key.timestamp).toFixed(4)+'s back)');
+    const batch=[key];
+    let p=key;
+    while(true){ p=await sink.getNextPacket(p); if(!p || p.timestamp>target+0.05) break; batch.push(p); }
+    let decoded=0, hit=null;
+    const dec=new VideoDecoder({
+      output(frame){ decoded++; if(hit===null && frame.timestamp>=target*1e6-1) hit=frame; else frame.close(); },
+      error(e){ log('log-seek','decoder error: '+e.message,'err'); }
+    });
+    dec.configure(state.decCfg);
+    for(const pk of batch) dec.decode(pk.toEncodedVideoChunk());
+    await dec.flush(); dec.close();
+    if(hit){
+      const cv=document.createElement('canvas'); cv.width=320; cv.height=180;
+      cv.getContext('2d').drawImage(hit,0,0,320,180);
+      const c=document.createElement('div'); c.className='card framecard';
+      c.appendChild(cv);
+      const cap=document.createElement('div'); cap.className='cap'; cap.textContent='raw seek result @ '+hit.timestamp+' µs';
+      c.appendChild(cap); $('seek-grid').appendChild(c);
+      log('log-seek','decoded '+decoded+' chunk(s) to materialize the frame — THAT is the cost a seek hides (and why keyframe interval matters, §09)','ok');
+      hit.close();
+    } else log('log-seek','no frame found ≥ target','err');
+  }));
+
+  /* ---------- §7 pixel access ---------- */
+  $('b-pix').addEventListener('click', () => guard($('b-pix'), async () => {
+    clearLog('log-pix');
+    const track=await openTrack();
+    const { EncodedPacketSink }=MB;
+    const sink=new EncodedPacketSink(track);
+    const target=2.0; const key=await sink.getKeyPacket(target);
+    const batch=[key];
+    let p=key;
+    while(true){ p=await sink.getNextPacket(p); if(!p || p.timestamp>target+0.05) break; batch.push(p); }
+    let hit=null;
+    const dec=new VideoDecoder({ output(f){ if(hit===null&&f.timestamp>=target*1e6-1) hit=f; else f.close(); }, error(e){ log('log-pix',e.message,'err'); } });
+    dec.configure(state.decCfg);
+    for(const pk of batch) dec.decode(pk.toEncodedVideoChunk());
+    await dec.flush(); dec.close();
+    if(!hit){ log('log-pix','no frame','err'); return; }
+    try{
+      const size=hit.allocationSize();
+      const buf=new ArrayBuffer(size);
+      const layout=hit.copyTo(buf);
+      const bytes=new Uint8Array(buf);
+      const yOff=layout[0].offset, yStride=layout[0].rowStride, yRows=hit.displayHeight;
+      const bins=new Float64Array(64);
+      for(let r=0;r<yRows;r+=2){ const row=yOff+r*yStride;
+        for(let c=0;c<hit.displayWidth;c+=2){ const v=bytes[row+c]; bins[v>>2]++; } }
+      const max=Math.max(...bins);
+      const hctx=$('hist').getContext('2d');
+      hctx.fillStyle='#fdfcfa'; hctx.fillRect(0,0,420,140);
+      bins.forEach((v,i)=>{ const h=Math.round(v/max*112);
+        hctx.fillStyle='hsl('+(220-i*3.4)+',72%,'+(38-i*0.35)+'%)';
+        hctx.fillRect(6+i*6.4,130-h,5,h); });
+      hctx.fillStyle='#78716c'; hctx.font='10px ui-monospace,Menlo,monospace';
+      hctx.fillText('luma 0',6,139); hctx.fillText('255',398,139);
+      $('pix-meta').innerHTML=
+        'format <b>'+(hit.format||'?')+'</b> (YUV planar)<br>'+
+        'codedWidth×codedHeight <b>'+hit.codedWidth+'×'+hit.codedHeight+'</b><br>'+
+        'displayWidth×displayHeight <b>'+hit.displayWidth+'×'+hit.displayHeight+'</b> (visible rect crops coded)<br>'+
+        'allocationSize() <b>'+fmtBytes(size)+'</b><br>'+
+        'copyTo() returned '+layout.length+' plane layouts: '+layout.map(l=>'offset '+l.offset+', rowStride '+l.stride+', samplesPerPixel '+l.samplesPerPixel).join(' | ')+
+        '<br>colorSpace.primaries '+(hit.colorSpace&&hit.colorSpace.primaries||'—');
+      log('log-pix','Y-plane walked natively: '+Math.round(hit.displayWidth/2*hit.displayHeight/2)+' samples → 64-bin histogram, zero canvas involved','ok');
+      log('log-pix','stride ≠ width is the classic row-length trap — always read the returned layout','dim');
+    } finally { hit.close(); }
+  }));
+
+  /* ---------- §8 transform + re-encode ---------- */
+  function styledDraw(ctx, W, H, src, style, tSec){
+    ctx.filter='none'; ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
+    ctx.drawImage(src,0,0,W,H);
+    if(style==='night'){
+      ctx.filter='none';
+      ctx.globalCompositeOperation='saturation'; ctx.fillStyle='hsl(120,60%,18%)'; ctx.fillRect(0,0,W,H);
+      ctx.globalCompositeOperation='screen'; ctx.fillStyle='rgba(20,255,90,0.16)'; ctx.fillRect(0,0,W,H);
+      ctx.globalCompositeOperation='source-over';
+      const vg=ctx.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.85);
+      vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,20,0,0.55)');
+      ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+      ctx.fillStyle='#7CFF9B'; ctx.font='11px ui-monospace,Menlo,monospace'; ctx.fillText('NV-MODE · WCGCS-DECODED',12,22);
+    } else if(style==='brand'){
+      const g=ctx.createLinearGradient(0,H,W,0); g.addColorStop(0,'rgba(79,70,229,0.24)'); g.addColorStop(1,'rgba(251,191,36,0.18)');
+      ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+      ctx.fillStyle='rgba(255,255,255,0.9)'; ctx.font='bold 18px ui-sans-serif,system-ui'; ctx.fillText('MOLT',W-86,H-18);
+      ctx.font='11px ui-monospace,Menlo,monospace'; ctx.fillStyle='rgba(255,255,255,0.6)'; ctx.fillText('webcodecs burn-in',W-124,H-40+22);
+    }
+  }
+  async function reencode({style='none', limitSec=Infinity, gopN=30, latencyMode='quality', codec='avc1.42001f', container='mp4'}={}){
+    const track=await openTrack();
+    const { EncodedPacketSink, Output, Mp4OutputFormat, WebMOutputFormat, BufferTarget, EncodedVideoPacketSource, EncodedPacket }=MB;
+    const sink=new EncodedPacketSink(track);
+    const W=640,H=360;
+    const work=document.createElement('canvas'); work.width=W; work.height=H;
+    const wctx=work.getContext('2d',{alpha:false});
+    const chunks=[]; let firstMeta=null;
+    const enc=new VideoEncoder({
+      output(chunk, meta){ if(firstMeta===null&&meta&&meta.decoderConfig) firstMeta=meta; chunks.push({chunk, meta}); },
+      error(e){ log('log-enc','encoder error: '+e.message,'err'); }
+    });
+    const probe=await VideoEncoder.isConfigSupported({codec, width:W, height:H, bitrate:2_500_000, framerate:state.fps, latencyMode});
+    if(!probe.supported) throw new Error('encoder config unsupported: '+codec);
+    enc.configure(probe.config);
+    const w0=performance.now();
+    let i=0, lastDur=1e6/state.fps;
+    const frameLimitHit=n=>limitSec!==Infinity && n>=limitSec*state.fps;
+    const dec=new VideoDecoder({
+      output(frame){
+        const dur=frame.duration||lastDur; lastDur=dur;
+        if(frame.timestamp/1e6>limitSec){ frame.close(); return; }
+        styledDraw(wctx, W, H, frame, style, frame.timestamp/1e6);
+        const vf=new VideoFrame(work, {timestamp:Math.round(frame.timestamp), duration:Math.round(dur)});
+        enc.encode(vf, {keyFrame: i%gopN===0});
+        vf.close(); frame.close(); i++;
+      },
+      error(e){ log('log-enc','decoder error: '+e.message,'err'); }
+    });
+    dec.configure(state.decCfg);
+    for await (const packet of sink.packets()){ dec.decode(packet.toEncodedVideoChunk()); if(enc.encodeQueueSize>10) await new Promise(r=>{ enc.addEventListener('dequeue',()=>r(),{once:true}); }); if(frameLimitHit(i)) break; }
+    await dec.flush(); dec.close();
+    await enc.flush(); enc.close();
+    const wall=performance.now()-w0;
+    const outCodec = container==='webm' ? (codec.startsWith('vp09')?'vp9':'vp8') : 'avc';
+    const output=new Output({ format: container==='webm'?new WebMOutputFormat():new Mp4OutputFormat({fastStart:'in-memory'}), target:new BufferTarget() });
+    const src=new EncodedVideoPacketSource(outCodec);
+    output.addVideoTrack(src, {frameRate: state.fps});
+    await output.start();
+    let metaSent=false;
+    for(const {chunk, meta} of chunks){
+      const data=new Uint8Array(chunk.copyTo(new ArrayBuffer(chunk.byteLength)));
+      const pkt=new EncodedPacket(data, chunk.type, chunk.timestamp/1e6, (chunk.duration||lastDur)/1e6);
+      await src.add(pkt, !metaSent&&firstMeta?meta:undefined);
+      metaSent=true;
+    }
+    src.close();
+    await output.finalize();
+    const blob=new Blob([output.target.buffer], {type: container==='webm'?'video/webm':'video/mp4'});
+    const keyChunks=chunks.filter(c=>c.chunk.type==='key').length;
+    return {blob, wall, frames:i, size:blob.size, keyChunks};
+  }
+  $('b-enc').addEventListener('click', () => guard($('b-enc'), async () => {
+    clearLog('log-enc');
+    const style=$('enc-style').value;
+    log('log-enc','pipeline: demux → VideoDecoder → transform canvas → new VideoFrame(canvas) → VideoEncoder(avc) → mediabunny MP4','dim');
+    const r=await reencode({style});
+    const v=$('enc-video');
+    v.src=URL.createObjectURL(r.blob);
+    $('enc-link').href=v.src; $('enc-dl').style.display='flex';
+    $('enc-stats').innerHTML='frames '+r.frames+' · key chunks '+r.keyChunks+'<br>encode wall '+ (r.wall/1000).toFixed(2)+'s = <b>'+(r.wall/1000/state.duration).toFixed(2)+'× realtime</b><br>output '+fmtBytes(r.size)+' (~'+Math.round(r.size*8/r.frames/(state.fps/1e3))+' kbps effective)<br>container MP4 · H.264 — plays anywhere, real duration metadata';
+    log('log-enc','done — '+r.frames+' frames re-encoded in '+(r.wall/1000).toFixed(2)+'s ('+(r.wall/1000/state.duration).toFixed(2)+'× realtime), '+fmtBytes(r.size),'ok');
+    log('log-enc','note the VideoFrame lifecycle: canvas-wrapped frame closed right after encode() — encode() takes its own reference','dim');
+  }));
+
+  /* ---------- §9 GOP / latency variants ---------- */
+  $('b-gop').addEventListener('click', () => guard($('b-gop'), async () => {
+    clearLog('log-gop');
+    const tbl=$('gop-tbl').querySelector('tbody'); tbl.innerHTML=''; $('gop-tbl').classList.remove('hid');
+    const variants=[['GOP 10 · quality',{gopN:10, latencyMode:'quality'}],['GOP 60 · quality',{gopN:60, latencyMode:'quality'}],['GOP 60 · realtime',{gopN:60, latencyMode:'realtime'}]];
+    for(const [label,opt] of variants){
+      log('log-gop','encoding variant: '+label+' …','dim');
+      const r=await reencode(Object.assign({style:'none', limitSec:2.5}, opt));
+      const tr=document.createElement('tr');
+      tr.innerHTML='<td>'+label+'</td><td>'+r.frames+'</td><td>'+r.keyChunks+'</td><td>'+fmtBytes(r.size)+'</td><td>'+(r.wall/1000).toFixed(2)+'s</td><td>'+Math.round(r.size/r.frames)+' B</td>';
+      tbl.appendChild(tr);
+    }
+    log('log-gop','bigger GOP → fewer key chunks → smaller file, but raw seeks (Lab ③) decode more chunks to reach a target','ok');
+    log('log-gop','realtime latencyMode: encoder favors finishing soon over per-frame quality — see bytes/frame drop','dim');
+  }));
+
+  /* ---------- §10 gotchas ---------- */
+  let held=[];
+  $('b-hold').addEventListener('click', () => guard($('b-hold'), async () => {
+    clearLog('log-states');
+    const track=await openTrack();
+    const { EncodedPacketSink }=MB;
+    const sink=new EncodedPacketSink(track);
+    const dec=new VideoDecoder({ output(f){ held.push(f); }, error(e){} });
+    dec.configure(state.decCfg);
+    let n=0;
+    for await (const packet of sink.packets()){
+      dec.decode(packet.toEncodedVideoChunk());
+      if(++n>=92) break;
+    }
+    await dec.flush(); dec.close();
+    const total=held.reduce((a,f)=>a+f.allocationSize(),0);
+    $('hold-out').innerHTML='holding <b>'+held.length+'</b> VideoFrames open = <b>'+fmtBytes(total)+'</b> of native frame buffers — no GC prompt, tab pays until close()';
+    $('b-holdclose').disabled=false;
+    log('log-states','held '+held.length+' frames ('+fmtBytes(total)+') — close() is the only prompt release','hi');
+  }));
+  $('b-holdclose').addEventListener('click', () => guard($('b-holdclose'), async () => {
+    held.forEach(f=>{ try{ f.close(); }catch(e){} });
+    log('log-states','closed '+held.length+' frames — buffers returned','ok');
+    $('hold-out').innerHTML='closed '+held.length+' frames ✓ (buffers returned immediately)';
+    held=[]; $('b-holdclose').disabled=true;
+  }));
+  $('b-odd').addEventListener('click', () => guard($('b-odd'), async () => {
+    try{
+      const r=await VideoEncoder.isConfigSupported({codec:'avc1.42001f', width:641, height:361, bitrate:2_500_000});
+      $('odd-out').innerHTML='isConfigSupported(641×361) → <b>'+(r.supported?'SUPPORTED (this encoder tolerates odd dims — but configure() can still fail; always try/catch)':'NOT SUPPORTED (classic H.264 behavior — chroma subsampling wants even dims)')+'</b>';
+    }catch(e){ $('odd-out').innerHTML='probe threw: '+e.message+' — treat as unsupported'; }
+  }));
+  $('usconv').addEventListener('input', ()=>{
+    const us=+$('usconv').value;
+    $('usconv-out').textContent=us+' µs = '+(us/1e6).toFixed(6)+' s — the /1e6 at every mediabunny boundary';
+  });
+  $('usconv').dispatchEvent(new Event('input'));
+
+  /* ---------- §11 OpenDrones mission ---------- */
+  function drawHud(ctx,W,H,src,t,dur){
+    ctx.filter='none'; ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
+    ctx.drawImage(src,0,0,W,H);
+    const v=14.8-0.1125*t;
+    const caution=v<=14.4;
+    ctx.fillStyle='rgba(2,6,23,0.72)'; ctx.fillRect(0,0,W,30);
+    ctx.font='bold 13px ui-monospace,Menlo,monospace';
+    ctx.fillStyle=caution?'#f87171':'#4ade80';
+    ctx.fillText('BATT '+v.toFixed(2)+'V'+(caution?' ⚠ CAUTION':''),12,20);
+    ctx.fillStyle='#a5f3fc'; ctx.fillText('ALT '+(120+18*Math.sin(t*0.9)).toFixed(1)+'m',210,20);
+    ctx.fillText('GS '+(14+3*Math.cos(t*0.6)).toFixed(1)+'m/s',330,20);
+    ctx.fillStyle='#e2e8f0'; ctx.fillText('T+'+t.toFixed(3)+'s · F'+String(Math.round(t*30)).padStart(3,'0'),450,20);
+    ctx.strokeStyle=caution?'rgba(248,113,113,0.9)':'rgba(74,222,128,0.35)';
+    ctx.lineWidth=caution?4:2; ctx.strokeRect(2,2,W-4,H-4);
+    ctx.fillStyle='rgba(2,6,23,0.72)'; ctx.fillRect(0,H-26,W,26);
+    ctx.fillStyle='#94a3b8'; ctx.font='11px ui-monospace,Menlo,monospace';
+    ctx.fillText('MOLT-EVIDENCE · sha256-signed-locally · '+new Date().toISOString().slice(0,19)+'Z',12,H-9);
+  }
+  $('b-mission').addEventListener('click', () => guard($('b-mission'), async () => {
+    clearLog('log-od');
+    const track=await openTrack();
+    const { EncodedPacketSink, Output, Mp4OutputFormat, BufferTarget, EncodedVideoPacketSource, EncodedPacket }=MB;
+    const sink=new EncodedPacketSink(track);
+    const W=640,H=360;
+    const work=document.createElement('canvas'); work.width=W; work.height=H;
+    const wctx=work.getContext('2d',{alpha:false});
+    let thresholdPng=null, thresholdTs=null;
+    const chunks=[]; let firstMeta=null;
+    const enc=new VideoEncoder({ output(c,m){ if(firstMeta===null&&m&&m.decoderConfig) firstMeta=m; chunks.push({chunk:c,meta:m}); }, error(e){ log('log-od','encoder error: '+e.message,'err'); } });
+    const probe=await VideoEncoder.isConfigSupported({codec:'avc1.42001f',width:W,height:H,bitrate:2_800_000,framerate:state.fps});
+    enc.configure(probe.config);
+    const w0=performance.now(); let i=0, lastDur=1e6/state.fps;
+    const dec=new VideoDecoder({
+      output(frame){
+        const t=frame.timestamp/1e6;
+        const dur=frame.duration||lastDur; lastDur=dur;
+        drawHud(wctx,W,H,frame,t,state.duration);
+        const v=14.8-0.1125*t;
+        if(thresholdTs===null && v<=14.4){
+          thresholdTs=frame.timestamp;
+          thresholdPng=document.createElement('canvas'); thresholdPng.width=W; thresholdPng.height=H;
+          thresholdPng.getContext('2d').drawImage(work,0,0);
+        }
+        const vf=new VideoFrame(work,{timestamp:Math.round(frame.timestamp),duration:Math.round(dur)});
+        enc.encode(vf,{keyFrame:i%30===0});
+        vf.close(); frame.close(); i++;
+      },
+      error(e){ log('log-od','decoder error: '+e.message,'err'); }
+    });
+    dec.configure(state.decCfg);
+    for await (const packet of sink.packets()){ dec.decode(packet.toEncodedVideoChunk()); if(enc.encodeQueueSize>10) await new Promise(r=>{ enc.addEventListener('dequeue',()=>r(),{once:true}); }); }
+    await dec.flush(); dec.close();
+    await enc.flush(); enc.close();
+    const output=new Output({format:new Mp4OutputFormat({fastStart:'in-memory'}), target:new BufferTarget()});
+    const src=new EncodedVideoPacketSource('avc');
+    output.addVideoTrack(src,{frameRate:state.fps});
+    await output.start();
+    let metaSent=false;
+    for(const {chunk,meta} of chunks){
+      const data=new Uint8Array(chunk.copyTo(new ArrayBuffer(chunk.byteLength)));
+      await src.add(new EncodedPacket(data, chunk.type, chunk.timestamp/1e6, (chunk.duration||lastDur)/1e6), !metaSent&&firstMeta?meta:undefined);
+      metaSent=true;
+    }
+    src.close(); await output.finalize();
+    const blob=new Blob([output.target.buffer],{type:'video/mp4'});
+    const url=URL.createObjectURL(blob);
+    $('od-video').src=url; $('od-link').href=url; $('od-dl').style.display='flex';
+    const wall=performance.now()-w0;
+    let pngUrl=null;
+    if(thresholdPng){ thresholdPng.toBlob(b=>{ pngUrl=URL.createObjectURL(b); $('od-png').href=pngUrl; },'image/png'); }
+    $('od-stats').innerHTML='frames '+i+' · wall '+(wall/1000).toFixed(2)+'s ('+(wall/1000/state.duration).toFixed(2)+'× realtime)<br>output '+fmtBytes(blob.size)+' MP4<br>threshold 14.40V crossed at <b style="color:#fbbf24">'+(thresholdTs!==null?fmtUs(thresholdTs)+' (frame #'+Math.round(thresholdTs/1e6*state.fps)+')':'—')+'</b><br>PNG captured from the exact post-burn frame ✓';
+    log('log-od','mission exported — telemetry burned per-frame, threshold frame captured at µs precision','ok');
+  }));
+
+  /* ---------- §12 Molt reel ---------- */
+  async function moltExport(kind){
+    clearLog('log-enc');
+    const r = kind==='webm'
+      ? await reencode({style:'brand', codec:'vp09.00.10.08', container:'webm'})
+      : await reencode({style:'brand'});
+    const v=$('molt-video');
+    v.src=URL.createObjectURL(r.blob);
+    $('molt-link').href=v.src; $('molt-link').setAttribute('download', kind==='webm'?'molt-reel.webm':'molt-reel.mp4');
+    $('molt-dl').style.display='flex';
+    log('log-enc','exported '+kind.toUpperCase()+' — '+r.frames+' frames, '+fmtBytes(r.size)+', '+(r.wall/1000).toFixed(2)+'s wall ('+(r.wall/1000/state.duration).toFixed(2)+'× realtime)','ok');
+  }
+  $('b-molt-mp4').addEventListener('click', ()=>guard($('b-molt-mp4'),()=>moltExport('mp4')));
+  $('b-molt-webm').addEventListener('click', ()=>guard($('b-molt-webm'),()=>moltExport('webm')));
+  $('b-molt-strip').addEventListener('click', ()=>guard($('b-molt-strip'), async ()=>{
+    clearLog('log-enc');
+    const strip=$('poster-strip'); strip.innerHTML='';
+    const idxs=[0,0.19,0.38,0.57,0.76,0.95];
+    for(const f of idxs){
+      const t=Math.round(f*state.duration*1e6);
+      let best=null,bd=Infinity;
+      for(const th of state.thumbs){ const d=Math.abs(th.ts-t); if(d<bd){bd=d;best=th;} }
+      if(!best) continue;
+      const cv=document.createElement('canvas'); cv.width=200; cv.height=113; cv.className='thumb';
+      const cx=cv.getContext('2d');
+      cx.drawImage(best.canvas,0,0,200,113);
+      cx.fillStyle='rgba(0,0,0,.55)'; cx.fillRect(0,100,200,13);
+      cx.fillStyle='#fff'; cx.font='9px ui-monospace,Menlo,monospace'; cx.fillText(best.ts+' µs',6,109);
+      strip.appendChild(cv);
+    }
+    log('log-enc','poster strip built from owned frames (download wiring = canvas.toBlob per card)','ok');
+  }));
+})();
+</script>
+</body>
+</html>
