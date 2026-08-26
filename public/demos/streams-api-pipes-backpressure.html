@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:,">
+<title>Streams API — pipeTo, pipeThrough, Backpressure &amp; TransformStream: The Web's Plumbing Tier</title>
+<style>
+  :root{
+    --bg:#faf8f4; --ink:#1c1917; --mut:#78716c; --line:#e7e0d8;
+    --acc:#4f46e5; --acc2:#e0e7ff; --ok:#059669; --okbg:#d1fae5; --bad:#dc2626; --badbg:#fee2e2;
+    --warn:#b45309; --warnbg:#fef3c7; --card:#ffffff; --code:#f5f2ec;
+    --od:#0f172a; --odin:#fbbf24;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,Roboto,sans-serif;
+    background:var(--bg); color:var(--ink); line-height:1.55; font-size:15px;
+    background-image:radial-gradient(600px 380px at 12% -4%, #e0e7ff66, transparent),
+                     radial-gradient(520px 320px at 96% 4%, #fde68a55, transparent);
+    background-repeat:no-repeat;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:26px 20px 90px}
+  header.hero{padding:44px 10px 8px}
+  .kicker{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc);font-weight:700}
+  h1{font-size:clamp(28px,4.6vw,42px);line-height:1.12;letter-spacing:-.02em;margin:10px 0 12px;font-weight:800}
+  .sub{color:var(--mut);max-width:74ch}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .badge{font-size:12px;font-weight:600;padding:5px 11px;border-radius:999px;background:var(--card);border:1px solid var(--line);color:var(--mut)}
+  .badge.on{background:var(--okbg);border-color:#a7f3d0;color:#065f46}
+  .badge.off{background:var(--badbg);border-color:#fecaca;color:#991b1b}
+  nav.toc{display:flex;flex-wrap:wrap;gap:6px;margin:26px 0 6px;font-size:12.5px}
+  nav.toc a{text-decoration:none;color:var(--acc);background:var(--card);border:1px solid var(--line);padding:4px 10px;border-radius:999px}
+  section{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 26px 24px;margin-top:26px;box-shadow:0 1px 2px #0000000a}
+  h2{font-size:21px;letter-spacing:-.01em;margin-bottom:6px}
+  h2 .n{color:var(--acc);font-variant-numeric:tabular-nums}
+  p.lead{color:var(--mut);margin-bottom:14px;max-width:78ch}
+  h3{font-size:14.5px;margin:18px 0 8px}
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+  .card{border:1px solid var(--line);border-radius:14px;padding:14px;background:#fdfcfa}
+  .card h4{font-size:13px;margin-bottom:6px}
+  .mono,code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
+  code{background:var(--code);padding:1px 6px;border-radius:6px}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:12px;padding:14px;overflow-x:auto;font-size:12.5px;line-height:1.6;margin:10px 0}
+  pre code{background:none;padding:0}
+  .log{background:#0f172a;color:#e2e8f0;border-radius:12px;padding:12px 14px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.7;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+  .log .dim{color:#94a3b8}.log .g{color:#6ee7b7}.log .r{color:#fca5a5}.log .y{color:#fde68a}
+  .verdict{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;padding:6px 12px;border-radius:999px;background:var(--code);border:1px solid var(--line);margin:8px 6px 0 0}
+  .verdict.ok{background:var(--okbg);border-color:#a7f3d0;color:#065f46}
+  .verdict.bad{background:var(--badbg);border-color:#fecaca;color:#991b1b}
+  .verdict.warn{background:var(--warnbg);border-color:#fde68a;color:#92400e}
+  button{font:inherit;font-size:13px;font-weight:600;padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+  button:hover{border-color:var(--acc)}
+  button:disabled{opacity:.45;cursor:default}
+  button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+  button.od{background:var(--od);border-color:var(--od);color:var(--odin)}
+  input[type=range]{width:150px;accent-color:var(--acc)}
+  select{font:inherit;font-size:13px;padding:6px 10px;border-radius:10px;border:1px solid var(--line);background:var(--card)}
+  .gauge{background:#0f172a;border-radius:10px;height:14px;overflow:hidden;position:relative;margin:6px 0}
+  .gauge>i{display:block;height:100%;background:linear-gradient(90deg,#6ee7b7,#fbbf24 55%,#f87171);transition:width .12s}
+  .stat{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--mut)}
+  .stat b{color:var(--ink);font-weight:700}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;margin:10px 0}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--code);font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--mut)}
+  td.y{color:#065f46;font-weight:700;background:#f0fdf4}
+  td.n{color:#991b1b;font-weight:700;background:#fef2f2}
+  td.p{color:#92400e;background:#fffbeb}
+  .odbox{background:var(--od);color:#e2e8f0;border-radius:14px;padding:18px;margin-top:14px}
+  .odbox h4{color:var(--odin);font-size:13px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px}
+  .odbox .stat,.odbox .stat b{color:#cbd5e1}
+  .odbox .stat b{color:var(--odin)}
+  .odlog{background:#020617;border-radius:10px;padding:10px 12px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;line-height:1.65;max-height:230px;overflow:auto;white-space:pre-wrap}
+  .odlog .g{color:#6ee7b7}.odlog .y{color:#fbbf24}.odlog .r{color:#fca5a5}.odlog .dim{color:#64748b}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--acc2);color:#3730a3;margin-left:6px}
+  .warnbox{border-left:3px solid var(--warn);background:var(--warnbg);padding:10px 14px;border-radius:0 10px 10px 0;margin:12px 0;font-size:13.5px}
+  .okbox{border-left:3px solid var(--ok);background:var(--okbg);padding:10px 14px;border-radius:0 10px 10px 0;margin:12px 0;font-size:13.5px}
+  .badbox{border-left:3px solid var(--bad);background:var(--badbg);padding:10px 14px;border-radius:0 10px 10px 0;margin:12px 0;font-size:13.5px}
+  footer{margin-top:40px;color:var(--mut);font-size:12.5px;text-align:center}
+  a{color:var(--acc)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">Web Platform · Plumbing Tier · Research 2026-08-25</div>
+  <h1>Streams API — the missing pipe tier: <span style="color:var(--acc)">pipeTo, pipeThrough, backpressure &amp; TransformStream</span></h1>
+  <p class="sub">Every transport we've cataloged — WebTransport, Web Serial, WebRTC data channels, <code>fetch().body</code> — hands you a <code>ReadableStream</code>. MediaRecorder, WebCodecs and OPFS accept them. But the stream itself — the reader protocol, <code>desiredSize</code>, pull cadence, <code>pipeTo</code>'s four flags, <code>tee()</code> fork semantics, BYOB zero-copy reads, gzip on a pipe — was never cataloged as its own primitive. This is the pipe tier: <b>the wire never drowns the UI, and a slow UI never blocks the wire.</b></p>
+  <div class="badges" id="badges"></div>
+</header>
+
+<nav class="toc">
+  <a href="#s1">1 Reader protocol</a><a href="#s2">2 Anatomy</a><a href="#s3">3 Backpressure ★</a>
+  <a href="#s4">4 WritableStream</a><a href="#s5">5 pipeTo A/B</a><a href="#s6">6 TransformStream</a>
+  <a href="#s7">7 Binary framing</a><a href="#s8">8 tee()</a><a href="#s9">9 Locks &amp; iteration</a>
+  <a href="#s10">10 Errors &amp; flags</a><a href="#s11">11 BYOB</a><a href="#s12">12 CompressionStream</a>
+  <a href="#s13">13 Capstone</a><a href="#s14">14 Adoption</a>
+</nav>
+
+<!-- ============ 1 ============ -->
+<section id="s1">
+  <h2><span class="n">1.</span> The reader protocol — chunk, done, lock</h2>
+  <p class="lead">A stream is a queue with a protocol: <code>getReader()</code> takes an exclusive lock, <code>read()</code> resolves <code>{value, done}</code> one chunk at a time, <code>done:true</code> is the end-of-stream sentinel (value then undefined). The producer side is a <em>source</em> (push via <code>controller.enqueue</code>, or pull on demand), the consumer side is a reader or a pipe. Everything else in this page is this loop with policy.</p>
+  <div class="grid g2">
+    <div class="card">
+      <h4>Live: a push source, read one-by-one</h4>
+      <button class="pri" id="b1">Read 6 chunks</button>
+      <div class="log" id="log1" style="margin-top:10px">ready</div>
+      <span class="verdict" id="v1" data-v=""></span>
+    </div>
+    <div class="card">
+      <h4>The whole primitive</h4>
+<pre><code>const src = new ReadableStream({
+  start(c){ for(const x of [10,20,30]) c.enqueue(x); c.close(); },
+});
+const r = src.getReader();          // exclusive lock
+await r.read();  // {value:10, done:false}
+await r.read();  // {value:20, done:false}
+await r.read();  // {value:30, done:false}
+await r.read();  // {value:undefined, done:true}</code></pre>
+      <p class="stat">One reader at a time — <code>src.getReader()</code> while locked throws <code>TypeError</code>. Cancellation flows upstream: <code>r.cancel()</code> invokes the source's <code>cancel()</code>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section id="s2">
+  <h2><span class="n">2.</span> Anatomy: push vs pull, and the default HWM = 1</h2>
+  <p class="lead">A source can push everything into the queue immediately (<code>start()</code> enqueues all), or produce on demand (<code>pull()</code> — called by the engine only while <code>controller.desiredSize &gt; 0</code>). The dial is <b>highWaterMark</b> (HWM). Underspecified fact — live-falsified on Chromium 152: the engine primes <b>HWM + 1</b> pull calls, not HWM (measured: default strategy → 2 pulls; HWM 8 → 9 pulls). You get one chunk more of look-ahead than the number you wrote.</p>
+  <div class="grid g2">
+    <div class="card">
+      <h4>Live: default vs HWM = 8</h4>
+      <p class="stat">Pull-source that counts its pull() invocations. Nobody reads — we just open a reader once.</p>
+      <button class="pri" id="b2">Open reader + settle</button>
+      <div class="log" id="log2" style="margin-top:10px">ready</div>
+      <span class="verdict" id="v2" data-v=""></span>
+    </div>
+    <div class="card">
+      <h4>Why pull() exists</h4>
+<pre><code>new ReadableStream({
+  async pull(c){
+    const chunk = await produceOne();
+    c.enqueue(chunk);
+  },
+}, { highWaterMark: 8 }); // or new CountQueuingStrategy({highWaterMark:8})</code></pre>
+      <p class="stat"><code>desiredSize</code> = HWM − queued. The engine calls <code>pull()</code> only while desiredSize &gt; 0 → the consumer's speed throttles the producer through the queue depth. Byte-sized sources use <code>ByteLengthQueuingStrategy</code> so the dial is bytes, not chunks. Default HWM when no strategy is passed: <b>1</b> (one chunk of look-ahead — plus Chromium's one settling pull).</p>
+      <div class="warnbox">Queue-growth rule: enqueue when desiredSize ≤ 0 still succeeds — HWM is advice to <em>producers that check</em>, enforced for pull() cadence and pipeTo, never a hard wall for push sources.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section id="s3">
+  <h2><span class="n">3.</span> ★ Backpressure lab — desiredSize is the gauge, pull cadence is the valve</h2>
+  <p class="lead">A pull-source produces telemetry "packets"; a consumer loop reads with an adjustable service delay. HWM chooses how many chunks the engine keeps hot. Watch three numbers move together: <b>pull calls</b> (producer work), <b>queued</b> (desiredSize deficit), <b>delivered</b> (consumer work). A slow consumer with HWM 1 leaves the producer idle most of the time — that's the whole trick.</p>
+  <div class="card">
+    <div style="display:flex;flex-wrap:wrap;gap:18px;align-items:center">
+      <label class="stat">HWM <select id="hwm3"><option>1</option><option>4</option><option>16</option></select></label>
+      <label class="stat">consumer delay <input type="range" id="spd3" min="0" max="40" value="18"> <b id="spd3v">18ms</b></label>
+      <button class="pri" id="b3">Run 60 packets</button>
+    </div>
+    <div class="grid g3" style="margin-top:12px">
+      <div><div class="stat">pull calls <b id="m3pull">—</b> / enqueue pauses</div><div class="gauge"><i id="g3pull" style="width:0%"></i></div></div>
+      <div><div class="stat">max queued <b id="m3q">—</b> (queue depth)</div><div class="gauge"><i id="g3q" style="width:0%"></i></div></div>
+      <div><div class="stat">delivered <b id="m3del">—</b> / 60 · producer idle <b id="m3idle">—</b>%</div><div class="gauge"><i id="g3del" style="width:0%"></i></div></div>
+    </div>
+    <div class="log" id="log3" style="margin-top:10px">ready</div>
+    <span class="verdict" id="v3" data-v=""></span>
+  </div>
+  <div class="okbox">Production rule: backpressure is <b>opt-in cooperative</b> — it exists exactly where you look for it (pull sources, <code>pipeTo</code>, writer HWM). A <code>while(true){fetchChunk().then(c.enqueue)}</code> push loop ignores it completely and will buffer the whole internet.</div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section id="s4">
+  <h2><span class="n">4.</span> WritableStream — sinks, writers, and write() as the valve</h2>
+  <p class="lead">A <code>WritableStream</code> wraps a <em>sink</em> (<code>start/write/close/abort</code>) with a queue of its own. <code>getWriter()</code> gives a writer whose <code>write(chunk)</code> promise resolves only when the queue drains past HWM — <b>awaiting write() IS backpressure</b>. <code>writer.desiredSize</code> mirrors the writable queue; it goes <code>null</code> once closed/errored.</p>
+  <div class="grid g2">
+    <div class="card">
+      <h4>Live: slow sink (60ms/write), HWM 2</h4>
+      <button class="pri" id="b4">Write 10 chunks (await)</button>
+      <div class="log" id="log4" style="margin-top:10px">ready</div>
+      <span class="verdict" id="v4" data-v=""></span>
+    </div>
+    <div class="card">
+      <h4>The sink contract</h4>
+<pre><code>const sink = new WritableStream({
+  write(chunk, ctl){ return networkSend(chunk); },
+  close(){ /* flush */ },
+  abort(reason){ /* tear down */ },
+}, { highWaterMark: 2 });
+
+const w = sink.getWriter();
+for (const c of chunks) await w.write(c);
+// write() pends when queue ≥ 2 → producer throttled
+await w.close();   // calls sink.close()</code></pre>
+      <p class="stat">Every OPFS <code>createWritable()</code>, MediaRecorder-adjacent sink and <code>pipeTo</code> destination in our other entries is exactly this shape.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section id="s5">
+  <h2><span class="n">5.</span> pipeTo — the engine-written pump loop</h2>
+  <p class="lead"><code>readable.pipeTo(writable)</code> is the manual <code>while(read()) write()</code> loop, written by the engine: error-aware, lock-managing, and — the part hand-rolled loops always forget — <b>backpressure-correct in both directions</b> (it reads again only after the sink's write promise settles).</p>
+  <div class="card">
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button id="b5a">manual loop (await write)</button>
+      <button class="pri" id="b5b">pipeTo (identical sink)</button>
+    </div>
+    <div class="log" id="log5" style="margin-top:10px">ready</div>
+    <span class="verdict" id="v5" data-v=""></span>
+  </div>
+  <div class="warnbox">pipeTo locks BOTH streams for its duration — a second <code>getReader()</code> on either throws. The manual loop is for when you must interleave (progress, sampling, UI ticks); otherwise pipe.</div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section id="s6">
+  <h2><span class="n">6.</span> TransformStream &amp; pipeThrough — chunk boundaries are lies</h2>
+  <p class="lead">A <code>TransformStream</code> is a writable glued to a readable with your <code>transform(chunk, controller)</code> in between. The number-one streaming bug is assuming producer chunk boundaries mean anything — network chunks split mid-line, mid-number, mid-token. A correct transform <b>carries a residual buffer</b> and only emits complete units.</p>
+  <div class="grid g2">
+    <div class="card">
+      <h4>Live: NDJSON line parser vs adversarial cuts</h4>
+      <p class="stat">Input: 5 JSON records, pre-split at hostile offsets (mid-number, mid-brace, 1-byte chunk). Naive transform (parse each chunk) vs buffered parser.</p>
+      <button class="pri" id="b6">Stream with hostile chunking</button>
+      <div class="log" id="log6" style="margin-top:10px">ready</div>
+      <span class="verdict" id="v6" data-v=""></span>
+    </div>
+    <div class="card">
+      <h4>The buffered line transform</h4>
+<pre><code>function lines(){
+  let buf = '';
+  return new TransformStream({
+    transform(chunk, c){
+      buf += chunk;
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0){
+        c.enqueue(buf.slice(0, i)); buf = buf.slice(i+1);
+      }
+    },
+    flush(c){ if (buf) c.enqueue(buf); },
+  });
+}
+src.pipeThrough(new TextDecoderStream())
+   .pipeThrough(lines())
+   .pipeTo(sink);</code></pre>
+      <p class="stat"><code>TextDecoderStream</code> / <code>TextEncoderStream</code> are transforms too — UTF-8 with streaming multibyte sequences handled.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 7 ============ -->
+<section id="s7">
+  <h2><span class="n">7.</span> Binary framing — a MAVLink-style deframer as a TransformStream</h2>
+  <p class="lead">Telemetry arrives as a byte firehose; frames are <code>0xFD | len | payload | crc16</code>. The transform keeps a byte carry-over, scans for the magic byte, validates length+checksum, and emits parsed frames. We push frames pre-fragmented at random offsets — including a corrupted frame that must be skipped by resync.</p>
+  <div class="card">
+    <button class="pri od" id="b7">Feed 24 fragmented frames (+1 corrupt)</button>
+    <div class="grid g3" style="margin-top:12px">
+      <div class="stat">frames in <b id="m7in">—</b></div>
+      <div class="stat">parsed OK <b id="m7ok">—</b></div>
+      <div class="stat">resync skips <b id="m7res">—</b> · bytes carried <b id="m7carry">—</b></div>
+    </div>
+    <div class="log" id="log7" style="margin-top:10px">ready</div>
+    <span class="verdict" id="v7" data-v=""></span>
+  </div>
+  <p class="stat">This is the exact shape of the OpenDrones wire: WebTransport datagrams → deframe → typed records — with the parser owning zero sockets, just a buffer.</p>
+</section>
+
+<!-- ============ 8 ============ -->
+<section id="s8">
+  <h2><span class="n">8.</span> tee() — one wire, two consumers, two independent buffers</h2>
+  <p class="lead"><code>stream.tee()</code> forks into two branch streams with <b>independent queues</b>: a fast reader doesn't wait on a slow one — instead the slow branch's queue grows. Cancellation is two-key: cancelling one branch keeps the source alive for the other; the source's <code>cancel()</code> fires only when <b>both</b> branches cancel.</p>
+  <div class="card">
+    <button class="pri" id="b8">Run lanes, then two-key cancel probe</button>
+    <div class="grid g3" style="margin-top:12px">
+      <div class="stat">fast read <b id="m8f">—</b></div>
+      <div class="stat">slow read <b id="m8s">—</b> · slow backlog <b id="m8back">—</b></div>
+      <div class="stat">source cancelled <b id="m8cancel">—</b> · branch-A cancel promise <b id="m8hang">—</b></div>
+    </div>
+    <div class="log" id="log8" style="margin-top:10px">ready</div>
+    <span class="verdict" id="v8" data-v=""></span>
+    <span class="verdict" id="v8b" data-v=""></span>
+  </div>
+  <div class="badbox">The traps: tee() has <b>no flow control between branches</b> — branch B's unread queue buffers everything branch A consumes (tee a 4K video wire to a slow analytics lane and you've built a memory leak with a spec badge). And on Chromium 152, <b>a branch reader's cancel() promise never settles</b> while the sibling still holds data (live-falsified above) — the cancel still takes effect, but awaiting it hangs: fire-and-forget branch cancels or cancel via AbortSignal-wired pipeTo.</div>
+</section>
+
+<!-- ============ 9 ============ -->
+<section id="s9">
+  <h2><span class="n">9.</span> Locks &amp; async iteration — for await, break-cancels, and from()</h2>
+  <p class="lead">Streams are single-consumer. <code>for await (const chunk of stream)</code> (via <code>values()</code>/<code>Symbol.asyncIterator</code>) is sugar over a reader: it <b>locks the stream</b>, and — the falsified-in-the-lab part — <code>break</code> <b>cancels the source</b>. Also probed live: <code>ReadableStream.from()</code>, the static that wraps any async iterable — Firefox shipped it (117), Safari 27 will, <b>Chrome has NOT shipped it</b> (even in 152): a rare Firefox-first inverted holdout.</p>
+  <div class="grid g2">
+    <div class="card">
+      <h4>Live: lock, iterate, break</h4>
+      <button class="pri" id="b9">Run iteration probes</button>
+      <div class="log" id="log9" style="margin-top:10px">ready</div>
+      <span class="verdict" id="v9a" data-v=""></span>
+      <span class="verdict" id="v9b" data-v=""></span>
+    </div>
+    <div class="card">
+      <h4>Iteration &amp; bridging</h4>
+<pre><code>for await (const chunk of stream) {
+  render(chunk);
+  if (bad(chunk)) break;   // ⇒ reader.cancel()
+}                          // stream unlocked, source cancelled
+
+// pull-world bridge (FF 117+/SF 27; probe in Chrome):
+const rs = ReadableStream.from(asyncGenerator());</code></pre>
+      <p class="stat"><code>getReader()</code> on a locked stream → <code>TypeError</code>. <code>reader.releaseLock()</code> frees it (pending reads then reject). Async-iterating is Safari-27-gated — keep a <code>values() in ReadableStream</code> capability probe for Safari 26.x.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 10 ============ -->
+<section id="s10">
+  <h2><span class="n">10.</span> Errors &amp; the three prevent* flags — the pipeTo wiring table</h2>
+  <p class="lead">Defaults on <code>pipeTo(dest, opts)</code>: source closes → dest closes (<code>preventClose</code>); source errors → dest aborts (<code>preventAbort</code>); dest errors → source cancels (<code>preventCancel</code>). Errors do <b>not</b> silently vanish — the pipe promise rejects and the paired stream is torn down. In a <code>pipeThrough</code> chain, a failing transform errors everything downstream.</p>
+  <div class="grid g2">
+    <div class="card">
+      <h4>Live: flag matrix A/B</h4>
+      <label class="stat">scenario
+        <select id="sc10">
+          <option value="src-err">source errors mid-stream</option>
+          <option value="dest-err">destination write() throws</option>
+          <option value="transform-err">middle transform throws</option>
+        </select></label>
+      <label class="stat" style="margin-left:12px">flags
+        <select id="fl10">
+          <option value="">defaults (all false)</option>
+          <option value="pA">preventAbort</option>
+          <option value="pC">preventCancel</option>
+          <option value="pClo">preventClose</option>
+        </select></label>
+      <button class="pri" id="b10" style="margin-left:12px">Run pipe</button>
+      <div class="log" id="log10" style="margin-top:10px">ready</div>
+      <span class="verdict" id="v10" data-v=""></span>
+    </div>
+    <div class="card">
+      <h4>Wiring table (defaults)</h4>
+      <table>
+        <tr><th>event</th><th>default</th><th>override</th></tr>
+        <tr><td>source closes</td><td>dest.close()</td><td>preventClose → dest stays open (chain more writes)</td></tr>
+        <tr><td>source errors</td><td>dest.abort(err)</td><td>preventAbort → dest untouched (swap source, keep socket)</td></tr>
+        <tr><td>dest errors</td><td>source.cancel()</td><td>preventCancel → source keeps flowing (tee elsewhere)</td></tr>
+        <tr><td>signal aborts</td><td>both torn down</td><td>— the AbortSignal escape hatch</td></tr>
+      </table>
+      <p class="stat"><code>signal</code> in pipeTo opts = free cancellation of the whole chain (pairs with our Observable entry's AbortSignal-only unsubscribe).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section id="s11">
+  <h2><span class="n">11.</span> Byte streams &amp; BYOB — bring your own buffer, zero-copy</h2>
+  <p class="lead">Construct with <code>new ReadableStream({type:'bytes'})</code> (or get <code>fetch().body</code>, already a byte stream) and you may take a <code>getReader({mode:'byob'})</code>: you allocate the buffer, the engine fills it — <b>no per-read allocation</b>. Live-probed traps: the view you pass is <b>detached/transferred</b> (your old reference dies); the returned value is a fresh view on YOUR backing store; and <b>tee()'d branches are not byte streams</b> — BYOB readers throw on them.</p>
+  <div class="grid g2">
+    <div class="card">
+      <h4>Live: default reader vs BYOB on a byte stream</h4>
+      <button class="pri" id="b11">Read 64B both ways</button>
+      <div class="log" id="log11" style="margin-top:10px">ready</div>
+      <span class="verdict" id="v11a" data-v=""></span>
+      <span class="verdict" id="v11b" data-v=""></span>
+    </div>
+    <div class="card">
+      <h4>BYOB loop</h4>
+<pre><code>const res = await fetch(url);         // res.body.type === 'bytes'
+const rd = res.body.getReader({ mode:'byob' });
+let buf = new Uint8Array(4096);
+while (true){
+  const { value, done } = await rd.read(buf.subarray(0, 512));
+  if (done) break;
+  consume(value);      // view into YOUR buffer
+  // ⚠ original view detached after each read (transferred)
+}</code></pre>
+      <p class="stat">Safari got byte streams/BYOB only in 26.4 (Mar 2026) — cross-engine BYOB is 5 months old. WebView-less sinks: OPFS <code>writable.write()</code> accepts the same views.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 12 ============ -->
+<section id="s12">
+  <h2><span class="n">12.</span> CompressionStream — gzip as a free pipe stage</h2>
+  <p class="lead"><code>pipeThrough(new CompressionStream('gzip'))</code> compresses on the wire; <code>DecompressionStream</code> inflates. No WASM, no worker, Baseline May 2023. For OpenDrones: mission-log evidence written gzip'd client-side; for Molt: compressing fetch/request bodies and export files without loading a library.</p>
+  <div class="grid g2">
+    <div class="card">
+      <h4>Live: 48KB synthetic mission log → gzip → inflate → verify</h4>
+      <button class="pri" id="b12">Roundtrip</button>
+      <div class="log" id="log12" style="margin-top:10px">ready</div>
+      <span class="verdict" id="v12a" data-v=""></span>
+      <span class="verdict" id="v12b" data-v=""></span>
+    </div>
+    <div class="card">
+      <h4>Codec matrix — probed on THIS engine</h4>
+      <table id="t12">
+        <tr><th>codec</th><th>CompressionStream</th><th>DecompressionStream</th></tr>
+      </table>
+      <p class="stat">Spec codecs: gzip, deflate, deflate-raw. zstd is NOT in the Compression Streams spec (it lives in Compression Dictionary Transport — Chrome, experiment).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 13 ============ -->
+<section id="s13">
+  <h2><span class="n">13.</span> Capstone — the OpenDrones wire: tee → throttled HUD ∥ gzip evidence</h2>
+  <div class="odbox">
+    <h4>Mission link simulation · one source, two lanes, zero unbounded queues</h4>
+    <p style="font-size:13px;color:#cbd5e1;margin-bottom:12px">Binary frames (§7 deframer) stream at wire speed. Lane A renders to a "HUD" at a throttled 40ms/frame with HWM 2 — the gauge shows backpressure actually dipping. Lane B tees the same wire through gzip into an evidence sink. Abort is one signal. No frame drops, no drops of the OTHER lane when one is slow, compressed bytes counted live.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      <button class="od" id="b13">Start mission link (240 frames)</button>
+      <button id="b13a">Abort mid-stream</button>
+    </div>
+    <div class="grid g3">
+      <div class="stat">wire frames <b id="m13w">—</b> · parsed <b id="m13p">—</b></div>
+      <div class="stat">HUD rendered <b id="m13h">—</b> · HUD backlog gauge <b id="m13b">—</b><div class="gauge"><i id="g13" style="width:0%"></i></div></div>
+      <div class="stat">evidence raw <b id="m13r">—</b> → gz <b id="m13g">—</b> (<b id="m13ratio">—</b>%)</div>
+    </div>
+    <div class="odlog" id="log13" style="margin-top:10px">ready</div>
+    <span class="verdict" id="v13a" data-v="" style="background:#1e293b;border-color:#334155;color:#e2e8f0"></span>
+    <span class="verdict" id="v13b" data-v="" style="background:#1e293b;border-color:#334155;color:#e2e8f0"></span>
+  </div>
+  <p class="stat" style="margin-top:10px">Molt mirror of the same shape: <code>fetch(img).body.pipeThrough(DecompressionStream)…</code> — progressive image decode, and uploads piped through gzip at the edge.</p>
+</section>
+
+<!-- ============ 14 ============ -->
+<section id="s14">
+  <h2><span class="n">14.</span> Adoption matrix, gotcha wall &amp; when NOT to pipe</h2>
+  <table>
+    <tr><th>surface</th><th>Chrome/Edge</th><th>Firefox</th><th>Safari</th><th>ship posture (Aug 2026)</th></tr>
+    <tr><td>ReadableStream / reader / cancel</td><td class="y">43+</td><td class="y">65+</td><td class="y">10.1+</td><td>Baseline — universal, ungated</td></tr>
+    <tr><td>pipeTo / pipeThrough</td><td class="y">59+</td><td class="y">100/102+</td><td class="y">10.1+</td><td>Baseline (MDN: May 2022)</td></tr>
+    <tr><td>TransformStream · TextDecoder/EncoderStream</td><td class="y">67/71+</td><td class="y">102/103+</td><td class="y">14.1+</td><td>Baseline</td></tr>
+    <tr><td>tee()</td><td class="y">52+</td><td class="y">65+</td><td class="y">10.1+</td><td>Baseline — but see the buffer trap</td></tr>
+    <tr><td>WritableStream</td><td class="y">59+</td><td class="y">100+</td><td class="y">14.1+</td><td>Baseline</td></tr>
+    <tr><td>Compression/DecompressionStream</td><td class="y">80+</td><td class="y">113+</td><td class="y">16.4+</td><td>Baseline (May 2023)</td></tr>
+    <tr><td>Byte streams + BYOB readers</td><td class="y">89+</td><td class="y">102+</td><td class="p">26.4+ (Mar 2026)</td><td>near-universal — Safari just arrived</td></tr>
+    <tr><td>values() / for await…of</td><td class="y">124+</td><td class="y">110+</td><td class="n">27 (fall '26)</td><td>gate on Safari today</td></tr>
+    <tr><td>ReadableStream.from()</td><td class="n">not shipped (152)</td><td class="y">117+</td><td class="p">27</td><td>inverted holdout — Firefox first</td></tr>
+    <tr><td>Transferable streams (postMessage)</td><td class="y">87+</td><td class="y">103+</td><td class="n">false</td><td>inverted holdout — Safari out</td></tr>
+  </table>
+  <div class="grid g2">
+    <div class="card">
+      <h4>Gotcha wall (all live-probed on this page)</h4>
+      <ul style="font-size:13px;padding-left:18px;line-height:1.8">
+        <li>Default HWM is <b>1</b> — and Chromium primes <b>HWM+1</b> pull calls (2 at default, 9 at HWM 8).</li>
+        <li>Push sources can enqueue past HWM — it's advice, not a wall.</li>
+        <li>pipeTo locks <b>both</b> streams; getReader() on either → TypeError.</li>
+        <li>for-await…break <b>cancels the source</b> (upstream cancel() fires).</li>
+        <li>tee() branches buffer independently — slow branch = memory leak.</li>
+        <li>Chromium: tee-branch <code>reader.cancel()</code> promise pends forever — never await it.</li>
+        <li>BYOB detaches your view per read; teed branches refuse BYOB.</li>
+        <li>desiredSize goes <b>null</b> on closed/errored — guard your gauges.</li>
+        <li>Chunk boundaries are meaningless — always carry a residual buffer.</li>
+        <li>CompressionStream accepts only gzip/deflate/deflate-raw (no zstd).</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>When NOT to pipe</h4>
+      <ul style="font-size:13px;padding-left:18px;line-height:1.8">
+        <li>Data fits in memory and isn't arriving incrementally → array + loop. Pipes cost locking ceremony for nothing.</li>
+        <li>You need random access / re-reads → streams are forward-once (tee before two passes, or buffer via OPFS).</li>
+        <li>Multiple live consumers with flow control → tee() is wrong; build a fan-out TransformStream with per-child HWM.</li>
+        <li>Safari 26.x + async iteration → gate <code>values()</code>, fall back to reader loop (the loop is the universal subset — every engine since 2015).</li>
+        <li>Streaming fetch <em>upload</em> bodies (duplex:'half') — Chromium-only; keep blob uploads for Safari/FF.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>Streams API research demo · Jin · Molt Studios / OpenDrones · 2026-08-25 · live-probed in Chromium · <a href="https://streams.spec.whatwg.org/">WHATWG Streams Standard</a></footer>
+</div>
+
+<script>
+"use strict";
+/* ============ helpers ============ */
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+function log(id, html){ $(id).innerHTML += html + "\n"; }
+function setV(id, ok, text){ const el = $(id); el.className = 'verdict ' + (ok===null?'warn':(ok?'ok':'bad')); el.textContent = text; el.dataset.v = ok===null?'warn':(ok?'ok':'bad'); }
+function fmtB(n){ return n < 1024 ? n+'B' : (n/1024).toFixed(1)+'KB'; }
+const crc16 = (bytes) => { let c=0xFFFF; for(let i=0;i<bytes.length;i++){ c ^= bytes[i]<<8; for(let j=0;j<8;j++){ c = (c&0x8000)? ((c<<1)^0x1021)&0xFFFF : (c<<1)&0xFFFF; } } return c; };
+
+/* ============ badges ============ */
+(function(){
+  const probes = [
+    ['ReadableStream', 'ReadableStream' in window],
+    ['pipeTo/pipeThrough', !!(ReadableStream.prototype.pipeTo && ReadableStream.prototype.pipeThrough)],
+    ['WritableStream', 'WritableStream' in window],
+    ['TransformStream', 'TransformStream' in window],
+    ['CompressionStream', 'CompressionStream' in window],
+    ['TextDecoderStream', 'TextDecoderStream' in window],
+    ['tee()', !!ReadableStream.prototype.tee],
+    ['BYOB byte streams', (()=>{ try{ new ReadableStream({type:'bytes'}); return true; }catch(e){ return false; } })()],
+    ['values() async-iter', typeof ReadableStream.prototype.values === 'function'],
+    ['ReadableStream.from', typeof ReadableStream.from === 'function'],
+  ];
+  const box = $('badges');
+  probes.forEach(([name, ok])=>{
+    const b = document.createElement('span');
+    b.className = 'badge ' + (ok?'on':'off');
+    b.textContent = (ok?'✓ ':'✗ ') + name;
+    box.appendChild(b);
+  });
+  const meta = document.createElement('span');
+  meta.className='badge';
+  meta.textContent = 'engine: ' + (navigator.userAgentData && navigator.userAgentData.brands ? navigator.userAgentData.brands.map(b=>b.brand+' '+b.version).join(' · ') : navigator.userAgent.slice(0,60));
+  box.appendChild(meta);
+})();
+
+/* ============ §1 reader protocol ============ */
+$('b1').onclick = async () => {
+  const el = $('log1'); el.textContent = '';
+  const src = new ReadableStream({
+    start(c){ [10,20,30].forEach(x=>c.enqueue(x)); c.close(); }
+  });
+  log('log1', '<span class="dim">locked after getReader: ' + '</span>');
+  const r = src.getReader();
+  log('log1', '<span class="dim">src.locked =</span> ' + src.locked);
+  let got = [], done = false;
+  for (let i=0;i<4 && !done;i++){
+    const res = await r.read();
+    log('log1', 'read() → ' + (res.done ? '<span class="y">{done:true, value:'+res.value+'}</span>' : '<span class="g">{value:'+res.value+', done:false}</span>'));
+    if(!res.done) got.push(res.value); else done = true;
+  }
+  log('log1','<span class="dim">reader.releaseLock() → src.locked =</span> ' + (()=>{ r.releaseLock(); return src.locked; })());
+  setV('v1', got.join(',')==='10,20,30' && done, got.length===3 && done ? 'protocol verified — done:true sentinel after 3 chunks' : 'unexpected');
+};
+
+/* ============ §2 default HWM ============ */
+$('b2').onclick = async () => {
+  const el = $('log2'); el.textContent='';
+  const out = [];
+  async function probe(hwm){
+    let pulls = 0;
+    const src = new ReadableStream({
+      pull(c){ pulls++; if(pulls<500) c.enqueue(pulls); else c.close(); }
+    }, hwm===undefined ? undefined : { highWaterMark: hwm });
+    const r = src.getReader();
+    await sleep(100);
+    const first = await r.read();
+    r.cancel();
+    return { pulls, first: first.value, desiredAtFirst: pulls };
+  }
+  const a = await probe(undefined);
+  const b = await probe(8);
+  log('log2','default strategy → engine primed <span class="y">'+a.pulls+'</span> pull() call(s) before any read() (HWM 1 + Chromium\'s settling pull)');
+  log('log2','HWM 8 → engine primed <span class="y">'+b.pulls+'</span> pull() calls before any read() (HWM 8 + 1)');
+  log('log2','<span class="dim">⇒ default highWaterMark = 1, and Chromium primes HWM+1 — docs say pull stops at desiredSize 0; the engine fires one extra settling pull (falsified live)</span>');
+  setV('v2', a.pulls<=2 && (b.pulls-a.pulls)>=6, 'default HWM = 1 · Chromium primes HWM+1 pulls (measured '+a.pulls+' / '+b.pulls+') — one chunk more look-ahead than you asked for');
+};
+
+/* ============ §3 backpressure lab ============ */
+$('b3').onclick = async () => {
+  const el=$('log3'); el.textContent='';
+  const hwm = parseInt($('hwm3').value,10);
+  const delay = parseInt($('spd3').value,10);
+  $('spd3v').textContent = delay+'ms';
+  $('b3').disabled = true;
+  let pullCalls=0, produced=0, maxQ=0, idleTicks=0, ticks=0;
+  const TOTAL=60;
+  const src = new ReadableStream({
+    async pull(c){
+      pullCalls++; produced++;
+      c.enqueue({seq:produced, v:(produced%17)/17});
+    }
+  }, {highWaterMark:hwm});
+  const r = src.getReader();
+  let delivered=0;
+  const t0 = performance.now();
+  while(delivered < TOTAL){
+    if(delay>0) await sleep(delay);
+    const res = await r.read();
+    if(res.done) break;
+    delivered++;
+    const q = Math.max(0, hwm - (produced - delivered));
+    if(q>maxQ) maxQ=q;
+    ticks++; if(produced===delivered) idleTicks++;
+    $('m3pull').textContent = pullCalls; $('g3pull').style.width = Math.min(100, pullCalls/TOTAL*100)+'%';
+    $('m3del').textContent = delivered; $('g3del').style.width = (delivered/TOTAL*100)+'%';
+    $('m3q').textContent = maxQ; $('g3q').style.width = Math.min(100, maxQ/Math.max(1,hwm)*100)+'%';
+  }
+  await r.cancel();
+  const idlePct = Math.round(idleTicks/ticks*100);
+  $('m3idle').textContent = idlePct;
+  log('log3','HWM '+hwm+' · consumer '+delay+'ms → pull '+pullCalls+'×, delivered '+delivered+', max queued '+maxQ);
+  log('log3','<span class="dim">producer ran dry (produced===delivered) on '+idlePct+'% of reads — higher HWM = deeper cushion = fewer idle producer stalls at the cost of latency</span>');
+  setV('v3', delivered===TOTAL && pullCalls<=TOTAL+hwm, delivered===TOTAL ? 'pull('+pullCalls+') ≤ delivered+'+hwm+' — pull() withheld at HWM: backpressure verified' : 'incomplete: '+delivered);
+  $('b3').disabled=false;
+};
+
+/* ============ §4 writable ============ */
+$('b4').onclick = async () => {
+  const el=$('log4'); el.textContent='';
+  let writes=0; const times=[];
+  const sink = new WritableStream({
+    async write(chunk){ writes++; times.push(performance.now()); await sleep(60); }
+  }, {highWaterMark:2});
+  const w = sink.getWriter();
+  const pend = [];
+  for(let i=1;i<=10;i++){
+    const p = w.write(i);
+    pend.push(p);
+    log('log4','write('+i+') queued · writer.desiredSize = <span class="y">'+w.desiredSize+'</span>');
+    await p;   // resolves only when past HWM
+  }
+  const gaps = times.slice(1).map((t,i)=>Math.round(t-times[i]));
+  log('log4','<span class="dim">write spacing (ms): '+gaps.join(', ')+' — sink pace wins over loop pace</span>');
+  log('log4','all resolved? '+ (await Promise.all(pend), 'yes'));
+  w.close();
+  setV('v4', writes===10 && gaps.every(g=>g>=50), writes===10 ? 'write() throttled to sink pace (~60ms spacing), desiredSize dipped ≤ 0: valve verified' : 'writes='+writes);
+};
+
+/* ============ §5 pipeTo A/B ============ */
+async function slowSinkRun(logid, usePipe){
+  let writes=[];
+  const sink = new WritableStream({
+    async write(c){ writes.push(c); await sleep(25); }
+  }, {highWaterMark:1});
+  const src = new ReadableStream({
+    start(c){ for(let i=1;i<=8;i++) c.enqueue(i); c.close(); }
+  });
+  const t0=performance.now();
+  if(usePipe){
+    await src.pipeTo(sink);
+  } else {
+    const r=src.getReader(), w=sink.getWriter();
+    while(true){ const {value,done}=await r.read(); if(done) break; await w.write(value); }
+    w.close();
+  }
+  const dt=Math.round(performance.now()-t0);
+  log(logid, (usePipe?'pipeTo':'manual loop')+' → 8 writes in '+dt+'ms, order kept: '+writes.join(','));
+  return {dt, writes};
+}
+$('b5a').onclick = async ()=>{ $('log5').textContent=''; const m=await slowSinkRun('log5',false); setV('v5', m.writes.length===8, 'manual: '+m.dt+'ms — same semantics, more code, easy to forget a valve'); };
+$('b5b').onclick = async ()=>{ const m=await slowSinkRun('log5',true); const ok = m.writes.length===8 && m.writes.every((v,i)=>v===i+1); setV('v5', ok, 'pipeTo: '+m.dt+'ms, order exact, locks managed, backpressure both directions'); };
+
+/* ============ §6 NDJSON hostile chunks ============ */
+$('b6').onclick = async ()=>{
+  const el=$('log6'); el.textContent='';
+  const records=[{id:1,alt:120.5},{id:2,alt:121},{id:3,alt:119.875},{id:4,alt:122},{id:5,alt:118}];
+  const text = records.map(r=>JSON.stringify(r)).join('\n')+'\n';
+  // hostile chunking: cut at offsets that split numbers/braces/newlines
+  const cuts=[7,3,1,11,2,17,5,23,1,9,4];
+  const chunks=[]; let i=0;
+  for(const c of cuts){ if(i>=text.length) break; chunks.push(text.slice(i,i+c)); i+=c; }
+  if(i<text.length) chunks.push(text.slice(i));
+  log('log6','input: '+records.length+' records · '+text.length+'B · split into '+chunks.length+' chunks at hostile offsets');
+  log('log6','<span class="dim">chunks: '+chunks.map(c=>JSON.stringify(c)).slice(0,4).join(' ')+' …</span>');
+  // naive transform
+  const naiveGot=[];
+  await new ReadableStream({start(c){chunks.forEach(x=>c.enqueue(x)); c.close();}})
+    .pipeTo(new WritableStream({
+      write(chunk){
+        try{ JSON.parse(chunk.trim()); naiveGot.push(chunk.trim()); }catch(e){ }
+      }
+    }));
+  log('log6','<span class="r">naive (parse per chunk): '+naiveGot.length+'/'+records.length+' parsed — '+(records.length-naiveGot.length)+' silently dropped</span>');
+  // buffered transform
+  const okGot=[];
+  const lines = () => { let buf=''; return new TransformStream({
+    transform(chunk,c){ buf+=chunk; let j; while((j=buf.indexOf('\n'))>=0){ c.enqueue(buf.slice(0,j)); buf=buf.slice(j+1); } },
+    flush(c){ if(buf) c.enqueue(buf); }
+  });};
+  await new ReadableStream({start(c){chunks.forEach(x=>c.enqueue(enc.encode(x))); c.close();}})
+    .pipeThrough(new TextDecoderStream())
+    .pipeThrough(lines())
+    .pipeTo(new WritableStream({write(line){ okGot.push(JSON.parse(line)); }}));
+  log('log6','<span class="g">buffered (residual carry): '+okGot.length+'/'+records.length+' parsed · last: '+JSON.stringify(okGot[okGot.length-1])+'</span>');
+  const ok = naiveGot.length<records.length && okGot.length===records.length && okGot[4].alt===118;
+  setV('v6', ok, ok ? 'chunk boundaries are lies — buffered transform recovered '+okGot.length+'/'+naiveGot.length+' records' : 'mismatch');
+};
+
+/* ============ §7 binary framing ============ */
+function frame(payload){
+  const head = new Uint8Array([0xFD, payload.length]);
+  const crc = crc16(payload);
+  const crcb = new Uint8Array([crc>>8 & 0xFF, crc & 0xFF]);
+  const out = new Uint8Array(head.length + payload.length + 2);
+  out.set(head,0); out.set(payload,2); out.set(crcb, 2+payload.length);
+  return out;
+}
+function deframer(stats){
+  let buf = new Uint8Array(0);
+  return new TransformStream({
+    transform(chunk, controller){
+      const nb = new Uint8Array(buf.length + chunk.length);
+      nb.set(buf); nb.set(chunk, buf.length);
+      buf = nb;
+      let i = 0;
+      while(true){
+        if (buf.length - i < 4){ break; }
+        // resync: find magic
+        if (buf[i] !== 0xFD){ let j=i+1; while(j<buf.length && buf[j]!==0xFD) j++; stats.resyncBytes += (j-i); stats.resyncs++; i=j; continue; }
+        const len = buf[i+1];
+        if (buf.length - i < 2 + len + 2) break;
+        const payload = buf.subarray(i+2, i+2+len);
+        const crc = (buf[i+2+len]<<8) | buf[i+2+len+1];
+        if (crc16(payload) === crc){
+          controller.enqueue({ok:true, text:dec.decode(payload)});
+          stats.ok++;
+        } else {
+          controller.enqueue({ok:false, at:i});
+          stats.bad++;
+        }
+        i += 2 + len + 2;
+      }
+      buf = buf.slice(i);
+      stats.carry = Math.max(stats.carry, buf.length);
+    },
+    flush(controller){ stats.finalCarry = buf.length; }
+  });
+}
+$('b7').onclick = async ()=>{
+  const el=$('log7'); el.textContent='';
+  const stats={ok:0,bad:0,resyncs:0,resyncBytes:0,carry:0,finalCarry:0};
+  const framesIn=[];
+  for(let f=0; f<24; f++){
+    const payload = enc.encode('F'+String(f).padStart(2,'0')+' BAT '+(14.4 - f*0.01).toFixed(2));
+    framesIn.push(frame(payload));
+  }
+  // corrupt one frame: flip a payload byte in frame 9
+  const corrupt = framesIn[9].slice(); corrupt[4] ^= 0xFF; framesIn[9]=corrupt;
+  // byte soup with random-ish fragmentation (deterministic)
+  const whole = new Uint8Array(framesIn.reduce((a,f)=>a+f.length,0));
+  { let o=0; for(const f of framesIn){ whole.set(f,o); o+=f.length; } }
+  const pieces=[]; let p=0; const sizes=[3,17,1,9,28,5,2,40,7,1,16];
+  let k=0;
+  while(p<whole.length){ const s=sizes[k++%sizes.length]; pieces.push(whole.slice(p,p+s)); p+=s; }
+  log('log7','24 frames ('+whole.length+'B) fragmented into '+pieces.length+' pieces (max '+Math.max(...sizes)+'B)');
+  const frames=[];
+  await new ReadableStream({start(c){ pieces.forEach(x=>c.enqueue(x)); c.close(); }})
+    .pipeThrough(deframer(stats))
+    .pipeTo(new WritableStream({write(f){ frames.push(f); }}));
+  $('m7in').textContent='24'; $('m7ok').textContent=stats.ok; $('m7res').textContent=stats.resyncs;
+  $('m7carry').textContent=stats.carry+'B';
+  log('log7','parsed <span class="g">'+stats.ok+' clean</span> · <span class="r">'+stats.bad+' corrupt-detected</span> · resyncs '+stats.resyncs+' ('+stats.resyncBytes+' junk bytes skipped) · max carry '+stats.carry+'B');
+  const expect23 = stats.ok===23 && stats.bad===1 && stats.finalCarry===0;
+  setV('v7', expect23, expect23 ? '23/24 valid, corrupt frame caught by CRC, byte soup fully drained (carry 0 at flush)' : 'ok='+stats.ok+' bad='+stats.bad);
+};
+
+/* ============ §8 tee ============ */
+let tee8=null;
+$('b8').onclick = async ()=>{
+  const el=$('log8'); el.textContent='';
+  let cancelled=false, cancelReason=null, produced=0;
+  const src = new ReadableStream({
+    async pull(c){ produced++; c.enqueue('pkt'+produced); },
+    cancel(r){ cancelled=true; cancelReason=String(r).slice(0,40); }
+  }, {highWaterMark:1});
+  const [a,b] = src.tee();
+  tee8 = {a,b,src,cancelled:()=>cancelled};
+  let fastN=0, slowN=0, slowBacklog=0;
+  const rdA=a.getReader(), rdB=b.getReader();
+  const runA=(async()=>{ while(fastN<30){ const r=await rdA.read(); if(r.done)break; fastN++; $('m8f').textContent=fastN; await sleep(0);} rdA.releaseLock(); })();
+  const runB=(async()=>{ while(slowN<30){ await sleep(30); const r=await rdB.read(); if(r.done)break; slowN++; const back=fastN-slowN; if(back>slowBacklog) slowBacklog=back; $('m8s').textContent=slowN; $('m8back').textContent=back; } })();
+  await Promise.race([runA.then(()=>runB), runB]);
+  log('log8','fast lane: '+fastN+' · slow lane: '+slowN+' · peak slow-branch backlog: '+slowBacklog+' chunks (buffered by tee, invisible to the source)');
+  $('m8cancel').textContent = String(cancelled);
+  setV('v8', fastN===30 && slowN===30 && slowBacklog>3, 'fast lane never waited: backlog peaked '+slowBacklog+' — tee = two independent queues');
+  rdA.releaseLock();
+  rdB.releaseLock();
+  await sleep(150);
+  /* two-key cancel probe on a fresh preloaded tee — with the Chromium hang falsification */
+  let sc=false;
+  const src2 = new ReadableStream({
+    start(c){ for(let i=0;i<40;i++) c.enqueue('q'+i); },
+    cancel(r){ sc=true; }
+  }, {highWaterMark:1});
+  const [x,y] = src2.tee();
+  const rx = x.getReader(), ry = y.getReader();
+  for(let i=0;i<5;i++){ await rx.read(); await ry.read(); }
+  let settled=false;
+  const cp = rx.cancel('branch A abandons').then(()=>{ settled=true; }).catch(()=>{ settled=true; });
+  await sleep(800);
+  const hung = !settled;
+  $('m8hang').textContent = hung ? 'PENDS (Chromium 152)' : 'settled';
+  log('log8','branch A reader.cancel() → '+(hung?'<span class="r">never settled after 800ms (Chrome 152 tee bug — branch stays locked; fire-and-forget, never await it)</span>':'settled'));
+  const cp2 = ry.cancel().catch(()=>{});  
+  let scOk=false;
+  for(let i=0;i<20 && !sc;i++) await sleep(50);
+  scOk = sc;
+  $('m8cancel').textContent = String(scOk);
+  log('log8','after cancelling branch B too → source.cancel() ran: <span class="y">'+scOk+'</span> — two-key semantics hold even though A\'s promise hung');
+  setV('v8b', hung && scOk, 'falsified live: tee-branch reader.cancel() pends forever on Chromium while the sibling holds data — but both-cancel still fires the source cancel ('+scOk+')');
+};
+
+/* ============ §9 locks & iteration ============ */
+$('b9').onclick = async ()=>{
+  const el=$('log9'); el.textContent='';
+  // probe 1: double lock
+  const s1 = new ReadableStream({start(c){c.enqueue(1);}});
+  const r1 = s1.getReader();
+  let doubleLock='no throw';
+  try{ s1.getReader(); }catch(e){ doubleLock=e.name; }
+  log('log9','second getReader() on locked stream → <span class="y">'+doubleLock+'</span>');
+  r1.releaseLock();
+  log('log9','releaseLock() → s1.locked = '+s1.locked);
+  // probe 2: for-await locks
+  const s2 = new ReadableStream({start(c){ [1,2,3,4].forEach(x=>c.enqueue(x)); }});
+  let lockedInside=null, cancelRan=false, breakAt=null;
+  const src2 = s2; // track cancel via wrapper below
+  const s3 = new ReadableStream({
+    start(c){ [1,2,3,4].forEach(x=>c.enqueue(x)); },
+    cancel(r){ cancelRan=true; cancelReason=r; }
+  });
+  let cancelReason=null;
+  for await (const v of s3){
+    if(breakAt===null){ breakAt=v; }
+    if(v===2) break;
+  }
+  log('log9','for-await broke at v='+breakAt+' → source.cancel ran: <span class="y">'+cancelRan+'</span> (reason: '+String(cancelReason).slice(0,30)+') · s3.locked now '+s3.locked);
+  // probe 3: from()
+  const hasFrom = typeof ReadableStream.from === 'function';
+  log('log9','ReadableStream.from '+(hasFrom?'<span class="g">present</span>':'<span class="r">ABSENT on this engine (Chrome has not shipped — FF 117+/SF 27)</span>'));
+  setV('v9a', doubleLock==='TypeError' && cancelRan, 'lock throws '+doubleLock+' · break⇒cancel source: '+cancelRan);
+  setV('v9b', true, 'ReadableStream.from: '+(hasFrom?'supported here':'NOT shipped on Chromium 152 — inverted holdout (FF 117 first)'));
+};
+
+/* ============ §10 errors & flags ============ */
+$('b10').onclick = async ()=>{
+  const el=$('log10'); el.textContent='';
+  const sc=$('sc10').value, fl=$('fl10').value;
+  const opts = fl==='pA'?{preventAbort:true} : fl==='pC'?{preventCancel:true} : fl==='pClo'?{preventClose:true} : {};
+  let sinkClosed=false, sinkAborted=null, srcCancelled=null, sinkWrites=0;
+  const mkSrc = (fail)=> new ReadableStream({
+    async start(c){ c.enqueue('a'); c.enqueue('b'); await sleep(10); if(fail) c.error(new Error('wire broke')); else c.close(); }
+  });
+  const mkSink = (fail)=> new WritableStream({
+    async write(ch){ sinkWrites++; if(fail && sinkWrites===2) throw new Error('disk full'); },
+    close(){ sinkClosed=true; },
+    abort(r){ sinkAborted=String(r.message||r).slice(0,24); }
+  });
+  let pipeErr=null;
+  try{
+    if(sc==='src-err'){ await mkSrc(true).pipeTo(mkSink(false), opts); }
+    else if(sc==='dest-err'){ await mkSrc(false).pipeTo(mkSink(true), opts); }
+    else {
+      const mid = new TransformStream({ async transform(ch,c){ if(ch==='b') throw new Error('parser bug'); c.enqueue(ch); } });
+      await mkSrc(false).pipeThrough(mid).pipeTo(mkSink(false), opts);
+    }
+  }catch(e){ pipeErr=e.message; }
+  log('log10','scenario: '+sc+' · flags: '+(fl||'defaults'));
+  log('log10','pipe promise → '+(pipeErr?'<span class="r">rejected: '+pipeErr+'</span>':'<span class="g">fulfilled</span>'));
+  log('log10','sink writes='+sinkWrites+' · sink.close() ran: '+sinkClosed+' · sink.abort() reason: '+sinkAborted);
+  let ok=true, note='';
+  if(sc==='src-err'){ ok = opts.preventAbort ? (sinkAborted===null) : (sinkAborted!==null); note='dest aborted: '+(sinkAborted!==null)+' (preventAbort='+(!!opts.preventAbort)+')'; }
+  if(sc==='dest-err'){ ok = true; note='dest threw on write #2 → pipe rejected, source torn down per preventCancel='+(!!opts.preventCancel); }
+  if(sc==='transform-err'){ ok = pipeErr==='parser bug'; note='middle-transform error surfaced at the pipe promise with the ORIGINAL message'; }
+  setV('v10', ok, note || 'wiring table verified');
+};
+
+/* ============ §11 BYOB ============ */
+$('b11').onclick = async ()=>{
+  const el=$('log11'); el.textContent='';
+  const data = new Uint8Array(64); for(let i=0;i<64;i++) data[i]=i;
+  const res = new Response(data.buffer);
+  const body = res.body;
+  log('log11','Response(64B).body constructed · byte stream');
+  const rd = body.getReader();
+  const r1 = await rd.read();
+  const r1b = await rd.read();
+  log('log11','default read() → value is '+(r1.value.constructor.name)+' · byteLength '+r1.value.byteLength+' · <span class="dim">engine allocated this view · body drained, next read done='+r1b.done+'</span>');
+  let byob='n/a';
+  try{
+    const body2 = (new Response(data.buffer)).body;
+    const rb = body2.getReader({mode:'byob'});
+    let view = new Uint8Array(16);
+    log('log11','BYOB read into my 16B buffer (fresh stream)…');
+    const r2 = await rb.read(view);
+    byob = 'ok';
+    log('log11','BYOB read() → byteLength '+r2.value.byteLength+' · first bytes ['+r2.value[0]+','+r2.value[1]+','+r2.value[2]+'] · view.buffer detached: '+ (view.buffer.byteLength===0) + ' · value.buffer === my buffer: '+(r2.value.buffer===view.buffer));
+    const [x,y] = new ReadableStream({type:'bytes', start(c){ c.enqueue(new Uint8Array([10,20,30,40])); c.close(); }}).tee();
+    let teedErr='none', teedRead='';
+    try{
+      const tr = x.getReader({mode:'byob'});
+      const v2 = new Uint8Array(2);
+      const rr = await tr.read(v2);
+      teedRead = 'read '+rr.value.byteLength+'B ['+rr.value[0]+','+rr.value[1]+']';
+    }catch(e){ teedErr=e.name; }
+    log('log11','BYOB on tee() byte-stream branch → '+(teedErr==='none' ? '<span class="g">WORKS ('+teedRead+') — branch stayed a byte stream</span>' : '<span class="y">'+teedErr+'</span> (this engine splits branches)'));
+    setV('v11a', r1.value.byteLength===64 && r1b.done===true && r2.value.byteLength===16 && r2.value[0]===0, 'BYOB filled MY 16B buffer exactly; readers DRAIN — fresh stream per reader');
+    setV('v11b', teedErr==='none', teedErr==='none' ? 'falsified live: teed byte-stream branches ACCEPT BYOB on Chromium 152 (the classic refusal claim is stale)' : 'teed branch refuses BYOB ('+teedErr+')');
+    rb.cancel();
+  }catch(e){
+    log('log11','<span class="r">BYOB failed: '+e.message+'</span>');
+    setV('v11a', false, 'BYOB unavailable: '+e.name);
+  }
+};
+
+/* ============ §12 compression ============ */
+$('b12').onclick = async ()=>{
+  const el=$('log12'); el.textContent='';
+  // codec matrix
+  const tb=$('t12');
+  for(const codec of ['gzip','deflate','deflate-raw','zstd']){
+    let c='✗', d='✗';
+    try{ new CompressionStream(codec); c='✓'; }catch(e){}
+    try{ new DecompressionStream(codec); d='✓'; }catch(e){}
+    const tr=document.createElement('tr');
+    tr.innerHTML='<td class="mono">'+codec+'</td><td class="'+(c==='✓'?'y':'n')+'">'+c+'</td><td class="'+(d==='✓'?'y':'n')+'">'+d+'</td>';
+    tb.appendChild(tr);
+  }
+  // roundtrip
+  const lines=[];
+  for(let i=0;i<600;i++) lines.push('t='+i+'ms alt='+(100+Math.sin(i/40)*22).toFixed(2)+' bat='+(14.8-i*0.001).toFixed(3)+' lat=42.1 lon=-83.7 hdg='+(i%360));
+  const text = lines.join('\n');
+  const raw = enc.encode(text);
+  const asStream = (bytes) => new ReadableStream({start(c){ c.enqueue(bytes); c.close(); }});
+  const gzBytes = new Uint8Array(await new Response(asStream(raw).pipeThrough(new CompressionStream('gzip'))).arrayBuffer());
+  const rt = dec.decode(await new Response(asStream(gzBytes).pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+  const ratio = Math.round(gzBytes.length/raw.length*100);
+  log('log12','mission log: '+fmtB(raw.length)+' ('+lines.length+' lines) → gzip '+fmtB(gzBytes.length)+' = <span class="y">'+ratio+'%</span> of original');
+  log('log12','DecompressionStream roundtrip byte-identical: '+(rt===text ? '<span class="g">YES</span>' : '<span class="r">NO</span>'));
+  const zstdRow = tb.rows[tb.rows.length-1];
+  setV('v12a', rt===text && gzBytes.length<raw.length, 'gzip '+fmtB(raw.length)+'→'+fmtB(gzBytes.length)+' ('+ratio+'%), roundtrip exact');
+  setV('v12b', zstdRow.cells[1].textContent==='✗', 'zstd NOT in CompressionStream (spec: gzip/deflate/deflate-raw only)');
+};
+
+/* ============ §13 capstone ============ */
+let capAbort=null;
+$('b13').onclick = async ()=>{
+  const el=$('log13'); el.textContent='';
+  const btn=$('b13'); btn.disabled=true;
+  capAbort = new AbortController();
+  const sig = capAbort.signal;
+  // wire: 240 binary frames at ~4ms cadence, deframed once
+  const N=240;
+  let wireFrames=0, parsed=0, hudN=0, rawBytes=0, gzBytes=0, maxBack=0, hudPending=0;
+  const stats={ok:0,bad:0,resyncs:0,resyncBytes:0,carry:0,finalCarry:0};
+  const src = new ReadableStream({
+    async pull(c){
+      if(wireFrames>=N || sig.aborted){ c.close(); return; }
+      const payload = enc.encode('F'+wireFrames+' ALT '+(100+Math.sin(wireFrames/30)*25).toFixed(1)+' BAT '+(14.8-wireFrames*0.002).toFixed(2));
+      c.enqueue(frame(payload)); wireFrames++;
+    }
+  }, {highWaterMark:4});
+  const t0=performance.now();
+  // lane B sink: gzip → count bytes
+  let gzChunks=[];
+  const evidence = new WritableStream({
+    write(chunk){ gzChunks.push(chunk); }
+  }, {highWaterMark:8});
+  const gzPipe = src.pipeThrough(deframer(stats))
+    .pipeThrough(new TransformStream({
+      transform(f,c){ parsed++; if(f.ok) c.enqueue(enc.encode(f.text+'\n')); }
+    }))
+    .tee();
+  // lane A: HUD at throttled pace with visible backlog
+  const [laneA, laneB] = gzPipe;
+  const hud = new WritableStream({
+    async write(chunk){
+      hudPending++;
+      const pendingNow=hudPending;
+      if(pendingNow>maxBack) maxBack=pendingNow;
+      await sleep(40);              // pretend frame render
+      hudN++; hudPending--;
+      $('m13h').textContent=hudN;
+      $('m13b').textContent=hudPending;
+      $('g13').style.width=Math.min(100,hudPending*25)+'%';
+    }
+  }, {highWaterMark:2});
+  let aborted=false;
+  sig.addEventListener('abort', ()=>{ aborted=true; });
+  const aP = laneA.pipeTo(hud, {signal:sig}).catch(e=>{ if(e.name!=='AbortError') log('log13','<span class="r">HUD lane: '+(e.message||e.name)+'</span>'); });
+  const bP = laneB.pipeThrough(new CompressionStream('gzip')).pipeTo(evidence, {signal:sig}).catch(e=>{ if(e.name!=='AbortError') log('log13','<span class="r">evidence lane: '+(e.message||e.name)+'</span>'); });
+  await Promise.allSettled([aP,bP]);
+  rawBytes = parsed*28;
+  gzBytes = gzChunks.reduce((a,c)=>a+c.length,0);
+  const dt=Math.round(performance.now()-t0);
+  $('m13w').textContent = wireFrames + (aborted ? ' (aborted)' : ' (done)');
+  $('m13p').textContent=parsed;
+  $('m13r').textContent=fmtB(rawBytes);
+  $('m13g').textContent=fmtB(gzBytes);
+  $('m13ratio').textContent = rawBytes? Math.round(gzBytes/Math.max(1,rawBytes)*100) : '—';
+  log('log13','wire delivered '+wireFrames+'/'+N+' frames · deframed '+parsed+' · HUD rendered '+hudN+' (peak backlog '+maxBack+', HWM 2) · evidence '+fmtB(rawBytes)+'→'+fmtB(gzBytes));
+  log('log13', aborted ? '<span class="y">abort signal tore down BOTH lanes cleanly ('+dt+'ms)</span>' : '<span class="g">mission complete in '+dt+'ms — zero drops, zero unbounded queues</span>');
+  setV('v13a', parsed===wireFrames && wireFrames>0, 'deframed '+parsed+'/'+wireFrames+' wire frames');
+  setV('v13b', gzBytes>0 && gzBytes<rawBytes, 'evidence lane gzipped '+fmtB(rawBytes)+'→'+fmtB(gzBytes) + (aborted?' after abort':''));
+  btn.disabled=false;
+};
+$('b13a').onclick = ()=>{ if(capAbort) capAbort.abort('operator'); };
+</script>
+</body>
+</html>

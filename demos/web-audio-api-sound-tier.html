@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:,">
+<title>Web Audio API — The Sound Tier: Synthesis, Analysis &amp; Telemetry Alerting in the Browser</title>
+<style>
+  :root{
+    --bg:#faf8f4; --ink:#1c1917; --mut:#78716c; --line:#e7e0d8;
+    --acc:#4f46e5; --acc2:#e0e7ff; --ok:#059669; --okbg:#d1fae5; --bad:#dc2626; --badbg:#fee2e2;
+    --warn:#b45309; --warnbg:#fef3c7; --card:#ffffff; --code:#f5f2ec;
+    --od:#0f172a; --odin:#fbbf24;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,Roboto,sans-serif;
+    background:var(--bg); color:var(--ink); line-height:1.55; font-size:15px;
+    background-image:radial-gradient(600px 380px at 12% -4%, #e0e7ff66, transparent),
+                     radial-gradient(520px 320px at 96% 4%, #fde68a55, transparent);
+    background-repeat:no-repeat;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:26px 20px 90px}
+  header.hero{padding:44px 10px 8px}
+  .kicker{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc);font-weight:700}
+  h1{font-size:clamp(28px,4.6vw,42px);line-height:1.12;letter-spacing:-.02em;margin:10px 0 12px;font-weight:800}
+  .sub{color:var(--mut);max-width:72ch}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .badge{font-size:12px;font-weight:600;padding:5px 11px;border-radius:999px;background:var(--card);border:1px solid var(--line);color:var(--mut)}
+  .badge.on{background:var(--okbg);border-color:#a7f3d0;color:#065f46}
+  .badge.off{background:var(--badbg);border-color:#fecaca;color:#991b1b}
+  .badge.mid{background:var(--warnbg);border-color:#fde68a;color:#92400e}
+  nav.toc{display:flex;flex-wrap:wrap;gap:6px;margin:26px 0 6px;font-size:12.5px}
+  nav.toc a{text-decoration:none;color:var(--acc);background:var(--card);border:1px solid var(--line);padding:4px 10px;border-radius:999px}
+  section{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 26px 24px;margin-top:26px;box-shadow:0 1px 2px #0000000a}
+  h2{font-size:21px;letter-spacing:-.01em;margin-bottom:6px}
+  h2 .n{color:var(--acc);font-variant-numeric:tabular-nums}
+  p.lead{color:var(--mut);margin-bottom:14px;max-width:78ch}
+  h3{font-size:14.5px;margin:18px 0 8px}
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+  .card{border:1px solid var(--line);border-radius:14px;padding:14px;background:#fdfcfa}
+  .card h4{font-size:13px;margin-bottom:6px}
+  .mono,code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
+  code{background:var(--code);padding:1px 6px;border-radius:6px}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:12px;padding:14px;overflow-x:auto;font-size:12.5px;line-height:1.6;margin:10px 0}
+  pre code{background:none;padding:0}
+  .log{background:#0f172a;color:#e2e8f0;border-radius:12px;padding:12px 14px;font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace;min-height:20px;max-height:230px;overflow:auto;white-space:pre-wrap;margin-top:10px}
+  .log .ok{color:#6ee7b7}.log .err{color:#fca5a5}.log .dim{color:#94a3b8}.log .hi{color:#fde68a}
+  button{font:inherit;font-size:13.5px;font-weight:600;border-radius:11px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:8px 15px;cursor:pointer;transition:.15s}
+  button:hover:not(:disabled){border-color:var(--acc);color:var(--acc)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+  button.pri:hover:not(:disabled){background:#4338ca;color:#fff}
+  .row{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin:12px 0}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:10px 0}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}
+  th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+  td.y{color:#065f46;background:#ecfdf5}td.n{color:#991b1b;background:#fef2f2}
+  canvas.scope{background:#0b1020;border-radius:10px;max-width:100%;width:100%;display:block}
+  .stat{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+  .stat .s{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:9px 14px;min-width:104px}
+  .stat .s b{display:block;font-size:19px;letter-spacing:-.02em}
+  .stat .s span{font-size:11px;color:var(--mut)}
+  .pill{display:inline-block;font-size:11px;font-weight:700;border-radius:7px;padding:2px 8px}
+  .pill.g{background:var(--okbg);color:#065f46}.pill.r{background:var(--badbg);color:#991b1b}.pill.y{background:var(--warnbg);color:#92400e}
+  .note{border-left:3px solid var(--acc);background:#eef2ff66;padding:10px 14px;border-radius:0 10px 10px 0;font-size:13.5px;margin:12px 0}
+  .warn{border-left-color:var(--warn);background:var(--warnbg)}
+  input[type=range]{width:230px;accent-color:var(--acc)}
+  select{font:inherit;font-size:13px;border:1px solid var(--line);border-radius:9px;padding:6px 9px;background:var(--card)}
+  .od{background:var(--od);border-color:#1e293b;color:#e2e8f0}
+  .od h2{color:#fff}.od p.lead{color:#94a3b8}.od .card{background:#111c31;border-color:#1e293b}
+  .od .log{background:#020617}
+  .od button{background:#1e293b;border-color:#334155;color:#e2e8f0}
+  .od button.pri{background:var(--odin);border-color:var(--odin);color:#111}
+  .od table th{color:#94a3b8}.od td,.od th{border-color:#1e293b}
+  .od .stat .s{background:#111c31;border-color:#1e293b}
+  .od .stat .s span{color:#94a3b8}
+  footer{margin-top:34px;color:var(--mut);font-size:12.5px;text-align:center}
+  .hid{display:none}
+  .dl{display:inline-flex;gap:7px;align-items:center;font-size:13px;font-weight:600;color:var(--acc);text-decoration:none;border:1px dashed var(--acc);padding:7px 13px;border-radius:10px}
+  .lvl{display:flex;gap:6px;align-items:center;font-size:12.5px;font-weight:600;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:var(--card)}
+  .lvl.active{border-color:var(--acc);background:var(--acc2);color:var(--acc)}
+  .vu{height:10px;border-radius:6px;background:#e7e0d8;overflow:hidden;flex:1;min-width:120px}
+  .vu i{display:block;height:100%;width:0%;background:linear-gradient(90deg,#059669,#84cc16,#f59e0b,#dc2626);transition:width .06s linear}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">Research · Sound Tier · Jin</div>
+  <h1>Web Audio — synthesis, analysis &amp; telemetry alerting, all in the browser</h1>
+  <p class="sub">The media tier transports and records video (WebRTC · MediaRecorder · WebCodecs), and Web Speech does voice I/O — but nothing in that stack makes or measures <strong>sound</strong>. The Web Audio API is the missing tier: an audio-rate graph of nodes running off the main thread, with sample-accurate automation, FFT analysis, spatialization, custom DSP in worklets, and offline rendering faster than realtime. Every sound on this page is synthesized live — zero audio files, zero uploads.</p>
+  <div class="badges" id="badges"></div>
+  <nav class="toc">
+    <a href="#s2">Tier map</a><a href="#s3">Anatomy</a><a href="#s4">Automation</a><a href="#s5">Synth lab</a><a href="#s6">Analyser</a><a href="#s7">Alert engine</a><a href="#s8">Spatial</a><a href="#s9">AudioWorklet</a><a href="#s10">Offline render</a><a href="#s11">Routing</a><a href="#s12">Gotchas</a><a href="#s13">Ship map</a>
+  </nav>
+</header>
+
+<section id="s2">
+  <h2><span class="n">02</span> — The sound tier: why Web Audio exists</h2>
+  <p class="lead">Four jobs, four APIs. Web Speech converts voice⇄text, MediaRecorder records, WebCodecs touches frames — Web Audio is the only one that <em>synthesizes</em> and <em>analyzes</em> signals at audio rate, on the audio thread, immune to main-thread jank.</p>
+  <div class="grid g3">
+    <div class="card"><h4>🗣 Web Speech — voice I/O</h4><p style="font-size:13px;color:var(--mut)">Speech-to-text and TTS through the OS. High-level; you control neither the waveform nor the timing.</p></div>
+    <div class="card"><h4>⏺ MediaRecorder — capture</h4><p style="font-size:13px;color:var(--mut)">Encodes whatever plays, realtime, into a container. A sink, not a source — it can't make a beep.</p></div>
+    <div class="card"><h4>🎬 WebCodecs — frames</h4><p style="font-size:13px;color:var(--mut)">Frame-level video (and audio) chunks. For pixels, not performance: no scheduling, no param ramps.</p></div>
+    <div class="card" style="border-color:var(--acc)"><h4>🔊 Web Audio — signals</h4><p style="font-size:13px;color:var(--mut)">Sample-accurate synthesis, automation, FFT, spatialization, custom DSP. Runs while your main thread is frozen. This page.</p></div>
+  </div>
+  <div class="note">The graph is the model: sources (oscillators, buffers, streams) → processors (gain, filters, panners, compressors, your DSP) → destinations (speakers, streams, offline buffers). Nodes are cheap; <strong>contexts are expensive</strong> — one per app, suspended when idle. Baseline everywhere: core nodes since ~2011-14, AudioWorklet since Chrome 66 / Firefox 76 / Safari 14.1 (2020-21) — ship ungated.</div>
+</section>
+
+<section id="s3">
+  <h2><span class="n">03</span> — Anatomy: the gesture gate &amp; the one-context rule</h2>
+  <p class="lead">An <code>AudioContext</code> starts <code>suspended</code> under every modern autoplay policy — the graph runs only after a user gesture calls <code>resume()</code>. This page creates its context lazily on your first click, then reuses it for every lab below.</p>
+  <div class="row">
+    <button class="pri" id="b-hello">Unlock audio → play a 440 Hz hello</button>
+    <button id="b-state">Re-check ctx.state</button>
+    <span style="font-size:13px;color:var(--mut)" id="state-note">context not created yet</span>
+  </div>
+  <div class="log" id="log-hello">idle — click the button; this lab logs the full unlock sequence</div>
+  <pre><code>const ctx = new AudioContext({ latencyHint: 'interactive' }); // suspended if no gesture yet
+await ctx.resume();         // MUST run inside a user-gesture handler on iOS (not after an await!)
+const osc = ctx.createOscillator();   // a source node
+const gain = ctx.createGain();        // a processor node — never connect volume via osc.frequency
+osc.frequency.value = 440;            // AudioParam: automatable at sample accuracy
+osc.connect(gain).connect(ctx.destination);  // .connect returns the destination node — chains!
+osc.start(); osc.stop(ctx.currentTime + 0.4); // one-shot: a source fires once, ever</code></pre>
+  <div class="grid g3">
+    <div class="card"><h4>1 · One context per app</h4><p style="font-size:13px;color:var(--mut)">Each context opens a real hardware audio stream. Browsers cap them (~6 historically) and each costs memory + battery. Route everything through one master bus.</p></div>
+    <div class="card"><h4>2 · Gesture = key, not door</h4><p style="font-size:13px;color:var(--mut)">One unlock lasts for the page lifetime. Create the context lazily on first interaction; <code>resume()</code> resolves instantly afterwards.</p></div>
+    <div class="card"><h4>3 · Latency hints</h4><p style="font-size:13px;color:var(--mut)"><code>latencyHint: 'interactive'</code> (default) prioritizes low latency for synth UIs; <code>'playback'</code> buffers more for smooth music. Read the truth: <code>baseLatency</code> + <code>outputLatency</code>.</p></div>
+  </div>
+</section>
+
+<section id="s4">
+  <h2><span class="n">04</span> — Lab ① · AudioParam automation: envelopes at sample accuracy</h2>
+  <p class="lead">Every AudioParam carries its own timeline of scheduled events. Ramps interpolate between values <em>on the audio thread</em> — no rAF, no setTimeout drift, no main-thread jank can touch them. This is a live ADSR voice: drag the sliders, press play.</p>
+  <div class="row">
+    <label class="mono" style="font-size:12px">A <input type="range" id="adsr-a" min="1" max="800" value="12"> <span id="adsr-av">12ms</span></label>
+    <label class="mono" style="font-size:12px">D <input type="range" id="adsr-d" min="10" max="1200" value="220"> <span id="adsr-dv">220ms</span></label>
+    <label class="mono" style="font-size:12px">S <input type="range" id="adsr-s" min="0" max="100" value="35"> <span id="adsr-sv">35%</span></label>
+    <label class="mono" style="font-size:12px">R <input type="range" id="adsr-r" min="20" max="2000" value="480"> <span id="adsr-rv">480ms</span></label>
+    <button class="pri" id="b-adsr">Play ADSR voice</button>
+    <select id="adsr-wave"><option value="triangle">triangle</option><option value="sawtooth">sawtooth</option><option value="square">square</option><option value="sine">sine</option></select>
+  </div>
+  <div class="log" id="log-adsr">idle</div>
+  <pre><code>const t = ctx.currentTime;                 // the audio clock — never Date.now()
+gain.gain.setValueAtTime(0, t);            // anchor first, or ramps start from .value
+gain.gain.linearRampToValueAtTime(1, t + A / 1000);
+gain.gain.exponentialRampToValueAtTime(S, t + (A + D) / 1000);  // percussive decay curve
+// ... note-off later:
+gain.gain.cancelScheduledValues(tOff);
+gain.gain.setValueAtTime(current, tOff);
+gain.gain.setTargetAtTime(0, tOff, R / 3000);   // exponential RELEASE: musical, never 'clicks'</code></pre>
+  <div class="row"><button id="b-expzero">Probe: exponentialRampToValueAtTime(0, …)</button><span style="font-size:13px;color:var(--mut)">the exponential curve is undefined at zero — engines throw instead of guessing</span></div>
+  <div class="note warn"><strong>Live falsification target:</strong> <code>exponentialRampToValueAtTime(0)</code> throws a <code>RangeError</code> (value must be non-zero). "Ramp gain to 0" — the most natural line in the world — is illegal; use <code>linearRamp</code> or <code>setTargetAtTime(0)</code>. Also: don't mix direct <code>.value =</code> writes with scheduled ramps on the same param — pick one owner.</div>
+</section>
+
+<section id="s5">
+  <h2><span class="n">05</span> — Lab ② · The synth bench: oscillators, noise, filters</h2>
+  <p class="lead">Four built-in waveforms, arbitrary spectra via <code>createPeriodicWave(real, imag)</code> (Fourier coefficients — this page ships no audio files because periodic waves ARE the files), white/pink noise from a computed buffer, and a state-variable <code>BiquadFilterNode</code> with a resonant sweep.</p>
+  <div class="row">
+    <button class="pri" id="b-chord">Play chord (osc bank)</button>
+    <button id="b-noise">White noise burst</button>
+    <button id="b-pink">Pink noise (−3 dB/oct)</button>
+    <button id="b-sweep">Filter sweep</button>
+    <button id="b-brass">Custom PeriodicWave “brass”</button>
+  </div>
+  <div class="log" id="log-synth">idle</div>
+  <div class="grid g3">
+    <div class="card"><h4>OscillatorNode</h4><p style="font-size:13px;color:var(--mut)"><code>sine · square · sawtooth · triangle</code> + custom <code>PeriodicWave</code>. Frequency &amp; detune are AudioParams — automatable (that's how the siren works).</p></div>
+    <div class="card"><h4>BufferSource = sampler</h4><p style="font-size:13px;color:var(--mut)">Precompute any signal into an <code>AudioBuffer</code> (noise here; decoded files in production), then fire one-shot <code>AudioBufferSourceNode</code>s per note — with <code>playbackRate</code> for pitch.</p></div>
+    <div class="card"><h4>BiquadFilterNode</h4><p style="font-size:13px;color:var(--mut)">8 responses (lowpass, bandpass, peaking…). Frequency/Q are AudioParams — a filter sweep is two ramps, not a rAF loop.</p></div>
+  </div>
+</section>
+
+<section id="s6">
+  <h2><span class="n">06</span> — Lab ③ · AnalyserNode: FFT scope &amp; spectrum</h2>
+  <p class="lead">Tap the master bus with an <code>AnalyserNode</code> and read the mix without affecting it: <code>getByteFrequencyData()</code> (frequency bins, fftSize/2) and <code>getByteTimeDomainData()</code> (oscilloscope). This is the visualizer tier — drone RSSI waterfall, VU meters, clap detectors.</p>
+  <div class="row">
+    <button class="pri" id="b-scope">Start scope</button>
+    <button id="b-scopestop">Stop</button>
+    <label class="mono" style="font-size:12px">fftSize <select id="fft"><option>256</option><option selected>2048</option><option>16384</option></select></label>
+    <label class="mono" style="font-size:12px">smoothing <input type="range" id="smooth" min="0" max="95" value="80"> <span id="smoothv">0.80</span></label>
+    <button id="b-siren">Trigger siren (watch it on the scope)</button>
+  </div>
+  <div class="grid g2">
+    <div class="card"><h4>Frequency domain (2048-bin FFT)</h4><canvas class="scope" id="cv-freq" width="480" height="150"></canvas></div>
+    <div class="card"><h4>Time domain (oscilloscope)</h4><canvas class="scope" id="cv-time" width="480" height="150"></canvas></div>
+  </div>
+  <div class="stat">
+    <div class="s"><b id="st-bins">—</b><span>frequency bins</span></div>
+    <div class="s"><b id="st-peak">—</b><span>peak bin (Hz)</span></div>
+    <div class="s"><b id="st-rms">—</b><span>time-domain RMS</span></div>
+  </div>
+  <div class="note"><code>fftSize</code> trades resolution for reaction time (bigger = finer bins, laggier). <code>smoothingTimeConstant</code> is a one-pole smoother over the spectrum — visualizers want 0.7-0.9; detectors (onset, clap) want 0.</div>
+</section>
+
+<section id="s7" class="od">
+  <h2><span class="n">07</span> — Lab ④ · OpenDrones alert engine: priority tones + ducking (production pattern)</h2>
+  <p class="lead">Mission Control needs audible alarms that behave like an avionics stack: tiered priorities, repeating patterns, a background channel that <strong>ducks under</strong> alerts, and one compressor keeping the sum from clipping. The whole engine is ~60 lines — no audio assets, so it ships inside the dashboard bundle at zero bytes.</p>
+  <div class="row">
+    <button id="b-amb">Toggle ambient bed</button>
+    <button data-tier="3" class="tier-btn">INFO · GPS lock</button>
+    <button data-tier="2" class="tier-btn">WARN · wind 12 m/s</button>
+    <button data-tier="1" class="tier-btn pri">CRIT · battery 14.2 V</button>
+    <button id="b-ack">Acknowledge (silence 6 s)</button>
+    <span style="flex:1;min-width:140px;display:flex;align-items:center;gap:8px"><span class="mono" style="font-size:11px;color:#94a3b8">MASTER</span><span class="vu"><i id="vu-alert"></i></span></span>
+  </div>
+  <div class="row">
+    <span class="lvl" id="lvl-3">INFO</span><span class="lvl" id="lvl-2">WARN</span><span class="lvl" id="lvl-1">CRIT</span>
+    <span style="font-size:12px;color:#94a3b8">— tiers repeat at 2 s / 1 s / 0.5 s until acknowledged; higher tier pre-empts lower</span>
+  </div>
+  <div class="log" id="log-alert">idle — trigger a tier</div>
+  <pre><code>// ducking: two ramps, no library
+const now = ctx.currentTime;
+amb.gain.cancelScheduledValues(now);
+amb.gain.setValueAtTime(amb.gain.value, now);
+amb.gain.linearRampToValueAtTime(0.15, now + 0.08);   // duck in 80 ms
+amb.gain.setTargetAtTime(1, now + toneDur + 0.3, 0.25); // release, exponential tail
+// tiers are (Hz, pattern, repeat):  CRIT 1180 Hz ×3 @0.5 s · WARN 740 Hz ×2 @1 s · INFO 520 Hz ×1 @2 s</code></pre>
+  <div class="note warn"><strong>Why synthesize alerts instead of shipping MP3s:</strong> instant retry (buffer's already decoded — no fetch on the critical path), parametric pitch (one tone becomes any priority), ~0 bytes, and every alarm lands sample-accurately even if the main thread is chewing a 900 ms MAVLink burst — the audio thread doesn't care.</div>
+</section>
+
+<section id="s8">
+  <h2><span class="n">08</span> — Lab ⑤ · Spatialization: PannerNode HRTF orbit + stereo pan</h2>
+  <p class="lead">Position sound in 3D with <code>PannerNode</code> (<code>panningModel: 'HRTF'</code> convolves head-related impulse responses; <code>distanceModel: 'inverse'</code> rolls off with range) or just left-right with <code>StereoPannerNode</code>. Headphones recommended — the beacon orbits your head.</p>
+  <div class="row">
+    <button class="pri" id="b-orbit">Orbit beacon (8 s, HRTF)</button>
+    <button id="b-fly">Fly-by (z-axis approach)</button>
+    <button id="b-pan">Stereo pan L→R sweep</button>
+    <label class="mono" style="font-size:12px">rolloff <input type="range" id="roff" min="0" max="30" value="12"> <span id="roffv">1.2</span></label>
+  </div>
+  <div class="log" id="log-spatial">idle</div>
+  <div class="grid g3">
+    <div class="card"><h4>HRTF vs equalpower</h4><p style="font-size:13px;color:var(--mut)">HRTF = per-person convolution (real 3D "behind you" cues, costs CPU); equalpower = cheap amplitude blend. UI blips: equalpower. Situational audio: HRTF.</p></div>
+    <div class="card"><h4>Positions are AudioParams</h4><p style="font-size:13px;color:var(--mut)"><code>positionX/Y/Z</code> ramp like any param — an orbit is <code>linearRampToValueAtTime</code> on X and Y in quadrature. No rAF loop.</p></div>
+    <div class="card"><h4>OpenDrones angle</h4><p style="font-size:13px;color:var(--mut)">Geofence breach cues panned toward the breach bearing; RSSI loss fades with distance. The pilot's ears get the horizon the eyes don't have.</p></div>
+  </div>
+</section>
+
+<section id="s9">
+  <h2><span class="n">09</span> — Lab ⑥ · AudioWorklet: custom DSP on the audio thread</h2>
+  <p class="lead"><code>ScriptProcessorNode</code> is deprecated; the modern DSP path is an <code>AudioWorklet</code> — a module of processor classes running on the dedicated realtime audio thread, message-passing to the page, with k-rate/a-rate AudioParams. This Geiger counter is a worklet: Poisson click train + one-pole highpass, intensity driven by a param — and the module is loaded from a Blob URL so the demo stays one file.</p>
+  <div class="row">
+    <button class="pri" id="b-geiger">Start Geiger (worklet)</button>
+    <label class="mono" style="font-size:12px">counts/s <input type="range" id="cps" min="1" max="400" value="60"> <span id="cpsv">60</span></label>
+    <button id="b-clip-ab">A/B: WaveShaper clip vs worklet soft-clip</button>
+    <button id="b-geigerstop">Stop</button>
+  </div>
+  <div class="log" id="log-worklet">idle</div>
+  <pre><code>// the worklet module (loaded via URL.createObjectURL(new Blob([src])))
+class GeigerProcessor extends AudioWorkletProcessor {
+  static get parameterDescriptors() { return [{ name: 'rate', defaultValue: 60, minValue: 0,
+    maxValue: 1000, automationRate: 'k-rate' }] }
+  constructor() { super(); this.env = 0; this.count = 0; this.tick = 0 }
+  process(inputs, outputs, params) {
+    const out = outputs[0], p = params.rate[0] / sampleRate;  // sampleRate = worklet global
+    for (let i = 0; i < out[0].length; i++) {
+      if (Math.random() < p) this.env = 1;                    // Poisson trigger
+      const v = (Math.random() * 2 - 1) * this.env;            // click = burst noise…
+      this.env *= 0.9992;                                      // …with one-pole decay
+      for (let ch = 0; ch < out.length; ch++) out[ch][i] = v * 0.4;
+    }
+    this.count += p * out[0].length;
+    if (++this.tick >= 20) { this.tick = 0; this.port.postMessage(Math.round(this.count)); }
+    return true;                                              // false = retire this node
+  }
+}
+registerProcessor('geiger', GeigerProcessor);</code></pre>
+  <div class="note">Rules of the lane: worklets must never allocate/GC-burst or touch the DOM, must return <code>true</code> to stay alive, and talk to the page only via <code>port.postMessage</code> (lock-free rings in real builds). Params declared <code>a-rate</code> interpolate per-sample by the engine — for free.</div>
+</section>
+
+<section id="s10">
+  <h2><span class="n">10</span> — Lab ⑦ · OfflineAudioContext: render faster than realtime, export WAV</h2>
+  <p class="lead">An <code>OfflineAudioContext</code> runs the same graph with no hardware — it renders as fast as the CPU can go and hands you the finished <code>AudioBuffer</code>. Below: a 6-second telemetry sonification (voltage curve → pitch, threshold crossings → alert beeps) rendered offline, then PCM-encoded to a downloadable WAV by ~30 lines of header math. This is the export path that needs no MediaRecorder, no realtime wait, no server.</p>
+  <div class="row">
+    <button class="pri" id="b-render">Render 6 s sonification offline</button>
+    <a class="dl hid" id="a-wav" download="telemetry-sonification.wav">⬇ Download rendered WAV</a>
+    <span style="font-size:13px;color:var(--mut)" id="render-note"></span>
+  </div>
+  <div class="stat">
+    <div class="s"><b id="st-rt">—</b><span>render speed (×realtime)</span></div>
+    <div class="s"><b id="st-dur">—</b><span>audio rendered</span></div>
+    <div class="s"><b id="st-bytes">—</b><span>WAV size</span></div>
+  </div>
+  <div class="log" id="log-render">idle</div>
+  <div class="note">Evidence pipelines: render a flight's alarm timeline offline (audio for the incident report, generated from telemetry JSON in milliseconds), or pre-render notification sounds at page idle so playback never waits on decode. <code>OfflineAudioContext</code> + the WAV encoder below is also how you test DSP deterministically (fixed input buffer → fixed output buffer).</div>
+</section>
+
+<section id="s11">
+  <h2><span class="n">11</span> — Lab ⑧ · Output routing: sinks, silent sinks &amp; recording the mix</h2>
+  <p class="lead">Where the graph lands is a decision: the default device, a picked device (<code>setSinkId</code> — Chromium-only, probed in the badges), a silent sink for pure processing, or a <code>MediaStreamDestination</code> that turns the whole mix into a recordable MediaStream — the MediaRecorder entry's §7 used exactly this to capture mic+synth.</p>
+  <div class="row">
+    <button id="b-devices">Enumerate output devices</button>
+    <select id="sinkpick" class="hid"><option value="">— pick a sink —</option></select>
+    <button id="b-setsink" class="hid">setSinkId()</button>
+    <button id="b-nonesink">setSinkId({type:'none'}) → silent processing</button>
+    <button id="b-restore">Restore default sink</button>
+  </div>
+  <div class="row">
+    <button class="pri" id="b-rec">Record 4 s of master bus → file</button>
+    <span style="font-size:13px;color:var(--mut)" id="rec-note">tap “Trigger siren” (§6) or the alert tiers (§7) while recording</span>
+    <a class="dl hid" id="a-rec" download="master-mix.webm">⬇ Download mix</a>
+  </div>
+  <div class="log" id="log-route">idle</div>
+  <div class="note warn"><strong>Support cliff:</strong> <code>setSinkId</code> / <code>AudioSinkInfo</code> / <code>sinkchange</code> are Chromium 110+ only (Firefox &amp; Safari: not shipped) — feature-detect with <code>'setSinkId' in AudioContext.prototype</code> and degrade to the default device. The constructor takes it too: <code>new AudioContext({ sinkId: { type: 'none' } })</code> = a live-rate context that renders to nothing (visualizer-only pages shouldn't hold the audio device).</div>
+</section>
+
+<section id="s12">
+  <h2><span class="n">12</span> — Gotcha wall (live probes)</h2>
+  <p class="lead">Every rule below is executable on this page — press the probe, watch the engine answer. These are the five that bite every first production build.</p>
+  <div class="grid g2">
+    <div class="card"><h4>① Source nodes are one-shot</h4>
+      <div class="row"><button id="p-restart">Restart the same source</button><span class="pill" id="p-restart-out">?</span></div>
+      <p style="font-size:13px;color:var(--mut)"><code>start()</code> twice on the same node → <code>InvalidStateError</code>. Buffers/oscillators are instruments; source nodes are reeds — new reed per note.</p></div>
+    <div class="card"><h4>② Exponential ramps can't reach 0</h4>
+      <div class="row"><button id="p-expzero">Ramp gain to 0</button><span class="pill" id="p-expzero-out">?</span></div>
+      <p style="font-size:13px;color:var(--mut)">Mathematically undefined → <code>RangeError</code>. Fade-outs use <code>setTargetAtTime(0)</code> or a linear ramp.</p></div>
+    <div class="card"><h4>③ decodeAudioData detaches your ArrayBuffer</h4>
+      <div class="row"><button id="p-decode">Decode a WAV, then re-read the source bytes</button><span class="pill" id="p-decode-out">?</span></div>
+      <p style="font-size:13px;color:var(--mut)">The input buffer is transferred (neutered) — <code>byteLength</code> reads 0 afterwards. Keep a copy if you need it twice.</p></div>
+    <div class="card"><h4>④ The audio clock is the only clock</h4>
+      <div class="row"><button id="p-clock">ctx.currentTime vs performance.now drift</button><span class="pill" id="p-clock-out">?</span></div>
+      <p style="font-size:13px;color:var(--mut)">Scheduling by <code>Date.now()</code>/rAF accrues jitter; <code>ctx.currentTime</code> advances with the audio device even under main-thread freeze.</p></div>
+    <div class="card"><h4>⑤ iOS Safari: gesture discipline &amp; the mute switch</h4>
+      <p style="font-size:13px;color:var(--mut)"><code>resume()</code> must be called <em>synchronously inside</em> the gesture handler (not after an <code>await</code>) or it never resolves; the hardware mute switch silences Web Audio (the classic fix plays a silent <code>&lt;audio&gt;</code> element on first touch); and Safari quietly suspends contexts after tab inactivity — watch <code>statechange</code> and re-resume.</p></div>
+  </div>
+  <div class="log" id="log-gotcha">idle</div>
+</section>
+
+<section id="s13" class="od">
+  <h2><span class="n">13</span> — Ship map: support matrix, recipes &amp; where it lands</h2>
+  <p class="lead">Web Audio is the most universally shipped API in the whole research catalog — core nodes predate Baseline itself. The matrix is live BCD v8.0.11 (Aug 2026); version numbers verified, not vibes.</p>
+  <table>
+    <thead><tr><th>Capability</th><th>Chrome</th><th>Firefox</th><th>Safari</th><th>Ship?</th></tr></thead>
+    <tbody>
+      <tr><td>AudioContext + core nodes (gain/filter/panner/analyser)</td><td class="y">35+</td><td class="y">25+</td><td class="y">14.1+</td><td class="y">ungated — everywhere incl. iOS 14.5+</td></tr>
+      <tr><td>AudioWorklet (custom DSP)</td><td class="y">66+</td><td class="y">76+</td><td class="y">14.1+</td><td class="y">ungated — Baseline since 2021</td></tr>
+      <tr><td>OfflineAudioContext</td><td class="y">35+</td><td class="y">25+</td><td class="y">14.1+</td><td class="y">ungated</td></tr>
+      <tr><td>baseLatency / outputLatency</td><td class="y">58 / 102+</td><td class="y">70+</td><td class="y">14.1 / 18.4+</td><td class="y">read-only telemetry</td></tr>
+      <tr><td>setSinkId + AudioSinkInfo + sinkchange</td><td class="y">110+</td><td class="n">false</td><td class="n">false</td><td class="y">feature-detect (Chromium only)</td></tr>
+    </tbody>
+  </table>
+  <div class="grid g3">
+    <div class="card"><h4>🛩 OpenDrones Mission Control</h4><p style="font-size:13px;color:#cbd5e1">Tiered alert engine (§7) + spatial breach cues (§8) + offline evidence sonification (§10) + master-bus recording for incident audio (§11). Pairs with Compute Pressure: drop the ambient bed before dropping the alarms.</p></div>
+    <div class="card"><h4>🖌 Molt Studios</h4><p style="font-size:13px;color:#cbd5e1">Interaction sound at zero asset weight: periodic-wave UI blips, ADSR-staged hero whooshes, analyser-driven brand visualizers. Respect <code>prefers-reduced-motion</code>'s cousin: sound OFF by default, one-click opt-in persisted.</p></div>
+    <div class="card"><h4>🧩 Tier composition</h4><p style="font-size:13px;color:#cbd5e1">WebRTC streams → MediaStreamSource · mix → MediaStreamDestination → MediaRecorder (§11) · WebCodecs audio chunks → AudioBuffer for sample-exact playback · Web Speech TTS output → analyze with §6. Every media entry composes with this one.</p></div>
+  </div>
+  <div class="note warn" style="border-left-color:var(--odin);background:#1e293b">Production checklist: one context, lazy-created on first gesture · master bus = gain → compressor → destination (+ analyser tap) · every source one-shot, every fade <code>setTargetAtTime</code> · suspend on <code>visibilitychange</code> hidden (battery) · cap concurrent voices · <code>statechange</code> watchdog for Safari idleness · test with the OS mixer, not just speakers.</div>
+</section>
+
+<footer>molt-research · web audio sound tier · every waveform synthesized on-page · BCD v8.0.11 (2026-08-13)</footer>
+</div>
+
+<script>
+'use strict';
+/* ============ tiny helpers ============ */
+const $ = id => document.getElementById(id);
+const log = (el, msg, cls) => { const e = $(el); const line = document.createElement('div');
+  if (cls) line.className = cls; line.textContent = msg; e.appendChild(line); e.scrollTop = e.scrollHeight; };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function pill(id, ok, text){ const p = $(id); p.textContent = text || (ok ? 'PASS' : 'THREW'); p.className = 'pill ' + (ok ? 'g' : 'r'); }
+
+/* ============ badges (probed at load, no gesture needed) ============ */
+(function badges(){
+  const b = [];
+  const hasAC = 'AudioContext' in window || 'webkitAudioContext' in window;
+  b.push([hasAC, 'AudioContext ✓ (Baseline, universal)']);
+  b.push(['AudioWorklet' in window, 'AudioWorklet ' + ('AudioWorklet' in window ? '✓ Ch66 / FF76 / SF14.1' : '✗')]);
+  b.push(['OfflineAudioContext' in window, 'OfflineAudioContext ✓']);
+  const sinkOK = hasAC && 'setSinkId' in (window.AudioContext ? AudioContext.prototype : {});
+  b.push([sinkOK, 'setSinkId ' + (sinkOK ? '✓ Chromium 110+ only' : '✗ not in this engine')]);
+  b.push([true, 'state probe → see §3 (loads suspended under autoplay policy)']);
+  b.push([true, 'sampleRate → ' + (window.AudioContext ? 'hardware rate, read in §3' : '—')]);
+  const w = $('badges');
+  b.forEach(([on, t]) => { const s = document.createElement('span');
+    s.className = 'badge ' + (on ? 'on' : 'off'); s.textContent = t; w.appendChild(s); });
+})();
+
+/* ============ §3 context lifecycle ============ */
+let ctx = null, master = null, comp = null, analyser = null, ambBus = null;
+let ambient = null, ambientNodes = null;
+
+async function ensureCtx(src){
+  if (ctx) { if (ctx.state === 'suspended') { try { await ctx.resume(); } catch(e){} } return ctx; }
+  ctx = new AudioContext({ latencyHint: 'interactive' });
+  master = ctx.createGain(); master.gain.value = 0.9;
+  comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -18; comp.knee.value = 24; comp.ratio.value = 6;
+  analyser = ctx.createAnalyser(); analyser.fftSize = 2048; analyser.smoothingTimeConstant = 0.8;
+  ambBus = ctx.createGain(); ambBus.gain.value = 0.9;
+  ambBus.connect(master);
+  master.connect(comp); comp.connect(ctx.destination);
+  master.connect(analyser); // tap for the scope — analyser is a dead-end sink
+  log(src, 'ctx created · sampleRate=' + ctx.sampleRate + 'Hz · baseLatency=' +
+      (ctx.baseLatency != null ? (ctx.baseLatency * 1000).toFixed(1) + 'ms' : 'n/a') +
+      ' · outputLatency=' + (ctx.outputLatency != null ? (ctx.outputLatency * 1000).toFixed(1) + 'ms' : 'n/a'), 'dim');
+  log(src, 'state right after creation: ' + ctx.state + (ctx.state === 'suspended' ? '  ← autoplay policy holding the graph' : '  ← this engine allows autoplay'), 'hi');
+  ctx.addEventListener('statechange', () => log(src, 'statechange → ' + ctx.state, 'dim'));
+  return ctx;
+}
+
+$('b-hello').addEventListener('click', () => {
+  log('log-hello', '— gesture received (click) —', 'hi');
+  ensureCtx('log-hello').then(() => {
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator(); o.frequency.value = 440; o.type = 'sine';
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.28, t + 0.02);
+    g.gain.setTargetAtTime(0, t + 0.25, 0.09);
+    o.connect(g).connect(master);
+    o.start(t); o.stop(t + 1.2);
+    o.onended = () => log('log-hello', 'source onended fired — one-shot complete, node is spent', 'ok');
+    log('log-hello', 'state now: ' + ctx.state + ' · hello 440Hz scheduled at t=' + t.toFixed(3) + 's', 'ok');
+    $('state-note').textContent = 'context ' + ctx.state + ' · ' + ctx.sampleRate + ' Hz';
+  }).catch(e => log('log-hello', 'ERR ' + e.message, 'err'));
+});
+
+$('b-state').addEventListener('click', () => {
+  if (!ctx) { $('state-note').textContent = 'context still not created (lazy pattern)'; return; }
+  $('state-note').textContent = 'context ' + ctx.state + ' · ' + ctx.sampleRate + ' Hz · base ' +
+    (ctx.baseLatency * 1000).toFixed(1) + 'ms';
+  log('log-hello', 'manual state check: ' + ctx.state, 'dim');
+});
+
+/* ============ §4 ADSR lab ============ */
+const bindRange = (r, out, fmt) => { $(r).addEventListener('input', () => $(out).textContent = fmt($(r).value)); };
+bindRange('adsr-a','adsr-av', v => v + 'ms'); bindRange('adsr-d','adsr-dv', v => v + 'ms');
+bindRange('adsr-s','adsr-sv', v => v + '%'); bindRange('adsr-r','adsr-rv', v => v + 'ms');
+
+$('b-adsr').addEventListener('click', async () => {
+  await ensureCtx('log-adsr');
+  const A = +$('adsr-a').value/1000, D = +$('adsr-d').value/1000, S = +$('adsr-s').value/100, R = +$('adsr-r').value/1000;
+  const wave = $('adsr-wave').value, t = ctx.currentTime;
+  const o = ctx.createOscillator(); o.type = wave; o.frequency.value = 220;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.5, t + A);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.5 * S, 0.001), t + A + D);
+  const tOff = t + Math.max(A + D + 0.25, 0.6);
+  g.gain.setValueAtTime(Math.max(0.5 * S, 0.001), tOff);
+  g.gain.setTargetAtTime(0.00001, tOff, R / 3);
+  o.connect(g).connect(master);
+  o.start(t); o.stop(tOff + R * 2 + 0.3);
+  log('log-adsr', `ADSR ${wave} · A=${A.toFixed(3)} D=${D.toFixed(3)} S=${(S*100)|0}% R=${R.toFixed(3)} · anchored at t=${t.toFixed(3)}`, 'ok');
+});
+
+$('b-expzero').addEventListener('click', async () => {
+  await ensureCtx('log-adsr');
+  const g = ctx.createGain(); g.connect(master);
+  const t = ctx.currentTime;
+  g.gain.setValueAtTime(0.8, t);
+  try {
+    g.gain.exponentialRampToValueAtTime(0, t + 0.2);
+    log('log-adsr', 'exp ramp to 0 accepted?? (unexpected)', 'err'); pill('p-expzero-out', true, 'NO-THROW');
+  } catch (e) {
+    log('log-adsr', 'exponentialRampToValueAtTime(0) → ' + e.name + ': ' + e.message, 'ok');
+    pill('p-expzero-out', false, e.name.toUpperCase());
+  }
+  g.disconnect();
+});
+
+/* ============ §5 synth bench ============ */
+function noiseBuffer(seconds, pink){
+  const len = Math.floor(ctx.sampleRate * seconds);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
+  for (let i = 0; i < len; i++){
+    const w = Math.random() * 2 - 1;
+    if (!pink) { d[i] = w; continue; }
+    b0=0.99886*b0+w*0.0555179; b1=0.99332*b1+w*0.0750759; b2=0.96900*b2+w*0.1538520;
+    b3=0.86650*b3+w*0.3104856; b4=0.55000*b4+w*0.5329522; b5=-0.7616*b5-w*0.0168980;
+    d[i]=(b0+b1+b2+b3+b4+b5+b6+w*0.5362)*0.11; b6=w*0.115926;
+  }
+  return buf;
+}
+function fireNoise(pink){
+  const s = ctx.createBufferSource(); s.buffer = noiseBuffer(0.9, pink);
+  const g = ctx.createGain(); const t = ctx.currentTime;
+  g.gain.setValueAtTime(pink ? 0.5 : 0.35, t);
+  g.gain.setTargetAtTime(0.0001, t + 0.05, pink ? 0.28 : 0.12);
+  s.connect(g).connect(master); s.start(t);
+  return s;
+}
+$('b-chord').addEventListener('click', async () => {
+  await ensureCtx('log-synth');
+  const t = ctx.currentTime, root = 196;
+  [1, 1.25, 1.5, 2].forEach((m, i) => {
+    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = root * m;
+    o.detune.value = (i - 1.5) * 6;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1200; f.Q.value = 0.8;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t + i * 0.04);
+    g.gain.linearRampToValueAtTime(0.11, t + i * 0.04 + 0.06);
+    g.gain.setTargetAtTime(0.0001, t + 1.1, 0.4);
+    o.connect(f).connect(g).connect(master);
+    o.start(t + i * 0.04); o.stop(t + 3.2);
+  });
+  log('log-synth', 'chord: 4 detuned saws → lowpass 1.2k → staggered entries (40ms) = width without reverb', 'ok');
+});
+$('b-noise').addEventListener('click', async () => { await ensureCtx('log-synth'); fireNoise(false); log('log-synth','white noise burst — flat spectrum, equal energy per Hz','ok'); });
+$('b-pink').addEventListener('click', async () => { await ensureCtx('log-synth'); fireNoise(true); log('log-synth','pink noise (Paul Kellet filter) — −3dB/oct, sounds “natural”; the ambience standard','ok'); });
+$('b-sweep').addEventListener('click', async () => {
+  await ensureCtx('log-synth');
+  const t = ctx.currentTime;
+  const s = ctx.createBufferSource(); s.buffer = noiseBuffer(2.2, false);
+  const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 14;
+  f.frequency.setValueAtTime(180, t);
+  f.frequency.exponentialRampToValueAtTime(3800, t + 1.8);
+  const g = ctx.createGain(); g.gain.setValueAtTime(0.55, t); g.gain.setTargetAtTime(0.0001, t + 1.5, 0.25);
+  s.connect(f).connect(g).connect(master); s.start(t);
+  log('log-synth', 'bandpass sweep 180→3800Hz, Q=14 — both endpoints on the AUDIO clock, jank-proof', 'ok');
+});
+$('b-brass').addEventListener('click', async () => {
+  await ensureCtx('log-synth');
+  const t = ctx.currentTime, N = 16, real = new Float32Array(N), imag = new Float32Array(N);
+  for (let h = 1; h < N; h++) imag[h] = (1 / h) * (h % 2 ? 1 : 0.55);   // odd-harmonic brass-ish spectrum
+  const wave = ctx.createPeriodicWave(real, imag, { disableNormalization: false });
+  const o = ctx.createOscillator(); o.setPeriodicWave(wave); o.frequency.setValueAtTime(110, t);
+  o.frequency.linearRampToValueAtTime(220, t + 0.28);
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass';
+  f.frequency.setValueAtTime(400, t); f.frequency.linearRampToValueAtTime(2600, t + 0.3);
+  f.frequency.linearRampToValueAtTime(1400, t + 0.9);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.3, t + 0.09);
+  g.gain.setValueAtTime(0.3, t + 0.55); g.gain.setTargetAtTime(0.0001, t + 0.6, 0.18);
+  o.connect(f).connect(g).connect(master); o.start(t); o.stop(t + 1.8);
+  log('log-synth', 'custom PeriodicWave (16 harmonics, odds weighted) + filter+pitch ramp = “brass” with zero samples of audio files', 'ok');
+});
+
+/* ============ §6 analyser scope ============ */
+let scopeRAF = 0;
+function drawScope(){
+  const cf = $('cv-freq').getContext('2d'), ct = $('cv-time').getContext('2d');
+  const W = $('cv-freq').width, H = $('cv-freq').height;
+  const nbin = analyser.frequencyBinCount, freq = new Uint8Array(nbin), time = new Uint8Array(analyser.fftSize);
+  let peakI = 0, peakV = 0, rms = 0;
+  const step = () => {
+    peakI = 0; peakV = 8; rms = 0;
+    analyser.getByteFrequencyData(freq); analyser.getByteTimeDomainData(time);
+    cf.fillStyle = '#0b1020'; cf.fillRect(0, 0, W, H);
+    const bw = W / nbin;
+    for (let i = 0; i < nbin; i++){
+      const v = freq[i] / 255;
+      if (freq[i] > peakV){ peakV = freq[i]; peakI = i; }
+      cf.fillStyle = 'hsl(' + (200 + i / nbin * 120) + ' 85% ' + (28 + v * 32) + '%)';
+      cf.fillRect(i * bw, H - v * H, Math.max(bw - 0.5, 1), v * H);
+    }
+    ct.fillStyle = '#0b1020'; ct.fillRect(0, 0, W, H);
+    ct.strokeStyle = '#6ee7b7'; ct.lineWidth = 1.6; ct.beginPath();
+    const sw = W / time.length;
+    for (let i = 0; i < time.length; i++){
+      rms += (time[i] - 128) ** 2;
+      const y = H / 2 + ((time[i] - 128) / 128) * (H / 2 - 6);
+      i ? ct.lineTo(i * sw, y) : ct.moveTo(0, y);
+    }
+    ct.stroke();
+    rms = Math.sqrt(rms / time.length);
+    $('st-bins').textContent = nbin;
+    $('st-peak').textContent = peakV > 8 ? Math.round(peakI * ctx.sampleRate / analyser.fftSize) + ' Hz' : '—';
+    $('st-rms').textContent = rms.toFixed(3);
+    $('vu-alert').style.width = Math.min(100, rms * 260) + '%';
+    scopeRAF = requestAnimationFrame(step);
+  };
+  step();
+}
+$('b-scope').addEventListener('click', async () => {
+  await ensureCtx('log-hello');
+  analyser.fftSize = +$('fft').value; analyser.smoothingTimeConstant = +$('smooth').value / 100;
+  if (!scopeRAF) drawScope();
+  log('log-hello', 'scope running · fftSize=' + analyser.fftSize + ' · bins=' + analyser.frequencyBinCount + ' · smoothing=' + analyser.smoothingTimeConstant, 'ok');
+  const o = ctx.createOscillator(); o.frequency.value = 440; const g = ctx.createGain(); g.gain.value = 0.12;
+  o.connect(g).connect(master); o.start(); o.stop(ctx.currentTime + 0.5);
+});
+$('b-scopestop').addEventListener('click', () => { if (scopeRAF){ cancelAnimationFrame(scopeRAF); scopeRAF = 0; log('log-hello','scope stopped','dim'); } });
+$('fft').addEventListener('change', () => { if (analyser){ analyser.fftSize = +$('fft').value; log('log-hello','fftSize → ' + analyser.fftSize + ' (' + analyser.frequencyBinCount + ' bins)','dim'); } });
+$('smooth').addEventListener('input', () => { $('smoothv').textContent = ($('smooth').value/100).toFixed(2); if (analyser) analyser.smoothingTimeConstant = $('smooth').value/100; });
+$('b-siren').addEventListener('click', async () => {
+  await ensureCtx('log-hello');
+  const t = ctx.currentTime, o = ctx.createOscillator(); o.type = 'triangle';
+  o.frequency.setValueAtTime(650, t);
+  for (let i = 0; i < 6; i++){
+    o.frequency.linearRampToValueAtTime(1150, t + i * 0.42 + 0.21);
+    o.frequency.linearRampToValueAtTime(650, t + (i + 1) * 0.42);
+  }
+  const g = ctx.createGain(); g.gain.setValueAtTime(0.16, t); g.gain.setTargetAtTime(0.0001, t + 2.4, 0.15);
+  o.connect(g).connect(master); o.start(t); o.stop(t + 3.4);
+  log('log-hello', 'siren: 6 wavelength cycles fully pre-scheduled on the audio clock — watch it track on the scope', 'ok');
+});
+
+/* ============ §7 alert engine ============ */
+let ackUntil = 0, alertTimers = [];
+const TIERS = { 3:{hz:520,beeps:1,every:2000,label:'INFO'}, 2:{hz:740,beeps:2,every:1000,label:'WARN'}, 1:{hz:1180,beeps:3,every:500,label:'CRIT'} };
+function beep(hz, t, dur, vol){
+  const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = hz;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(vol, t + 0.008);
+  g.gain.setValueAtTime(vol, t + dur - 0.02);
+  g.gain.linearRampToValueAtTime(0, t + dur);
+  o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.02);
+}
+function duck(holdSec){
+  const now = ctx.currentTime;
+  ambBus.gain.cancelScheduledValues(now);
+  ambBus.gain.setValueAtTime(ambBus.gain.value, now);
+  ambBus.gain.linearRampToValueAtTime(0.15, now + 0.08);
+  ambBus.gain.setTargetAtTime(0.9, now + holdSec, 0.25);
+}
+function clearAlertTimers(){ alertTimers.forEach(clearInterval); alertTimers = []; [1,2,3].forEach(k => $('lvl-'+k).classList.remove('active')); }
+function fireTier(k){
+  const T = TIERS[k], now = ctx.currentTime;
+  clearAlertTimers();
+  $('lvl-'+k).classList.add('active');
+  duck(T.beeps * 0.14 + 0.35);
+  const burst = () => { if (Date.now() < ackUntil) return;
+    const t0 = ctx.currentTime + 0.01;
+    for (let i = 0; i < T.beeps; i++) beep(T.hz, t0 + i * 0.14, 0.09, k === 1 ? 0.2 : 0.13);
+    log('log-alert', T.label + ' · ' + T.beeps + '× ' + T.hz + 'Hz @ every ' + T.every + 'ms', 'ok');
+  };
+  burst();
+  alertTimers[k] = setInterval(burst, T.every);
+}
+document.querySelectorAll('.tier-btn').forEach(btn =>
+  btn.addEventListener('click', async () => { await ensureCtx('log-alert'); fireTier(+btn.dataset.tier); }));
+$('b-ack').addEventListener('click', () => { ackUntil = Date.now() + 6000; clearAlertTimers();
+  log('log-alert','acknowledged — tiers silenced for 6s (crew pattern: ack, don\'t mute)','hi'); });
+$('b-amb').addEventListener('click', async () => {
+  await ensureCtx('log-alert');
+  if (ambient){ ambient.stop(); ambientNodes.forEach(n => { try{n.disconnect()}catch(e){} }); ambient = null;
+    log('log-alert','ambient bed off','dim'); return; }
+  ambient = ctx.createBufferSource(); ambient.buffer = noiseBuffer(4, true); ambient.loop = true;
+  const f = ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.value = 420;
+  const lfo = ctx.createOscillator(); lfo.frequency.value = 0.09;
+  const lfoG = ctx.createGain(); lfoG.gain.value = 140;
+  lfo.connect(lfoG).connect(f.frequency);
+  ambient.connect(f).connect(ambBus);
+  ambient.start(); lfo.start();
+  ambientNodes = [ambient, f, lfo, lfoG];
+  log('log-alert','ambient bed on: looped pink noise → lowpass 420Hz, LFO 0.09Hz breathing the cutoff (gain 140)','ok');
+});
+
+/* ============ §8 spatial ============ */
+$('roff').addEventListener('input', () => $('roffv').textContent = ($('roff').value/10).toFixed(1));
+async function makePanner(){
+  const p = ctx.createPanner();
+  p.panningModel = 'HRTF'; p.distanceModel = 'inverse';
+  p.refDistance = 1; p.rolloffFactor = +$('roff').value / 10;
+  return p;
+}
+$('b-orbit').addEventListener('click', async () => {
+  await ensureCtx('log-spatial');
+  const p = await makePanner(), t = ctx.currentTime, R = 2.4, T = 8;
+  const o = ctx.createOscillator(); o.type='sine'; o.frequency.value = 620;
+  const g = ctx.createGain(); g.gain.value = 0.5;
+  o.connect(g).connect(p).connect(master);
+  const steps = 64;
+  for (let i = 0; i <= steps; i++){
+    const a = (i / steps) * Math.PI * 2;
+    p.positionX.linearRampToValueAtTime(Math.cos(a) * R, t + (i / steps) * T);
+    p.positionZ.linearRampToValueAtTime(Math.sin(a) * R, t + (i / steps) * T);
+    p.positionY.linearRampToValueAtTime(Math.sin(a * 2) * 0.4, t + (i / steps) * T);
+  }
+  g.gain.setValueAtTime(0.5, t + T - 0.6); g.gain.linearRampToValueAtTime(0, t + T);
+  o.start(t); o.stop(t + T);
+  log('log-spatial', 'HRTF orbit: 64 ramp waypoints on positionX/Y/Z, 8s — the position IS the timeline (no rAF)', 'ok');
+});
+$('b-fly').addEventListener('click', async () => {
+  await ensureCtx('log-spatial');
+  const p = await makePanner(), t = ctx.currentTime;
+  const o = ctx.createOscillator(); o.type='triangle'; o.frequency.value = 340;
+  const g = ctx.createGain(); g.gain.value = 0.6;
+  p.positionZ.setValueAtTime(-8, t);
+  p.positionZ.linearRampToValueAtTime(1.2, t + 3.5);
+  p.positionZ.linearRampToValueAtTime(9, t + 6);
+  o.connect(g).connect(p).connect(master); o.start(t); o.stop(t + 6);
+  log('log-spatial', 'fly-by: Z −8 → +9 through the listener, distanceModel inverse, rolloff=' + p.rolloffFactor + ' — hear the doppler-free approach/fade', 'ok');
+});
+$('b-pan').addEventListener('click', async () => {
+  await ensureCtx('log-spatial');
+  const t = ctx.currentTime;
+  const s = ctx.createBufferSource(); s.buffer = noiseBuffer(2.4, true);
+  const pan = ctx.createStereoPanner();
+  pan.pan.setValueAtTime(-1, t); pan.pan.linearRampToValueAtTime(1, t + 2.2);
+  const g = ctx.createGain(); g.gain.value = 0.4;
+  s.connect(pan).connect(g).connect(master); s.start(t);
+  log('log-spatial','StereoPanner −1 → +1 over 2.2s (equalpower by definition) — the cheap UI-blip directional cue','ok');
+});
+
+/* ============ §9 AudioWorklet geiger ============ */
+let geigerNode = null;
+const WORKLET_SRC = `
+class GeigerProcessor extends AudioWorkletProcessor {
+  static get parameterDescriptors(){ return [{name:'rate', defaultValue:60, minValue:0, maxValue:1000, automationRate:'k-rate'}] }
+  constructor(){ super(); this.env = 0; this.count = 0; this.tick = 0 }
+  process(inputs, outputs, params){
+    const out = outputs[0], rate = params.rate[0], p = rate / sampleRate;
+    for (let i = 0; i < out[0].length; i++){
+      if (Math.random() < p) this.env = 1;
+      const v = (Math.random() * 2 - 1) * this.env;
+      this.env *= 0.9992;
+      for (let ch = 0; ch < out.length; ch++) out[ch][i] = v * 0.4;
+    }
+    this.count += p * out[0].length;
+    if (++this.tick >= 20){ this.tick = 0; this.port.postMessage(Math.round(this.count)); }
+    return true;
+  }
+}
+registerProcessor('geiger', GeigerProcessor);`;
+$('cps').addEventListener('input', () => { $('cpsv').textContent = $('cps').value;
+  if (geigerNode) geigerNode.parameters.get('rate').value = +$('cps').value; });
+$('b-geiger').addEventListener('click', async () => {
+  try {
+    await ensureCtx('log-worklet');
+    const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'application/javascript' }));
+    await ctx.audioWorklet.addModule(url);
+    URL.revokeObjectURL(url);
+    geigerNode = new AudioWorkletNode(ctx, 'geiger', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
+    geigerNode.parameters.get('rate').value = +$('cps').value;
+    geigerNode.port.onmessage = e => { if (e.data != null && e.data % 25 === 0) log('log-worklet', 'worklet reports ~' + e.data + ' counts rendered', 'dim'); };
+    geigerNode.connect(master);
+    log('log-worklet', 'AudioWorklet “geiger” live · module from Blob URL (single-file apps: worklets need a URL, not a string) · rate param k-rate=' + $('cps').value, 'ok');
+    $('b-geigerstop').disabled = false;
+  } catch (e) { log('log-worklet', 'ERR ' + e.message, 'err'); }
+});
+$('b-geigerstop').addEventListener('click', () => { if (geigerNode){ geigerNode.disconnect(); geigerNode = null; log('log-worklet','geiger disconnected','dim'); } });
+$('b-clip-ab').addEventListener('click', async () => {
+  await ensureCtx('log-worklet');
+  const t = ctx.currentTime;
+  const mk = (clipFn) => {
+    const o = ctx.createOscillator(); o.type='sawtooth'; o.frequency.setValueAtTime(140, t);
+    o.frequency.linearRampToValueAtTime(90, t + 1.1);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.9, t); g.gain.setTargetAtTime(0.0001, t + 1.0, 0.12);
+    clipFn(o, g, t); o.start(t); o.stop(t + 1.6);
+  };
+  const shaper = ctx.createWaveShaper();
+  const curve = new Float32Array(1024);
+  for (let i = 0; i < 1024; i++){ const x = (i / 1023) * 2 - 1; curve[i] = Math.tanh(2.5 * x); }
+  shaper.curve = curve;
+  mk((o, g) => o.connect(shaper).connect(g).connect(master));
+  log('log-worklet', 'A: WaveShaper tanh curve (static wavetable, zero custom code)', 'ok');
+  await sleep(1700);
+  const src = `
+class SoftClip extends AudioWorkletProcessor {
+  static get parameterDescriptors(){ return [{name:'drive', defaultValue:2.5, minValue:0.1, maxValue:16, automationRate:'k-rate'}] }
+  process(inputs, outputs, params){
+    const d = params.drive[0], inp = inputs[0], out = outputs[0];
+    for (let ch = 0; ch < out.length; ch++){
+      const ic = (inp[ch] || inp[0]);
+      if (!ic) continue;
+      for (let i = 0; i < out[ch].length; i++) out[ch][i] = Math.tanh(d * ic[i]);
+    }
+    return true;
+  }
+}
+registerProcessor('softclip', SoftClip);`;
+  const url2 = URL.createObjectURL(new Blob([src], { type: 'application/javascript' }));
+  try { await ctx.audioWorklet.addModule(url2); } catch(e){}
+  URL.revokeObjectURL(url2);
+  try {
+    const n2 = new AudioWorkletNode(ctx, 'softclip', { numberOfInputs: 1, numberOfOutputs: 1 });
+    const o2 = ctx.createOscillator(); o2.type='sawtooth'; o2.frequency.setValueAtTime(140, ctx.currentTime);
+    o2.frequency.linearRampToValueAtTime(90, ctx.currentTime + 1.1);
+    const g2 = ctx.createGain(); g2.gain.setValueAtTime(0.9, ctx.currentTime);
+    g2.gain.setTargetAtTime(0.0001, ctx.currentTime + 1.0, 0.12);
+    o2.connect(n2).connect(g2).connect(master); o2.start(); o2.stop(ctx.currentTime + 1.6);
+    log('log-worklet', 'B: AudioWorklet soft-clip (same tanh, but PARAMETRIC — drive is automatable per render quantum, wavetables are not)', 'hi');
+  } catch (e) { log('log-worklet', 'B failed: ' + e.message, 'err'); }
+});
+
+/* ============ §10 offline render + WAV ============ */
+function encodeWav(buf){
+  const nCh = buf.numberOfChannels, len = buf.length, sr = buf.sampleRate;
+  const bytes = 44 + len * nCh * 2;
+  const ab = new ArrayBuffer(bytes), v = new DataView(ab);
+  const wstr = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  wstr(0, 'RIFF'); v.setUint32(4, bytes - 8, true); wstr(8, 'WAVE'); wstr(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, nCh, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * nCh * 2, true); v.setUint16(32, nCh * 2, true);
+  v.setUint16(34, 16, true); wstr(36, 'data'); v.setUint32(40, len * nCh * 2, true);
+  const chans = []; for (let c = 0; c < nCh; c++) chans.push(buf.getChannelData(c));
+  let o = 44;
+  for (let i = 0; i < len; i++) for (let c = 0; c < nCh; c++){
+    const s = Math.max(-1, Math.min(1, chans[c][i]));
+    v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7FFF, true); o += 2;
+  }
+  return new Blob([ab], { type: 'audio/wav' });
+}
+$('b-render').addEventListener('click', async () => {
+  try {
+    await ensureCtx('log-render');
+    const DUR = 6, SR = 44100;
+    const octx = new OfflineAudioContext(2, SR * DUR, SR);
+    // synthetic battery curve: 16.4V → 13.9V w/ sag bumps; thresholds at 15.0 and 14.4
+    const t0 = performance.now();
+    const o = octx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(880, 0);
+    const N = 120;
+    for (let i = 0; i <= N; i++){
+      const p = i / N, volt = 16.4 - 2.5 * p - 0.18 * Math.sin(p * 18);
+      const hz = 220 + (volt - 13.5) * 280;
+      o.frequency.linearRampToValueAtTime(hz, p * (DUR - 0.5));
+    }
+    const og = octx.createGain(); og.gain.value = 0.14;
+    o.connect(og).connect(octx.destination); o.start(0);
+    const alert = (hz, at) => {
+      const b = octx.createOscillator(); b.type='square'; b.frequency.value = hz;
+      const bg = octx.createGain();
+      bg.gain.setValueAtTime(0, at); bg.gain.linearRampToValueAtTime(0.22, at + 0.01);
+      bg.gain.linearRampToValueAtTime(0, at + 0.16);
+      b.connect(bg).connect(octx.destination); b.start(at); b.stop(at + 0.2);
+    };
+    alert(740, 2.9); alert(1180, 4.55); alert(1180, 4.75); alert(1180, 4.95);
+    const rendered = await octx.startRendering();
+    const ms = performance.now() - t0;
+    $('st-rt').textContent = ((DUR * 1000) / ms).toFixed(1) + '×';
+    $('st-dur').textContent = rendered.duration.toFixed(2) + ' s';
+    const blob = encodeWav(rendered);
+    $('st-bytes').textContent = (blob.size / 1024).toFixed(0) + ' KB';
+    const a = $('a-wav'); a.href = URL.createObjectURL(blob); a.classList.remove('hid');
+    log('log-render', 'rendered ' + rendered.duration.toFixed(2) + 's of stereo 44.1kHz in ' + ms.toFixed(0) + 'ms (' + ((DUR*1000)/ms).toFixed(1) + '× realtime) · ' + rendered.numberOfChannels + 'ch · WAV ' + (blob.size/1024).toFixed(0) + 'KB', 'ok');
+    log('log-render', 'sonification: pitch = f(battery 16.4→13.9V sag curve) · WARN beep @2.9s (15.0V) · CRIT triple @4.55s (14.4V)', 'dim');
+  } catch (e) { log('log-render', 'ERR ' + e.message, 'err'); }
+});
+
+/* ============ §11 routing ============ */
+$('b-devices').addEventListener('click', async () => {
+  await ensureCtx('log-route');
+  if (!('setSinkId' in AudioContext.prototype)){
+    log('log-route', 'setSinkId: NOT in AudioContext.prototype on this engine — output picking is Chromium-only (110+)', 'err');
+    return;
+  }
+  const devs = await navigator.mediaDevices.enumerateDevices();
+  const outs = devs.filter(d => d.kind === 'audiooutput');
+  const sel = $('sinkpick'); sel.innerHTML = ''; sel.classList.remove('hid'); $('b-setsink').classList.remove('hid');
+  outs.forEach(d => { const op = document.createElement('option'); op.value = d.deviceId;
+    op.textContent = d.label || ('output ' + d.deviceId.slice(0, 12) + '…'); sel.appendChild(op); });
+  log('log-route', outs.length + ' audio output(s) — labels require mic permission; ids are usable without it', 'ok');
+  log('log-route', 'current sinkId: ' + JSON.stringify(ctx.sinkId), 'dim');
+});
+$('b-setsink').addEventListener('click', async () => {
+  const id = $('sinkpick').value; if (!id) return;
+  try {
+    await ctx.setSinkId(id);
+    log('log-route', 'setSinkId OK → ' + id.slice(0, 14) + '… · sinkId readback: ' + JSON.stringify(ctx.sinkId), 'ok');
+  } catch (e) { log('log-route', 'setSinkId threw: ' + e.name + ' — non-default devices need permission', 'err'); }
+});
+$('b-nonesink').addEventListener('click', async () => {
+  await ensureCtx('log-route');
+  if (!('setSinkId' in AudioContext.prototype)){ log('log-route', '{type:"none"} sink: not supported on this engine', 'err'); return; }
+  try {
+    await ctx.setSinkId({ type: 'none' });
+    log('log-route', 'sinkId → {type:"none"}: graph keeps running, output silenced — visualizer pages shouldn\'t hold the audio device. readback: ' + JSON.stringify(ctx.sinkId), 'ok');
+  } catch (e) { log('log-route', 'silent sink threw: ' + e.message, 'err'); }
+});
+$('b-restore').addEventListener('click', async () => {
+  if (!ctx || !('setSinkId' in AudioContext.prototype)) return;
+  try { await ctx.setSinkId(''); log('log-route', 'sink restored to default · readback: ' + JSON.stringify(ctx.sinkId), 'ok'); }
+  catch (e) { log('log-route', 'restore threw: ' + e.message, 'err'); }
+});
+$('b-rec').addEventListener('click', async () => {
+  try {
+    await ensureCtx('log-route');
+    const dest = ctx.createMediaStreamDestination();
+    comp.connect(dest);
+    const mime = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find(m => MediaRecorder.isTypeSupported(m)) || '';
+    const rec = new MediaRecorder(dest.stream, mime ? { mimeType: mime } : undefined);
+    const chunks = [];
+    rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    rec.onstop = () => {
+      const blob = new Blob(chunks, { type: rec.mimeType });
+      const a = $('a-rec'); a.href = URL.createObjectURL(blob); a.classList.remove('hid');
+      a.textContent = '⬇ Download mix (' + (blob.size / 1024).toFixed(0) + ' KB ' + rec.mimeType + ')';
+      log('log-route', 'recorded ' + (blob.size / 1024).toFixed(0) + 'KB of ' + rec.mimeType + ' — master bus → MediaStreamDestination → MediaRecorder', 'ok');
+      comp.disconnect(dest);
+    };
+    rec.start(250);
+    log('log-route', 'recording 4s of the master bus as ' + (rec.mimeType || 'default') + ' — make some noise (§6 siren / §7 tiers)', 'hi');
+    setTimeout(() => rec.state !== 'inactive' && rec.stop(), 4000);
+  } catch (e) { log('log-route', 'ERR ' + e.message, 'err'); }
+});
+
+/* ============ §12 gotcha wall ============ */
+$('p-restart').addEventListener('click', async () => {
+  await ensureCtx('log-gotcha');
+  const o = ctx.createOscillator(); o.frequency.value = 330;
+  const g = ctx.createGain(); g.gain.value = 0.15;
+  o.connect(g).connect(master); o.start(); o.stop(ctx.currentTime + 0.15);
+  o.onended = async () => {
+    await sleep(150);
+    try { o.start(); pill('p-restart-out', true, 'NO-THROW'); log('log-gotcha','restart accepted?? unexpected','err'); }
+    catch (e) { pill('p-restart-out', false, e.name.toUpperCase()); log('log-gotcha', 'second start() → ' + e.name + ': ' + e.message, 'ok'); }
+  };
+  log('log-gotcha', 'first start() fine — waiting for onended, then restarting the spent node…', 'dim');
+});
+$('p-expzero').addEventListener('click', () => $('b-expzero').click());
+$('p-decode').addEventListener('click', async () => {
+  await ensureCtx('log-gotcha');
+  // build a 0.25s 600Hz WAV in JS, feed it to decodeAudioData, then re-read the source
+  const SR = 44100, L = SR / 4, bytes = 44 + L * 2;
+  const ab = new ArrayBuffer(bytes), v = new DataView(ab);
+  const wstr = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  wstr(0,'RIFF'); v.setUint32(4, bytes - 8, true); wstr(8,'WAVE'); wstr(12,'fmt ');
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true); v.setUint32(24,SR,true);
+  v.setUint32(28,SR*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true); wstr(36,'data'); v.setUint32(40,L*2,true);
+  for (let i = 0; i < L; i++) v.setInt16(44 + i * 2, Math.sin(2 * Math.PI * 600 * i / SR) * 0.5 * 32767, true);
+  log('log-gotcha', 'WAV built in JS: ' + ab.byteLength + ' bytes · decoding…', 'dim');
+  const buf = await ctx.decodeAudioData(ab);
+  log('log-gotcha', 'decoded → AudioBuffer ' + buf.duration.toFixed(2) + 's @ ' + buf.sampleRate + 'Hz', 'ok');
+  try {
+    const after = ab.byteLength;
+    if (after === 0){ pill('p-decode-out', false, 'DETACHED'); log('log-gotcha', 'source ArrayBuffer.byteLength after decode = 0 — buffer was TRANSFERRED (neutered). Copy it if you need it twice.', 'ok'); }
+    else { pill('p-decode-out', true, after + 'B'); log('log-gotcha', 'source intact (' + after + 'B) on this engine', 'dim'); }
+  } catch (e) { pill('p-decode-out', false, 'ERR'); log('log-gotcha', 're-read threw: ' + e.message, 'ok'); }
+});
+$('p-clock').addEventListener('click', async () => {
+  await ensureCtx('log-gotcha');
+  const a0 = ctx.currentTime, p0 = performance.now();
+  const btn = $('p-clock'); btn.disabled = true;
+  const block = performance.now() + 350; while (performance.now() < block){ /* main-thread freeze */ }
+  const a1 = ctx.currentTime, p1 = performance.now();
+  const dAudio = (a1 - a0) * 1000, dPerf = p1 - p0;
+  const drift = Math.abs(dAudio - dPerf).toFixed(0);
+  pill('p-clock-out', true, 'Δ' + drift + 'ms');
+  log('log-gotcha', '350ms main-thread freeze → audio clock advanced ' + dAudio.toFixed(0) + 'ms vs performance.now ' + dPerf.toFixed(0) + 'ms (Δ' + drift + 'ms) — schedule on ctx.currentTime, always', 'ok');
+  btn.disabled = false; btn.textContent = 'Re-run freeze probe';
+});
+
+/* ============ production pattern: watch state; Safari suspends on idle tabs ============ */
+document.addEventListener('visibilitychange', () => {
+  if (!ctx) return;
+  if (document.hidden) log('log-hello', 'tab hidden — production apps: ctx.suspend() here (battery), statechange watchdog catches Safari\'s idle suspensions', 'dim');
+});
+</script>
+</body>
+</html>
