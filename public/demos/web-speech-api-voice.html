@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Web Speech API — Voice In &amp; Out, Zero Dependencies</title>
+<style>
+  :root {
+    --bg: #faf9f7; --ink: #1a1a1f; --muted: #6b6b76;
+    --accent: #6c5ce7;
+    --accent-soft: color-mix(in oklch, var(--accent) 12%, white);
+    --card: #fff; --line: #eceae6; --radius: 16px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg); color: var(--ink); font-size: 16px; line-height: 1.6;
+    -webkit-font-smoothing: antialiased; overflow-x: hidden;
+  }
+  .orbs { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+  .orb { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .35; }
+  .o1 { width: 420px; height: 420px; background: var(--accent); top: -160px; right: -120px; }
+  .o2 { width: 340px; height: 340px; background: #a29bfe; top: 48%; left: -170px; opacity: .22; }
+  .o3 { width: 300px; height: 300px; background: #55efc4; bottom: -130px; right: -90px; opacity: .22; }
+
+  main { max-width: 600px; margin: 0 auto; padding: 0 24px 96px; }
+  section { margin-top: 64px; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-soft);
+    border-radius: 999px; padding: 6px 14px; }
+  h1 { font-size: 40px; line-height: 1.15; letter-spacing: -.02em; margin: 20px 0 16px; font-weight: 800; }
+  h2 { font-size: 26px; letter-spacing: -.01em; margin-bottom: 12px; font-weight: 700; }
+  p.sub { color: var(--muted); }
+  p { margin-bottom: 12px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+  .chip { font-size: 12px; font-weight: 500; color: var(--muted); background: var(--card);
+    border: 1px solid var(--line); padding: 5px 12px; border-radius: 999px; }
+  .chip.good { color: #0f7b3d; border-color: #bfe5cd; background: #f0faf3; }
+  .chip.bad { color: #b3391c; border-color: #f2cdbf; background: #fdf3ef; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 24px; box-shadow: 0 1px 3px rgba(26,26,31,.04), 0 8px 24px rgba(26,26,31,.04); }
+  code, pre { font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; }
+  code.i { font-size: 13px; background: var(--accent-soft); color: var(--accent); padding: 2px 7px; border-radius: 6px; }
+  pre { background: #1e1e28; color: #e8e6f0; border-radius: 14px; padding: 18px 20px;
+    overflow-x: auto; font-size: 12.5px; line-height: 1.65; margin: 14px 0; }
+  pre .c { color: #7c7a92; } pre .k { color: #a29bfe; }
+
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin: 16px 0 6px; }
+  select, input[type=text], textarea {
+    width: 100%; font: inherit; font-size: 14px; padding: 11px 14px;
+    border: 1.5px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink);
+  }
+  select:focus, textarea:focus, input:focus { outline: none; border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 76px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .row { display: flex; gap: 20px; }
+  .row > div { flex: 1; }
+
+  .btn { appearance: none; border: none; cursor: pointer; font: inherit; font-weight: 600; font-size: 14px;
+    background: var(--ink); color: #fff; padding: 11px 22px; border-radius: 12px;
+    transition: transform .2s, background .2s; }
+  .btn:hover { background: var(--accent); transform: translateY(-1px); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+  .btn.ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--line); }
+  .btn.ghost:hover { border-color: var(--accent); color: var(--accent); background: transparent; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+
+  .meter { height: 10px; border-radius: 999px; background: var(--accent-soft); overflow: hidden; margin-top: 6px; }
+  .meter > div { height: 100%; width: 0%; background: var(--accent); border-radius: 999px; transition: width .12s linear; }
+  .status { font-size: 13px; color: var(--muted); margin-top: 10px; min-height: 20px; }
+  .transcript { font-size: 18px; font-weight: 600; min-height: 56px; margin-top: 12px; line-height: 1.45; }
+  .transcript .interim { color: var(--accent); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 14px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+  ul.clean { list-style: none; }
+  ul.clean li { padding-left: 26px; position: relative; margin-bottom: 10px; }
+  ul.clean li::before { content: ""; position: absolute; left: 4px; top: 8px; width: 8px; height: 8px;
+    border-radius: 50%; background: var(--accent); }
+  .voice-count { font-size: 13px; color: var(--muted); margin-top: 10px; }
+  footer { margin-top: 80px; color: var(--muted); font-size: 13px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="orbs"><div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div></div>
+
+<main>
+  <section style="margin-top:80px">
+    <span class="tag">Web Platform · Audio</span>
+    <h1>Web Speech API</h1>
+    <p class="sub">Text-to-speech and speech recognition, built into every modern browser. No cloud keys, no SDK payload, no audio files — one <code class="i">speak()</code> call or one recognition session.</p>
+    <div class="meta">
+      <span class="chip" id="cap-tts">checking speechSynthesis…</span>
+      <span class="chip" id="cap-stt">checking SpeechRecognition…</span>
+      <span class="chip">W3C Web Speech API</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Talk — the synth playground</h2>
+    <p class="sub">Pick any voice your OS ships, dial rate and pitch, and speak. The queue, pause/resume, and per-word boundary events are all native.</p>
+    <div class="card">
+      <label for="say">Text</label>
+      <textarea id="say">Preflight complete. Battery at ninety-two percent. GPS locked, fourteen satellites in view.</textarea>
+      <div class="row">
+        <div>
+          <label for="voice">Voice (<span id="vcount">0</span> installed)</label>
+          <select id="voice"></select>
+        </div>
+      </div>
+      <div class="row">
+        <div><label for="rate">Rate — <span id="ratev">1.0</span>×</label><input type="range" id="rate" min="0.5" max="2" step="0.1" value="1"></div>
+        <div><label for="pitch">Pitch — <span id="pitchv">1.0</span></label><input type="range" id="pitch" min="0" max="2" step="0.1" value="1"></div>
+      </div>
+      <div class="controls">
+        <button class="btn" id="speak">Speak</button>
+        <button class="btn ghost" id="pause">Pause</button>
+        <button class="btn ghost" id="resume">Resume</button>
+        <button class="btn ghost" id="stop">Stop</button>
+      </div>
+      <div class="meter"><div id="tts-bar"></div></div>
+      <div class="status" id="tts-status">Voices load asynchronously on some platforms — the list fills when ready.</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Listen — the recognition lab</h2>
+    <p class="sub">Chrome and Safari process the mic live: interim results stream as you talk, and final results arrive with confidence scores. (Not in Firefox — feature-detect and degrade.)</p>
+    <div class="card">
+      <div class="controls" style="margin-top:0">
+        <button class="btn" id="listen">Start listening</button>
+        <button class="btn ghost" id="stoplisten" disabled>Stop</button>
+      </div>
+      <div class="transcript" id="transcript">Transcript appears here…</div>
+      <div class="status" id="stt-status"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The whole API, in one screen</h2>
+    <pre><span class="c">// OUT — speechSynthesis (every browser since ~2014, Baseline)</span>
+const u = <span class="k">new</span> SpeechSynthesisUtterance("Telemetry nominal.");
+u.voice = speechSynthesis.getVoices().find(v => v.lang.startsWith("en"));
+u.rate = 1; u.pitch = 1;
+u.onboundary = e => highlightWord(e.charIndex);  <span class="c">// word-level timing</span>
+speechSynthesis.speak(u);            <span class="c">// queued, not fired-and-forgotten</span>
+speechSynthesis.pause(); speechSynthesis.resume(); speechSynthesis.cancel();
+
+<span class="c">// IN — SpeechRecognition (Chrome/Edge 33+, Safari 14.1+; Firefox ✗)</span>
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const r = <span class="k">new</span> SR();
+r.continuous = true;      <span class="c">// keep listening across pauses</span>
+r.interimResults = true;  <span class="c">// stream partials as you speak</span>
+r.lang = "en-US";
+r.onresult = e => {
+  <span class="k">for</span> (const res of e.results) {
+    <span class="k">if</span> (res.isFinal) console.log(res[0].transcript, res[0].confidence);
+  }
+};
+r.start();  <span class="c">// requires user gesture + mic permission</span></pre>
+    <p class="sub">Key gotchas the demo encodes: voices populate async (listen for <code class="i">voiceschanged</code>); Chrome's recognition is server-assisted (network-dependent) while Safari's is on-device; iOS needs a direct user gesture per <code class="i">start()</code>.</p>
+  </section>
+
+  <section>
+    <h2>Browser support — Aug 2026</h2>
+    <div class="card">
+      <table>
+        <tr><th>API</th><th>Chrome/Edge</th><th>Safari</th><th>Firefox</th></tr>
+        <tr><td>speechSynthesis (TTS)</td><td>33+</td><td>7+ / iOS 7+</td><td>49+</td></tr>
+        <tr><td>SpeechRecognition (STT)</td><td>33+</td><td>14.1+</td><td>✗ (flag, desktop)</td></tr>
+      </table>
+      <p class="voice-count" id="support-note">Feature-detect both halves independently — they ship on completely different schedules.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Where it earns its keep</h2>
+    <div class="card">
+      <ul class="clean">
+        <li><strong>OpenDrones Mission Control</strong> — spoken preflight checklists and battery alerts (hands stay on the sticks); "arm", "RTL", "hold" voice commands with confirmation echo.</li>
+        <li><strong>Accessibility</strong> — instant audio versions of any article, form errors read aloud, eyes-free kiosk modes. Screen-reader users get alternatives, not replacements.</li>
+        <li><strong>Voice-driven UI</strong> — hands-busy workflows: cooking sites, field inspections, warehouse pick lists.</li>
+        <li><strong>Language learning</strong> — pronunciation comparison with the confidence score as instant feedback.</li>
+        <li><strong>Zero-cost IVR</strong> — prototype phone-tree flows in the browser before committing to telephony infra.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>Built by Jin · Molt Studios research · <span id="date"></span></footer>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  $("date").textContent = new Date().toISOString().slice(0, 10);
+
+  /* ---- capability chips ---- */
+  var ttsOK = "speechSynthesis" in window;
+  var STT = window.SpeechRecognition || window.webkitSpeechRecognition;
+  function chip(id, ok, label) {
+    var el = $(id); el.textContent = label + (ok ? " ✓ supported here" : " — not in this browser");
+    el.className = "chip " + (ok ? "good" : "bad");
+  }
+  chip("cap-tts", ttsOK, "speechSynthesis (TTS)");
+  chip("cap-stt", !!STT, "SpeechRecognition (STT)");
+
+  /* ---- TTS playground ---- */
+  var voices = [], voiceSel = $("voice"), vcount = $("vcount");
+  function loadVoices() {
+    if (!ttsOK) return;
+    voices = speechSynthesis.getVoices().slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
+    voiceSel.innerHTML = "";
+    voices.forEach(function (v, i) {
+      var o = document.createElement("option");
+      o.value = i;
+      o.textContent = v.name + " (" + v.lang + (v.localService ? ", on-device" : ", cloud") + ")";
+      voiceSel.appendChild(o);
+    });
+    vcount.textContent = voices.length;
+    if (!voices.length) return;
+    var pref = voices.findIndex(function (v) { return /^en/i.test(v.lang) && /default/i.test(v.name); });
+    if (pref < 0) pref = voices.findIndex(function (v) { return /^en/i.test(v.lang); });
+    if (pref >= 0) voiceSel.value = pref;
+    $("tts-status").textContent = voices.length + " voices ready. Queue length: " + speechSynthesis.pending;
+  }
+  if (ttsOK) {
+    loadVoices();
+    speechSynthesis.addEventListener("voiceschanged", loadVoices);
+  }
+
+  $("rate").addEventListener("input", function () { $("ratev").textContent = (+this.value).toFixed(1); });
+  $("pitch").addEventListener("input", function () { $("pitchv").textContent = (+this.value).toFixed(1); });
+
+  var bar = $("tts-bar");
+  function speak() {
+    if (!ttsOK) { $("tts-status").textContent = "speechSynthesis unavailable in this browser."; return; }
+    speechSynthesis.cancel();
+    var u = new SpeechSynthesisUtterance($("say").value || "Nothing to say.");
+    var v = voices[+voiceSel.value]; if (v) { u.voice = v; u.lang = v.lang; }
+    u.rate = +$("rate").value; u.pitch = +$("pitch").value;
+    u.onboundary = function () { bar.style.width = "100%"; };
+    u.onstart = function () { $("tts-status").textContent = "Speaking…"; bar.style.width = "40%"; };
+    u.onend = function () { $("tts-status").textContent = "Done. Queue length: " + speechSynthesis.pending; bar.style.width = "0%"; };
+    u.onerror = function (e) { $("tts-status").textContent = "Synth event: " + (e.error || "interrupted"); bar.style.width = "0%"; };
+    speechSynthesis.speak(u);
+  }
+  $("speak").addEventListener("click", speak);
+  $("pause").addEventListener("click", function () { if (ttsOK) speechSynthesis.pause(); });
+  $("resume").addEventListener("click", function () { if (ttsOK) speechSynthesis.resume(); });
+  $("stop").addEventListener("click", function () { if (ttsOK) speechSynthesis.cancel(); bar.style.width = "0%"; });
+
+  /* ---- STT lab ---- */
+  var rec = null, listening = false, finalText = "", statusEl = $("stt-status");
+  function renderTranscript(interim) {
+    $("transcript").innerHTML = "";
+    $("transcript").appendChild(document.createTextNode(finalText || ""));
+    if (interim) {
+      var s = document.createElement("span");
+      s.className = "interim"; s.textContent = " " + interim;
+      $("transcript").appendChild(s);
+    }
+    if (!finalText && !interim) $("transcript").textContent = "Transcript appears here…";
+  }
+  $("listen").addEventListener("click", function () {
+    if (!STT) { statusEl.textContent = "SpeechRecognition is not available in this browser (Firefox ✗, or no mic permission model). TTS above still works."; return; }
+    if (listening) return;
+    rec = new STT();
+    rec.continuous = true; rec.interimResults = true; rec.lang = "en-US";
+    finalText = "";
+    rec.onresult = function (e) {
+      var interim = "";
+      for (var i = 0; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          finalText += e.results[i][0].transcript + " ";
+        } else {
+          interim += e.results[i][0].transcript;
+        }
+      }
+      renderTranscript(interim);
+    };
+    rec.onstart = function () { listening = true; statusEl.textContent = "Listening — speak now."; $("listen").disabled = true; $("stoplisten").disabled = false; };
+    rec.onerror = function (e) { statusEl.textContent = "Recognition error: " + (e.error || "unknown") + " — 'no-speech' and 'aborted' are benign."; };
+    rec.onend = function () { listening = false; $("listen").disabled = false; $("stoplisten").disabled = true; statusEl.textContent = "Session ended."; renderTranscript(""); };
+    try { rec.start(); } catch (err) { statusEl.textContent = "Could not start: " + err.message; }
+  });
+  $("stoplisten").addEventListener("click", function () { if (rec && listening) rec.stop(); });
+})();
+</script>
+</body>
+</html>
