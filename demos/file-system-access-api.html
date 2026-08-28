@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:,">
+<title>File System Access API — Real Files, Handles, Swap-File Writes &amp; FileSystemObserver</title>
+<style>
+  :root{
+    --bg:#faf8f4; --ink:#1c1917; --mut:#78716c; --line:#e7e0d8;
+    --acc:#4f46e5; --acc2:#e0e7ff; --ok:#059669; --okbg:#d1fae5; --bad:#dc2626; --badbg:#fee2e2;
+    --warn:#b45309; --warnbg:#fef3c7; --card:#ffffff; --code:#f5f2ec;
+    --od:#0f172a; --odin:#fbbf24;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,Roboto,sans-serif;
+    background:var(--bg); color:var(--ink); line-height:1.55; font-size:15px;
+    background-image:radial-gradient(600px 380px at 12% -4%, #e0e7ff66, transparent),
+                     radial-gradient(520px 320px at 96% 4%, #fde68a55, transparent);
+    background-repeat:no-repeat;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:26px 20px 90px}
+  header.hero{padding:44px 10px 8px}
+  .kicker{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc);font-weight:700}
+  h1{font-size:clamp(28px,4.6vw,42px);line-height:1.12;letter-spacing:-.02em;margin:10px 0 12px;font-weight:800}
+  .sub{color:var(--mut);max-width:74ch}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .badge{font-size:12px;font-weight:600;padding:5px 11px;border-radius:999px;background:var(--card);border:1px solid var(--line);color:var(--mut)}
+  .badge.on{background:var(--okbg);border-color:#a7f3d0;color:#065f46}
+  .badge.off{background:var(--badbg);border-color:#fecaca;color:#991b1b}
+  nav.toc{display:flex;flex-wrap:wrap;gap:6px;margin:26px 0 6px;font-size:12.5px}
+  nav.toc a{text-decoration:none;color:var(--acc);background:var(--card);border:1px solid var(--line);padding:4px 10px;border-radius:999px}
+  section{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 26px 24px;margin-top:26px;box-shadow:0 1px 2px #0000000a}
+  h2{font-size:21px;letter-spacing:-.01em;margin-bottom:6px}
+  h2 .n{color:var(--acc);font-variant-numeric:tabular-nums}
+  p.lead{color:var(--mut);margin-bottom:14px;max-width:78ch}
+  h3{font-size:14.5px;margin:18px 0 8px}
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+  .card{border:1px solid var(--line);border-radius:14px;padding:14px;background:#fdfcfa}
+  .card h4{font-size:13px;margin-bottom:6px}
+  .mono,code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
+  code{background:var(--code);padding:1px 6px;border-radius:6px}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:12px;padding:14px;overflow-x:auto;font-size:12.5px;line-height:1.6;margin:10px 0}
+  pre code{background:none;padding:0}
+  .log{background:#0f172a;color:#e2e8f0;border-radius:12px;padding:12px 14px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.7;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+  .log .dim{color:#94a3b8}.log .g{color:#6ee7b7}.log .r{color:#fca5a5}.log .y{color:#fde68a}
+  .verdict{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;padding:6px 12px;border-radius:999px;background:var(--code);border:1px solid var(--line);margin:8px 6px 0 0}
+  .verdict.ok{background:var(--okbg);border-color:#a7f3d0;color:#065f46}
+  .verdict.bad{background:var(--badbg);border-color:#fecaca;color:#991b1b}
+  .verdict.warn{background:var(--warnbg);border-color:#fde68a;color:#92400e}
+  button{font:inherit;font-size:13px;font-weight:600;padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+  button:hover{border-color:var(--acc)}
+  button:disabled{opacity:.45;cursor:default}
+  button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+  button.od{background:var(--od);border-color:var(--od);color:var(--odin)}
+  button.danger{background:#7f1d1d;border-color:#7f1d1d;color:#fecaca}
+  textarea{font:inherit;font-size:13px;font-family:ui-monospace,Menlo,monospace;padding:10px;border-radius:10px;border:1px solid var(--line);width:100%;min-height:110px;background:#fdfcfa}
+  .drop{border:2px dashed var(--line);border-radius:14px;padding:22px;text-align:center;color:var(--mut);margin-top:10px;font-size:13px}
+  .drop.hot{border-color:var(--acc);background:var(--acc2);color:var(--ink)}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;margin:10px 0}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--code);font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--mut)}
+  td.y{color:#065f46;font-weight:700;background:#f0fdf4}
+  td.n{color:#991b1b;font-weight:700;background:#fef2f2}
+  td.p{color:#92400e;background:#fffbeb}
+  .tier{border:1px solid var(--line);border-radius:14px;padding:16px;margin:10px 0}
+  .tier h4{font-size:13px;letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px}
+  .tier .lvl{display:inline-block;font-size:11px;font-weight:800;padding:2px 9px;border-radius:999px;margin-left:8px;vertical-align:1px}
+  .tier.t1 h4{color:#065f46}.tier.t1 .lvl{background:#d1fae5;color:#065f46}
+  .tier.t2 h4{color:#3730a3}.tier.t2 .lvl{background:#e0e7ff;color:#3730a3}
+  .tier.t3 h4{color:#92400e}.tier.t3 .lvl{background:#fef3c7;color:#92400e}
+  .tier ul{margin:6px 0 0 18px;font-size:13px}
+  .odbox{background:var(--od);color:#e2e8f0;border-radius:14px;padding:18px;margin-top:14px}
+  .odbox h4{color:var(--odin);font-size:13px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px}
+  .odlog{background:#020617;border-radius:10px;padding:10px 12px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;line-height:1.65;max-height:230px;overflow:auto;white-space:pre-wrap}
+  .odlog .g{color:#6ee7b7}.odlog .y{color:#fbbf24}.odlog .r{color:#fca5a5}.odlog .dim{color:#64748b}
+  .stat{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--mut)}
+  .stat b{color:var(--ink);font-weight:700}
+  .warnbox{border-left:3px solid var(--warn);background:var(--warnbg);padding:10px 14px;border-radius:0 10px 10px 0;margin:12px 0;font-size:13.5px}
+  .okbox{border-left:3px solid var(--ok);background:var(--okbg);padding:10px 14px;border-radius:0 10px 10px 0;margin:12px 0;font-size:13.5px}
+  .badbox{border-left:3px solid var(--bad);background:var(--badbg);padding:10px 14px;border-radius:0 10px 10px 0;margin:12px 0;font-size:13.5px}
+  footer{margin-top:40px;color:var(--mut);font-size:12.5px;text-align:center}
+  a{color:var(--acc)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">Web Platform · Files Tier · Research 2026-08-28</div>
+  <h1>File System Access API — <span style="color:var(--acc)">real user files, handles, swap-file writes &amp; FileSystemObserver</span></h1>
+  <p class="sub">OPFS (cataloged Jul 18) gave the web a hidden high-speed sandbox. This is the other half of the files tier: <b> FileSystemFileHandle / FileSystemDirectoryHandle — the handle layer every engine already ships</b> — plus the Chromium-only picker layer (<code>showOpenFilePicker</code> · <code>showSaveFilePicker</code> · <code>showDirectoryPicker</code> · drag-drop <code>getAsFileSystemHandle</code>) that lets a web app open, edit-in-place and watch <i>the user's real files</i>. Swap-file write semantics, siloed vs exclusive locks, seek-past-EOF sparse writes, handles that survive reload via IndexedDB, and the new <code>FileSystemObserver</code> (Chrome 133+) that kills polling. Every handle-layer lab below runs on OPFS-backed handles — the <b>same interface</b> the pickers return — so it's all live-verifiable headless.</p>
+  <div class="badges" id="badges"></div>
+</header>
+
+<nav class="toc">
+  <a href="#s1">1 Two-tier map</a><a href="#s2">2 Handle anatomy</a><a href="#s3">3 Swap-file writes ★</a>
+  <a href="#s4">4 seek/truncate</a><a href="#s5">5 Writer locks</a><a href="#s6">6 Streams pipe</a>
+  <a href="#s7">7 Directories</a><a href="#s8">8 Observer ★</a><a href="#s9">9 Sync handles</a>
+  <a href="#s10">10 Persistence</a><a href="#s11">11 Pickers + editor</a><a href="#s12">12 Ship map</a>
+</nav>
+
+<!-- ============================= S1 ============================= -->
+<section id="s1">
+  <h2><span class="n">1.</span> The two-tier map — one API, three support realities</h2>
+  <p class="lead">The spec name says "File System Access" but support splits cleanly into layers. Design against the handle layer (universal), feature-detect the picker layer (Chromium ~70%), treat the observer as progressive rocket fuel.</p>
+  <div class="tier t1"><h4>Handle layer <span class="lvl">Ch 86 · FF 111 · SF 15.2 — universal</span></h4>
+    <ul><li><code>getFile()</code> → real <code>File</code> (a Blob: <code>.text()</code>, <code>.arrayBuffer()</code>, <code>.slice()</code>) · <code>createWritable()</code> (SF write: <b>26</b> — read-only before) · <code>createSyncAccessHandle()</code> (workers, OPFS files)</li>
+    <li><code>FileSystemDirectoryHandle</code>: <code>getFileHandle</code>/<code>getDirectoryHandle</code> <code>{create:true}</code>, <code>values()</code> async iteration, <code>resolve()</code>, <code>removeEntry()</code> — plus <code>isSameEntry()</code>, <code>move()</code></li>
+    <li>Where you get them: OPFS (<code>navigator.storage.getDirectory()</code>), pickers, drag-drop, Web Share targets</li></ul></div>
+  <div class="tier t2"><h4>Picker layer <span class="lvl">Ch/Edge 86+ · FF ✗ · SF ✗ — ~70%</span></h4>
+    <ul><li><code>showOpenFilePicker({types, multiple, startIn, id, excludeAcceptAllOption})</code> · <code>showSaveFilePicker({suggestedName,…})</code> · <code>showDirectoryPicker({mode})</code> — transient user activation required, secure context only</li>
+    <li>Drag-drop: <code>dataTransferItem.getAsFileSystemHandle()</code> · Permissions: <code>queryPermission()</code> / <code>requestPermission({mode:'readwrite'})</code> (Chromium-only surface)</li></ul></div>
+  <div class="tier t3"><h4>Observer layer <span class="lvl">Ch 133+ · experimental, non-standard (whatwg/fs PR #165)</span></h4>
+    <ul><li><code>new FileSystemObserver(cb)</code> → <code>.observe(fileOrDirHandle)</code> — change records (<code>appeared / modified / disappeared / moved</code>) for <b>user-visible files AND OPFS</b>. No more polling loops.</li></ul></div>
+  <table>
+    <tr><th>Surface</th><th>Chrome/Edge</th><th>Firefox</th><th>Safari</th><th>Notes</th></tr>
+    <tr><td>Handles: getFile / values / resolve / removeEntry / isSameEntry</td><td class="y">86</td><td class="y">111</td><td class="y">15.2</td><td>Same interface for OPFS + picked files</td></tr>
+    <tr><td>createWritable + FileSystemWritableFileStream</td><td class="y">86</td><td class="y">111</td><td class="p">26</td><td>Safari handles were read-only until 26 (2025)</td></tr>
+    <tr><td>move()</td><td class="y">102</td><td class="p">111*</td><td class="p">15.2*</td><td>*BCD 8.0.13 — historically documented Chromium-only; verify per-engine before shipping</td></tr>
+    <tr><td>show{Open,Save,Directory}FilePicker</td><td class="y">86</td><td class="n">✗</td><td class="n">✗</td><td>~70% traffic; fallback ladder §12</td></tr>
+    <tr><td>queryPermission / requestPermission</td><td class="y">86</td><td class="n">✗</td><td class="n">✗</td><td>Persistence story is Chromium's</td></tr>
+    <tr><td>FileSystemObserver</td><td class="y">133</td><td class="n">✗</td><td class="n">✗</td><td>Works on OPFS too — §8</td></tr>
+  </table>
+</section>
+
+<!-- ============================= S2 ============================= -->
+<section id="s2">
+  <h2><span class="n">2.</span> Handle anatomy — names, kinds, snapshots &amp; identity</h2>
+  <p class="lead">A handle is a capability token, not a file object. Two <code>getFileHandle('a.txt')</code> calls give two <i>different objects</i> for the same file — identity is <code>isSameEntry()</code>, never <code>===</code>. And <code>getFile()</code> snapshots: the File you hold reflects the file at call time.</p>
+  <div class="grid g2">
+    <div class="card"><h4>Anatomy lab (OPFS-backed)</h4>
+      <button class="pri" id="b-anatomy">Run anatomy probes</button>
+      <div class="log" id="l-anatomy">idle</div>
+    </div>
+    <div class="card"><h4>Probes</h4>
+      <span class="verdict" id="v-ident"></span><span class="verdict" id="v-snap"></span><span class="verdict" id="v-move"></span><span class="verdict" id="v-fileblob"></span>
+      <p class="stat" style="margin-top:10px">Probes: object identity vs isSameEntry · getFile() snapshot freshness after a write · move() rename · File-is-a-Blob bridge (name/lastModified/slice).</p>
+    </div>
+  </div>
+  <pre><code>const root = await navigator.storage.getDirectory();      // OPFS — same handle interface
+const h1 = await root.getFileHandle('a.txt', {create:true});
+const h2 = await root.getFileHandle('a.txt');
+h1 === h2                        // false — different objects…
+await h1.isSameEntry(h2)         // true  — …same entry. Always isSameEntry.
+const file = await h1.getFile(); // File — snapshots at call time
+file.name; file.lastModified; file.size; await file.text(); file.slice(0,4) // it's a Blob</code></pre>
+</section>
+
+<!-- ============================= S3 ============================= -->
+<section id="s3">
+  <h2><span class="n">3.</span> createWritable — the swap-file model ★ the #1 data-loss gotcha</h2>
+  <p class="lead"><code>createWritable()</code> does NOT open the file. It opens a <b>swap file</b>: everything you write lands in the temp file, and only <code>close()</code> atomically swaps it over the real one. Default <code>keepExistingData:false</code> means the swap starts <b>empty</b> — write a small patch, close, and the original bytes are gone. This lab destroys a file on purpose.</p>
+  <div class="grid g2">
+    <div class="card"><h4>Data-loss lab</h4>
+      <button class="danger" id="b-loss">Write patch WITHOUT keepExistingData</button>
+      <button class="pri" id="b-keep">Write patch WITH keepExistingData</button>
+      <div class="log" id="l-loss">idle — seeds 120B "mission.log", writes 6B patch both ways</div>
+    </div>
+    <div class="card"><h4>Verdicts</h4>
+      <span class="verdict" id="v-loss"></span><span class="verdict" id="v-keep"></span><span class="verdict" id="v-close"></span>
+      <p class="stat" style="margin-top:10px">Compares file bytes before/after each write; proves close() is the commit point (file unchanged while stream open).</p>
+    </div>
+  </div>
+  <div class="warnbox"><b>The rule:</b> full-file rewrites (an editor's Save) → default is fine, write the whole buffer. Surgical patches → <code>{keepExistingData:true}</code> + seek (§4). "I opened it and wrote 6 bytes and the file became 6 bytes" is not a bug — it's the swap-file model working exactly as specified.</div>
+  <pre><code>const w = await handle.createWritable();              // swap starts EMPTY
+await w.write('PATCH!'); await w.close();             // file is now 6 bytes. Was 120.
+
+const w2 = await handle.createWritable({keepExistingData:true}); // swap = copy of file
+await w2.write('PATCH!'); await w2.close();           // first 6 bytes replaced, rest intact</code></pre>
+</section>
+
+<!-- ============================= S4 ============================= -->
+<section id="s4">
+  <h2><span class="n">4.</span> write() payloads — seek, sparse writes, truncate-grow</h2>
+  <p class="lead"><code>write()</code> takes data (string | BufferSource | Blob) or a <code>WriteParams</code> instruction: <code>{type:'seek', position}</code>, <code>{type:'write', position, data}</code>, <code>{type:'truncate', size}</code>. Two behaviors worth knowing cold: seeking <b>past EOF then writing zero-fills the gap</b> (sparse write), and truncating <b>larger</b> than the file grows it with zeros.</p>
+  <div class="grid g2">
+    <div class="card"><h4>WriteParams lab</h4>
+      <button class="pri" id="b-sparse">Seek past EOF + write</button>
+      <button class="pri" id="b-grow">Truncate-grow to 2×</button>
+      <button class="pri" id="b-patch">Positional patch @ byte 4</button>
+      <div class="log" id="l-wp">idle — hex dumps show the zero gaps</div>
+    </div>
+    <div class="card"><h4>Verdicts</h4>
+      <span class="verdict" id="v-sparse"></span><span class="verdict" id="v-grow"></span><span class="verdict" id="v-patch"></span>
+      <p class="stat" style="margin-top:10px">10-byte seed file; each lab hexdumps before/after.</p>
+    </div>
+  </div>
+  <pre><code>const w = await h.createWritable({keepExistingData:true});
+await w.write({type:'seek',  position: 40});   // cursor → 40 (file is 10B)
+await w.write(new TextEncoder().encode('X'));  // bytes 10..39 zero-filled → sparse
+await w.write({type:'truncate', size: 20});    // shrink
+await w.write({type:'truncate', size: 30});    // GROW → padded with zeros
+await w.write({type:'write', position: 4, data:'≈'}); // one-shot positional write</code></pre>
+</section>
+
+<!-- ============================= S5 ============================= -->
+<section id="s5">
+  <h2><span class="n">5.</span> Writer locks — siloed (default) vs exclusive</h2>
+  <p class="lead">Two <code>mode</code>s: <code>'siloed'</code> (default) lets multiple writers open — each gets its own swap file, and <b>the last one to close wins</b> (the classic two-tab lost-update). <code>'exclusive'</code> throws <code>NoModificationAllowedError</code> for the second writer. The question the docs don't answer cleanly: is the exclusive lock per <i>handle object</i> or per <i>entry</i>? Live probe below opens two writer streams from two different handle objects for the same file.</p>
+  <div class="grid g2">
+    <div class="card"><h4>Lock lab</h4>
+      <button class="pri" id="b-silo">Siloed: two writers, both open</button>
+      <button class="pri" id="b-excl">Exclusive: second writer throws?</button>
+      <button class="pri" id="b-excl2">Exclusive across two handle OBJECTS</button>
+      <div class="log" id="l-lock">idle</div>
+    </div>
+    <div class="card"><h4>Verdicts</h4>
+      <span class="verdict" id="v-silo"></span><span class="verdict" id="v-excl"></span><span class="verdict" id="v-excl2"></span>
+      <p class="stat" style="margin-top:10px">Also captures last-close-wins ordering in the log.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= S6 ============================= -->
+<section id="s6">
+  <h2><span class="n">6.</span> Streams integration — FileSystemWritableFileStream IS a WritableStream</h2>
+  <p class="lead">The write stream from §3–5 is literally a <code>WritableStream</code> subclass — which means the entire Streams tier plugs straight into files. <code>blob.stream().pipeTo(writable)</code> streams a big buffer to disk without holding two copies; a <code>TransformStream</code> can deframe/reformat mid-pipe. This is the OPFS↔Streams bridge the plumbing entry promised.</p>
+  <div class="grid g2">
+    <div class="card"><h4>Pipe lab — 2 MB telemetry CSV → file, via TransformStream</h4>
+      <button class="pri" id="b-pipe">Stream 2MB through pipe → file</button>
+      <div class="log" id="l-pipe">idle</div>
+    </div>
+    <div class="card"><h4>Verdicts</h4>
+      <span class="verdict" id="v-pipe"></span><span class="verdict" id="v-pipe2"></span>
+      <p class="stat" style="margin-top:10px">Proves instanceof + byte-exact round-trip through a live NDJSON→CSV TransformStream (reuses the §7 framing pattern from the streams demo).</p>
+    </div>
+  </div>
+  <pre><code>const src = new Blob([twoMegabytesOfNdjson]).stream();        // ReadableStream (bytes)
+const fmt = new TransformStream({                              // NDJSON → CSV rows
+  transform(chunk, ctrl){ for(const line of decode(chunk).split('\n')) … }});
+const dst = await handle.createWritable();                     // WritableStream subclass
+await src.pipeThrough(fmt).pipeTo(dst);                        // disk. no full-buffer copy</code></pre>
+</section>
+
+<!-- ============================= S7 ============================= -->
+<section id="s7">
+  <h2><span class="n">7.</span> Directories — create, walk, resolve, removeEntry</h2>
+  <p class="lead"><code>getDirectoryHandle('x',{create:true})</code> nests; <code>for await (const [name, handle] of dir.values())</code> — actually <code>entries()</code> — walks one level (async iteration, Baseline); <code>resolve(fileHandle)</code> computes the relative path from the dir to the file; <code>removeEntry(name,{recursive:true})</code> deletes trees — and throws <code>InvalidModificationError</code> on a non-empty dir without <code>recursive</code>.</p>
+  <div class="grid g2">
+    <div class="card"><h4>Tree lab</h4>
+      <button class="pri" id="b-tree">Build + walk mission tree</button>
+      <button class="pri" id="b-resolve">resolve() paths</button>
+      <button class="danger" id="b-rm">removeEntry non-recursive → throws</button>
+      <div class="log" id="l-tree">idle — builds missions/2026-08/{logs,evidence}/… then walks it</div>
+    </div>
+    <div class="card"><h4>Verdicts</h4>
+      <span class="verdict" id="v-tree"></span><span class="verdict" id="v-resolve"></span><span class="verdict" id="v-rm"></span>
+      <p class="stat" style="margin-top:10px">Recursive async walk with indent rendering; resolve() on a nested file; non-empty remove error name captured.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= S8 ============================= -->
+<section id="s8">
+  <h2><span class="n">8.</span> FileSystemObserver — change records without polling ★</h2>
+  <p class="lead">Chrome 133+ ships the watch primitive the platform never had: <code>new FileSystemObserver(cb)</code>, <code>observe(dirOrFileHandle)</code>, records arrive with <code>type</code> (<code>appeared / modified / disappeared / moved</code>…) and a <code>changedHandle</code>. It watches <b>OPFS too</b> — this lab observes a sandbox dir, mutates it, and shows the records landing. No polling loop anywhere.</p>
+  <div class="grid g2">
+    <div class="card"><h4>Observer lab (OPFS dir)</h4>
+      <button class="pri" id="b-obs">Observe → create → write → remove</button>
+      <div class="log" id="l-obs">idle — records appear below as they fire</div>
+    </div>
+    <div class="card"><h4>Verdicts</h4>
+      <span class="verdict" id="v-obs"></span><span class="verdict" id="v-obs2"></span>
+      <p class="stat" style="margin-top:10px">Expects: appeared(fan.log) → modified(write) → disappeared(remove). Times each record's latency from mutation.</p>
+    </div>
+  </div>
+  <div class="odbox">
+    <h4>OpenDrones — the folder watch</h4>
+    <p style="font-size:13.5px;color:#cbd5e1">User picks their <code>~/missions</code> folder once (<code>showDirectoryPicker({mode:'readwrite'})</code>) → observer watches the active day's dir → GCS writes a new log segment ⇒ <span style="color:#6ee7b7">modified</span> record ⇒ Mission Control tails it like <code>tail -f</code>, no 500ms stat-poll, no Service Worker hack. The record's <code>changedHandle</code> is already a handle — feed it straight into the §6 pipe.</p>
+  </div>
+  <pre><code>const obs = new FileSystemObserver((records) => {
+  for (const r of records)
+    console.log(r.type, r.changedHandle.kind, r.changedHandle.name); // 'modified','file','fan.log'
+});
+await obs.observe(dirHandle);   // dir or file. OPFS works. disconnect() to stop.</code></pre>
+</section>
+
+<!-- ============================= S9 ============================= -->
+<section id="s9">
+  <h2><span class="n">9.</span> createSyncAccessHandle — the mmap-feel escape hatch (Worker-only)</h2>
+  <p class="lead"><code>createSyncAccessHandle()</code> gives synchronous <code>read/write/seek/truncate/flush</code> on a fixed window — but only inside a <b>Worker</b>, and in practice only for OPFS files (it's the high-throughput lane under WASM-SQLite). <b>Live-falsified here:</b> the method is not merely rejected on the main thread — it is <b>absent from the main-thread prototype entirely</b> (<code>proto = constructor, createWritable, getFile, move</code>); Chromium injects it only in Worker contexts. So <code>typeof fh.createSyncAccessHandle</code> on the main thread is always <code>undefined</code> — capability-detect from <i>inside</i> the worker.</p>
+  <div class="grid g2">
+    <div class="card"><h4>Sync handle lab</h4>
+      <button class="pri" id="b-sync">Main-thread throw → Worker round-trip</button>
+      <div class="log" id="l-sync">idle</div>
+    </div>
+    <div class="card"><h4>Verdicts</h4>
+      <span class="verdict" id="v-sync"></span><span class="verdict" id="v-sync2"></span>
+      <p class="stat" style="margin-top:10px">Worker writes 64KB, flushes, reads back a checksum. Measures the postMessage-with-handle round trip too.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= S10 ============================= -->
+<section id="s10">
+  <h2><span class="n">10.</span> Persistence — handles in IndexedDB &amp; the permission clock</h2>
+  <p class="lead">Handles are <b>structured-cloneable</b>: store one in IndexedDB, reload the page, read it back, and your "project" reopens — no picker. The catch: granted <code>readwrite</code> permission on <i>user-picked</i> files expires (≈1 week Chromium, tab-close dependent), and re-granting needs a user gesture. OPFS handles stay granted (it's the app's own sandbox).</p>
+  <div class="grid g2">
+    <div class="card"><h4>Reopen-your-project lab</h4>
+      <button class="pri" id="b-idb">Store handle → read back → isSameEntry</button>
+      <div class="log" id="l-idb">idle — tiny bare IndexedDB promise wrapper, no libraries</div>
+    </div>
+    <div class="card"><h4>Verdicts</h4>
+      <span class="verdict" id="v-idb"></span><span class="verdict" id="v-idb2"></span><span class="verdict" id="v-perm"></span>
+      <p class="stat" style="margin-top:10px">Plus: queryPermission on the OPFS root (expect 'granted' — chip).</p>
+    </div>
+  </div>
+  <pre><code>await idbPut('handles', fileHandle, 'project');   // store the CAPABILITY
+// …reload…
+const h = await idbGet('handles', 'project');
+await h.queryPermission({mode:'readwrite'});      // 'granted' or 'prompt'
+await h.requestPermission({mode:'readwrite'});    // MUST be inside a click handler</code></pre>
+</section>
+
+<!-- ============================= S11 ============================= -->
+<section id="s11">
+  <h2><span class="n">11.</span> The picker lab — open, edit-in-place, save, watch (real browser)</h2>
+  <p class="lead">Everything above ran on OPFS handles. This section needs a <b>real user gesture in a real browser</b> (Chromium desktop — headless/other engines will surface the honest error name in each verdict chip). The mini editor is the killer app: open a real text file, edit, <b>save back to the same file on disk</b> — no download-copy, no <code>(1).txt</code>.</p>
+  <div class="grid g2">
+    <div class="card"><h4>Mini editor (open → edit → save in place)</h4>
+      <p style="font-size:12.5px;color:var(--mut);margin-bottom:8px" id="ed-state">no file open</p>
+      <textarea id="ed-text" disabled placeholder="Open a .txt/.md/.json/.csv to begin…"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <button class="pri" id="ed-open">Open file…</button>
+        <button class="pri" id="ed-save" disabled>Save to disk</button>
+        <button id="ed-stat" disabled>Stat file</button>
+      </div>
+      <div class="log" id="l-ed" style="margin-top:10px">idle</div>
+    </div>
+    <div class="card"><h4>Other pickers</h4>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="p-open">Open picker (filtered)</button>
+        <button id="p-save">Save picker</button>
+        <button id="p-dir">Directory picker</button>
+        <button id="p-obs">Pick dir + observe</button>
+      </div>
+      <div class="drop" id="drop">…or drag a file onto this box (getAsFileSystemHandle)</div>
+      <div class="log" id="l-pick" style="margin-top:10px">idle</div>
+    </div>
+  </div>
+  <span class="verdict" id="v-pick1"></span><span class="verdict" id="v-pick2"></span><span class="verdict" id="v-pick3"></span><span class="verdict" id="v-pick4"></span>
+  <div class="warnbox"><b>Headless check:</b> in this environment the pickers throw (SecurityError — no transient activation path, or AbortError); the chips record whatever the engine honestly reports. In a real Chromium the same buttons open native dialogs.</div>
+</section>
+
+<!-- ============================= S12 ============================= -->
+<section id="s12">
+  <h2><span class="n">12.</span> Ship map — fallback ladder, feature detects, capstones</h2>
+  <p class="lead">The picker layer is ~70% (Chromium-only), the handle layer ~99%. Ship the ladder:</p>
+  <table>
+    <tr><th>Want</th><th>Chromium path</th><th>Everywhere-else path</th></tr>
+    <tr><td>Open a file</td><td><code>showOpenFilePicker()</code> → handle → getFile()</td><td><code>&lt;input type=file&gt;</code> → File (no write-back, no handle)</td></tr>
+    <tr><td>Save / export</td><td><code>showSaveFilePicker()</code> + streams (§6)</td><td><code>URL.createObjectURL(blob)</code> + <code>&lt;a download&gt;</code> click</td></tr>
+    <tr><td>Open a folder</td><td><code>showDirectoryPicker()</code> + walk (§7)</td><td><code>&lt;input webkitdirectory&gt;</code> (FileList with webkitRelativePath)</td></tr>
+    <tr><td>Watch changes</td><td><code>FileSystemObserver</code> (§8)</td><td>poll <code>getFile().lastModified</code> on an interval</td></tr>
+    <tr><td>Persistent workspace</td><td>pick once + IndexedDB handle + permissions (§10)</td><td>OPFS (invisible to the user, always granted)</td></tr>
+  </table>
+  <pre><code>const canPick = 'showOpenFilePicker' in window;                  // picker layer
+const hasHandles = 'FileSystemFileHandle' in window;             // handle layer
+const canWatch = 'FileSystemObserver' in window;                 // observer layer
+async function openTextFile(){
+  if (canPick)  return (await showOpenFilePicker({types:[{accept:{'text/*':['.txt','.md','.json','.csv']}}]}))[0];
+  return null; // fall back to &lt;input type=file&gt; — returns a File, not a handle
+}</code></pre>
+  <div class="odbox">
+    <h4>Where it earns its keep</h4>
+    <div class="odlog" id="l-cap">▸ OpenDrones: pick ~/missions once → observer tails the day's logs (§8) · telemetry export pipes 2MB+ straight to disk (§6) · evidence notes edited in place (§11) · OPFS remains the offline cache tier (already cataloged).
+▸ Molt Studios: local-first client tools — brand-kit editor that opens the client's REAL asset folder, autosaves drafts to a real .md (no "download (1).txt"), handoff bundles exported via save picker + streams. Pair with Web Locks for multi-tab single-writer (already cataloged).</div>
+  </div>
+  <p class="stat" style="margin-top:12px">Verification trail: this page was live-probed headless (Chromium) — badges, all OPFS-backed labs, verdict chips, console-error count — before cataloging. Sources: MDN FileSystem{Handle,FileHandle,DirectoryHandle,WritableFileStream,Observer} + Window.show*FilePicker (fetched 2026-08-28), BCD 8.0.13, WICG file-system-access spec, whatwg/fs PR #165, developer.chrome.com observer announcement.</p>
+</section>
+
+<footer>File System Access API · research demo · jin · 2026-08-28 · handle labs run on OPFS-backed handles — same interface the pickers return</footer>
+</div>
+
+<script>
+/* ============================================================ utils */
+const $=id=>document.getElementById(id);
+const enc=s=>new TextEncoder().encode(s);
+async function hex(h,max=48){const b=new Uint8Array(await (await h.getFile()).arrayBuffer());let s='';for(let i=0;i<Math.min(b.length,max);i++)s+=b[i].toString(16).padStart(2,'0')+(i%2?' ':'');return s||'(empty)'+` [${b.length}B]`;}
+async function size(h){return (await h.getFile()).size;}
+function log(el,cls,msg){const d=document.createElement('div');d.innerHTML=`<span class="${cls}">${msg}</span>`;if(el.textContent==='idle'||el.textContent.startsWith('idle'))el.innerHTML='';el.appendChild(d);el.scrollTop=el.scrollHeight;}
+function chip(id,ok,text,warn){const c=$(id);if(!c)return;c.className='verdict '+(ok?'ok':(warn?'warn':'bad'));c.textContent=(ok?'✓ ':warn?'⚠ ':'✗ ')+text;}
+const ROOT_KEY='fsaccess-8-28';
+async function lab(){const r=await navigator.storage.getDirectory();return r.getDirectoryHandle(ROOT_KEY,{create:true});}
+async function seed(name,bytes){const d=await lab();const h=await d.getFileHandle(name,{create:true});const w=await h.createWritable();await w.write(bytes);await w.close();return h;}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+/* ============================================================ badges */
+(async()=>{
+  const d=await lab();const fh=await d.getFileHandle('.probe',{create:true});
+  const b=[
+    ['Secure context',isSecureContext],
+    ['Handle layer (getFile)',typeof fh.getFile==='function'],
+    ['createWritable',typeof fh.createWritable==='function'],
+    ['createSyncAccessHandle (main thread: absent by design)',typeof fh.createSyncAccessHandle==='function'],
+    ['Pickers (showOpenFilePicker)','showOpenFilePicker' in window],
+    ['requestPermission',typeof fh.queryPermission==='function'],
+    ['drag-drop getAsFileSystemHandle','getAsFileSystemHandle' in DataTransferItem.prototype],
+    ['FileSystemObserver','FileSystemObserver' in window],
+    ['move()',typeof fh.move==='function'],
+  ];
+  const el=$('badges');
+  const ua=navigator.userAgent;const name=/Edg\//.test(ua)?'Edge':/Firefox\//.test(ua)?'Firefox':(/Chrome\//.test(ua)?'Chromium':'Safari-family');
+  const m=document.createElement('span');m.className='badge';m.textContent='engine: '+name+' · '+(/Chrome\/(\d+)/.exec(ua)||[0,'?'])[1];el.appendChild(m);
+  for(const[label,on]of b){const s=document.createElement('span');s.className='badge '+(on?'on':'off');s.textContent=(on?'✓ ':'✗ ')+label;el.appendChild(s);}
+})();
+
+/* ============================================================ S2 anatomy */
+$('b-anatomy').onclick=async()=>{
+  const L=$('l-anatomy');
+  try{
+    const d=await lab();
+    const h1=await d.getFileHandle('anatomy.txt',{create:true});
+    let w=await h1.createWritable();await w.write('HELLO-FILES-TIER-2026');await w.close();
+    const h2=await d.getFileHandle('anatomy.txt');
+    log(L,'dim',`h1===h2 → <span class="y">${h1===h2}</span>`);
+    const same=await h1.isSameEntry(h2);
+    chip('v-ident',same,'isSameEntry(h1,h2) → '+same+' (objects differ)');
+    log(L,same?'g':'r',`isSameEntry → ${same} · kind=${h1.kind} name=${h1.name}`);
+    // snapshot freshness
+    const f1=await h1.getFile();
+    w=await h1.createWritable({keepExistingData:true});await w.write({type:'seek',position:f1.size});await w.write('-APPENDED');await w.close();
+    const f2=await h1.getFile();
+    const snapFresh = f1.size!==f2.size && f2.size===f1.size+'-APPENDED'.length;
+    chip('v-snap',snapFresh,`getFile() snapshot: held File=${f1.size}B, re-get=${f2.size}B`);
+    log(L,snapFresh?'g':'r',`snapshot: f1.size=${f1.size} (frozen at call) · f2.size=${f2.size}`);
+    // File is a Blob
+    const f=await h1.getFile();
+    const blobOK=f instanceof Blob && f.name==='anatomy.txt' && typeof f.slice==='function' && typeof f.lastModified==='number';
+    chip('v-fileblob',blobOK,`File instanceof Blob · name/lastModified/slice ✓`);
+    log(L,blobOK?'g':'r',`File{ name:${f.name} lastModified:${f.lastModified} size:${f.size} } instanceof Blob:${f instanceof Blob}`);
+    // move()
+    if(typeof h1.move==='function'){
+      const h3=await d.getFileHandle('anatomy-renamed.txt',{create:true});await (await h3.createWritable()).close();
+      await h1.move('anatomy2.txt');
+      const still=await d.getFileHandle('anatomy.txt').then(()=>true).catch(()=>false);
+      chip('v-move',!still,'move("anatomy2.txt") — rename in place ✓');
+      log(L,'g','move(newName) executed');
+    } else chip('v-move',false,'move() absent',true);
+  }catch(e){log(L,'r','ERR '+e.name+': '+e.message);chip('v-ident',false,e.name);}
+};
+
+/* ============================================================ S3 data loss */
+async function lossRun(mode){
+  const L=$('l-loss');log(L,'dim',`— run ${mode?'WITH':'WITHOUT'} keepExistingData —`);
+  const h=await seed('mission.log','X'.repeat(120));
+  log(L,'dim',`seeded 120B · before: <span class="y">${await hex(h,24)}…</span>`);
+  const w=await h.createWritable({keepExistingData:!!mode});
+  await w.write('PATCH!');
+  // prove close() is the commit point: file should still be 120B mid-stream
+  const midSize=await size(h);
+  await w.close();
+  const after=await size(h);
+  return {h,midSize,after};
+}
+$('b-loss').onclick=async()=>{
+  const L=$('l-loss');
+  try{
+    const r=await lossRun(false);
+    log(L,'y',`mid-stream size=${r.midSize}B (unchanged — swap not committed)`);
+    log(L,r.after===6?'r':'g',`after close: ${r.after}B — ${r.after===6?'ORIGINAL BYTES DESTROYED (the gotcha)':'unexpected'}`);
+    log(L,'dim',`bytes: ${await hex(r.h,16)}`);
+    chip('v-loss',r.after===6,'no-keep: 120B → '+r.after+'B (data destroyed by design)');
+    chip('v-close',r.midSize===120,'mid-stream file still 120B → close() is the commit');
+  }catch(e){log(L,'r','ERR '+e.name+': '+e.message);chip('v-loss',false,e.name);}
+};
+$('b-keep').onclick=async()=>{
+  const L=$('l-loss');
+  try{
+    const r=await lossRun(true);
+    log(L,r.after===120?'g':'y',`after close: ${r.after}B — ${r.after===120?'first 6 bytes patched, 114 intact':'check'}`);
+    log(L,'dim',`bytes: ${await hex(r.h,24)}`);
+    chip('v-keep',r.after===120,'keepExistingData: patch in place, rest intact ('+r.after+'B)');
+  }catch(e){log(L,'r','ERR '+e.name+': '+e.message);chip('v-keep',false,e.name);}
+};
+
+/* ============================================================ S4 writeparams */
+$('b-sparse').onclick=async()=>{
+  const L=$('l-wp');
+  try{
+    const h=await seed('sparse.bin',enc('0123456789'));
+    log(L,'dim',`seed 10B: ${await hex(h)}`);
+    const w=await h.createWritable({keepExistingData:true});
+    await w.write({type:'seek',position:40});
+    await w.write(enc('X'));
+    await w.close();
+    const s=await size(h);
+    const b=new Uint8Array(await (await h.getFile()).arrayBuffer());
+    const gapOK=s===41&&b[10]===0&&b[39]===0&&b[40]===0x58&&b[0]===0x30;
+    log(L,gapOK?'g':'y',`after seek(40)+write: ${s}B — bytes 10..39 zero-filled, X lands at [40]`);
+    log(L,'dim',`hex: ${await hex(h)}`);
+    chip('v-sparse',gapOK,'seek past EOF → 41B sparse (zero gap 10–39)');
+  }catch(e){log(L,'r','ERR '+e.name+': '+e.message);chip('v-sparse',false,e.name);}
+};
+$('b-grow').onclick=async()=>{
+  const L=$('l-wp');
+  try{
+    const h=await seed('grow.bin',enc('AAAAAAAAAAAAAAAAAAAA'));
+    const w=await h.createWritable({keepExistingData:true});
+    await w.write({type:'truncate',size:40});
+    await w.close();
+    const s=await size(h);
+    const b=new Uint8Array(await (await h.getFile()).arrayBuffer());
+    const growOK=s===40&&b[19]===0x41&&b[20]===0&&b[39]===0;
+    log(L,growOK?'g':'y',`truncate(40) on 20B file → ${s}B (grew) · tail bytes 20..39 = ${b[20]},${b[39]} (zeros)`);
+    chip('v-grow',growOK,'truncate CAN grow: 20B → 40B zero-padded');
+  }catch(e){log(L,'r','ERR '+e.name+': '+e.message);chip('v-grow',false,e.name);}
+};
+$('b-patch').onclick=async()=>{
+  const L=$('l-wp');
+  try{
+    const h=await seed('patch.bin',enc('AAAABBBBCCCC'));
+    const w=await h.createWritable({keepExistingData:true});
+    await w.write({type:'write',position:4,data:enc('xy')});
+    await w.close();
+    const t=await (await h.getFile()).text();
+    const ok=t==='AAAAxyBBCCCC'.slice(0,12)&&t.slice(4,6)==='xy';
+    log(L,ok?'g':'y',`positional write @4 → "${t}" (bytes 4–5 replaced, length still 12)`);
+    chip('v-patch',t.length===12&&t.slice(4,6)==='xy','{type:"write",position:4} surgical patch ✓');
+  }catch(e){log(L,'r','ERR '+e.name+': '+e.message);chip('v-patch',false,e.name);}
+};
+
+/* ============================================================ S5 locks */
+$('b-silo').onclick=async()=>{
+  const L=$('l-lock');
+  try{
+    const h=await seed('lock.txt',enc('0123456789'));
+    const w1=await h.createWritable();const w2=await h.createWritable();
+    log(L,'g','siloed: BOTH writers opened (each gets its own swap file)');
+    await w1.write('FROM-WRITER-ONE');
+    await w2.write('TWO!');
+    await w1.close();
+    log(L,'dim',`after close#1 (w1 "FROM-WRITER-ONE"): file=${JSON.stringify(await (await h.getFile()).text())}`);
+    await w2.close();
+    const t=await (await h.getFile()).text();
+    log(L,t==='TWO!'?'y':'r',`after close#2 (w2 "TWO!"): file=${JSON.stringify(t)} — LAST close wins`);
+    chip('v-silo',t==='TWO!','siloed: both open; last close wins ("'+t+'")');
+  }catch(e){log(L,'r','ERR '+e.name+': '+e.message);chip('v-silo',false,e.name);}
+};
+$('b-excl').onclick=async()=>{
+  const L=$('l-lock');
+  try{
+    const h=await seed('lock2.txt',enc('0123456789'));
+    const w1=await h.createWritable({mode:'exclusive'});
+    let err='';
+    try{await h.createWritable({mode:'exclusive'});}catch(e){err=e.name;}
+    await w1.close();
+    log(L,err==='NoModificationAllowedError'?'g':'y',`second exclusive open on SAME handle → ${err||'no error'}`);
+    chip('v-excl',err==='NoModificationAllowedError','exclusive: 2nd writer → '+err);
+  }catch(e){log(L,'r','ERR '+e.name+': '+e.message);chip('v-excl',false,e.name);}
+};
+$('b-excl2').onclick=async()=>{
+  const L=$('l-lock');
+  try{
+    const d=await lab();
+    await d.removeEntry('lock3.txt').catch(()=>{});
+    const h1=await d.getFileHandle('lock3.txt',{create:true});
+    await (async()=>{const w=await h1.createWritable();await w.write('0123456789');await w.close();})();
+    const h2=await d.getFileHandle('lock3.txt');
+    const w1=await h1.createWritable({mode:'exclusive'});
+    let err='';
+    try{await h2.createWritable({mode:'exclusive'});}catch(e){err=e.name;}
+    await w1.close();
+    const perEntry=err==='NoModificationAllowedError';
+    log(L,perEntry?'g':'y',`two DIFFERENT handle objects, same entry → 2nd exclusive open: ${err||'ALLOWED'}`);
+    log(L,'dim',perEntry?'⇒ the exclusive lock is per-ENTRY (browser-level), not per-handle-object':'⇒ lock appears scoped to the handle object');
+    chip('v-excl2',true,perEntry?'exclusive lock is per-ENTRY across handle objects':'lock per handle-object (this engine)',!perEntry);
+  }catch(e){log(L,'r','ERR '+e.name+': '+e.message);chip('v-excl2',false,e.name);}
+};
+
+/* ============================================================ S6 pipe */
+$('b-pipe').onclick=async()=>{
+  const L=$('l-pipe');
+  try{
+    const d=await lab();
+    // build ~2MB of NDJSON
+    const rows=[];const t0=performance.now();
+    for(let i=0;i<60000;i++)rows.push(`{"t":${(i*0.02).toFixed(2)},"alt":${(100+i%900)},"vbat":${(14.8-i%40*0.05).toFixed(2)}}`);
+    const nd=rows.join('\n');
+    const blob=new Blob([nd]);
+    const h=await d.getFileHandle('telemetry.csv',{create:true});
+    const dst=await h.createWritable();
+    const isWS=dst instanceof WritableStream;
+    log(L,'dim',`source: ${(blob.size/1048576).toFixed(2)}MB NDJSON · dst instanceof WritableStream → <span class="y">${isWS}</span>`);
+    chip('v-pipe',isWS,'FileSystemWritableFileStream instanceof WritableStream → '+isWS);
+    // NDJSON → CSV via TransformStream with residual carry (§7 pattern from streams demo)
+    let buf='';let count=0;let header=false;
+    const dec=new TextDecoder();const encd=new TextEncoder();
+    const fmt=new TransformStream({
+      transform(chunk,ctrl){
+        buf+=dec.decode(chunk,{stream:true});
+        const lines=buf.split('\n');buf=lines.pop();
+        for(const ln of lines){
+          if(!ln)continue;
+          const o=JSON.parse(ln);
+          if(!header){ctrl.enqueue(encd.encode('t,alt,vbat\n'));header=true;}
+          ctrl.enqueue(encd.encode(`${o.t},${o.alt},${o.vbat}\n`));count++;
+        }
+      },
+      flush(ctrl){
+        if(buf){const o=JSON.parse(buf);if(!header)ctrl.enqueue(encd.encode('t,alt,vbat\n'));ctrl.enqueue(encd.encode(`${o.t},${o.alt},${o.vbat}\n`));count++;}
+      }
+    });
+    const t1=performance.now();
+    await blob.stream().pipeThrough(fmt).pipeTo(dst);
+    const wrote=performance.now();
+    const back=await (await h.getFile()).text();
+    const lines=back.split('\n').filter(Boolean);
+    const exact=lines[0]==='t,alt,vbat'&&lines.length===count+1&&/^0,100,14\.8$/.test(lines[1]||'');
+    log(L,exact?'g':'y',`piped ${count} rows in ${(wrote-t1).toFixed(0)}ms · read-back: ${lines.length} lines (incl. header) · header=${JSON.stringify(lines[0])} · first=${JSON.stringify(lines[1])}`);
+    log(L,'dim',`total (incl. 2MB synth): ${(performance.now()-t0).toFixed(0)}ms · file size: ${(await size(h)/1048576).toFixed(2)}MB`);
+    chip('v-pipe2',exact,count+' rows, byte-exact CSV (header+'+count+' lines)');
+  }catch(e){log(L,'r','ERR '+e.name+': '+e.message);chip('v-pipe',false,e.name);chip('v-pipe2',false,e.name);}
+};
+
+/* ============================================================ S7 dirs */
+$('b-tree').onclick=async()=>{
+  const L=$('l-tree');
+  try{
+    const d=await lab();
+    const m=await d.getDirectoryHandle('missions',{create:true});
+    const day=await m.getDirectoryHandle('2026-08-28',{create:true});
+    const logs=await day.getDirectoryHandle('logs',{create:true});
+    const ev=await day.getDirectoryHandle('evidence',{create:true});
+    for(const f of ['fan.log','gps.log','batt.log']){const w=await (await logs.getFileHandle(f,{create:true})).createWritable();await w.write('seed-'+f);await w.close();}
+    {const w=await (await ev.getFileHandle('frame-107.png',{create:true})).createWritable();await w.write(new Uint8Array([137,80,78,71]));await w.close();}
+    // recursive walk
+    const out=[];
+    async function walk(dir,depth){
+      for await(const [name,handle] of dir.entries()){
+        out.push('  '.repeat(depth)+(handle.kind==='directory'?'▸ ':'  ')+name);
+        if(handle.kind==='directory')await walk(handle,depth+1);
+      }
+    }
+    await walk(d,0);
+    const found=out.filter(l=>l.includes('▸')).length;
+    log(L,'g','recursive walk ('+out.length+' entries):');log(L,'dim',out.join('\n'));
+    const hasAll=['fan.log','gps.log','batt.log','frame-107.png','missions'].every(n=>out.some(l=>l.trim().endsWith(n)||l.trim().startsWith('▸ '+n)||l.includes(n)));
+    const crswap=out.filter(l=>l.includes('.crswap'));
+    if(crswap.length)log(L,'y','note: .crswap swap-file remnants visible in the walk — filter them in production walks');
+    chip('v-tree',hasAll,'built + walked nested tree ('+out.length+' entries, async iteration)');
+  }catch(e){log(L,'r','ERR '+e.name+': '+e.message);chip('v-tree',false,e.name);}
+};
+$('b-resolve').onclick=async()=>{
+  const L=$('l-tree');
+  try{
+    const d=await lab();
+    const logs=await (await d.getDirectoryHandle('missions',{create:true})).getDirectoryHandle('2026-08-28',{create:true}).then(x=>x.getDirectoryHandle('logs',{create:true}));
+    const fh=await logs.getFileHandle('fan.log',{create:true});
+    const fromLogs=await logs.resolve(fh);
+    const fromDay=await (await d.getDirectoryHandle('missions').then(m=>m.getDirectoryHandle('2026-08-28'))).resolve(fh);
+    const ok=JSON.stringify(fromLogs)==='["fan.log"]'&&JSON.stringify(fromDay)==='["logs","fan.log"]';
+    log(L,ok?'g':'y',`resolve from …/logs → ${JSON.stringify(fromLogs)}`);
+    log(L,'dim',`resolve from …/2026-08-28 → ${JSON.stringify(fromDay)}`);
+    chip('v-resolve',ok,'resolve() → relative paths '+JSON.stringify(fromDay));
+  }catch(e){log(L,'r','ERR '+e.name+': '+e.message);chip('v-resolve',false,e.name);}
+};
+$('b-rm').onclick=async()=>{
+  const L=$('l-tree');
+  try{
+    const d=await lab();
+    const day=await (await d.getDirectoryHandle('missions',{create:true})).getDirectoryHandle('2026-08-28',{create:true});
+    let err='';
+    try{await day.removeEntry('logs');}catch(e){err=e.name;}
+    log(L,err?'y':'r',`removeEntry('logs') non-recursive on NON-EMPTY dir → ${err||'NO ERROR (deleted!)'}`);
+    await day.removeEntry('logs',{recursive:true});
+    const gone=await day.getDirectoryHandle('logs').then(()=>false).catch(()=>true);
+    log(L,gone?'g':'r',`removeEntry('logs',{recursive:true}) → ${gone?'tree gone':'still there'}`);
+    chip('v-rm',err==='InvalidModificationError'&&gone,'non-empty rm → '+err+'; recursive ✓');
+  }catch(e){log(L,'r','ERR '+e.name+': '+e.message);chip('v-rm',false,e.name);}
+};
+
+/* ============================================================ S8 observer */
+$('b-obs').onclick=async()=>{
+  const L=$('l-obs');
+  try{
+    if(!('FileSystemObserver' in window)){chip('v-obs',false,'FileSystemObserver absent (engine < Ch 133)',true);log(L,'y','observer not shipped in this engine');return;}
+    const d=await lab();
+    await d.removeEntry('watched',{recursive:true}).catch(()=>{});
+    const wd=await d.getDirectoryHandle('watched',{create:true});
+    const records=[];const times=[];
+    const obs=new FileSystemObserver((recs)=>{for(const r of recs){records.push(r);times.push(performance.now());
+      if(!r.changedHandle){log(L,'y',`record: <span class="y">${r.type}</span> changedHandle=<b>null</b> — guard it! (extra record type this engine emits)`);continue;}
+      log(L,'g',`record: <span class="y">${r.type}</span> ${r.changedHandle.kind} "${r.changedHandle.name}"`);}});
+    await obs.observe(wd);
+    log(L,'dim','observing watched/ — mutating…');
+    const h=await wd.getFileHandle('fan.log',{create:true});
+    const w=await h.createWritable();await w.write('v1');await w.close();
+    const w2=await h.createWritable();await w2.write('v2-longer');await w2.close();
+    await sleep(400);
+    await wd.removeEntry('fan.log');
+    // wait for records to settle
+    const t0=performance.now();
+    while(records.length<3&&performance.now()-t0<3000)await sleep(100);
+    obs.disconnect();
+    const types=records.map(r=>r.type);
+    const hasA=types.includes('appeared'),hasM=types.includes('modified'),hasD=types.includes('disappeared');
+    const nullHandles=records.filter(r=>!r.changedHandle).length;
+    chip('v-obs',hasA&&hasD,'records: '+types.join(' → '));
+    chip('v-obs2',nullHandles===0,'no polling: '+records.length+' records'+(nullHandles?' · '+nullHandles+' with changedHandle:null (guard!)':' (all with handles)'),nullHandles>0);;
+    log(L,'dim','disconnect() called — total records: '+records.length);
+  }catch(e){log(L,'r','ERR '+e.name+': '+e.message);chip('v-obs',false,e.name);}
+};
+
+/* ============================================================ S9 sync handles */
+const WORKER_SRC=`
+self.onmessage=async(e)=>{
+  const {dirKey}=e.data;let root=await navigator.storage.getDirectory();
+  if(dirKey)root=await root.getDirectoryHandle(dirKey,{create:true});
+  const h=await root.getFileHandle('sync.bin',{create:true});
+  const sa=await h.createSyncAccessHandle();
+  const buf=new Uint8Array(65536);
+  for(let i=0;i<buf.length;i++)buf[i]=i&255;
+  const t0=performance.now();
+  sa.write(buf,{at:0});
+  sa.flush();
+  const rd=new Uint8Array(sa.getSize());
+  sa.read(rd,{at:0});
+  let sum=0;for(const b of rd)sum=(sum+b)>>>0;
+  sa.close();
+  const ms=(performance.now()-t0).toFixed(1);
+  let sumOK=true;for(let i=0;i<rd.length;i++)if(rd[i]!==(i&255)){sumOK=false;break;}
+  self.postMessage({ok:sumOK,size:rd.length,ms});
+};`;
+$('b-sync').onclick=async()=>{
+  const L=$('l-sync');
+  try{
+    const d=await lab();
+    const fh=await d.getFileHandle('sync-main.bin',{create:true});
+    let mainErr='';
+    try{await fh.createSyncAccessHandle();}catch(e){mainErr=e.name+': '+e.message;}
+    log(L,mainErr?'y':'r',`main-thread createSyncAccessHandle → ${mainErr||'NO ERROR'} — method absent from main-thread prototype (worker-only exposure)`);
+    chip('v-sync',/not a function/.test(mainErr),'main thread → not a function (proto lacks it; worker-only)');
+    const url=URL.createObjectURL(new Blob([WORKER_SRC],{type:'text/javascript'}));
+    const wk=new Worker(url);
+    const t0=performance.now();
+    wk.postMessage({dirKey:ROOT_KEY});
+    const res=await new Promise((res,rej)=>{wk.onmessage=ev=>res(ev.data);wk.onerror=er=>rej(new Error(er.message||'worker error'));setTimeout(()=>rej(new Error('worker timeout')),8000);});
+    const rtt=Math.round(performance.now()-t0);
+    log(L,res.ok?'g':'r',`worker: createSyncAccessHandle → 64KB write+flush+read+verify in ${res.ms}ms (handle obtained INSIDE worker via OPFS)`);
+    log(L,'dim',`worker round-trip incl. spawn: ${rtt}ms · verified ${res.size}B pattern-exact`);
+    chip('v-sync2',res.ok,'worker sync write/read: 64KB verified in '+res.ms+'ms');
+    wk.terminate();URL.revokeObjectURL(url);
+  }catch(e){log(L,'r','ERR '+e.name+': '+e.message);chip('v-sync2',false,e.name);}
+};
+
+/* ============================================================ S10 idb */
+function idb(){
+  const dbp=new Promise((res,rej)=>{const q=indexedDB.open('fsaccess-demo',1);q.onupgradeneeded=()=>q.result.createObjectStore('handles');q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});
+  return{
+    async put(key,val){const db=await dbp;return new Promise((res,rej)=>{const tx=db.transaction('handles','readwrite');tx.objectStore('handles').put(val,key);tx.oncomplete=res;tx.onerror=()=>rej(tx.error);});},
+    async get(key){const db=await dbp;return new Promise((res,rej)=>{const tx=db.transaction('handles','readonly');const r=tx.objectStore('handles').get(key);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
+  };
+}
+$('b-idb').onclick=async()=>{
+  const L=$('l-idb');
+  try{
+    const d=await lab();
+    const h=await d.getFileHandle('project.md',{create:true});
+    {const w=await h.createWritable();await w.write('# client brief — reopen me');await w.close();}
+    const store=idb();
+    await store.put('project',h);
+    log(L,'g','handle stored in IndexedDB (structured clone of a capability object)');
+    const back=await store.get('project');
+    const ok=back&&await h.isSameEntry(back);
+    const rd=await (await back.getFile()).text();
+    log(L,ok?'g':'r',`read back: isSameEntry=${ok} · getFile().text()=${JSON.stringify(rd.slice(0,30))}…`);
+    chip('v-idb',!!ok,'handle survived IndexedDB round-trip (isSameEntry ✓)');
+    chip('v-idb2',rd==='# client brief — reopen me','stored file reads back through the revived handle');
+    try{
+      const p=await h.queryPermission({mode:'readwrite'});
+      log(L,'dim',`queryPermission(readwrite) on OPFS handle → ${p}`);
+      chip('v-perm',p==='granted','OPFS queryPermission → "'+p+'" (sandbox = always granted)');
+    }catch(e){log(L,'y','queryPermission: '+e.name);chip('v-perm',false,e.name,true);}
+  }catch(e){log(L,'r','ERR '+e.name+': '+e.message);chip('v-idb',false,e.name);}
+};
+
+/* ============================================================ S11 pickers */
+let ED=null;
+$('ed-open').onclick=async()=>{
+  const L=$('l-ed');
+  if(!('showOpenFilePicker' in window)){chip('v-pick1',false,'pickers absent in this engine',true);log(L,'y','no picker layer');return;}
+  try{
+    [ED]=await showOpenFilePicker({types:[{description:'Text',accept:{'text/plain':['.txt','.md','.json','.csv']}}]});
+    const f=await ED.getFile();
+    $('ed-text').value=await f.text();$('ed-text').disabled=false;
+    $('ed-save').disabled=false;$('ed-stat').disabled=false;
+    $('ed-state').textContent=`${f.name} · ${f.size}B · modified ${new Date(f.lastModified).toLocaleTimeString()}`;
+    log(L,'g',`opened ${f.name} (${f.size}B) — handle held`);
+    chip('v-pick1',true,'showOpenFilePicker → handle + getFile() ✓');
+  }catch(e){
+    log(L,e.name==='AbortError'?'dim':'y',`open: ${e.name} — ${e.message}`);
+    chip('v-pick1',e.name==='AbortError','open → '+e.name+(e.name==='AbortError'?' (dismissed)':' — needs real gesture'),e.name!=='AbortError');
+  }
+};
+$('ed-save').onclick=async()=>{
+  const L=$('l-ed');
+  if(!ED)return;
+  try{
+    const w=await ED.createWritable();await w.write($('ed-text').value);await w.close();
+    const f=await ED.getFile();
+    $('ed-state').textContent=`${f.name} · ${f.size}B · saved ${new Date().toLocaleTimeString()}`;
+    log(L,'g',`saved in place: ${f.name} now ${f.size}B on disk`);
+    chip('v-pick2',true,'edit-in-place: createWritable+close → real file on disk');
+  }catch(e){log(L,'y','save: '+e.name+' — '+e.message);chip('v-pick2',false,e.name,true);}
+};
+$('ed-stat').onclick=async()=>{
+  const L=$('l-ed');if(!ED)return;
+  const f=await ED.getFile();
+  log(L,'dim',`stat: ${f.name} ${f.size}B · lastModified ${new Date(f.lastModified).toISOString()}`);
+};
+$('p-open').onclick=async()=>{
+  const L=$('l-pick');
+  if(!('showOpenFilePicker' in window)){log(L,'y','no picker layer');return;}
+  try{
+    const hs=await showOpenFilePicker({multiple:true,startIn:'documents'});
+    log(L,'g',`picked ${hs.length} file(s): ${hs.map(h=>h.name).join(', ')}`);
+  }catch(e){log(L,'y',`open(multiple): ${e.name}`);chip('v-pick3',false,'open → '+e.name,true);}
+};
+$('p-save').onclick=async()=>{
+  const L=$('l-pick');
+  if(!('showSaveFilePicker' in window)){log(L,'y','no picker layer');return;}
+  try{
+    const h=await showSaveFilePicker({suggestedName:'od-export.csv'});
+    const w=await h.createWritable();await w.write('t,alt\n0.00,100\n');await w.close();
+    log(L,'g',`saved od-export.csv via save picker + stream`);
+  }catch(e){log(L,'y',`save: ${e.name}`);chip('v-pick4',false,'save → '+e.name,true);}
+};
+$('p-dir').onclick=async()=>{
+  const L=$('l-pick');
+  if(!('showDirectoryPicker' in window)){log(L,'y','no picker layer');return;}
+  try{
+    const dh=await showDirectoryPicker({mode:'readwrite'});
+    let n=0;for await(const _ of dh.values())n++;
+    log(L,'g',`opened dir "${dh.name}" — ${n} entries`);
+  }catch(e){log(L,'y',`dir: ${e.name}`);}
+};
+let POBS=null;
+$('p-obs').onclick=async()=>{
+  const L=$('l-pick');
+  if(!('showDirectoryPicker' in window)){log(L,'y','no picker layer');return;}
+  if(!('FileSystemObserver' in window)){log(L,'y','no observer layer');return;}
+  try{
+    const dh=await showDirectoryPicker({mode:'readwrite'});
+    if(POBS)POBS.disconnect();
+    POBS=new FileSystemObserver(recs=>{for(const r of recs)log(L,'g',`[watch] ${r.type} ${r.changedHandle.name}`);});
+    await POBS.observe(dh);
+    log(L,'g',`observing "${dh.name}" — drop/save files into it and watch this log`);
+  }catch(e){log(L,'y',`dir+obs: ${e.name}`);}
+};
+const drop=$('drop');
+;['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('hot');}));
+;['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('hot');}));
+drop.addEventListener('drop',async e=>{
+  const L=$('l-pick');
+  const item=[...(e.dataTransfer.items||[])].find(i=>i.kind==='file');
+  if(!item)return;
+  try{
+    if('getAsFileSystemHandle' in item){
+      const h=await item.getAsFileSystemHandle();
+      if(h&&h.kind==='file'){const f=await h.getFile();log(L,'g',`drop: handle for ${f.name} (${f.size}B) — writable!`);}
+      else log(L,'y','drop: directory handle: '+h.name);
+    }else{
+      const f=item.getAsFile();
+      log(L,'dim',`drop: plain File ${f.name} (no handle in this engine)`);
+    }
+  }catch(err){log(L,'y','drop: '+err.name);}
+});
+</script>
+</body>
+</html>
