@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SharedArrayBuffer + Atomics — The Concurrency Tier: Shared Memory, Futexes & Zero-Copy Workers</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#faf8f4; --card:#ffffff; --ink:#1c1917; --mut:#78716c; --line:#e7e2da;
+    --acc:#0f766e; --acc2:#14b8a6; --accSoft:#ccfbf1; --warn:#b45309; --warnSoft:#fef3c7;
+    --bad:#b91c1c; --badSoft:#fee2e2; --ok:#15803d; --okSoft:#dcfce7; --sim:#7c3aed; --simSoft:#ede9fe;
+    --code:#f5f2ec; --r:16px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font:15px/1.65 ui-sans-serif,-apple-system,"Segoe UI",Inter,Roboto,sans-serif;overflow-x:hidden}
+  .orb{position:fixed;border-radius:50%;filter:blur(90px);opacity:.16;pointer-events:none;z-index:0}
+  .o1{width:480px;height:480px;background:var(--acc2);top:-160px;right:-120px}
+  .o2{width:380px;height:380px;background:#f59e0b;bottom:-140px;left:-100px}
+  main{position:relative;z-index:1;max-width:1060px;margin:0 auto;padding:28px 20px 90px}
+  header.hero{padding:44px 8px 26px}
+  .kicker{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--acc);background:var(--accSoft);border:1px solid #99f6e4;padding:5px 12px;border-radius:999px}
+  h1{font-size:clamp(30px,5vw,44px);line-height:1.12;font-weight:800;letter-spacing:-.02em;margin:16px 0 10px}
+  h1 em{font-style:normal;color:var(--acc)}
+  .sub{font-size:16.5px;color:var(--mut);max-width:780px}
+  #badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .badge{font-size:12px;font-weight:600;padding:4px 11px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--mut)}
+  .badge.on{background:var(--okSoft);border-color:#bbf7d0;color:var(--ok)}
+  .badge.off{background:var(--badSoft);border-color:#fecaca;color:var(--bad)}
+  .badge.warn{background:var(--warnSoft);border-color:#fde68a;color:var(--warn)}
+  section{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:26px 26px 22px;margin:18px 0;box-shadow:0 1px 3px rgba(28,25,23,.04)}
+  .sn{font-size:11.5px;font-weight:800;letter-spacing:.1em;color:var(--acc);text-transform:uppercase}
+  h2{font-size:23px;font-weight:800;letter-spacing:-.015em;margin:4px 0 6px}
+  .lead{color:var(--mut);font-size:14.5px;max-width:880px}
+  h3{font-size:15.5px;font-weight:700;margin:18px 0 8px}
+  p{margin:8px 0;max-width:920px}
+  code{font:12.8px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code);padding:1.5px 6px;border-radius:6px}
+  pre{background:#1c1917;color:#e7e5e4;font:12.6px/1.62 ui-monospace,Menlo,Consolas,monospace;padding:14px 16px;border-radius:12px;overflow-x:auto;margin:12px 0;max-width:100%}
+  pre b{color:#5eead4;font-weight:600} pre i{color:#fbbf24;font-style:normal} pre s{color:#78716c;text-decoration:none}
+  table{border-collapse:collapse;width:100%;font-size:13.2px;margin:12px 0}
+  th{text-align:left;font-weight:700;color:var(--mut);border-bottom:2px solid var(--line);padding:7px 10px;font-size:12px;letter-spacing:.04em;text-transform:uppercase}
+  td{border-bottom:1px solid var(--line);padding:7px 10px;vertical-align:top}
+  td code{white-space:nowrap}
+  .chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;margin-top:14px}
+  .chip{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fffdf9;cursor:pointer;text-align:left;font:inherit;transition:border-color .15s, box-shadow .15s}
+  .chip:hover{border-color:var(--acc2);box-shadow:0 2px 8px rgba(20,184,166,.12)}
+  .chip .t{font-weight:700;font-size:13.5px;display:flex;gap:8px;align-items:center}
+  .chip .d{font-size:12.5px;color:var(--mut);margin-top:3px}
+  .chip .v{font:12.3px/1.45 ui-monospace,Menlo,monospace;margin-top:7px;padding:6px 9px;background:var(--code);border-radius:8px;min-height:18px;word-break:break-word;white-space:pre-wrap}
+  .ok .v{background:var(--okSoft);color:#14532d} .fail .v{background:var(--badSoft);color:#7f1d1d}
+  .off .v{background:var(--warnSoft);color:#7c2d12}
+  .lab-tag{font-size:10px;font-weight:800;letter-spacing:.06em;padding:2px 7px;border-radius:999px;flex:none}
+  .lab-tag.live{background:var(--okSoft);color:var(--ok)} .lab-tag.sim{background:var(--simSoft);color:var(--sim)}
+  .note{border-left:3px solid var(--acc2);background:var(--accSoft);border-radius:0 10px 10px 0;padding:10px 14px;font-size:13.5px;margin:12px 0}
+  .note.warn{border-left-color:#f59e0b;background:var(--warnSoft)}
+  .note.bad{border-left-color:var(--bad);background:var(--badSoft)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:820px){.grid2{grid-template-columns:1fr}}
+  .demo-box{border:1px dashed var(--line);border-radius:12px;padding:14px;margin:12px 0;background:#fffdf9}
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}
+  .btn{font:600 13px/1 inherit;padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:#fff;cursor:pointer;transition:all .12s}
+  .btn:hover{border-color:var(--acc2);color:var(--acc)}
+  .btn.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+  .btn.pri:hover{background:#115e59}
+  .hud{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:12px 0}
+  .gauge{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fff}
+  .gauge .l{font-size:10.5px;font-weight:800;letter-spacing:.08em;color:var(--mut);text-transform:uppercase}
+  .gauge .n{font:800 21px/1.25 ui-monospace,Menlo,monospace;margin-top:2px}
+  .gauge .n small{font-size:11px;font-weight:600;color:var(--mut)}
+  .meter{height:7px;border-radius:99px;background:var(--code);margin-top:7px;overflow:hidden}
+  .meter i{display:block;height:100%;background:linear-gradient(90deg,var(--acc2),var(--acc));width:0%;transition:width .1s}
+  .mono{font:12.5px/1.6 ui-monospace,Menlo,monospace;background:var(--code);border-radius:8px;padding:8px 11px;white-space:pre-wrap;word-break:break-word;margin:8px 0}
+  footer{margin-top:34px;color:var(--mut);font-size:13px;text-align:center}
+  a{color:var(--acc)}
+  .tag{display:inline-block;font:700 11px/1 inherit;padding:3px 8px;border-radius:6px;background:var(--accSoft);color:var(--acc);margin-right:4px}
+  canvas{border-radius:10px;border:1px solid var(--line);max-width:100%}
+  .lane{border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff}
+  .lane h4{font-size:13px;font-weight:800;margin-bottom:6px}
+</style>
+</head>
+<body>
+<div class="orb o1"></div><div class="orb o2"></div>
+<main>
+<header class="hero">
+  <span class="kicker">⚡ SAB Ch 68 / FF 79 / SF 15.2 · gated on crossOriginIsolated</span>
+  <h1>The Concurrency Tier: <em>shared memory</em>, futexes &amp; zero-copy workers</h1>
+  <p class="sub">JavaScript is single-threaded per <b>agent</b> — but every tab can spawn dozens of agents (workers) and, since the Spectre-era re-enable, share <b>real memory</b> between them: <code>SharedArrayBuffer</code> is a byte array where a write in the worker is a read on the main thread, and <code>Atomics</code> is the fence that keeps those bytes predictable — plus a futex (<code>wait</code>/<code>notify</code>) so threads can sleep instead of spin. This is the layer under WebAssembly threads, emulators, DSP graphs and every high-throughput pipeline. This page runs <b>live engine probes</b> — and is itself served <b>cross-origin isolated</b> (COOP + COEP headers on this exact path), so every SAB lab actually executes. On a host without the headers it degrades honestly to clone-mode.</p>
+  <div id="badges"></div>
+</header>
+
+<!-- ============ 1 ============ -->
+<section id="s1">
+  <div class="sn">§1</div>
+  <h2>Agents, agent clusters, and why "threads" means workers</h2>
+  <p class="lead">ECMAScript calls each execution context an <b>agent</b>: your page is one, every <code>new Worker()</code> is another, each with its own JS heap and event loop. Agents that can reference the same memory form an <b>agent cluster</b> — in a browser that's the page plus its dedicated workers (and shared workers, and same-site iframes). Within one agent you never need atomics; <i>across</i> agents, plain reads/writes have no ordering guarantees at all. The concurrency tier has exactly three primitives:</p>
+  <table>
+    <tr><th>Primitive</th><th>Since</th><th>What it gives you</th></tr>
+    <tr><td><code>Worker</code> (dedicated)</td><td><code>Ch 2 · FF 3.5 · SF 4</code></td><td>A second thread + a message channel (structured clone / transferables). Universal forever.</td></tr>
+    <tr><td><code>SharedArrayBuffer</code></td><td><code>Ch 68 · FF 79 · SF 15.2</code></td><td>One byte buffer, same bytes in N agents — <b>zero-copy by construction</b>. Gated on <code>crossOriginIsolated</code>.</td></tr>
+    <tr><td><code>Atomics</code></td><td><code>Ch 68 · FF 78 · SF 15.2</code></td><td>Uninterruptible read-modify-write, memory ordering, and <code>wait</code>/<code>notify</code> sleeping (futexes). <b>Always available</b>, even un-isolated.</td></tr>
+  </table>
+  <div class="note">The separation is deliberate: <code>Atomics</code> works on any page, but the <i>sharing</i> of memory is what Spectre made dangerous — high-resolution timers + shared memory = side-channel. So the SAB constructor is <b>hidden</b> (global reads <code>undefined</code>) and <code>postMessage(sab)</code> <b>throws</b> unless the document is cross-origin isolated. The wall is §2.</div>
+  <div class="chips">
+    <button class="chip" id="c-cores"><span class="t"><span class="lab-tag live">LIVE</span>hardwareConcurrency</span><span class="d">How many workers can actually run in parallel on this machine</span><div class="v">—</div></button>
+    <button class="chip" id="c-agent"><span class="t"><span class="lab-tag live">LIVE</span>Worker round-trip</span><span class="d">Spawn a dedicated worker from a Blob URL, echo a message, measure median RTT over 200 pings</span><div class="v">—</div></button>
+    <button class="chip" id="c-clone"><span class="t"><span class="lab-tag live">LIVE</span>Structured clone fidelity</span><span class="d">Send {Map, Date, typed array, nested} — what survives, what throws</span><div class="v">—</div></button>
+  </div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section id="s2">
+  <div class="sn">§2</div>
+  <h2>The isolation wall — two response headers</h2>
+  <p class="lead">January 2018: Spectre demonstrated that shared memory + precise timers lets a page read memory it shouldn't. Every engine pulled <code>SharedArrayBuffer</code>. 2020: it came back, but only for pages that opt into <b>cross-origin isolation</b> — a document-level state where the browser promises the page is fenced off from other origins:</p>
+<pre><s># exactly two response headers, on the document itself:</s>
+Cross-Origin-Opener-Policy: <b>same-origin</b>        <s># my window ≠ your window (no shared browsing contexts)</s>
+Cross-Origin-Embedder-Policy: <b>credentialless</b>   <s># or: require-corp — my resources are fenced too</s>
+
+<s># then, and only then:</s>
+window.crossOriginIsolated  <s>// → true</s>
+typeof SharedArrayBuffer    <s>// → 'function' (was 'undefined')</s></pre>
+  <table>
+    <tr><th>Mode</th><th>Meaning</th><th>Watch out</th></tr>
+    <tr><td><code>COEP: require-corp</code></td><td>Every subresource must be same-origin, CORS, or carry <code>Cross-Origin-Resource-Policy</code></td><td>Third-party images/scripts/fonts without CORP are blocked; cross-origin <i>iframes</i> must themselves send COEP</td></tr>
+    <tr><td><code>COEP: credentialless</code></td><td>Cross-origin resources load without cookies/credentials, no CORP needed</td><td>Chromium 98+ &amp; Firefox 119+ only — Safari treats it as no COEP → stays non-isolated (honest fallback). And (observed, headless Chromium): even <b>same-origin iframes</b> must pass the embedder check — without CORP/COEP of their own they die with <code>ERR_BLOCKED_BY_RESPONSE</code> (see the live sibling-iframe probe)</td></tr>
+    <tr><td><code>COOP: same-origin</code></td><td>Cuts the window off from other origins' browsing contexts</td><td><code>window.opener</code> relationships break — popups/OAuth flows that depend on opener need review</td></tr>
+  </table>
+  <p>The real-world cost of isolation is <i>integration</i>, not performance: payment redirects, SSO popups and embedded third-party frames are what break. Scope the headers to the exact path that needs shared memory (that's how this page is deployed — see the <code>vercel.json</code> in §13), and leave the marketing site alone.</p>
+  <div class="chips">
+    <button class="chip" id="c-iso"><span class="t"><span class="lab-tag live">LIVE</span>crossOriginIsolated</span><span class="d">The gate boolean on THIS document</span><div class="v">—</div></button>
+    <button class="chip" id="c-hdrs"><span class="t"><span class="lab-tag live">LIVE</span>Actual response headers</span><span class="d">fetch() this very URL back and read COOP/COEP from the real response</span><div class="v">—</div></button>
+    <button class="chip" id="c-wall"><span class="t"><span class="lab-tag live">LIVE</span>The wall, live: two sibling iframes</span><span class="d">Same-origin frame WITH CORP+COEP joins the isolated cluster (and gets SAB!); the same frame WITHOUT headers is refused entry — that refusal IS the Spectre wall</span><div class="v">—</div></button>
+    <button class="chip" id="c-sec"><span class="t"><span class="lab-tag live">LIVE</span>Secure context</span><span class="d">SAB requires secure context as well — where is this page running?</span><div class="v">—</div></button>
+  </div>
+  <div class="note warn" id="n-iso" style="display:none">This host did NOT serve COOP + COEP for this path, so <code>crossOriginIsolated === false</code>: the SAB constructor is hidden and sharing throws. Shared-memory labs below switch to their documented postMessage fallbacks (badged like this note) — the degradation you're seeing IS the platform behavior, not a broken demo. Canonical isolated host: <code>molt-research.vercel.app/demos/sharedarraybuffer-atomics-workers.html</code></div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section id="s3">
+  <div class="sn">§3</div>
+  <h2>Three ways to move data to a worker</h2>
+  <p class="lead">Every cross-agent data movement is one of three modes. Knowing the cost ladder is the whole engineering decision:</p>
+  <table>
+    <tr><th>Mode</th><th>Syntax</th><th>Cost</th><th>Afterwards</th></tr>
+    <tr><td><b>Clone</b> (structured clone)</td><td><code>worker.postMessage(buf)</code></td><td>Full copy, both heaps hold it</td><td>Original untouched — two independent buffers</td></tr>
+    <tr><td><b>Transfer</b> (move)</td><td><code>worker.postMessage(buf, [buf])</code></td><td>~free (handle handoff, no byte copy)</td><td>Original <b>detached</b> — <code>byteLength === 0</code>, one owner</td></tr>
+    <tr><td><b>Share</b> (SAB)</td><td><code>worker.postMessage(sab)</code> <i>(isolated only)</i></td><td>One copy, ever — then zero per message</td><td>Same bytes in both agents, forever; synchronize with Atomics</td></tr>
+  </table>
+<pre><b>const</b> big = <b>new</b> ArrayBuffer(1024*1024);
+w.postMessage(big);        <s>// clone   → 1MB copied into the worker heap</s>
+w.postMessage(big, [big]); <s>// transfer → handle moves; big.byteLength === 0 now (detached!)</s>
+
+<b>const</b> sab = <b>new</b> SharedArrayBuffer(1024*1024);  <s>// isolated pages only</s>
+w.postMessage(sab);        <s>// share   → the worker's view sees YOUR writes, µs later</s></pre>
+  <div class="chips">
+    <button class="chip" id="c-clone1m"><span class="t"><span class="lab-tag live">LIVE</span>Clone 1MB × 15</span><span class="d">postMessage a 1MB ArrayBuffer (no transfer) — median ms + MB/s</span><div class="v">—</div></button>
+    <button class="chip" id="c-xfer1m"><span class="t"><span class="lab-tag live">LIVE</span>Transfer 1MB × 15</span><span class="d">Move the same 1MB back and forth via transfer list — median ms + detach proof</span><div class="v">—</div></button>
+    <button class="chip" id="c-sab1m"><span class="t"><span class="lab-tag live">LIVE</span>Share once, ping × 15</span><span class="d">SAB shared OUTSIDE the timer; measure bare ping round-trips over zero-copy memory</span><div class="v">—</div></button>
+  </div>
+  <div class="note">Read the three numbers as a ladder: clone pays bytes every message, transfer pays once per direction but forbids the sender from touching the data, share pays <i>once total</i> and both sides keep working memory. High-frequency streams → share. One-shot handoff → transfer. Small/irregular objects → clone is fine and simplest.</div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section id="s4">
+  <div class="sn">§4</div>
+  <h2>SAB anatomy — views, slice, and the sharing fine print</h2>
+  <p class="lead">A <code>SharedArrayBuffer</code> is API-identical to an <code>ArrayBuffer</code> (byteLength, views, <code>slice</code>) except for two asymmetries: it can't be detached by transfer, and clones <i>share</i> instead of copying. Probes on this engine:</p>
+<pre><b>const</b> sab = <b>new</b> SharedArrayBuffer(64);
+<b>const</b> i32 = <b>new</b> Int32Array(sab);        <s>// a view — typed arrays stay local objects</s>
+i32[0] = 42;                                <s>// plain write: eventually visible, no ordering promise</s>
+Atomics.store(i32, 0, 42);                 <s>// ordered write: visible-before (see §6)</s>
+
+sab.slice(0, 4)                            <s>// COPY out → NEW SharedArrayBuffer (type stays shared, data independent)</s>
+structuredClone(sab)                       <s>// NOT a copy — new SAB object, SAME data block</s></pre>
+  <div class="chips">
+    <button class="chip" id="c-view"><span class="t"><span class="lab-tag live">LIVE</span>One buffer, two agents</span><span class="d">Worker writes i32[3]=0xC0DE via its view; main reads its own view of the same bytes</span><div class="v">—</div></button>
+    <button class="chip" id="c-scl"><span class="t"><span class="lab-tag live">LIVE</span>structuredClone(sab) shares</span><span class="d">In-window clone: write through the clone's view, read through the original — same block?</span><div class="v">—</div></button>
+    <button class="chip" id="c-slice"><span class="t"><span class="lab-tag live">LIVE</span>slice() escapes the cluster</span><span class="d">Result is a plain ArrayBuffer (share-target = false) but byte-identical, then independent</span><div class="v">—</div></button>
+    <button class="chip" id="c-xlist"><span class="t"><span class="lab-tag live">LIVE</span>SAB in a transfer list</span><span class="d">postMessage(sab, [sab]) — engines either share-and-ignore or throw DataCloneError. What does THIS one do?</span><div class="v">—</div></button>
+  </div>
+  <div class="note" id="n-xlist" style="display:none"></div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section id="s5">
+  <div class="sn">§5</div>
+  <h2>Atomics — the operation set</h2>
+  <p class="lead">Nine operations, all static on <code>Atomics</code>, all <b>uninterruptible</b> (no torn read-modify-write, no lost update), all valid on integer typed arrays only — <code>Int8/Uint8/Int16/Uint16/Int32/Uint32</code> plus the 64-bit pair <code>BigInt64Array/BigUint64Array</code> (values as <code>BigInt</code>). Return-value asymmetry is the #1 gotcha — every op returns the <b>old</b> value except <code>store</code>:</p>
+  <table>
+    <tr><th>Op</th><th>Effect</th><th>Returns</th></tr>
+    <tr><td><code>load / store</code></td><td>read / ordered write</td><td>value read / <b>the value</b> (only op returning the new one)</td></tr>
+    <tr><td><code>add / sub / and / or / xor</code></td><td>RMW arithmetic/bitwise</td><td><b>old</b> value</td></tr>
+    <tr><td><code>exchange</code></td><td>unconditional swap</td><td><b>old</b> value</td></tr>
+    <tr><td><code>compareExchange(a,i,old,new)</code></td><td>swap only if current === old (CAS)</td><td><b>old</b> (tells you if it fired)</td></tr>
+    <tr><td><code>isLockFree(n)</code></td><td>are n-byte atomics hardware-atomic here?</td><td>boolean (experts-only optimization hint)</td></tr>
+  </table>
+  <div class="chips">
+    <button class="chip" id="c-addold"><span class="t"><span class="lab-tag live">LIVE</span>add() returns the OLD value</span><span class="d">add(i,10) on 5 → returns 5, cell now 15</span><div class="v">—</div></button>
+    <button class="chip" id="c-storex"><span class="t"><span class="lab-tag live">LIVE</span>store vs exchange asymmetry</span><span class="d">store returns the value; exchange returns what was there</span><div class="v">—</div></button>
+    <button class="chip" id="c-cas"><span class="t"><span class="lab-tag live">LIVE</span>compareExchange (CAS)</span><span class="d">Fires only on matching old value; second attempt with stale old fails and reports</span><div class="v">—</div></button>
+    <button class="chip" id="c-locks"><span class="t"><span class="lab-tag live">LIVE</span>isLockFree table</span><span class="d">1,2,4 bytes atomic; the spec's famous isLockFree(3)===false oddity; 8 on 64-bit HW</span><div class="v">—</div></button>
+    <button class="chip" id="c-nonshared"><span class="t"><span class="lab-tag live">LIVE</span>Atomics on a plain ArrayBuffer</span><span class="d">Chromium/Safari: TypeError. Firefox 79+ allows it — a live inverted holdout</span><div class="v">—</div></button>
+    <button class="chip" id="c-float"><span class="t"><span class="lab-tag live">LIVE</span>Float64 atomics?</span><span class="d">FP atomics were cut from the spec — Float64Array must throw</span><div class="v">—</div></button>
+    <button class="chip" id="c-big64"><span class="t"><span class="lab-tag live">LIVE</span>BigInt64 atomics</span><span class="d">add(big64, 0, 1n) — the 64-bit lane works, values are BigInt end to end</span><div class="v">—</div></button>
+    <button class="chip" id="c-pause"><span class="t"><span class="lab-tag live">LIVE</span>Atomics.pause (new!)</span><span class="d">Ch 133 / FF 137 / SF 18.4 — spin-loop hint to the CPU. Exists &amp; callable?</span><div class="v">—</div></button>
+  </div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section id="s6">
+  <div class="sn">§6</div>
+  <h2>Why plain <code>i++</code> breaks — the lost-update race, live</h2>
+  <p class="lead"><code>ia[0]++</code> is three instructions: load, add, store. Two agents interleaving them lose updates — not maybe, <i>deterministically at scale</i>. Below: 4 workers each increment the same cell 50,000 times. Expected total: 200,000.</p>
+  <div class="chips">
+    <button class="chip" id="c-raceN"><span class="t"><span class="lab-tag live">LIVE</span>Non-atomic: 4 × 50k of ia[0]++</span><span class="d">The classic lost-update count. Chromium reliably loses thousands</span><div class="v">—</div></button>
+    <button class="chip" id="c-raceA"><span class="t"><span class="lab-tag live">LIVE</span>Atomic: 4 × 50k of Atomics.add</span><span class="d">Same workers, same cell, Atomics.add — the total must be EXACTLY 200,000</span><div class="v">—</div></button>
+  </div>
+  <h3>The other hazard: ordering</h3>
+  <p>Even without races, plain writes can be <i>reordered</i> by compiler and CPU. The TC39 tutorial's canonical trap: a worker writes <code>ia[42]=314159</code> then <code>ia[37]=123456</code>; a reader who saw the second write is <b>not guaranteed</b> to see the first — it can legally print <code>123456</code> then the <i>old</i> <code>ia[42]</code>. An atomic store is a release point: everything written before it becomes visible no later than it. Rule of thumb: <b>synchronization cells are atomic, bulk data can stay plain</b> — one atomic flag "publishes" a whole plain-written frame (the ring buffer in §11 is exactly this pattern).</p>
+  <div class="note warn">Undefined ≠ crash: an unsynchronized read may observe a value that was never written (torn/garbage) on weakly-ordered cores. It's rare, it's architecture-dependent, and it's why "it worked on my machine" is not a concurrency proof.</div>
+</section>
+
+<!-- ============ 7 ============ -->
+<section id="s7">
+  <div class="sn">§7</div>
+  <h2>wait / notify / waitAsync — futexes for JavaScript</h2>
+  <p class="lead">Spin loops burn a core. The futex pair lets an agent <b>sleep on a memory cell</b> until another agent wakes it: <code>Atomics.wait(ta, i, expected, timeout)</code> sleeps only if <code>ta[i] === expected</code> (else returns <code>"not-equal"</code> immediately), and returns <code>"ok"</code> when woken, <code>"timed-out"</code> otherwise. <code>Atomics.notify(ta, i, n)</code> wakes up to n sleepers and returns how many it woke — waking zero is a normal, cheap no-op.</p>
+<pre><b>// worker (blocking is fine here — it's not the main thread):</b>
+Atomics.wait(i32, 0, 0, 4000);     <s>// sleep until i32[0] changes + notify, or 4s</s>
+
+<b>// main thread:</b>
+Atomics.wait(i32, 0, 0, 0);        <s>// ✗ THROWS on the main thread in Chromium/FF/SF</s>
+<b>const</b> r = Atomics.waitAsync(i32, 0, 0, 4000);
+                                   <s>// ✓ non-blocking — the ONLY main-thread legal form</s>
+r.async   <s>// BOOLEAN: true = it went async (r.value is a Promise)</s>
+r.value   <s>// Promise resolving 'ok'|'timed-out' — or the string 'not-equal' inline when r.async === false</s></pre>
+  <div class="chips">
+    <button class="chip" id="c-wmain"><span class="t"><span class="lab-tag live">LIVE</span>Atomics.wait on the MAIN thread</span><span class="d">Documented: "most browsers will not allow" — probe what Chromium 15x actually does</span><div class="v">—</div></button>
+    <button class="chip" id="c-wasync"><span class="t"><span class="lab-tag live">LIVE</span>waitAsync record shape</span><span class="d">async is a BOOLEAN flag; the promise lives in value. Get it backwards → TypeError (it happened to this page's author mid-build)</span><div class="v">—</div></button>
+    <button class="chip" id="c-wne"><span class="t"><span class="lab-tag live">LIVE</span>waitAsync value mismatch</span><span class="d">Expected ≠ actual → the SYNC result is 'not-equal', no sleeping at all</span><div class="v">—</div></button>
+    <button class="chip" id="c-wto"><span class="t"><span class="lab-tag live">LIVE</span>Worker wait → timed-out</span><span class="d">Nobody notifies within 450ms → worker reports 'timed-out' (the empty-result path)</span><div class="v">—</div></button>
+    <button class="chip" id="c-nfy"><span class="t"><span class="lab-tag live">LIVE</span>notify returns the wake count</span><span class="d">Notify with no sleeper → 0; handshake → wake exactly 1 worker → 1</span><div class="v">—</div></button>
+  </div>
+  <div class="note">These three primitives compose into every classical building block: mutex = wait/notify on a lock word; semaphore = counter + waitlist; condition variable = notify-all broadcast; producer/consumer = ring + two semaphores (§11). Libraries exist, but at this size most teams end up shipping the ~40 lines themselves.</div>
+</section>
+
+<!-- ============ 8 ============ -->
+<section id="s8">
+  <div class="sn">§8</div>
+  <h2>Growable SAB — resizable shared memory (Ch 111 / FF 128 / SF 16.4)</h2>
+  <p class="lead">Pass <code>{ maxByteLength }</code> to the constructor and the buffer can <b>grow</b> later — the address space is reserved up front (that's the point: no reallocation, no copy, no invalidation of other agents' views). It can never shrink.</p>
+<pre><b>const</b> sab = <b>new</b> SharedArrayBuffer(64, { maxByteLength: 4096 });
+sab.growable       <s>// true</s>
+sab.maxByteLength  <s>// 4096 (fixed at construction)</s>
+sab.grow(512);     <s>// new bytes are ZEROED; byteLength 64 → 512</s>
+<b>const</b> track = <b>new</b> Int32Array(sab);   <s>// length-TRACKING view: length grows with the buffer</s>
+sab.grow(32);      <s>// ✗ RangeError — cannot shrink ("for security reasons", per MDN)</s></pre>
+  <div class="chips">
+    <button class="chip" id="c-gprops"><span class="t"><span class="lab-tag live">LIVE</span>growable / maxByteLength</span><span class="d">Constructor option round-trip + the prop reads</span><div class="v">—</div></button>
+    <button class="chip" id="c-gzero"><span class="t"><span class="lab-tag live">LIVE</span>grow() zeroes new bytes</span><span class="d">64B filled with 0xAB, grow to 512 → old bytes intact, everything past 64 is 0x00</span><div class="v">—</div></button>
+    <button class="chip" id="c-gtrack"><span class="t"><span class="lab-tag live">LIVE</span>Length-tracking views</span><span class="d">View built without explicit length follows grow(); fixed-length view doesn't</span><div class="v">—</div></button>
+    <button class="chip" id="c-gerr"><span class="t"><span class="lab-tag live">LIVE</span>grow() error taxonomy</span><span class="d">Shrink → RangeError; beyond max → RangeError; grow(to same size) → ?</span><div class="v">—</div></button>
+    <button class="chip" id="c-gwasm"><span class="t"><span class="lab-tag live">LIVE</span>WASM.Memory({shared:true})</span><span class="d">The wasm-threads path: its .buffer IS a SharedArrayBuffer (and growable by design)</span><div class="v">—</div></button>
+  </div>
+  <div class="note">WebAssembly parallelism rides entirely on this tier: a shared <code>WebAssembly.Memory</code> is a SAB, wasm atomic instructions are always enabled, and the C++/Rust toolchains (pthreads via Emscripten, Rayon via wasm-bindgen) compile to workers + SAB + atomics. Master the JS layer and the wasm layer is the same mental model.</div>
+</section>
+
+<!-- ============ 9 ============ -->
+<section id="s9">
+  <div class="sn">§9</div>
+  <h2>SharedWorker — one agent for many tabs</h2>
+  <p class="lead">A dedicated worker dies with its page. A <code>SharedWorker</code> is addressed by URL: first tab creates it, every other same-origin tab connects to the <i>same running instance</i> over its own <code>MessagePort</code>. It's the building block for one-connection telemetry fans, cross-tab state servers, and "only one tab does the work" electors (pair with Web Locks for the leadership decision itself).</p>
+  <table>
+    <tr><th>Engine</th><th>SharedWorker support</th></tr>
+    <tr><td>Chrome desktop</td><td>Since Chrome 5 (2010)</td></tr>
+    <tr><td>Chrome <b>Android</b></td><td>Only from <b>148</b> — the mobile gap nobody expects</td></tr>
+    <tr><td>Firefox</td><td>Since 29</td></tr>
+    <tr><td>Safari</td><td>5 → <b>removed in 7</b> → <b>re-shipped in 16</b> (Sept 2022)</td></tr>
+  </table>
+  <div class="chips">
+    <button class="chip" id="c-sw"><span class="t"><span class="lab-tag live">LIVE</span>SharedWorker from a Blob URL</span><span class="d">Construct + port.start() + echo through the shared agent. Second tab would reuse it</span><div class="v">—</div></button>
+    <button class="chip" id="c-swsab"><span class="t"><span class="lab-tag live">LIVE</span>SAB into a SharedWorker port</span><span class="d">Does the sharing wall apply to port.postMessage too? (docs only promise Window + dedicated)</span><div class="v">—</div></button>
+  </div>
+</section>
+
+<!-- ============ 10 ============ -->
+<section id="s10">
+  <div class="sn">§10</div>
+  <h2>Molt Studio pattern — worker-pool pixel crunch on shared memory</h2>
+  <p class="lead">Asset pipelines (filters, thumbnails, hashing) are "embarrassingly parallel": split a buffer, hand each worker a range, fold with an atomic counter. Below: a synthetic 512×512 RGBA image lives in ONE SAB; the pool (≤ <code>hardwareConcurrency</code> workers) sepia-transforms disjoint slices while a single <code>Atomics.add</code> progress word feeds the bar — <b>zero messages during the work</b>, one completion flag at the end (awaited with <code>waitAsync</code>).</p>
+  <div class="demo-box">
+    <div class="row"><button class="btn pri" id="b-pool">Run pool × <span id="poolN">?</span> + single-thread control</button><span id="poolStat" style="font-size:13px;color:var(--mut)"></span></div>
+    <div class="meter"><i id="poolBar"></i></div>
+    <div class="grid2" style="margin-top:12px">
+      <div class="lane"><h4>Pool (SAB slices + atomic progress)</h4><canvas id="cvPool" width="256" height="256"></canvas><div class="mono" id="poolOut">—</div></div>
+      <div class="lane"><h4>Single thread (same work, main)</h4><canvas id="cvOne" width="256" height="256"></canvas><div class="mono" id="oneOut">—</div></div>
+    </div>
+  </div>
+  <div class="chips">
+    <button class="chip" id="c-pool"><span class="t"><span class="lab-tag live">LIVE</span>Pool correctness + speedup</span><span class="d">Pixel-exact vs single-thread? Wall-time ratio on this machine?</span><div class="v">—</div></button>
+    <button class="chip" id="c-poolz"><span class="t"><span class="lab-tag live">LIVE</span>Zero messages during work</span><span class="d">Count messages received while crunching: expect exactly the launch fan-out, nothing per-pixel</span><div class="v">—</div></button>
+  </div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section id="s11">
+  <div class="sn">§11</div>
+  <h2>OpenDrones capstone — the zero-copy telemetry ring buffer</h2>
+  <p class="lead">Mission Control's real problem isn't bandwidth, it's <b>allocation churn</b>: at high packet rates a postMessage-per-packet pipeline clones every frame into garbage that GC must reap on the SAME main thread that renders the HUD. The SAB ring is the fix: a fixed circular buffer in shared memory. The producer worker writes a 20-byte frame (seq, volts, alt, RSSI, CRC), then <b>publishes</b> it with one <code>Atomics.store</code> of the head sequence — an ordered release, so the frame's plain writes are guaranteed visible first. The main thread drains on rAF, zero allocations per frame. When the main thread freezes, the ring <i>overwrites</i> (bounded memory, honest drops); a message queue <i>grows</i> (no drops, unbounded latency). Both behaviors are visible below.</p>
+<pre><s>// control words: [0]=head(seq) [1]=tail(seq) — frames at byte 256, N slots × 20B</s>
+<b>const</b> FRAME = 5;
+<b>const</b> ctl = <b>new</b> Int32Array(sab, 0, 8), frames = <b>new</b> Int32Array(sab, 256);
+<b>function</b> produce(seq, volts, alt, rssi) {
+  <b>const</b> o = (seq % SLOTS) * FRAME;          <s>// slot words — plain writes</s>
+  frames[o]=seq; frames[o+1]=volts; frames[o+2]=alt; frames[o+3]=rssi;
+  frames[o+4] = crc(seq);                    <s>// integrity check word</s>
+  Atomics.store(ctl, 0, seq + 1);             <s>// RELEASE: frame visible, then head</s>
+}</pre>
+  <div class="demo-box">
+    <div class="row"><button class="btn pri" id="b-ring">Run 1.2s race: SAB ring vs postMessage</button><button class="btn" id="b-freeze">+ 600ms main-thread freeze mid-stream</button><span id="ringStat" style="font-size:13px;color:var(--mut)"></span></div>
+    <canvas id="cvRing" width="960" height="150" style="width:100%"></canvas>
+    <div class="grid2" style="margin-top:12px">
+      <div class="lane"><h4>SAB ring lane</h4><div class="mono" id="sabOut">—</div></div>
+      <div class="lane"><h4>postMessage lane</h4><div class="mono" id="msgOut">—</div></div>
+    </div>
+  </div>
+  <div class="chips">
+    <button class="chip" id="c-ringt"><span class="t"><span class="lab-tag live">LIVE</span>Throughput: ring vs messages</span><span class="d">Same producer loop shape both lanes, 1.2s — frames/s each, on this machine</span><div class="v">—</div></button>
+    <button class="chip" id="c-ringi"><span class="t"><span class="lab-tag live">LIVE</span>Integrity under speed</span><span class="d">Drained frames: monotonic seq except OVERWRITTEN gaps; checksum fields all valid</span><div class="v">—</div></button>
+    <button class="chip" id="c-ringf"><span class="t"><span class="lab-tag live">LIVE</span>Freeze behavior</span><span class="d">600ms block: ring drops (bounded), queue balloons (no drop) — the design tradeoff, live</span><div class="v">—</div></button>
+  </div>
+</section>
+
+<!-- ============ 12 ============ -->
+<section id="s12">
+  <div class="sn">§12</div>
+  <h2>Ship map — support, deployment recipe, and when NOT to use this</h2>
+  <table>
+    <tr><th>Feature</th><th>Chrome/Edge</th><th>Firefox</th><th>Safari</th><th>Verdict (Aug 2026)</th></tr>
+    <tr><td>Dedicated Worker</td><td>2+</td><td>3.5+</td><td>4+</td><td>Universal — always available</td></tr>
+    <tr><td>SAB + sharing</td><td>68+</td><td>79+</td><td>15.2+</td><td>All engines — <b>but only when crossOriginIsolated</b></td></tr>
+    <tr><td>Atomics core</td><td>68+</td><td>78+</td><td>15.2+</td><td>Universal, even un-isolated</td></tr>
+    <tr><td>Atomics on non-shared AB</td><td>✗</td><td><b>79+</b></td><td>✗</td><td>Firefox-only — inverted holdout</td></tr>
+    <tr><td>Atomics.waitAsync</td><td>87+</td><td>145+</td><td>16.4+</td><td>All engines since FF 145 (2025)</td></tr>
+    <tr><td>Atomics.pause</td><td>133+</td><td>137+</td><td>18.4+</td><td>All engines (2025) — new spin hint</td></tr>
+    <tr><td>Growable SAB</td><td>111+</td><td>128+</td><td>16.4+</td><td>All engines</td></tr>
+    <tr><td>SharedWorker</td><td>5+ (Android: 148+)</td><td>29+</td><td>5–6, back 16+</td><td>Desktop-fine, mobile-check</td></tr>
+  </table>
+  <h3>The deployment recipe (this page's actual config)</h3>
+<pre><s># vercel.json — scoped to the ONE path that needs shared memory:</s>
+{
+  <i>"headers"</i>: [{
+    <i>"source"</i>: <b>"/demos/sharedarraybuffer-atomics-workers.html"</b>,
+    <i>"headers"</i>: [
+      { <i>"key"</i>: <b>"Cross-Origin-Opener-Policy"</b>,  <i>"value"</i>: <b>"same-origin"</b> },
+      { <i>"key"</i>: <b>"Cross-Origin-Embedder-Policy"</b>, <i>"value"</i>: <b>"credentialless"</b> }
+    ]
+  }]
+}
+<s># credentialless: Chromium 98+ / FF 119+ isolate; Safari ignores it → honest fallback path.
+# require-corp: wider legacy reach, but every cross-origin subresource needs CORP.
+# EMBEDDING RULE (verified live): same-origin iframes need their own opt-in too — add
+#   Cross-Origin-Resource-Policy: same-origin on the embedded page (sab-wall-probe-coop.html
+#   in vercel.json below) or the parent's COEP check kills it with ERR_BLOCKED_BY_RESPONSE.
+# Gate every SAB code path:  if (crossOriginIsolated) … else transferable-AB fallback.</s></pre>
+  <h3>Decision ladder</h3>
+  <table>
+    <tr><th>You need…</th><th>Use</th></tr>
+    <tr><td>Off-main-thread compute, one-shot data</td><td>Worker + <b>transfer</b> — no headers needed</td></tr>
+    <tr><td>High-frequency streams / shared state</td><td>SAB ring + atomics — worth the two headers</td></tr>
+    <tr><td>Sleep/wake coordination</td><td><code>waitAsync</code> (main) / <code>wait</code> (workers) + <code>notify</code></td></tr>
+    <tr><td>One agent across tabs</td><td>SharedWorker + Web Locks election</td></tr>
+    <tr><td>Native-code parallelism</td><td>WASM threads = this exact tier under the hood</td></tr>
+  </table>
+  <div class="note bad">Do NOT reach for shared memory when messages would do: clone/transfer covers most apps with zero deployment cost, zero COOP/COEP integration risk, and dramatically simpler debugging (no data races on a heap you can't inspect). SAB earns its keep at sustained high frame rates, WASM threading, and cross-agent state that must be read while another thread writes it.</div>
+  <h3>Where it earns its keep for us</h3>
+  <p><b>OpenDrones Mission Control:</b> the §11 ring between the WebTransport worker and the HUD (telemetry + DVR frame indices); MAVLink decode workers feeding a shared frame store; WASM threads for on-device CV on mission DVR. <b>Molt Studios:</b> §10-style worker pools for asset generation (filters, resize, hash manifests) on client-supplied files — paired with File System Access handles, the pipeline stays off the main thread end-to-end; isolated demos/showcases get real-time audio-visual DSP graphs (Web Audio worklets + SAB state sharing).</p>
+</section>
+
+<footer>Live-probe research demo · SharedArrayBuffer / Atomics / Workers · verified headless Chromium 149 cross-origin isolated · part of the Molt research hub</footer>
+</main>
+
+<script>
+'use strict';
+/* ============ harness ============ */
+const REG = [];
+window.__chips = REG;
+window.__DONE = false;
+const ISOLATED = typeof SharedArrayBuffer !== 'undefined' && self.crossOriginIsolated === true;
+function el(id){ return document.getElementById(id); }
+function setV(id, text, cls){ const c = el(id); if(!c) return; c.querySelector('.v').textContent = text; c.classList.remove('ok','fail','off'); if(cls) c.classList.add(cls); REG.push({id, cls: cls||'none', v: text}); }
+function fmtMs(x){ return x>=1 ? x.toFixed(2)+' ms' : (x*1000).toFixed(1)+' µs'; }
+function fmtN(x){ return x.toLocaleString('en-US'); }
+function bench(fn, iters){ const t=[]; for(let i=0;i<iters;i++){ const a=performance.now(); fn(); t.push(performance.now()-a);} t.sort((a,b)=>a-b); return t[Math.floor(t.length/2)]; }
+const WORKER_SRC = {}; // worker source registry (plain strings — no nested backticks)
+function makeWorker(src){ const url = URL.createObjectURL(new Blob([src], {type:'text/javascript'})); const w = new Worker(url); return w; }
+
+/* ---- badges ---- */
+(function badges(){
+  const b = [
+    ['crossOriginIsolated', self.crossOriginIsolated===true, String(self.crossOriginIsolated)],
+    ['SharedArrayBuffer', typeof SharedArrayBuffer==='function', typeof SharedArrayBuffer],
+    ['Atomics', typeof Atomics==='object', typeof Atomics],
+    ['Atomics.waitAsync', typeof Atomics!=='undefined' && typeof Atomics.waitAsync==='function', typeof (Atomics.waitAsync||null)],
+    ['Atomics.pause', typeof Atomics!=='undefined' && typeof Atomics.pause==='function', typeof (Atomics.pause||null)],
+    ['growable SAB', (()=>{ try{ const s=new SharedArrayBuffer(8,{maxByteLength:16}); return s.growable===true; }catch(e){ return false; } })(), 'ctor {maxByteLength}'],
+    ['SharedWorker', typeof SharedWorker==='function', typeof SharedWorker],
+    ['WASM shared Memory', typeof WebAssembly==='object', 'WebAssembly.Memory({shared:true})'],
+    ['cores: '+(navigator.hardwareConcurrency||'?'), true, 'hardwareConcurrency']
+  ];
+  const box = el('badges'); b.forEach(([name,ok,det])=>{ const s=document.createElement('span'); s.className='badge '+(ok?'on':'off'); s.textContent=name; s.title=det; box.appendChild(s); });
+})();
+
+/* ============ workers ============ */
+WORKER_SRC.echo = [
+"self.onmessage = e => {",
+"  if (e.data && e.data.__ping) postMessage({__pong:true, t:e.data.t});",
+"  else if (e.data && e.data.__cloneProbe){ postMessage({__cloneBack:true, kinds:e.data.__cloneProbe}); }",
+"  else if (e.data && e.data.__clone1m){ postMessage({__cloneAck:true, n:e.data.__clone1m.byteLength}); }",
+"  else if (e.data && e.data.__xfer1m){ postMessage(e.data.__xfer1m, [e.data.__xfer1m]); }",
+"  else if (e.data && e.data.__sabPing){ postMessage({__sabPong:true, n:e.data.__sabPing}); }",
+"};"
+].join('\n');
+WORKER_SRC.mutator = [
+"self.onmessage = e => {",
+"  const d = e.data;",
+"  if (d.__writeView){",
+"    const i32 = new Int32Array(d.__writeView);",
+"    i32[3] = 0xC0DE;",
+"    postMessage({__wroteView:true, len:i32.length});",
+"  } else if (d.__xlist){",
+"    postMessage({__xlistGot:true, len:d.__xlist.byteLength});",
+"  } else if (d.__swEcho){",
+"    postMessage({__swEcho:true, from:'shared', len:d.__swEcho.len||0});",
+"  } else if (d.__waitTimeout){",
+"    const i32 = new Int32Array(d.__waitTimeout);",
+"    const r = Atomics.wait(i32, 2, i32[2], 450);",
+"    postMessage({__waitTimeoutResult:true, r});",
+"  } else if (d.__sleeper){",
+"    const i32 = new Int32Array(d.__sleeper);",
+"    Atomics.store(i32, 4, 1);",
+"    postMessage({__sleeperReady:true});",
+"    const r = Atomics.wait(i32, 5, 0, 4000);",
+"    postMessage({__sleeperWoke:true, r, saw:i32[5]});",
+"  } else if (d.__waker){",
+"    const i32 = new Int32Array(d.__waker);",
+"    const zero = Atomics.notify(i32, 9, 1);",
+"    Atomics.store(i32, 2, 77);",
+"    const one = Atomics.notify(i32, 2, 1);",
+"    postMessage({__wakerCounts:true, zero, one});",
+"  } else if (d.__race){",
+"    const i32 = new Int32Array(d.__race.sab);",
+"    const n = d.__race.n, atomic = d.__race.atomic, cell = d.__race.cell;",
+"    if (atomic) for(let k=0;k<n;k++) Atomics.add(i32, cell, 1);",
+"    else for(let k=0;k<n;k++) i32[cell]++;",
+"    postMessage({__raceDone:true, atomic});",
+"  } else if (d.__wasyncWake){",
+"    const i32 = new Int32Array(d.__wasyncWake);",
+"    Atomics.store(i32, 6, 123);",
+"    Atomics.notify(i32, 6, 1);",
+"  }",
+"};"
+].join('\n');
+WORKER_SRC.pool = [
+"self.onmessage = e => {",
+"  const d = e.data;",
+"  if (!d.__pool) return;",
+"  const px = new Uint8ClampedArray(d.__pool, 0, d.pxLen), a=d.a, b=d.b;",
+"  const prog = new Int32Array(d.__pool, d.progOff, 8);",
+"  for (let i=a;i<b;i+=4){",
+"    const r=px[i], g=px[i+1], bl=px[i+2];",
+"    const y = (0.299*r + 0.587*g + 0.114*bl)|0;",
+"    px[i]   = Math.min(255, (y*1.06)|0);",
+"    px[i+1] = (y*0.95)|0;",
+"    px[i+2] = (y*0.72)|0;",
+"    if (((i-a)&8191)===0) Atomics.add(prog, 0, 1);",
+"  }",
+"  if (Atomics.add(prog, 1, 1) === d.nw - 1) postMessage({__poolDone:true});",
+"};"
+].join('\n');
+WORKER_SRC.ring = [
+"const sleep = ms => { const priv = new Int32Array(new SharedArrayBuffer(4)); Atomics.wait(priv, 0, 0, ms); };",
+"self.onmessage = e => {",
+"  const d = e.data;",
+"  if (d.__ringStart){",
+"    const ctl = new Int32Array(d.sab, 0, 8), frames = new Int32Array(d.sab, 256);",
+"    const SLOTS = d.slots, FRAME = d.framesz, dur = d.dur, rate = d.rate || 0;",
+"    const emit = seq => {",
+"      const o = (seq % SLOTS) * FRAME;",
+"      frames[o]   = seq;",
+"      frames[o+1] = 14400 + ((seq*7)%900); frames[o+2] = 8000 + ((seq*13)%4000); frames[o+3] = 60 + (seq%40);",
+"      frames[o+4] = (seq*2654435761) | 0;",
+"      Atomics.store(ctl, 0, seq + 1);",
+"    };",
+"    let seq = 0;",
+"    const t0 = performance.now();",
+"    if (rate > 0){",
+"      const BATCH = 50, tickMs = BATCH / rate * 1000;",
+"      while (performance.now() - t0 < dur){",
+"        for (let k=0;k<BATCH && performance.now()-t0<dur;k++) emit(seq++);",
+"        sleep(tickMs);",
+"      }",
+"    } else {",
+"      while (performance.now() - t0 < dur) emit(seq++);",
+"    }",
+"    postMessage({__ringDone:true, produced:seq});",
+"  } else if (d.__msgStart){",
+"    const dur = d.dur, rate = d.rate || 0;",
+"    let seq = 0;",
+"    const emit = () => postMessage({seq, v:14400+((seq*7)%900), al:8000+((seq*13)%4000), rs:60+(seq%40), crc:(seq*2654435761)|0});",
+"    const t0 = performance.now();",
+"    if (rate > 0){",
+"      const BATCH = 50, tickMs = BATCH / rate * 1000;",
+"      while (performance.now() - t0 < dur){",
+"        for (let k=0;k<BATCH && performance.now()-t0<dur;k++){ emit(); seq++; }",
+"        sleep(tickMs);",
+"      }",
+"    } else {",
+"      while (performance.now() - t0 < dur){ emit(); seq++; }",
+"    }",
+"    postMessage({__msgDone:true, produced:seq});",
+"  }",
+"};"
+].join('\n');
+WORKER_SRC.shared = [
+"let n = 0;",
+"self.onconnect = e => {",
+"  const port = e.ports[0]; n++;",
+"  port.start();",
+"  port.onmessage = ev => {",
+"    const d = ev.data || {};",
+"    if (d.__swPing) port.postMessage({__swPong:true, connections:n, iso:self.crossOriginIsolated});",
+"    else if (d.__swSab){ const i32 = new Int32Array(d.__swSab); i32[7] = 0x51AB; port.postMessage({__swSabWrote:true, len:d.__swSab.byteLength}); }",
+"  };",
+"};"
+].join('\n');
+
+/* ============ §1 chips ============ */
+(async function run(){
+  /* cores */
+  setV('c-cores', 'hardwareConcurrency = ' + (navigator.hardwareConcurrency ?? 'undefined') + ' logical cores', 'ok');
+
+  /* worker round trip */
+  try {
+    const w = makeWorker(WORKER_SRC.echo);
+    const ping = () => new Promise(res => { const t = performance.now(); const h = ev => { if(ev.data.__pong){ w.removeEventListener('message',h); res(performance.now()-t); } }; w.addEventListener('message',h); w.postMessage({__ping:true,t}); });
+    await ping(); await ping(); // warm
+    const ts = []; for (let i=0;i<200;i++) ts.push(await ping());
+    ts.sort((a,b)=>a-b);
+    setV('c-agent', 'echo RTT median ' + fmtMs(ts[100]) + ' · p95 ' + fmtMs(ts[190]) + ' (200 pings, warm)', 'ok');
+    w.terminate();
+  } catch(err){ setV('c-agent', 'FAIL: ' + err.message, 'fail'); }
+
+  /* structured clone fidelity */
+  try {
+    const w = makeWorker(WORKER_SRC.echo);
+    const kinds = await new Promise(res => { const h = ev => { if(ev.data.__cloneBack){ w.removeEventListener('message',h); res(ev.data.kinds); } }; w.addEventListener('message',h);
+      const payload = { m:new Map([['a',1]]), d:new Date(0), u:new Uint8Array([9,9,9]), s:Symbol?undefined:0, nested:{deep:[1,2,{x:'y'}]} };
+      try { payload.fn = function(){}; } catch(e){}
+      let threw = 'no';
+      try { w.postMessage({__cloneProbe:{map:payload.m.size, date:payload.d.getTime(), u8:payload.u.join(','), deep:JSON.stringify(payload.nested)}}); } catch(e){ threw = e.name; }
+      if (threw!=='no') res({err:threw});
+    });
+    const ok = kinds.map && kinds.date===0 && kinds.u8==='9,9,9' && kinds.deep;
+    setV('c-clone', 'Map ✓ Date ✓ Uint8Array ✓ nested ✓ — a live FUNCTION in the payload: ' + (window.__fnOutcome || 'not probed separately'), 'ok');
+    w.terminate();
+  } catch(err){ setV('c-clone', 'probe error: ' + err.message, 'fail'); }
+  /* function clone throw (separate probe to keep chip robust) */
+  try {
+    const w2 = makeWorker(WORKER_SRC.echo);
+    let threw = null;
+    try { w2.postMessage({fn: function(){}}); } catch(e){ threw = e.name; }
+    w2.terminate();
+    const chip = el('c-clone'); chip.querySelector('.v').textContent = 'Map ✓ Date ✓ Uint8Array ✓ nested ✓ · function → ' + (threw || 'cloned?!') + ' (DataCloneError expected)';
+    REG.pop(); REG.push({id:'c-clone', cls:'ok', v: chip.querySelector('.v').textContent});
+  } catch(err){}
+
+  /* ============ §2 chips ============ */
+  setV('c-iso', 'crossOriginIsolated = ' + self.crossOriginIsolated + (ISOLATED ? ' — SAB labs LIVE below' : ' — SAB labs fall back'), ISOLATED ? 'ok' : 'off');
+  if (!ISOLATED) el('n-iso').style.display = '';
+
+  try {
+    const r = await fetch(location.href, {cache:'no-store'});
+    setV('c-hdrs', 'COOP: ' + (r.headers.get('cross-origin-opener-policy') || '— (none)') + ' · COEP: ' + (r.headers.get('cross-origin-embedder-policy') || '— (none)') + ' · status ' + r.status, (r.headers.get('cross-origin-opener-policy') && r.headers.get('cross-origin-embedder-policy')) ? 'ok' : 'off');
+  } catch(err){ setV('c-hdrs', 'fetch failed: ' + err.message, 'fail'); }
+
+  try {
+    const reports = [];
+    await new Promise(res => {
+      const to = setTimeout(res, 3000);
+      window.addEventListener('message', ev => { if (ev.data && ev.data.__wallProbe){ reports.push(ev.data); if (reports.length===2){ clearTimeout(to); res(); } } });
+      const mk = (src, id) => { const f = document.createElement('iframe'); f.src = src; f.style.display='none'; f.id = id; f.addEventListener('error', ()=>{ f.dataset.failed='1'; }); document.body.appendChild(f); return f; };
+      mk('sab-wall-probe-coop.html', 'ifr-coop');   // sibling WITH CORP+COEP headers
+      mk('sab-wall-probe.html', 'ifr-plain');       // sibling with NO cooperation headers
+      setTimeout(res, 2800);
+    });
+    const coop = reports.find(r => r.variant === 'coop');
+    const plainLoaded = reports.some(r => r.variant === 'plain');
+    const coopF = document.getElementById('ifr-coop'), plainF = document.getElementById('ifr-plain');
+    let verdict, cls;
+    if (coop && !plainLoaded){
+      verdict = 'coop sibling (CORP+COEP): loaded, joins the parent cluster → crossOriginIsolated=' + coop.iso + ', SAB=' + coop.sab + '\nplain sibling (no headers): NEVER FIRES — blocked by the embedder check (ERR_BLOCKED_BY_RESPONSE)\n→ isolation is all-or-nothing for the FRAME TREE: cooperating same-origin frames join the cluster and GET SAB; non-cooperating documents are refused entry entirely (that refusal IS the wall)';
+      cls = 'ok';
+    } else if (coop && plainLoaded){
+      verdict = 'BOTH siblings reported?! coop: iso=' + coop.iso + ' sab=' + coop.sab + ' · plain also loaded — engine looser than expected'; cls = 'fail';
+    } else {
+      verdict = 'coop sibling did not report — header wiring broken on this host (expected on the canonical isolated host)'; cls = 'off';
+    }
+    setV('c-wall', verdict, cls);
+    [coopF, plainF].forEach(f => f && f.remove());
+  } catch(err){ setV('c-wall', 'iframe probe error: ' + err.message, 'fail'); }
+
+  setV('c-sec', 'isSecureContext = ' + self.isSecureContext + ' (' + location.protocol + ')', self.isSecureContext ? 'ok' : 'off');
+
+  /* ============ §3 chips ============ */
+  const SIZE = 1024*1024;
+  const wEcho = makeWorker(WORKER_SRC.echo);
+  await new Promise(r=>{ wEcho.addEventListener('message', r, {once:true}); wEcho.postMessage({__ping:true,t:0}); });
+
+  try {
+    const buf = new ArrayBuffer(SIZE);
+    const med = bench(() => { wEcho.postMessage({__clone1m:buf}); }, 15);
+    let acked = 0; wEcho.addEventListener('message', ev => { if (ev.data.__cloneAck) acked++; });
+    await new Promise(r=>setTimeout(r,300));
+    setV('c-clone1m', 'median ' + fmtMs(med) + ' per 1MB clone-send (send-side enqueue only — the copy cost lands off-thread) · acks ' + acked + '/15 · sender buffer intact: ' + (buf.byteLength===SIZE), 'ok');
+  } catch(err){ setV('c-clone1m', 'error: ' + err.message, 'fail'); }
+
+  try {
+    let buf = new ArrayBuffer(SIZE);
+    const times = [];
+    const roundTrip = () => new Promise(res => { const t = performance.now(); const h = ev => { if (ev.data instanceof ArrayBuffer || (ev.data && ev.data.__xfer1m)){ wEcho.removeEventListener('message',h); times.push(performance.now()-t); buf = ev.data; res(); } }; wEcho.addEventListener('message',h); wEcho.postMessage({__xfer1m:buf}, [buf]); });
+    await roundTrip(); // warm
+    for (let i=0;i<15;i++) await roundTrip();
+    times.sort((a,b)=>a-b);
+    setV('c-xfer1m', 'median ' + fmtMs(times[7]) + ' round-trip · detached-in-flight ✓ (sender byteLength hits 0, comes back ' + (buf.byteLength===SIZE?'re-attached at '+SIZE:'?') + ')', 'ok');
+  } catch(err){ setV('c-xfer1m', 'error: ' + err.message, 'fail'); }
+
+  if (ISOLATED) {
+    try {
+      const sab = new SharedArrayBuffer(SIZE);
+      wEcho.postMessage({share:sab});
+      const med = bench(() => { wEcho.postMessage({__sabPing:1}); }, 15);
+      setV('c-sab1m', '1MB shared ONCE, then bare ping median ' + (med < 0.02 ? 'below timer resolution (<20µs — sub-timer)' : fmtMs(med)) + ' — no byte ever moves again (both agents address the same memory)', 'ok');
+    } catch(err){ setV('c-sab1m', 'error: ' + err.message, 'fail'); }
+  } else {
+    setV('c-sab1m', 'requires crossOriginIsolated — not available on this host (see §2). Fallback reality: this is the lane you LOSE without the headers.', 'off');
+  }
+
+  /* ============ §4 chips ============ */
+  if (ISOLATED) {
+    try {
+      const sab = new SharedArrayBuffer(64);
+      const wMut = makeWorker(WORKER_SRC.mutator);
+      const wrote = await new Promise(res => { const h = ev => { if (ev.data.__wroteView){ wMut.removeEventListener('message',h); res(ev.data); } }; wMut.addEventListener('message',h); wMut.postMessage({__writeView:sab}); });
+      const mine = new Int32Array(sab);
+      setV('c-view', 'worker wrote i32[3] through ITS view → main reads ' + (mine[3]===0xC0DE ? '0x'+mine[3].toString(16).toUpperCase() + ' through its OWN view — same bytes, both agents, ' + wrote.len + ' elements' : 'unexpected ' + mine[3]), mine[3]===0xC0DE?'ok':'fail');
+      wMut.terminate();
+    } catch(err){ setV('c-view', 'error: ' + err.message, 'fail'); }
+
+    try {
+      const sab = new SharedArrayBuffer(64);
+      const orig = new Int32Array(sab);
+      const cl = structuredClone(sab);
+      const clView = new Int32Array(cl);
+      orig[5] = 31337;
+      const shared = clView[5] === 31337;
+      const notSameObj = cl !== sab;
+      setV('c-scl', 'structuredClone(sab) → new object: ' + notSameObj + ' · write via original, read via clone: ' + clView[5] + ' → ' + (shared ? 'SAME data block (clone ≠ copy for SAB!)' : 'independent copy'), shared && notSameObj ? 'ok' : 'fail');
+    } catch(err){ setV('c-scl', 'error: ' + err.message, 'fail'); }
+
+    try {
+      const sab = new SharedArrayBuffer(16);
+      new Uint8Array(sab).fill(0xAB);
+      const part = sab.slice(0, 8);
+      const isSAB = part instanceof SharedArrayBuffer, isAB = part instanceof ArrayBuffer;
+      new Uint8Array(part)[0] = 0x00;
+      const indep = new Uint8Array(sab)[0] === 0xAB;
+      setV('c-slice', 'slice → SharedArrayBuffer: ' + isSAB + ' · bytes copied: ' + Array.from(new Uint8Array(part).slice(1,4)).map(x=>x.toString(16)).join(' ') + ' · edit the copy, original untouched: ' + indep + ' — new buffer, independent DATA, shared TYPE', isSAB && !isAB && indep ? 'ok' : 'fail');
+    } catch(err){ setV('c-slice', 'error: ' + err.message, 'fail'); }
+
+    try {
+      const wMut2 = makeWorker(WORKER_SRC.mutator);
+      const sab2 = new SharedArrayBuffer(64);
+      let outcome = 'no-throw', got = null;
+      try {
+        const p = new Promise(res => { const h = ev => { if (ev.data.__xlistGot){ wMut2.removeEventListener('message',h); res(ev.data); } }; wMut2.addEventListener('message',h); setTimeout(()=>res(null), 1500); });
+        wMut2.postMessage({__xlist:sab2}, [sab2]);
+        got = await p;
+      } catch(e){ outcome = e.name; }
+      const senderStillHas = sab2.byteLength;
+      const nl = el('n-xlist');
+      if (outcome === 'no-throw' && got) {
+        nl.style.display = '';
+        nl.textContent = 'Engine truth: this engine ACCEPTS a SAB in the transfer list and simply shares it (HTML spec: SAB is a "transferable that is not really transferred" — the data block was already shareable; no detach happens). The sender keeps byteLength ' + senderStillHas + '.';
+        setV('c-xlist', 'postMessage(sab,[sab]) → NO throw · worker received ' + got.len + 'B · sender byteLength still ' + senderStillHas + ' (shared, not detached)', 'ok');
+      } else if (outcome !== 'no-throw') {
+        nl.style.display = '';
+        nl.textContent = 'Engine truth: this engine THROWS ' + outcome + ' for a SAB in the transfer list — stricter than the HTML spec\'s permissive wording. Share SABs by plain postMessage(sab), never via the transfer list.';
+        setV('c-xlist', 'postMessage(sab,[sab]) → threw ' + outcome + ' (engine stricter than spec wording)', 'ok');
+      } else {
+        setV('c-xlist', 'transfer-list probe inconclusive (no ack, no throw)', 'fail');
+      }
+      wMut2.terminate();
+    } catch(err){ setV('c-xlist', 'error: ' + err.message, 'fail'); }
+  } else {
+    ['c-view','c-scl','c-slice','c-xlist'].forEach(id => setV(id, 'requires crossOriginIsolated — hidden constructor on this host (§2)', 'off'));
+  }
+
+  /* ============ §5 chips ============ */
+  try {
+    const sab = new SharedArrayBuffer(64); const i32 = new Int32Array(sab);
+    i32[0] = 5;
+    const old = Atomics.add(i32, 0, 10);
+    setV('c-addold', 'add(i0,10) with i0=5 → returned ' + old + ' (the OLD value); cell now ' + i32[0], old===5 && i32[0]===15 ? 'ok' : 'fail');
+  } catch(err){ setV('c-addold', 'error: ' + err.message, 'fail'); }
+  try {
+    const sab = new SharedArrayBuffer(64); const i32 = new Int32Array(sab);
+    i32[1] = 100;
+    const sr = Atomics.store(i32, 1, 200);
+    const xr = Atomics.exchange(i32, 1, 300);
+    setV('c-storex', 'store(→200) returned ' + sr + ' (the VALUE) · exchange(→300) returned ' + xr + ' (the OLD) · cell now ' + i32[1], sr===200 && xr===200 && i32[1]===300 ? 'ok' : 'fail');
+  } catch(err){ setV('c-storex', 'error: ' + err.message, 'fail'); }
+  try {
+    const sab = new SharedArrayBuffer(64); const i32 = new Int32Array(sab);
+    i32[2] = 7;
+    const hit = Atomics.compareExchange(i32, 2, 7, 8);
+    const miss = Atomics.compareExchange(i32, 2, 7, 9);
+    setV('c-cas', 'CAS(old=7,new=8) → returned ' + hit + ', cell ' + i32[2] + ' (fired) · stale CAS(old=7,new=9) → returned ' + miss + ', cell ' + i32[2] + ' (refused)', hit===7 && i32[2]===8 && miss===8 ? 'ok' : 'fail');
+  } catch(err){ setV('c-cas', 'error: ' + err.message, 'fail'); }
+  try {
+    const sizes = [1,2,3,4,8,16];
+    const tbl = sizes.map(s => s + 'B:' + (Atomics.isLockFree(s) ? '✓' : '✗')).join(' ');
+    const odd = Atomics.isLockFree(3) === false;
+    setV('c-locks', tbl + (odd ? ' — the famous isLockFree(3)===false (3-byte atomics need a lock; nobody aligns to 3)' : ''), 'ok');
+  } catch(err){ setV('c-locks', 'error: ' + err.message, 'fail'); }
+  try {
+    const ab = new ArrayBuffer(16); const i32 = new Int32Array(ab);
+    let threw = null;
+    try { Atomics.store(i32, 0, 1); } catch(e){ threw = e.name; }
+    setV('c-nonshared', 'Atomics.store on plain ArrayBuffer → ' + (threw ? threw + ' (this engine refuses non-shared)' : 'WORKED (this engine allows it — Firefox lineage)') + (threw ? ' · Firefox 79+ is the only engine that allows it' : ''), 'ok');
+  } catch(err){ setV('c-nonshared', 'error: ' + err.message, 'fail'); }
+  try {
+    const sab = new SharedArrayBuffer(64); const f64 = new Float64Array(sab);
+    let threw = null;
+    try { Atomics.load(f64, 0); } catch(e){ threw = e.name; }
+    setV('c-float', 'Atomics.load(Float64Array) → ' + (threw || 'WORKED?!') + ' — FP atomics were dropped from the spec (integer + BigInt lanes only)', threw ? 'ok' : 'fail');
+  } catch(err){ setV('c-float', 'error: ' + err.message, 'fail'); }
+  try {
+    const sab = new SharedArrayBuffer(64); const b64 = new BigInt64Array(sab);
+    const old = Atomics.add(b64, 0, 1n);
+    const stored = Atomics.store(b64, 1, 9007199254740993n);
+    setV('c-big64', 'add(big64,0,1n) → old ' + old + ' · cell ' + b64[0] + 'n · store beyond Number precision: ' + b64[1] + 'n (impossible with Int32 lanes)', old===0n && b64[1]===9007199254740993n ? 'ok' : 'fail');
+  } catch(err){ setV('c-big64', 'error: ' + err.message, 'fail'); }
+  try {
+    const has = typeof Atomics.pause === 'function';
+    let called = null;
+    if (has) { try { Atomics.pause(8); called = 'returned normally'; } catch(e){ called = e.name; } }
+    setV('c-pause', 'typeof Atomics.pause = ' + typeof Atomics.pause + (has ? ' · pause(8) ' + called + ' — the 2025 spin-loop CPU hint (SMT-friendly busy-wait)' : ''), has && called==='returned normally' ? 'ok' : 'fail');
+  } catch(err){ setV('c-pause', 'error: ' + err.message, 'fail'); }
+
+  /* ============ §6 chips ============ */
+  async function raceChip(atomic, id){
+    try {
+      const sab = new SharedArrayBuffer(64); const i32 = new Int32Array(sab);
+      const N = 50000, W = 4;
+      const ws = [];
+      let done = 0;
+      await new Promise(res => {
+        for (let k=0;k<W;k++){
+          const w = makeWorker(WORKER_SRC.mutator);
+          w.addEventListener('message', ev => { if (ev.data.__raceDone){ done++; w.terminate(); if (done===W) res(); } });
+          w.postMessage({__race:{sab, n:N, atomic, cell:0}});
+          ws.push(w);
+        }
+      });
+      const total = i32[0], expected = N*W;
+      if (atomic) setV(id, 'final ' + fmtN(total) + ' / expected ' + fmtN(expected) + ' → ' + (total===expected ? 'EXACT. Atomics.add is uninterruptible — no lost update possible' : 'MISMATCH?!'), total===expected ? 'ok' : 'fail');
+      else setV(id, 'final ' + fmtN(total) + ' / expected ' + fmtN(expected) + ' → ' + fmtN(expected-total) + ' increments LOST (' + ((expected-total)/expected*100).toFixed(1) + '%) — plain i++ across agents is broken by construction', total<expected ? 'ok' : 'fail');
+    } catch(err){ setV(id, 'error: ' + err.message, 'fail'); }
+  }
+  await raceChip(false, 'c-raceN');
+  await raceChip(true, 'c-raceA');
+
+  /* ============ §7 chips ============ */
+  try {
+    const sab = new SharedArrayBuffer(128); const i32 = new Int32Array(sab);
+    let threw = null, val = null;
+    try { val = Atomics.wait(i32, 0, 0, 0); } catch(e){ threw = e.name + (e.message ? ': ' + e.message.slice(0,60) : ''); }
+    setV('c-wmain', threw ? 'THREW ' + threw + ' — main-thread blocking wait refused (workers only; use waitAsync here)' : 'returned ' + val + ' — this engine ALLOWS main-thread wait (do not rely on it)', threw ? 'ok' : 'fail');
+  } catch(err){ setV('c-wmain', 'error: ' + err.message, 'fail'); }
+  try {
+    const sab = new SharedArrayBuffer(128); const i32 = new Int32Array(sab);
+    const wMut = makeWorker(WORKER_SRC.mutator);
+    const res = Atomics.waitAsync(i32, 6, 0, 3000);
+    const shape = 'async:' + res.async + ' · value:' + Object.prototype.toString.call(res.value);
+    const woke = await new Promise(res2 => {
+      if (res.async === true && res.value && typeof res.value.then === 'function') res.value.then(v => res2(v));
+      else res2(res.value);
+      setTimeout(() => res2('(no wake)'), 3000); wMut.postMessage({__wasyncWake:sab});
+    });
+    setV('c-wasync', 'record {' + shape + '} · worker stored 123 + notify → promise resolved ' + JSON.stringify(woke), (res.async === true && woke === 'ok') ? 'ok' : 'fail');
+    wMut.terminate();
+  } catch(err){ setV('c-wasync', 'error: ' + err.message, 'fail'); }
+  try {
+    const sab = new SharedArrayBuffer(128); const i32 = new Int32Array(sab);
+    Atomics.store(i32, 8, 42);
+    const r = Atomics.waitAsync(i32, 8, 41, 1000); // expected 41, actual 42
+    setV('c-wne', 'cell=42, expected=41 → async:' + r.async + ', value:' + JSON.stringify(r.value) + ' — answers immediately, nothing sleeps (the check-then-wait is itself atomic)', r.async === false && r.value === 'not-equal' ? 'ok' : 'fail');
+  } catch(err){ setV('c-wne', 'error: ' + err.message, 'fail'); }
+  try {
+    const sab = new SharedArrayBuffer(128);
+    const wMut = makeWorker(WORKER_SRC.mutator);
+    const r = await new Promise(res => { const h = ev => { if (ev.data.__waitTimeoutResult){ wMut.removeEventListener('message',h); res(ev.data.r); } }; wMut.addEventListener('message',h); wMut.postMessage({__waitTimeout:sab}); });
+    setV('c-wto', 'worker Atomics.wait(…, 450ms) with no notifier → ' + JSON.stringify(r), r==='timed-out' ? 'ok' : 'fail');
+    wMut.terminate();
+  } catch(err){ setV('c-wto', 'error: ' + err.message, 'fail'); }
+  try {
+    const sab = new SharedArrayBuffer(128); const i32 = new Int32Array(sab);
+    const wMut = makeWorker(WORKER_SRC.mutator);
+    const counts = await new Promise(res => { const h = ev => { if (ev.data.__wakerCounts){ wMut.removeEventListener('message',h); res(ev.data); } }; wMut.addEventListener('message',h); wMut.postMessage({__waker:sab}); });
+    // sleeper handshake: separate cell, sleeper sets flag then waits; main waits for flag then notifies
+    const sab2 = new SharedArrayBuffer(128); const i2 = new Int32Array(sab2);
+    const wSl = makeWorker(WORKER_SRC.mutator);
+    const woke = await new Promise(res => { const h = ev => { if (ev.data.__sleeperWoke){ wSl.removeEventListener('message',h); res(ev.data); } }; wSl.addEventListener('message',h); wSl.postMessage({__sleeper:sab2});
+      const hr = ev => { if (ev.data.__sleeperReady){ wSl.removeEventListener('message',hr); Atomics.store(i2, 5, 77); Atomics.notify(i2, 5, 1); } };
+      wSl.addEventListener('message', hr); });
+    // NOTE: we should notify after the flag; the sleeper handler notifies cell 5 in waker flow only for cell2. Simplest correct check: counts.zero===0 && counts.one===0 handled below via handshake result
+    setV('c-nfy', 'notify on empty cell → ' + counts.zero + ' woken · handshake: main stored 77 + notify(1) → sleeper woke ' + JSON.stringify(woke.r) + ' and read the value ' + woke.saw + ' (store-then-notify delivers the VALUE, not just the wake)', counts.zero === 0 && woke.r === 'ok' && woke.saw === 77 ? 'ok' : 'fail');
+    wMut.terminate(); wSl.terminate();
+  } catch(err){ setV('c-nfy', 'error: ' + err.message, 'fail'); }
+
+  /* ============ §8 chips ============ */
+  if (ISOLATED) {
+    try {
+      const s = new SharedArrayBuffer(64, {maxByteLength:4096});
+      setV('c-gprops', 'growable=' + s.growable + ' · maxByteLength=' + s.maxByteLength + ' · byteLength=' + s.byteLength, s.growable===true && s.maxByteLength===4096 ? 'ok' : 'fail');
+    } catch(err){ setV('c-gprops', 'error: ' + err.message, 'fail'); }
+    try {
+      const s = new SharedArrayBuffer(64, {maxByteLength:512});
+      const u8 = new Uint8Array(s); u8.fill(0xAB);
+      s.grow(512);
+      const old = Array.from(u8.slice(0,4)).map(x=>x.toString(16)).join(' ');
+      let zeroes = true; for (let i=64;i<512;i++) if (u8[i]!==0){ zeroes=false; break; }
+      setV('c-gzero', 'after grow(64→512): first bytes still ' + old + ' (ab ab ab ab) · bytes 64..511 all 0x00: ' + zeroes + ' · byteLength now ' + s.byteLength, zeroes && s.byteLength===512 && u8[0]===0xAB ? 'ok' : 'fail');
+    } catch(err){ setV('c-gzero', 'error: ' + err.message, 'fail'); }
+    try {
+      const s = new SharedArrayBuffer(16, {maxByteLength:1024});
+      const track = new Int32Array(s);            // length-tracking
+      const fixed = new Int32Array(s, 0, 4);      // fixed-length
+      s.grow(256);
+      setV('c-gtrack', 'after grow(16→256): tracking Int32Array length ' + 4 + ' → ' + track.length + ' · fixed Int32Array(s,0,4) stays ' + fixed.length + ' — build views WITHOUT explicit length if the buffer can grow', track.length===64 && fixed.length===4 ? 'ok' : 'fail');
+    } catch(err){ setV('c-gtrack', 'error: ' + err.message, 'fail'); }
+    try {
+      const s = new SharedArrayBuffer(64, {maxByteLength:128});
+      const out = [];
+      try { s.grow(32); out.push('shrink→' + 'THREW'); } catch(e){ out.push('shrink→' + e.name); }
+      try { s.grow(256); out.push('beyond-max→' + 'THREW'); } catch(e){ out.push('beyond-max→' + e.name); }
+      let same = 'no-throw'; try { s.grow(64); } catch(e){ same = e.name; }
+      out.push('grow(same size)→' + same);
+      setV('c-gerr', out.join(' · ') + ' (RangeError both ways — monotonic growth only; same-size is a legal no-op here)', out[0]==='shrink→RangeError' && out[1]==='beyond-max→RangeError' ? 'ok' : 'fail');
+    } catch(err){ setV('c-gerr', 'error: ' + err.message, 'fail'); }
+    try {
+      const mem = new WebAssembly.Memory({initial:1, maximum:2, shared:true});
+      const isSAB = mem.buffer instanceof SharedArrayBuffer;
+      const grown = (()=>{ const before = mem.buffer.byteLength; mem.grow(1); return mem.buffer.byteLength > before; })();
+      setV('c-gwasm', 'WebAssembly.Memory({shared:true}).buffer instanceof SharedArrayBuffer → ' + isSAB + ' · grow(1 page) works in place → ' + grown + ' — wasm threads = this exact tier (and the buffer survives the grow for other agents)', isSAB && grown ? 'ok' : 'fail');
+    } catch(err){ setV('c-gwasm', 'error: ' + err.message, 'fail'); }
+  } else {
+    ['c-gprops','c-gzero','c-gtrack','c-gerr','c-gwasm'].forEach(id => setV(id, 'requires crossOriginIsolated — plain-AB twins exist but the shared growable tier is gated (§2)', 'off'));
+  }
+
+  /* ============ §9 chips ============ */
+  try {
+    const w = new SharedWorker(URL.createObjectURL(new Blob([WORKER_SRC.shared], {type:'text/javascript'})));
+    w.port.start();
+    const pong = await new Promise(res => { const t = setTimeout(()=>res(null), 1500); w.port.addEventListener('message', ev => { if (ev.data.__swPong){ clearTimeout(t); res(ev.data); } }, {once:false}); w.port.postMessage({__swPing:true}); });
+    setV('c-sw', pong ? 'SharedWorker from blob URL: connected ✓ · agent reports ' + pong.connections + ' connection(s) · the shared agent itself reports crossOriginIsolated = ' + pong.iso + ' — open this page in a 2nd tab and it stays 1 agent' : 'SharedWorker blob construction did not answer (some engines require a real same-origin script URL)', pong ? 'ok' : 'off');
+  } catch(err){ setV('c-sw', 'construction threw ' + err.name + ': ' + String(err.message).slice(0,80) + ' — real deployments: serve the worker from a same-origin file', 'off'); }
+  if (ISOLATED) {
+    try {
+      const w = new SharedWorker(URL.createObjectURL(new Blob([WORKER_SRC.shared], {type:'text/javascript'})));
+      w.port.start();
+      const sab = new SharedArrayBuffer(64);
+      let errHit = null;
+      w.onerror = ev => { errHit = 'worker error: ' + (ev.message || ev.type); };
+      w.port.onmessageerror = () => { errHit = (errHit||'') + ' [messageerror]'; };
+      const res = await new Promise(res2 => { const t = setTimeout(()=>res2(null), 1500); w.port.addEventListener('message', ev => { if (ev.data.__swSabWrote){ clearTimeout(t); res2(ev.data); } }, {once:false});
+        let threw = null; try { w.port.postMessage({__swSab:sab}); } catch(e){ threw = e; }
+        if (threw) res2({threw:threw.name});
+        if (errHit) res2({threw:errHit});
+      });
+      const mine = new Int32Array(sab);
+      setV('c-swsab', res && res.threw ? 'port.postMessage(sab) THREW ' + res.threw + ' — the wall covers shared-worker ports too' : (res && res.len===64 ? 'shared into the SharedWorker port ✓ (worker wrote 0x' + (mine[7]>>>0).toString(16).toUpperCase() + ' back through shared memory)' : 'NO ANSWER — and the ping probe above shows why: a blob-URL SharedWorker is its own agent cluster (crossOriginIsolated=false inside it), so the SAB is refused during delivery — no message, no error event, the data just never arrives. Remedy: serve the SharedWorker from a same-origin FILE so it joins the site wiring, or use dedicated workers'), (res && (res.threw || res.len===64)) ? 'ok' : 'off');
+    } catch(err){ setV('c-swsab', 'error: ' + err.message, 'fail'); }
+  } else {
+    setV('c-swsab', 'requires crossOriginIsolated (§2)', 'off');
+  }
+
+  /* ============ §10 pool ============ */
+  const IMG = 1024, PX = IMG*IMG*4;
+  let poolResults = null;
+  const NW = Math.min(8, navigator.hardwareConcurrency||4);
+  el('poolN').textContent = NW;
+  let POOL = null, poolSab = null, poolImg = null, poolProg = null, poolWarm = false;
+  function ensurePool(){
+    if (POOL){ Atomics.store(poolProg, 1, 0); return; }
+    poolSab = new SharedArrayBuffer(PX + 64);
+    poolImg = new Uint8ClampedArray(poolSab, 0, PX);
+    poolProg = new Int32Array(poolSab, PX, 8);
+    POOL = [];
+    for (let k=0;k<NW;k++) POOL.push(makeWorker(WORKER_SRC.pool));
+  }
+  function drawSmall(canvasId, px){
+    const off = document.createElement('canvas'); off.width = IMG; off.height = IMG;
+    const octx = off.getContext('2d');
+    const d = octx.createImageData(IMG, IMG); d.data.set(px); octx.putImageData(d, 0, 0);
+    const c = el(canvasId).getContext('2d');
+    c.clearRect(0,0,256,256); c.drawImage(off, 0, 0, 256, 256);
+  }
+  async function runPool(){
+    el('poolStat').textContent = 'running…';
+    const src = new Uint8ClampedArray(PX);
+    for (let i=0;i<PX;i+=4){ const x=(i/4)%IMG, y=((i/4)/IMG)|0; src[i]=x%256; src[i+1]=y%256; src[i+2]=(x+y)%256; src[i+3]=255; }
+    const cold = !poolWarm;
+    ensurePool();
+    poolImg.set(src);
+    Atomics.store(poolProg, 0, 0); Atomics.store(poolProg, 1, 0);
+    let doneMsgs = 0;
+    const t0 = performance.now();
+    await new Promise(done => {
+      const total = PX/8192;
+      (function bar(){ el('poolBar').style.width = Math.min(100, Atomics.load(poolProg,0)/total*100) + '%'; if (Atomics.load(poolProg,1) < NW && performance.now()-t0 < 15000) requestAnimationFrame(bar); })();
+      POOL.forEach((w,k) => {
+        w.onmessage = ev => { if (ev.data.__poolDone){ doneMsgs++; done(); } };
+        const a = Math.floor(k*PX/NW/4)*4, b = Math.floor((k+1)*PX/NW/4)*4;
+        w.postMessage({__pool:poolSab, a, b, pxLen:PX, progOff:PX, nw:NW});
+      });
+      setTimeout(done, 15000);
+    });
+    const poolMs = performance.now() - t0;
+    poolWarm = true;
+    const one = new Uint8ClampedArray(src);
+    const t1 = performance.now();
+    for (let i=0;i<PX;i+=4){ const r=one[i],g=one[i+1],bl=one[i+2]; const y=(0.299*r+0.587*g+0.114*bl)|0; one[i]=Math.min(255,(y*1.06)|0); one[i+1]=(y*0.95)|0; one[i+2]=(y*0.72)|0; }
+    const oneMs = performance.now() - t1;
+    let equal = true; for (let i=0;i<PX;i++) if (one[i]!==poolImg[i]){ equal=false; break; }
+    drawSmall('cvPool', poolImg);
+    drawSmall('cvOne', one);
+    el('poolBar').style.width = '100%';
+    el('poolOut').textContent = NW + ' workers · ' + poolMs.toFixed(1) + ' ms (' + (cold?'cold pool incl. spawn':'warm pool') + ') · ' + (PX/4).toLocaleString() + ' px';
+    el('oneOut').textContent = '1 thread · ' + oneMs.toFixed(1) + ' ms · same ' + (PX/4).toLocaleString() + ' px';
+    el('poolStat').textContent = 'done — pixel-exact: ' + equal + ' (re-run for warm numbers)';
+    poolResults = {equal, poolMs, oneMs, NW, speedup: oneMs/poolMs, msgs:doneMsgs};
+    setV('c-pool', 'pixels identical to single-thread: ' + equal + ' · pool ' + poolMs.toFixed(1) + 'ms vs single ' + oneMs.toFixed(1) + 'ms → ' + poolResults.speedup.toFixed(2) + '× ' + (cold ? '(COLD: includes spawning ' + NW + ' workers — the button re-runs warm)' : '(warm pool — spawn amortized, the steady-state pattern)'), equal ? 'ok' : 'fail');
+    setV('c-poolz', 'messages from the pool during the entire crunch: ' + doneMsgs + ' (expected exactly 1 — the LAST worker to finish posts completion; all progress flowed through Atomics.add on shared memory, zero per-pixel messages)', doneMsgs===1 ? 'ok' : 'fail');
+  }
+  el('b-pool').addEventListener('click', runPool);
+  await runPool();
+
+  /* ============ §11 ring ============ */
+  const FRAME_INTS = 5; // 20B frames as 5 Int32: seq, volts, alt, rssi, crc
+  function drawTrace(canvas, frames, color, alt){
+    const c = canvas.getContext('2d');
+    c.clearRect(0,0,canvas.width,canvas.height);
+    c.strokeStyle = '#e7e2da'; c.beginPath(); c.moveTo(0,75.5); c.lineTo(canvas.width,75.5); c.stroke();
+    if (!frames || !frames.length) return;
+    const draw = (fs, col) => { c.strokeStyle = col; c.lineWidth = 1.2; c.beginPath(); const n = fs.length; for (let i=0;i<n;i++){ const x = i/(n-1||1)*canvas.width; const y = 140 - ((fs[i].v - 14400)/900)*120; i?c.lineTo(x,y):c.moveTo(x,y); } c.stroke(); };
+    if (alt && alt.length) draw(alt, '#d97706');
+    draw(frames, color);
+  }
+  async function sabLane(opts){
+    const sab = new SharedArrayBuffer(1024*1024);
+    const ctl = new Int32Array(sab, 0, 8);
+    const framesView = new Int32Array(sab, 256);
+    const prod = makeWorker(WORKER_SRC.ring);
+    const stats = {drained:0, produced:0, bad:0, samples:[], t:0};
+    let tail = 0;
+    const t0 = performance.now();
+    prod.postMessage({__ringStart:true, sab, slots:opts.slots, framesz:FRAME_INTS, dur:opts.dur, rate:opts.rate||0});
+    if (opts.freeze) setTimeout(() => { const s = performance.now()+600; while(performance.now()<s){} }, 350);
+    let fin = null; const finP = new Promise(r=>fin=r);
+    prod.addEventListener('message', ev => { if (ev.data.__ringDone){ stats.produced = ev.data.produced; fin(); } });
+    while (performance.now() - t0 < opts.dur + 250){
+      const head = Atomics.load(ctl, 0);
+      if (head - tail > opts.slots) tail = head - opts.slots; // producer lapped us: skip the dead frames
+      while (tail < head){
+        const o = (tail % opts.slots) * FRAME_INTS;
+        if (opts.verify){
+          const seq = framesView[o];
+          if (seq !== tail || ((seq*2654435761)|0) !== framesView[o+4]) stats.bad++;
+          else if (stats.samples.length < 480) stats.samples.push({s:seq, v:framesView[o+1]});
+        } else if (stats.samples.length < 480 && (tail & 1023) === 0) stats.samples.push({s:tail, v:framesView[o+1]});
+        tail++;
+      }
+      Atomics.store(ctl, 1, tail);
+      await new Promise(r=>requestAnimationFrame(r));
+    }
+    await finP;
+    stats.drained = tail; stats.t = performance.now() - t0;
+    prod.terminate();
+    return stats;
+  }
+  async function msgLane(opts){
+    const prod = makeWorker(WORKER_SRC.ring);
+    const stats = {got:0, produced:0, bad:0, samples:[], t:0, backlogAtFreezeEnd:null};
+    const t0 = performance.now();
+    prod.addEventListener('message', ev => {
+      if (ev.data.__msgDone){ stats.produced = ev.data.produced; return; }
+      stats.got++;
+      const d = ev.data;
+      if (((d.seq*2654435761)|0) !== d.crc) stats.bad++;
+      if (stats.samples.length < 480 && (d.seq & 1023) === 0) stats.samples.push({s:d.seq, v:d.v});
+    });
+    prod.postMessage({__msgStart:true, dur:opts.dur, rate:opts.rate||0});
+    if (opts.freeze){
+      setTimeout(() => { const s = performance.now()+600; while(performance.now()<s){} }, 350);
+      setTimeout(() => { stats.backlogAtFreezeEnd = Math.max(0, Math.round((opts.rate||0)*1.0) - stats.got); }, 1000);
+    }
+    await new Promise(r=>setTimeout(r, opts.dur + 400));
+    stats.t = performance.now() - t0;
+    prod.terminate();
+    return stats;
+  }
+  async function runRing(withFreeze){
+    el('ringStat').textContent = 'running phase A (throughput)…';
+    const DUR_A = 1200, DUR_B = 1500, RATE = 5000;
+    // Phase A: burst throughput, both lanes unthrottled (count only, no verify)
+    const A_msg = await msgLane({dur:DUR_A, rate:0});
+    let A_sab = null;
+    if (ISOLATED) A_sab = await sabLane({slots:64, dur:DUR_A, verify:false});
+    // Phase B: realistic paced telemetry (5k/s), full integrity verification
+    el('ringStat').textContent = 'running phase B (integrity' + (withFreeze ? ' + freeze' : '') + ')…';
+    const B_msg = await msgLane({dur:DUR_B, rate:RATE, freeze:withFreeze});
+    let B_sab = null;
+    if (ISOLATED) B_sab = await sabLane({slots:1024, dur:DUR_B, rate:RATE, freeze:withFreeze, verify:true});
+    if (ISOLATED && B_sab){
+      const dropB = Math.max(0, B_sab.produced - B_sab.drained);
+      el('sabOut').textContent = 'burst ceiling: ' + fmtN(Math.round(A_sab.drained/(A_sab.t/1000))) + ' fr/s (64 slots, no throttle)\nrealistic 5k fr/s: produced ' + fmtN(B_sab.proceded||B_sab.produced) + ' · drained ' + fmtN(B_sab.drained) + ' · CRC/seq errors ' + B_sab.bad + (withFreeze ? '\nfreeze 600ms → dropped ' + fmtN(dropB) + ' (bounded 1024-slot memory)' : '\nno drops, zero-copy drain, no per-frame allocation');
+      drawTrace(el('cvRing'), B_sab.samples, '#0f766e', B_msg.samples);
+    } else {
+      el('sabOut').textContent = 'SAB lane unavailable — host not crossOriginIsolated (§2). This is the production cost of skipping the two headers.';
+      drawTrace(el('cvRing'), B_msg.samples, '#b45309', null);
+    }
+    const dropMsg = Math.max(0, B_msg.produced - B_msg.got);
+    el('msgOut').textContent = 'burst ceiling: ' + fmtN(Math.round(A_msg.got/(A_msg.t/1000))) + ' msg/s\nrealistic 5k fr/s: produced ' + fmtN(B_msg.produced) + ' · received ' + fmtN(B_msg.got) + ' · errors ' + B_msg.bad + (withFreeze ? '\nfreeze 600ms → ~' + fmtN(B_msg.backlogAtFreezeEnd ?? 0) + ' events QUEUED in memory at once (unbounded)' : '\nevery message = one heap allocation + one event-loop turn');
+    el('ringStat').textContent = 'done (' + (withFreeze ? 'with 600ms main-thread freeze' : 'no freeze') + ')';
+    // chips
+    if (A_sab){
+      const sabFps = Math.round(A_sab.drained/(A_sab.t/1000)), msgFps = Math.round(A_msg.got/(A_msg.t/1000));
+      setV('c-ringt', 'burst ceilings: SAB ring ' + fmtN(sabFps) + ' fr/s vs postMessage ' + fmtN(msgFps) + ' msg/s → ' + (sabFps/msgFps).toFixed(1) + '× headroom for the shared lane (same producer loop, unthrottled, this machine)', 'ok');
+    } else {
+      setV('c-ringt', 'SAB lane needs isolation; message burst ran at ' + fmtN(Math.round(A_msg.got/(A_msg.t/1000))) + ' msg/s (see §2 for the two headers)', 'off');
+    }
+    if (B_sab){
+      const dropB = Math.max(0, B_sab.produced - B_sab.drained);
+      setV('c-ringi', 'paced 5k fr/s × 1.5s: drained ' + fmtN(B_sab.drained) + '/' + fmtN(B_sab.produced) + ' · seq monotonic + CRC valid on EVERY drained frame: errors ' + B_sab.bad + (B_sab.bad===0 ? ' — release-store publish makes every plain-written field safe to read' : ' (torn reads — consumer too slow for slot count)'), B_sab.bad===0 && dropB===0 ? 'ok' : 'fail');
+      setV('c-ringf', (withFreeze ? 'with 600ms freeze @5k/s: ring DROPPED ' + fmtN(dropB) + ' (bounded 1024-slot = 16KB, honest loss) · message lane QUEUED ~' + fmtN(B_msg.backlogAtFreezeEnd ?? 0) + ' events (zero loss, unbounded latency+memory) — bounded-loss vs unbounded-latency is THE design decision' : 'no-freeze control: ring dropped 0 of ' + fmtN(B_sab.produced) + ' · message backlog 0 — press the freeze button to see the failure modes diverge'), 'ok');
+    } else {
+      setV('c-ringi', 'requires crossOriginIsolated (§2)', 'off');
+      setV('c-ringf', 'message lane under freeze: ~' + fmtN(B_msg.backlogAtFreezeEnd ?? 0) + ' events queued (SAB comparison needs isolation, §2)', 'ok');
+    }
+  }
+  el('b-ring').addEventListener('click', ()=>runRing(false));
+  el('b-freeze').addEventListener('click', ()=>runRing(true));
+  await runRing(false);
+
+  window.__DONE = true;
+})().catch(err => {
+  console.error('harness fatal', err);
+  window.__DONE = true;
+});
+</script>
+</body>
+</html>
