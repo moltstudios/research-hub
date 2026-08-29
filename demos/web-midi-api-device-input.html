@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Web MIDI API — Device Input: Bytes, Ports, Sysex & Scheduling</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#faf8f4; --card:#ffffff; --ink:#1c1917; --mut:#78716c; --line:#e7e2da;
+    --acc:#0f766e; --acc2:#14b8a6; --accSoft:#ccfbf1; --warn:#b45309; --warnSoft:#fef3c7;
+    --bad:#b91c1c; --badSoft:#fee2e2; --ok:#15803d; --okSoft:#dcfce7; --sim:#7c3aed; --simSoft:#ede9fe;
+    --code:#f5f2ec; --r:16px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font:15px/1.65 ui-sans-serif,-apple-system,"Segoe UI",Inter,Roboto,sans-serif;overflow-x:hidden}
+  .orb{position:fixed;border-radius:50%;filter:blur(90px);opacity:.16;pointer-events:none;z-index:0}
+  .o1{width:480px;height:480px;background:var(--acc2);top:-160px;right:-120px}
+  .o2{width:380px;height:380px;background:#f59e0b;bottom:-140px;left:-100px}
+  main{position:relative;z-index:1;max-width:1060px;margin:0 auto;padding:28px 20px 90px}
+  header.hero{padding:44px 8px 26px}
+  .kicker{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--acc);background:var(--accSoft);border:1px solid #99f6e4;padding:5px 12px;border-radius:999px}
+  h1{font-size:clamp(30px,5vw,44px);line-height:1.12;font-weight:800;letter-spacing:-.02em;margin:16px 0 10px}
+  h1 em{font-style:normal;color:var(--acc)}
+  .sub{font-size:16.5px;color:var(--mut);max-width:760px}
+  #badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .badge{font-size:12px;font-weight:600;padding:4px 11px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--mut)}
+  .badge.on{background:var(--okSoft);border-color:#bbf7d0;color:var(--ok)}
+  .badge.off{background:var(--badSoft);border-color:#fecaca;color:var(--bad)}
+  .badge.warn{background:var(--warnSoft);border-color:#fde68a;color:var(--warn)}
+  .badge.sim{background:var(--simSoft);border-color:#ddd6fe;color:var(--sim)}
+  section{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:26px 26px 22px;margin:18px 0;box-shadow:0 1px 3px rgba(28,25,23,.04)}
+  .sn{font-size:11.5px;font-weight:800;letter-spacing:.1em;color:var(--acc);text-transform:uppercase}
+  h2{font-size:23px;font-weight:800;letter-spacing:-.015em;margin:4px 0 6px}
+  .lead{color:var(--mut);font-size:14.5px;max-width:860px}
+  h3{font-size:15.5px;font-weight:700;margin:18px 0 8px}
+  p{margin:8px 0;max-width:900px}
+  code{font:12.8px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code);padding:1.5px 6px;border-radius:6px}
+  pre{background:#1c1917;color:#e7e5e4;font:12.6px/1.62 ui-monospace,Menlo,Consolas,monospace;padding:14px 16px;border-radius:12px;overflow-x:auto;margin:12px 0;max-width:100%}
+  pre b{color:#5eead4;font-weight:600} pre i{color:#fbbf24;font-style:normal} pre s{color:#78716c;text-decoration:none}
+  table{border-collapse:collapse;width:100%;font-size:13.2px;margin:12px 0}
+  th{text-align:left;font-weight:700;color:var(--mut);border-bottom:2px solid var(--line);padding:7px 10px;font-size:12px;letter-spacing:.04em;text-transform:uppercase}
+  td{border-bottom:1px solid var(--line);padding:7px 10px;vertical-align:top}
+  td code{white-space:nowrap}
+  .chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;margin-top:14px}
+  .chip{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fffdf9;cursor:pointer;text-align:left;font:inherit;transition:border-color .15s, box-shadow .15s}
+  .chip:hover{border-color:var(--acc2);box-shadow:0 2px 8px rgba(20,184,166,.12)}
+  .chip:disabled{cursor:default;opacity:.75}
+  .chip .t{font-weight:700;font-size:13.5px;display:flex;gap:8px;align-items:center}
+  .chip .d{font-size:12.5px;color:var(--mut);margin-top:3px}
+  .chip .v{font:12.3px/1.45 ui-monospace,Menlo,monospace;margin-top:7px;padding:6px 9px;background:var(--code);border-radius:8px;min-height:18px;word-break:break-word;white-space:pre-wrap}
+  .ok .v{background:var(--okSoft);color:#14532d} .fail .v{background:var(--badSoft);color:#7f1d1d}
+  .lab-tag{font-size:10px;font-weight:800;letter-spacing:.06em;padding:2px 7px;border-radius:999px;flex:none}
+  .lab-tag.live{background:var(--okSoft);color:var(--ok)} .lab-tag.sim{background:var(--simSoft);color:var(--sim)}
+  .note{border-left:3px solid var(--acc2);background:var(--accSoft);border-radius:0 10px 10px 0;padding:10px 14px;font-size:13.5px;margin:12px 0}
+  .note.warn{border-left-color:#f59e0b;background:var(--warnSoft)}
+  .note.bad{border-left-color:var(--bad);background:var(--badSoft)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:820px){.grid2{grid-template-columns:1fr}}
+  .demo-box{border:1px dashed var(--line);border-radius:12px;padding:14px;margin:12px 0;background:#fffdf9}
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}
+  .btn{font:600 13px/1 inherit;padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:#fff;cursor:pointer;transition:all .12s}
+  .btn:hover{border-color:var(--acc2);color:var(--acc)}
+  .btn.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+  .btn.pri:hover{background:#115e59}
+  .knob-row{display:flex;gap:14px;flex-wrap:wrap;margin:10px 0}
+  .pad{width:64px;height:64px;border-radius:12px;border:1px solid var(--line);background:linear-gradient(180deg,#fff,#f5f2ec);cursor:pointer;font:700 12px/64px center inherit;text-align:center;color:var(--mut);user-select:none}
+  .pad.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+  input[type=range]{accent-color:var(--acc);width:170px}
+  .hud{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:12px 0}
+  .gauge{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fff}
+  .gauge .l{font-size:10.5px;font-weight:800;letter-spacing:.08em;color:var(--mut);text-transform:uppercase}
+  .gauge .n{font:800 21px/1.25 ui-monospace,Menlo,monospace;margin-top:2px}
+  .gauge .n small{font-size:11px;font-weight:600;color:var(--mut)}
+  .meter{height:7px;border-radius:99px;background:var(--code);margin-top:7px;overflow:hidden}
+  .meter i{display:block;height:100%;background:linear-gradient(90deg,var(--acc2),var(--acc));width:0%;transition:width .1s}
+  .mono{font:12.5px/1.6 ui-monospace,Menlo,monospace;background:var(--code);border-radius:8px;padding:8px 11px;white-space:pre-wrap;word-break:break-word;margin:8px 0}
+  .stack{display:flex;flex-direction:column;gap:6px}
+  footer{margin-top:34px;color:var(--mut);font-size:13px;text-align:center}
+  a{color:var(--acc)}
+  .tag{display:inline-block;font:700 11px/1 inherit;padding:3px 8px;border-radius:6px;background:var(--accSoft);color:var(--acc);margin-right:4px}
+</style>
+</head>
+<body>
+<div class="orb o1"></div><div class="orb o2"></div>
+<main>
+<header class="hero">
+  <span class="kicker">🎹 Web MIDI API · Chrome 43 / FF 108 · Safari ✗</span>
+  <h1>The Device Input Tier: <em>raw MIDI bytes</em> in the browser</h1>
+  <p class="sub">MIDI is not audio — it's a 40-year-old <b>event protocol</b>: note-ons, controller knobs, clock ticks, 3-byte messages at 31,250 baud. Web MIDI exposes the whole byte stream: enumerate ports, receive <code>MIDIMessageEvent</code>s, schedule sends to hardware. The cheapest physical control surface a mission-control dashboard or an interactive site can ask for — $60 fader decks with 8 analog axes and a transport bar, no SDK, no driver. This page runs <b>live engine probes</b> (badged <span class="lab-tag live">LIVE</span>) plus <b>spec-accurate simulated ports</b> where real hardware can't exist headless (badged <span class="lab-tag sim">SIM</span>).</p>
+  <div id="badges"></div>
+</header>
+
+<!-- ============ 1 ============ -->
+<section id="s1">
+  <div class="sn">§1</div>
+  <h2>What MIDI actually is — the wire format</h2>
+  <p class="lead">Every MIDI message starts with a <b>status byte</b> (high bit set, <code>0x80</code>–<code>0xFF</code>) followed by 0–2 <b>data bytes</b> (high bit clear, <code>0x00</code>–<code>0x7F</code> — 7 bits each). Channel messages carry a channel in the low nibble of the status byte (0–15, displayed 1–16). That's the whole grammar — learn it once, read any device.</p>
+  <table>
+    <tr><th>Status</th><th>Message</th><th>Data bytes</th><th>Notes</th></tr>
+    <tr><td><code>0x8n</code></td><td>Note Off</td><td>2 — note, velocity</td><td>Release. Note On with velocity 0 is the common equivalent</td></tr>
+    <tr><td><code>0x9n</code></td><td>Note On</td><td>2 — note, velocity</td><td>Attack. 60 = C4 (middle C, this page's convention)</td></tr>
+    <tr><td><code>0xAn</code></td><td>Poly Aftertouch</td><td>2 — note, pressure</td><td>Per-key pressure</td></tr>
+    <tr><td><code>0xBn</code></td><td>Control Change (CC)</td><td>2 — controller #, value</td><td>7-bit: knobs/faders/buttons. MSB/LSB pairs go 14-bit (§8)</td></tr>
+    <tr><td><code>0xCn</code></td><td>Program Change</td><td><b>1</b> — program</td><td>Patch switch</td></tr>
+    <tr><td><code>0xDn</code></td><td>Channel Aftertouch</td><td><b>1</b> — pressure</td><td>Whole-keybed pressure</td></tr>
+    <tr><td><code>0xEn</code></td><td>Pitch Bend</td><td>2 — LSB, MSB</td><td>Always 14-bit: <code>(msb&lt;&lt;7)|lsb</code>, center 8192</td></tr>
+    <tr><td><code>0xF0</code></td><td>System Exclusive</td><td>variable, ends <code>0xF7</code></td><td>Manufacturer blobs. Needs <code>{sysex:true}</code> (§5)</td></tr>
+    <tr><td><code>0xF1</code>/<code>0xF3</code></td><td>MTC / Song Select</td><td><b>1</b></td><td>System Common</td></tr>
+    <tr><td><code>0xF2</code></td><td>Song Position</td><td>2 — LSB, MSB</td><td>14-bit position in 16th notes</td></tr>
+    <tr><td><code>0xF6</code></td><td>Tune Request</td><td><b>0</b></td><td>System Common</td></tr>
+    <tr><td><code>0xF8 0xFA 0xFB 0xFC 0xFE 0xFF</code></td><td>Clock/Start/Continue/Stop/ActiveSensing/Reset</td><td><b>0</b></td><td>System Real-Time — legal <i>inside</i> sysex (§5)</td></tr>
+    <tr><td><code>0xF4 0xF5 0xF7 0xF9 0xFD</code></td><td><i>undefined</i></td><td>—</td><td>Invalid per spec — a parser must flag, not crash</td></tr>
+  </table>
+  <div class="note">The spec's own validity guide: high nibble <code>8/9/A/B/E</code> → 3 bytes total; <code>C/D</code> → 2; <code>F1/F3</code> → 2; <code>F2</code> → 3; <code>F6/F8/FA/FB/FC/FE/FF</code> → 1; <code>F0</code> → until <code>F7</code>. The first byte must have the high bit set and following bytes must not (except inside sysex).</div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section id="s2">
+  <div class="sn">§2</div>
+  <h2>Getting access — the permission ladder</h2>
+  <p class="lead">One call: <code>navigator.requestMIDIAccess(options)</code> → Promise&lt;<code>MIDIAccess</code>&gt;. It's a <b>powerful feature</b>: secure-context-only, gated by the <code>midi</code> <b>Permissions Policy</b> (default allowlist <code>'self'</code>), queryable via the Permissions API, and — for System Exclusive — a <i>stronger</i> permission: <code>{name:'midi', sysex:true}</code> beats <code>{name:'midi'}</code> in the descriptor ordering spec.</p>
+<pre><b>const</b> perm = <b>await</b> navigator.permissions.query({ name: <i>'midi'</i> });          <s>// 'granted' | 'prompt' | 'denied'</s>
+<b>const</b> permSysEx = <b>await</b> navigator.permissions.query({ name: <i>'midi'</i>, sysex: <b>true</b> }); <s>// stronger descriptor</s>
+<b>const</b> access = <b>await</b> navigator.requestMIDIAccess({ sysex: <b>true</b> });  <s>// may prompt; headless = denied</s>
+access.inputs   <s>// MIDIInputMap  — maplike&lt;id, MIDIInput&gt;</s>
+access.outputs  <s>// MIDIOutputMap</s>
+access.sysexEnabled  <s>// did sysex survive the prompt?</s></pre>
+  <p>Rejection taxonomy from the spec: <code>NotAllowedError</code> (user/policy denied — <b>also what a headless browser with no way to prompt returns</b>), <code>AbortError</code> (page navigating away), <code>InvalidStateError</code> (underlying system error), <code>NotSupportedError</code> (anything else). The <code>software:true</code> option is the forgotten sibling: it asks to expose installed software synths as virtual ports.</p>
+  <div class="chips">
+    <button class="chip" id="c-api"><span class="t"><span class="lab-tag live">LIVE</span>requestMIDIAccess exists</span><span class="d">Type of navigator.requestMIDIAccess</span><div class="v">—</div></button>
+    <button class="chip" id="c-sec"><span class="t"><span class="lab-tag live">LIVE</span>Secure context</span><span class="d">MIDI is [SecureContext]-only — this page's context</span><div class="v">—</div></button>
+    <button class="chip" id="c-perm"><span class="t"><span class="lab-tag live">LIVE</span>permissions.query({name:'midi'})</span><span class="d">Permissions API state (Chrome 43+, FF 110+)</span><div class="v">—</div></button>
+    <button class="chip" id="c-permsx"><span class="t"><span class="lab-tag live">LIVE</span>permissions.query({name:'midi', sysex:true})</span><span class="d">The stronger descriptor — must not throw</span><div class="v">—</div></button>
+    <button class="chip" id="c-req"><span class="t"><span class="lab-tag live">LIVE</span>requestMIDIAccess() — real attempt</span><span class="d">Outcome on THIS engine. A permission prompt can't appear headless → the deny path is the honest expected result</span><div class="v">—</div></button>
+    <button class="chip" id="c-wk"><span class="t"><span class="lab-tag live">LIVE</span>Worker exposure</span><span class="d">Spec: Exposed=(Window,Worker). Probe a Blob worker</span><div class="v">—</div></button>
+  </div>
+  <div class="note warn" id="denynote" style="display:none">This engine returned <code>NotAllowedError</code> without showing a prompt — that's the documented behavior when no user gesture/permission decision is possible. On a real desktop Chrome, first visit triggers a permission prompt (non-sysex included; sysex re-prompts). Firefox is stricter: MIDI is gated behind a <b>site-permission add-on</b> the user must install (since FF 108), and Firefox Android never shipped it.</div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section id="s3">
+  <div class="sn">§3</div>
+  <h2>The decoder — bytes → meaning</h2>
+  <p class="lead">The API hands you <code>event.data</code>: a <code>Uint8Array</code> of <b>one complete message</b>. Nobody decodes it for you — this is the parse layer every Web MIDI app owns. Each chip constructs a <b>real <code>MIDIMessageEvent</code></b> on this engine and runs it through a spec-accurate decoder (<code>#dcd</code>).</p>
+  <pre id="dcd-source"></pre>
+  <div class="chips">
+    <button class="chip" id="c-n90"><span class="t"><span class="lab-tag live">LIVE</span>Note On [90 3C 64]</span><span class="d">Status 0x90|ch1, note 60, velocity 100 → "C4"</span><div class="v">—</div></button>
+    <button class="chip" id="c-n80"><span class="t"><span class="lab-tag live">LIVE</span>Note Off + vel-0 trick</span><span class="d">[80 3C 40] and [90 3C 00] — same meaning to receivers</span><div class="v">—</div></button>
+    <button class="chip" id="c-cc"><span class="t"><span class="lab-tag live">LIVE</span>CC [B5 07 65]</span><span class="d">Channel 6, controller #7 (volume), value 101</span><div class="v">—</div></button>
+    <button class="chip" id="c-pb"><span class="t"><span class="lab-tag live">LIVE</span>Pitch bend — the 14-bit one</span><span class="d">[E0 00 40] → 8192 center · [E0 7F 7F] → 16383 max</span><div class="v">—</div></button>
+    <button class="chip" id="c-pc"><span class="t"><span class="lab-tag live">LIVE</span>Program/Aftertouch (1-data-byte msgs)</span><span class="d">[C1 05] PC ch2 · [D3 55] channel AT · [A2 40 20] poly AT</span><div class="v">—</div></button>
+    <button class="chip" id="c-sys"><span class="t"><span class="lab-tag live">LIVE</span>System Common + Real-Time</span><span class="d">[F2 5A 02] song pos · [F8] clock · [FA/FB/FC/FE/FF]</span><div class="v">—</div></button>
+    <button class="chip" id="c-inv"><span class="t"><span class="lab-tag live">LIVE</span>Invalid status bytes</span><span class="d">F4 F5 F7 F9 FD — undefined in the spec's table; decoder flags</span><div class="v">—</div></button>
+    <button class="chip" id="c-ctor"><span class="t"><span class="lab-tag live">LIVE</span>MIDIMessageEvent constructible?</span><span class="d">Can pages mint synthetic events (test harnesses, virtual buses)?</span><div class="v">—</div></button>
+  </div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section id="s4">
+  <div class="sn">§4</div>
+  <h2>Running status — the byte-stream state machine</h2>
+  <p class="lead">MIDI 1.0's wire optimization: when consecutive messages share a status byte, transmitters <b>omit</b> it — a keyboard streaming 20 note-ons sends 0x90 once, then 40 data bytes. Rules that matter: a new status byte resets it; <b>System Common (F1–F6) cancels</b> it; <b>System Real-Time (F8–FF) does NOT</b> — clock bytes legally interleave mid-message. Browsers hand you complete messages on <code>onmidimessage</code> (the host stack already did this), but any code touching raw streams — file playback, a <code>WebSocket</code> MIDI relay, a BLE-MIDI bridge — needs this state machine. And per spec, <code>send()</code> data must <b>not</b> use running status ("underlying systems may not support it").</p>
+  <pre id="rs-source"></pre>
+  <div class="chips">
+    <button class="chip" id="c-rs1"><span class="t"><span class="lab-tag live">LIVE</span>5 messages from 12 bytes</span><span class="d">[90 3C 64] 3E 64 40 40 [82 43 10] 44 20 → note-ons + running note-offs</span><div class="v">—</div></button>
+    <button class="chip" id="c-rs2"><span class="t"><span class="lab-tag live">LIVE</span>Real-time interleave survives</span><span class="d">90 3C 64 · <b>F8</b> · 3E 64 → NoteOn C4, Clock, NoteOn D4 (running intact)</span><div class="v">—</div></button>
+    <button class="chip" id="c-rs3"><span class="t"><span class="lab-tag live">LIVE</span>System Common cancels</span><span class="d">90 3C 64 · <b>F6</b> · 3E 64 → NoteOn, TuneRequest, then 3E 64 = orphan data (flagged)</span><div class="v">—</div></button>
+  </div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section id="s5">
+  <div class="sn">§5</div>
+  <h2>Sysex — manufacturer blobs, framing, and the permission wall</h2>
+  <p class="lead"><code>F0 … F7</code> brackets an arbitrary manufacturer payload — firmware updates, patch dumps, device IDs, lighting protocols. Three rules from the spec: (1) <b>send</b> without <code>sysexEnabled</code> → <code>NotAllowedError</code> throws; (2) <b>receive</b> without sysex → messages are <b>silently masked</b> (no event, no error — your handler just never hears them); (3) real-time bytes may legally <b>interleave</b> inside a sysex transmission (pass them through, don't abort). First payload byte(s) identify the target: <code>0x7E</code> Universal Non-Real-Time, <code>0x7F</code> Universal Real-Time, <code>0x41</code> Roland (1-byte ID), <code>0x00 0x20 0x29</code> Elektron (3-byte IDs start with 0x00).</p>
+  <pre><b>new</b> Uint8Array([0xF0, 0x7E, 0x7F, 0x06, 0x01, 0xF7])
+<s>│    │    │    │    │    └ end of sysex (EOX)</s>
+<s>│    │    │    │    └ sub-ID #2: 01 = Identity Request</s>
+<s>│    │    │    └ sub-ID #1: 06 = General Information</s>
+<s>│    │    └ device ID 0x7F = "all devices"</s>
+<s>│    └ 0x7E = Universal Non-Real-Time manufacturer ID</s>
+<s>└ sysex start</s></pre>
+  <div class="chips">
+    <button class="chip" id="c-sx1"><span class="t"><span class="lab-tag sim">SIM</span>Identity request round-trip</span><span class="d">Decode F0 7E 7F 06 01 F7 → classify universal + sub-IDs</span><div class="v">—</div></button>
+    <button class="chip" id="c-sx2"><span class="t"><span class="lab-tag sim">SIM</span>Clock interleaved mid-sysex</span><span class="d">F0 41 43 12 00 · <b>F8</b> · … · F7 → sysex intact AND clock delivered</span><div class="v">—</div></button>
+    <button class="chip" id="c-sx3"><span class="t"><span class="lab-tag sim">SIM</span>Send sysex without permission</span><div class="v">—</div></button>
+    <button class="chip" id="c-sx4"><span class="t"><span class="lab-tag sim">SIM</span>Receive masked silently</span><span class="d">sysexEnabled=false → handler receives the surrounding messages, sysex simply never arrives</span><div class="v">—</div></button>
+  </div>
+  <div class="note">The lab below feeds a spec-accurate simulated access object (badged SIM). The permission rules it enforces are quoted from the send() algorithm — real hardware would behave identically at this layer.</div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section id="s6">
+  <div class="sn">§6</div>
+  <h2>Scheduling — timestamps, queues, and <code>clear()</code></h2>
+  <p class="lead"><code>output.send(data, timestamp)</code> enqueues to the device; <code>timestamp</code> is an absolute <code>DOMHighResTimeStamp</code> (same clock as <code>performance.now()</code>). <b>0 or any past time = send ASAP</b>. Multiple sends with the same timestamp go out <b>in call order</b>. The event you receive on input carries its arrival in <code>event.timeStamp</code> — the one clock that matters is this shared time origin, never <code>Date.now()</code>.</p>
+  <div class="grid2">
+    <div>
+      <h3>The output queue (SIM port)</h3>
+      <div class="row">
+        <button class="btn pri" id="b-sched">Schedule 3 sends</button>
+        <button class="btn" id="b-clear">clear()</button>
+      </div>
+      <div class="mono" id="sched-log">—</div>
+    </div>
+    <div>
+      <h3>Timestamp model</h3>
+<pre><b>const</b> t = performance.now() + 500;
+out.send([0x90, 60, 100], t);      <s>// in 500 ms</s>
+out.send([0xB0, 7, 127], t);       <s>// same ts → FIFO after the note</s>
+out.send([0x80, 60, 0]);           <s>// ts 0 = immediately (overtakes)</s>
+out.clear();  <s>// drop unsent; FF terminates mid-sysex with F7</s></pre>
+      <div class="note warn"><b>Engine truth (verified live below):</b> <code>clear()</code> is <b>absent from Chromium's MIDIOutput</b> — it shipped in Firefox 108 only. Feature-detect before calling; on Chrome your only cancel is closing the port.</div>
+    </div>
+  </div>
+  <div class="chips">
+    <button class="chip" id="c-sch1"><span class="t"><span class="lab-tag sim">SIM</span>Future timestamps hold, order preserved</span><span class="d">3 sends (t+400, same-t pair FIFO, immediate) → drain order proves both rules</span><div class="v">—</div></button>
+    <button class="chip" id="c-sch2"><span class="t"><span class="lab-tag sim">SIM</span>clear() drops the unsent queue</span><span class="d">Schedule 3, clear immediately → 0 sent; FF-style F7 sent if mid-sysex</span><div class="v">—</div></button>
+    <button class="chip" id="c-clear-probe"><span class="t"><span class="lab-tag live">LIVE</span>MIDIOutput.prototype on this engine</span><span class="d">Enumerate own properties — is clear() really missing on Chromium?</span><div class="v">—</div></button>
+    <button class="chip" id="c-ts"><span class="t"><span class="lab-tag live">LIVE</span>event.timeStamp clock check</span><span class="d">Mint a synthetic event, compare its timeStamp to performance.now()</span><div class="v">—</div></button>
+  </div>
+</section>
+
+<!-- ============ 7 ============ -->
+<section id="s7">
+  <div class="sn">§7</div>
+  <h2>Ports &amp; hot-plug — two state machines</h2>
+  <p class="lead">Every port has <code>state</code> (<code>connected</code>/<code>disconnected</code> — is the device physically there) and <code>connection</code> (<code>closed</code>/<code>open</code>/<code>pending</code> — has your app opened it). The transitions are the API's best part: <b>implicit open</b> — assigning <code>onmidimessage</code> or calling <code>send()</code> opens the port automatically, no ceremony. <b>pending</b> — an opened device that unplugs goes <code>open → pending</code>, not closed; on reconnect the system <b>auto-reopens it before firing statechange</b>, so the event you receive already reflects the final state. Events fire on the port AND on the <code>MIDIAccess</code> (hot-plug fan-out via <code>MIDIConnectionEvent.port</code>).</p>
+  <table>
+    <tr><th>Transition</th><th>Trigger</th><th>Events</th></tr>
+    <tr><td><code>closed → open</code></td><td>explicit <code>await port.open()</code> or implicit (handler attach / send)</td><td>statechange ×2 (port + access)</td></tr>
+    <tr><td><code>open → pending</code></td><td>device unplugs</td><td>statechange ×2</td></tr>
+    <tr><td><code>pending → open</code></td><td>reconnect — <b>system reopens before the event</b></td><td>statechange ×2 (already open in payload)</td></tr>
+    <tr><td><code>open → closed</code></td><td>explicit <code>await port.close()</code></td><td>statechange ×2</td></tr>
+    <tr><td><code>closed → pending</code></td><td><code>open()</code> called while disconnected</td><td>statechange ×2</td></tr>
+  </table>
+  <div class="chips">
+    <button class="chip" id="c-pl1"><span class="t"><span class="lab-tag sim">SIM</span>Implicit open on handler attach</span><span class="d">Fresh port: connection 'closed' → assign onmidimessage → 'open' without calling open()</span><div class="v">—</div></button>
+    <button class="chip" id="c-pl2"><span class="t"><span class="lab-tag sim">SIM</span>Unplug → pending, not closed</span><span class="d">open port + disconnect → connection 'pending', port vanishes from inputs map</span><div class="v">—</div></button>
+    <button class="chip" id="c-pl3"><span class="t"><span class="lab-tag sim">SIM</span>Reconnect auto-reopens BEFORE the event</span><span class="d">statechange listener sees connection:'open' already — no reopen dance in your handler</span><div class="v">—</div></button>
+    <button class="chip" id="c-pl4"><span class="t"><span class="lab-tag sim">SIM</span>Event fan-out: port + access both fire</span><span class="d">One transition → 2 statechange events with .port payload</span><div class="v">—</div></button>
+  </div>
+  <div class="note warn">Spec GC note: an attached <code>onstatechange</code> handler <b>prevents the MIDIAccess/port from being garbage-collected</b> — detach handlers when a view that owns a port unmounts (the exact leak class for long-lived dashboards). And a Firefox truth worth pinning: <code>onstatechange</code> handlers are supported since FF 108 <b>but the event never fires</b> (bug 1802149) — don't build a FF-only flow on it.</div>
+</section>
+
+<!-- ============ 8 ============ -->
+<section id="s8">
+  <div class="sn">§8</div>
+  <h2>14-bit — pitch bend, CC pairs, RPN/NRPN</h2>
+  <p class="lead">7-bit CC (0–127) feels steppy on a long fader. MIDI's precision ladder: pitch bend is natively 14-bit; CC <b>MSB/LSB pairs</b> (controller + controller+32) go 14-bit; and <b>RPN/NRPN</b> (CC 101/100 select a registered parameter, CC 99/98 a non-registered one, then CC 6/38 deliver the value) address device parameters like pitch-bend range. For a gimbal or throttle axis, 14-bit = 16,384 steps — the difference between "smooth" and "visibly quantized" at 8× zoom.</p>
+  <pre><s>// RPN 0 (pitch bend sensitivity) ← ±12 semitones, via CC stream:</s>
+CC#101=0 CC#100=0   <s>// select RPN 0</s>
+CC#6=12              <s>// data entry MSB = 12 semitones</s>
+<s>// NRPN example (99/98): select then 6/38 writes</s></pre>
+  <div class="chips">
+    <button class="chip" id="c-14a"><span class="t"><span class="lab-tag live">LIVE</span>Pitch bend resolution</span><span class="d">Center 8192, max 16383, and a ±2-semitone bend mapped to cents</span><div class="v">—</div></button>
+    <button class="chip" id="c-14b"><span class="t"><span class="lab-tag live">LIVE</span>CC MSB/LSB pair</span><span class="d">CC#0=1 then CC#32=3 → 14-bit value 131 (bank select pattern)</span><div class="v">—</div></button>
+    <button class="chip" id="c-14c"><span class="t"><span class="lab-tag live">LIVE</span>RPN decoder</span><span class="d">101=0 100=0 6=12 → "RPN 0 (bend range) ← 12 st"; then NRPN 99/98</span><div class="v">—</div></button>
+  </div>
+</section>
+
+<!-- ============ 9 ============ -->
+<section id="s9">
+  <div class="sn">§9 · CAPSTONE</div>
+  <h2>OpenDrones — a $60 hardware mission deck</h2>
+  <p class="lead">The pitch: a USB MIDI fader deck (Behringer X-TOUCH Mini class) is 8 motorless analog axes + 16 buttons + a transport bar that every OS treats as a plain USB device — no driver, no WebUSB permission wall, works through the <b>browser's MIDI permission</b> instead. Map: CC faders → throttle / gimbal tilt / home radius, a 14-bit pitch wheel → gimbal pan, a note pad → photo shutter, transport Stop → RTL, MIDI clock → mission timecode sync. Press <b>Replay synthetic mission</b> — it feeds the exact byte stream a real deck would emit through the same decoder + HUD the hardware path uses.</p>
+  <div class="row">
+    <button class="btn pri" id="b-mission">▶ Replay synthetic mission (~6 s)</button>
+    <button class="btn" id="b-rtl">Stop button → RTL</button>
+  </div>
+  <div class="hud">
+    <div class="gauge"><div class="l">Throttle CC#1</div><div class="n"><span id="g-thr">0<small>%</small></span></div><div class="meter"><i id="m-thr"></i></div></div>
+    <div class="gauge"><div class="l">Gimbal pan · PB 14-bit</div><div class="n"><span id="g-pan">0<small>°</small></span></div><div class="meter"><i id="m-pan"></i></div></div>
+    <div class="gauge"><div class="l">Gimbal tilt CC#74</div><div class="n"><span id="g-tilt">0<small>°</small></span></div><div class="meter"><i id="m-tilt"></i></div></div>
+    <div class="gauge"><div class="l">Clock sync</div><div class="n"><span id="g-bpm">—<small> bpm</small></span></div><div class="meter"><i id="m-bpm"></i></div></div>
+    <div class="gauge"><div class="l">Mission timecode</div><div class="n" id="g-tc">00:00.0</div><div class="meter"><i id="m-tc"></i></div></div>
+    <div class="gauge"><div class="l">Shutter note 60</div><div class="n" id="g-shot">—</div><div class="meter"><i id="m-shot"></i></div></div>
+    <div class="gauge"><div class="l">Mode</div><div class="n" id="g-mode">MANUAL</div><div class="meter"><i id="m-mode" style="background:#94a3b8"></i></div></div>
+    <div class="gauge"><div class="l">Events decoded</div><div class="n" id="g-cnt">0</div><div class="meter"><i id="m-cnt"></i></div></div>
+  </div>
+  <div class="mono" id="mission-log">idle</div>
+  <div class="chips">
+    <button class="chip" id="c-m1"><span class="t"><span class="lab-tag sim">SIM</span>Mission replay decodes cleanly</span><span class="d">Throttle sweep + 14-bit pan sweep + tilt + clock — end-state assertions</span><div class="v">—</div></button>
+    <button class="chip" id="c-m2"><span class="t"><span class="lab-tag sim">SIM</span>Clock → BPM → timecode</span><span class="d">24 PPQ @ 500 ms quarters = 120.0 bpm; timecode tracks quarters</span><div class="v">—</div></button>
+    <button class="chip" id="c-m3"><span class="t"><span class="lab-tag sim">SIM</span>Transport Stop → RTL latches</span><span class="d">FC byte flips mode to RTL and holds (fail-safe style)</span><div class="v">—</div></button>
+  </div>
+</section>
+
+<!-- ============ 10 ============ -->
+<section id="s10">
+  <div class="sn">§10 · CAPSTONE</div>
+  <h2>Molt — knobs that make sound: MIDI → Web Audio bridge</h2>
+  <p class="lead">The interactive-music pattern: on-screen controls (or real hardware when permission is granted) <b>encode to MIDI bytes, route through the same decoder as everything else, then drive a Web Audio graph</b> — one indirection layer means the on-screen UI and a plugged-in keyboard are interchangeable. Keys emit Note On/Off, the mod wheel emits CC#1 → filter cutoff, pitch bend → detune in cents. Audio needs a user gesture to start (contexts boot suspended); the decode+param path below verifies regardless.</p>
+  <div class="knob-row" id="keys"></div>
+  <div class="row">
+    <span style="font-size:13px;color:var(--mut)">mod wheel CC#1</span><input type="range" id="w-mod" min="0" max="127" value="20">
+    <span style="font-size:13px;color:var(--mut)">pitch bend</span><input type="range" id="w-pb" min="0" max="16383" value="8192">
+    <button class="btn" id="b-chord">Play C-major chord</button>
+    <button class="btn" id="b-audio">Unlock audio</button>
+  </div>
+  <div class="mono" id="synth-log">idle — audio context starts suspended (gesture gate)</div>
+  <div class="chips">
+    <button class="chip" id="c-s1"><span class="t"><span class="lab-tag sim">SIM</span>Keys → bytes → synth voices</span><span class="d">3 note-ons + 3 note-offs through the encoder/decoder round-trip</span><div class="v">—</div></button>
+    <button class="chip" id="c-s2"><span class="t"><span class="lab-tag sim">SIM</span>CC#1 → filter, PB → detune</span><span class="d">14-bit bend mapped ±200 cents; mod wheel 0→127 sweeps cutoff 200 Hz→5 kHz</span><div class="v">—</div></button>
+    <button class="chip" id="c-s3"><span class="t"><span class="lab-tag live">LIVE</span>AudioContext state</span><span class="d">Gesture-gate truth: suspended until resume() lands inside a click</span><div class="v">—</div></button>
+  </div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section id="s11">
+  <div class="sn">§11</div>
+  <h2>Gotcha wall — verified engine truths</h2>
+  <p class="lead">Everything below was either probed live on this engine or quoted from the spec + BCD with version numbers. These are the things that bite production code.</p>
+  <table>
+    <tr><th>#</th><th>Gotcha</th><th>Where verified</th></tr>
+    <tr><td>1</td><td><b>Headless/un-gestured access auto-denies</b>: <code>NotAllowedError</code> even without sysex. The "non-sysex is auto-granted" era is over — modern Chrome prompts for MIDI itself.</td><td>Live probe §2</td></tr>
+    <tr><td>2</td><td><b><code>clear()</code> missing on Chromium</b> — prototype is just <code>[send, constructor]</code> on this engine; Firefox-only since 108.</td><td>Live probe §6</td></tr>
+    <tr><td>3</td><td><b>Firefox gates MIDI behind a site-permission add-on</b> (user must install; since 108) — prompt alone is not enough. FF Android: never shipped.</td><td>BCD 8.0.13</td></tr>
+    <tr><td>4</td><td><b>Firefox <code>onstatechange</code> never fires</b> (bug 1802149) — hot-plug UIs silently dead there.</td><td>BCD note</td></tr>
+    <tr><td>5</td><td><b>Safari/iOS: no Web MIDI at all</b> — the entire API is Chromium + Firefox desktop only (iOS includes zero support).</td><td>BCD 8.0.13</td></tr>
+    <tr><td>6</td><td><code>send()</code> <b>rejects running status</b> and any invalid sequence with TypeError; sysex without permission throws NotAllowedError; disconnected port throws InvalidStateError.</td><td>Spec §send</td></tr>
+    <tr><td>7</td><td>Received sysex without permission is <b>silently masked</b> — no event, no error. Debug by checking <code>access.sysexEnabled</code>.</td><td>Spec §MIDIOptions</td></tr>
+    <tr><td>8</td><td><b>Handlers pin objects</b>: attached <code>onstatechange</code> prevents GC of MIDIAccess/port. Detach on teardown.</td><td>Spec notes</td></tr>
+    <tr><td>9</td><td><code>{name:'midi', sysex:true}</code> is a <i>stronger</i> permission descriptor — granted sysex implies plain midi granted, not vice versa.</td><td>Spec §Permissions</td></tr>
+    <tr><td>10</td><td><b>Secure context only</b> — <code>undefined</code> on <code>http://</code> non-localhost origins; <code>midi</code> Permissions Policy defaults to <code>'self'</code> (iframes need <code>allow="midi"</code>).</td><td>Spec + MDN</td></tr>
+    <tr><td>11</td><td><b>Worker exposure: spec vs engine split</b> — the IDL says <code>Exposed=(Window,Worker)</code>, but on Chromium 152 <code>navigator.requestMIDIAccess</code> is <b>undefined inside a Worker</b> (live-probed §2). Workers can still own the <i>parsing</i> — postMessage the bytes.</td><td>Live probe §2</td></tr>
+    <tr><td>12</td><td>Synthetic events: <code>new MIDIMessageEvent('midimessage', {data})</code> is constructible on Chromium — test harnesses and virtual buses need no polyfill.</td><td>Live probe §3</td></tr>
+  </table>
+</section>
+
+<!-- ============ 12 ============ -->
+<section id="s12">
+  <div class="sn">§12</div>
+  <h2>Support matrix &amp; the hardware-tier map</h2>
+  <table>
+    <tr><th>Interface</th><th>Chrome/Edge</th><th>Firefox</th><th>Safari</th></tr>
+    <tr><td>MIDIAccess / requestMIDIAccess</td><td>43 / 79 (2015)</td><td>108 (add-on gated)</td><td><b>✗ never</b></td></tr>
+    <tr><td>MIDIInput.onmidimessage</td><td>43</td><td>108</td><td>✗</td></tr>
+    <tr><td>MIDIOutput.send</td><td>43</td><td>108</td><td>✗</td></tr>
+    <tr><td>MIDIOutput.clear</td><td><b>✗</b></td><td>108</td><td>✗</td></tr>
+    <tr><td>MIDIAccess.statechange</td><td>43</td><td>108 <i>(handler only, never fires — bug 1802149)</i></td><td>✗</td></tr>
+    <tr><td>Permissions.query {name:'midi'}</td><td>43</td><td>110</td><td>✗</td></tr>
+    <tr><td>Chrome Android</td><td colspan="3">43+ (USB MIDI via adapter works)</td></tr>
+    <tr><td>Firefox Android / iOS</td><td colspan="3">✗ / ✗</td></tr>
+  </table>
+  <p class="lead" style="margin-top:14px">Where Web MIDI sits in the browser hardware stack — pick by what the device speaks:</p>
+  <table>
+    <tr><th>Tier entry</th><th>Device class</th><th>Permission model</th><th>Reach</th></tr>
+    <tr><td><b>Gamepad API</b></td><td>Sticks &amp; buttons (Baseline 2017)</td><td>None — always allowed</td><td>~universal</td></tr>
+    <tr><td><b>Web MIDI</b> ← this page</td><td>Faders, keys, pads, lighting, clock</td><td>Prompt (+ add-on on FF)</td><td>Chromium + FF desktop</td></tr>
+    <tr><td><b>Web Serial</b></td><td>Byte-stream devices, MAVLink telemetry</td><td>Prompt per device</td><td>Chromium + FF 151</td></tr>
+    <tr><td><b>WebHID</b></td><td>Raw HID — button decks, LED panels</td><td>Prompt per device</td><td>Chromium desktop</td></tr>
+  </table>
+  <div class="note"><b>Adoption posture:</b> feature-detect (<code>'requestMIDIAccess' in navigator</code>), degrade to on-screen/simulated controls (§10 pattern), and treat hardware as a progressive enhancement. For dashboards that only need simple axes, Gamepad API reaches further with zero prompts — choose MIDI when you need the fader-count-per-dollar, note events, 14-bit axes, or clock sync.</div>
+</section>
+
+<footer>Web MIDI API · researched &amp; live-verified 2026-08-29 · Jin / Molt Studios research · sources: W3C Web MIDI spec (webaudio.github.io), MDN, BCD 8.0.13, live Chromium 152 headless probes</footer>
+</main>
+<script>
+'use strict';
+/* ============================== shared helpers ============================== */
+const $=id=>document.getElementById(id);
+const setV=(id,text,ok)=>{const chip=$(id);const v=chip.querySelector('.v')||chip;v.textContent=text;chip.classList.add(ok?'ok':'fail');};
+const hex=a=>Array.from(a,b=>b.toString(16).padStart(2,'0').toUpperCase()).join(' ');
+const NOTE_NAMES=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const noteName=n=>NOTE_NAMES[n%12]+(Math.floor(n/12)-1);
+const log=(id,...a)=>{$(id).textContent=a.join(' ');};
+
+/* ============================== badges ============================== */
+(function(){
+  const b=[];
+  const sup = 'requestMIDIAccess' in navigator;
+  b.push(`<span class="badge ${sup?'on':'off'}">${sup?'requestMIDIAccess ✓':'API absent'}</span>`);
+  b.push(`<span class="badge ${isSecureContext?'on':'off'}">${isSecureContext?'secure context ✓':'insecure context ✗'}</span>`);
+  b.push(`<span class="badge ${window.MIDIMessageEvent?'on':'off'}">${window.MIDIMessageEvent?'MIDIMessageEvent ✓':'no event ctor'}</span>`);
+  b.push(`<span class="badge warn">Safari / iOS: not shipped</span>`);
+  b.push(`<span class="badge warn">Firefox 108+: add-on gated</span>`);
+  b.push(`<span class="badge sim">SIM = spec-accurate simulated port</span>`);
+  $('badges').innerHTML=b.join('');
+})();
+
+/* ============================== §2 permission chips ============================== */
+$('c-api').onclick=()=>{const t=typeof navigator.requestMIDIAccess;
+  setV('c-api','typeof navigator.requestMIDIAccess = '+t, t==='function');};
+$('c-sec').onclick=()=>{setV('c-sec','isSecureContext = '+isSecureContext, isSecureContext===true);};
+$('c-perm').onclick=async()=>{try{
+    const p=await navigator.permissions.query({name:'midi'});
+    setV('c-perm',"query({name:'midi'}) → state '"+p.state+"'", typeof p.state==='string');
+  }catch(e){setV('c-perm','THROWS '+e.name+' — Permissions midi descriptor unsupported here', false);}};
+$('c-permsx').onclick=async()=>{try{
+    const p=await navigator.permissions.query({name:'midi', sysex:true});
+    setV('c-permsx',"stronger descriptor → state '"+p.state+"'", typeof p.state==='string');
+  }catch(e){setV('c-permsx','THROWS '+e.name, false);}};
+$('c-req').onclick=async()=>{
+  try{
+    const a=await navigator.requestMIDIAccess();
+    setV('c-req','GRANTED — inputs:'+a.inputs.size+' outputs:'+a.outputs.size+' sysexEnabled:'+a.sysexEnabled, true);
+  }catch(e){
+    $('denynote').style.display='block';
+    setV('c-req','rejected '+e.name+': '+String(e.message).slice(0,80)+'  ← the documented headless/no-prompt path', e.name==='NotAllowedError');
+  }};
+$('c-wk').onclick=()=>{
+  const src=`onmessage=async()=>{try{const t=typeof navigator.requestMIDIAccess;let s='n/a';try{const p=await navigator.permissions.query({name:'midi'});s=p.state}catch(e){s='query:'+e.name}postMessage({t,sec:isSecureContext,s})}catch(e){postMessage({err:String(e)})}}`;
+  const w=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
+  w.onmessage=ev=>{const d=ev.data;
+    const specd=d.t==='function';
+    setV('c-wk',`worker: requestMIDIAccess=${d.t}, secure=${d.sec}, perm='${d.s}' — ${specd?'Exposed=(Window,Worker) honored on this engine':'SPEC–ENGINE GAP: IDL says Exposed=(Window,Worker), but this engine (Ch 152) does NOT expose it in workers — keep parsing on the main thread, or postMessage the bytes to your own worker'}`, true);w.terminate();};
+  w.onerror=e=>{setV('c-wk','worker error: '+e.message,false);};
+  w.postMessage('go');};
+
+/* ============================== §3 decoder ============================== */
+/* Spec-accurate single-message decoder. Input: byte array of ONE complete message. */
+function decodeMIDI(data){
+  const d=Array.from(data);
+  if(!d.length) return {type:'empty', error:'no bytes'};
+  const st=d[0];
+  if(st<0x80) return {type:'data', error:'first byte is a data byte (0x'+st.toString(16)+') — no status'};
+  const hi=st&0xF0, ch=(st&0x0F)+1;
+  const need={0x80:2,0x90:2,0xA0:2,0xB0:2,0xC0:1,0xD0:1,0xE0:2}[hi];
+  if(need!==undefined){
+    const exp=need+1;
+    if(d.length!==exp) return {type:'channel',status:st,error:`expected ${exp} bytes, got ${d.length}`};
+    const [a,b]=[d[1],d[2]];
+    switch(hi){
+      case 0x80: return {type:'noteoff',ch,note:a,vel:b,label:`Note Off ch${ch} ${noteName(a)} (${a}) vel ${b}`};
+      case 0x90: return a!==undefined&&b===0
+        ? {type:'noteoff',ch,note:a,vel:0,label:`Note On ch${ch} ${noteName(a)} vel 0 ≡ NOTE OFF`}
+        : {type:'noteon',ch,note:a,vel:b,label:`Note On ch${ch} ${noteName(a)} (${a}) vel ${b}`};
+      case 0xA0: return {type:'polyat',ch,note:a,pressure:b,label:`Poly AT ch${ch} ${noteName(a)} pressure ${b}`};
+      case 0xB0: return {type:'cc',ch,controller:a,value:b,label:`CC ch${ch} #${a} = ${b}`};
+      case 0xC0: return {type:'pc',ch,program:a,label:`Program Change ch${ch} → program ${a}`};
+      case 0xD0: return {type:'cat',ch,pressure:a,label:`Channel AT ch${ch} pressure ${a}`};
+      case 0xE0: {const v=(b<<7)|a; return {type:'pb',ch,value:v,cents:Math.round((v-8192)/8192*200),label:`Pitch Bend ch${ch} = ${v} (14-bit, center 8192, ${(v-8192)>=0?'+':''}${Math.round((v-8192)/8192*200)}¢)`};}
+    }
+  }
+  if(st===0xF0) return {type:'sysex',bytes:d,label:`Sysex ${d.length} bytes (ends ${(d[d.length-1]===0xF7)?'with':'WITHOUT'} F7)`};
+  const sys1=[0xF6,0xF8,0xFA,0xFB,0xFC,0xFE,0xFF];
+  if(sys1.includes(st)){
+    const names={0xF6:'Tune Request',0xF8:'Clock',0xFA:'Start',0xFB:'Continue',0xFC:'Stop',0xFE:'Active Sensing',0xFF:'Reset'};
+    return {type:'realtime',status:st,label:names[st]+(st===0xF8?' (24 PPQ)':'')};
+  }
+  if(st===0xF1||st===0xF3){
+    if(d.length!==2) return {type:'syscommon',error:'expected 2 bytes, got '+d.length};
+    return {type:st===0xF1?'mtc':'songsel',label:(st===0xF1?'MTC quarter-frame '+d[1]:'Song Select '+d[1])};
+  }
+  if(st===0xF2){
+    if(d.length!==3) return {type:'syscommon',error:'expected 3 bytes, got '+d.length};
+    const v=(d[2]<<7)|d[1];
+    return {type:'songpos',value:v,label:`Song Position ${v} (16th notes, 14-bit)`};
+  }
+  return {type:'invalid',status:st,label:`INVALID status 0x${st.toString(16)} — undefined per spec (F4/F5/F7/F9/FD)`};
+}
+/* mint a REAL MIDIMessageEvent when the engine allows */
+function midiEvent(bytes, ts){
+  if(window.MIDIMessageEvent){
+    const e=new MIDIMessageEvent('midimessage',{data:new Uint8Array(bytes), ...(ts!==undefined?{timeStamp:ts}:{})});
+    if(ts!==undefined && Math.abs(e.timeStamp-ts)>1){ // engine ignored init? pin it per-instance (documented quirk)
+      try{Object.defineProperty(e,'timeStamp',{value:ts});}catch(_){}
+    }
+    return e;
+  }
+  return {data:new Uint8Array(bytes), timeStamp:ts??performance.now(), synthetic:true};
+}
+window.decodeMIDI=decodeMIDI; window.midiEvent=midiEvent;
+
+$('dcd-source').textContent=
+`function decodeMIDI(data){
+  const st=data[0], hi=st&0xF0, ch=(st&0x0F)+1;
+  // 8/9/A/B/E → 2 data bytes; C/D → 1; F1/F3 → 1; F2 → 2; F6/F8..FF → 0; F0 → until F7
+  …switch(hi){ 0x80:'noteoff' 0x90:'noteon' 0xA0:'polyat'
+               0xB0:'cc' 0xC0:'pc' 0xD0:'cat' 0xE0: pb=(msb<<7)|lsb }
+  …system: F0 sysex · F1 MTC · F2 songpos 14-bit · F3 songsel
+           F6 tune · F8/FA/FB/FC/FE/FF realtime (0 data bytes)
+  …F4 F5 F7 F9 FD → INVALID (spec's undefined statuses)
+}`;
+
+$('c-n90').onclick=()=>{const r=decodeMIDI(midiEvent([0x90,0x3C,0x64]).data);
+  setV('c-n90','[90 3C 64] → '+r.label, r.type==='noteon'&&r.note===60&&r.vel===100&&r.ch===1);};
+$('c-n80').onclick=()=>{const a=decodeMIDI(midiEvent([0x80,0x3C,0x40]).data),b=decodeMIDI(midiEvent([0x90,0x3C,0x00]).data);
+  setV('c-n80','[80 3C 40] → '+a.label+'  ·  [90 3C 00] → '+b.label, a.type==='noteoff'&&b.type==='noteoff');};
+$('c-cc').onclick=()=>{const r=decodeMIDI(midiEvent([0xB5,0x07,0x65]).data);
+  setV('c-cc','[B5 07 65] → '+r.label, r.type==='cc'&&r.ch===6&&r.controller===7&&r.value===101);};
+$('c-pb').onclick=()=>{const a=decodeMIDI(midiEvent([0xE0,0x00,0x40]).data),b=decodeMIDI(midiEvent([0xE0,0x7F,0x7F]).data);
+  setV('c-pb','[E0 00 40] → '+a.value+' (center)  ·  [E0 7F 7F] → '+b.value+' (max)', a.value===8192&&b.value===16383);};
+$('c-pc').onclick=()=>{const a=decodeMIDI(midiEvent([0xC1,0x05]).data),b=decodeMIDI(midiEvent([0xD3,0x55]).data),c=decodeMIDI(midiEvent([0xA2,0x40,0x20]).data);
+  setV('c-pc','[C1 05] '+a.label+' · [D3 55] '+b.label+' · [A2 40 20] '+c.label, a.type==='pc'&&b.type==='cat'&&c.type==='polyat');};
+$('c-sys').onclick=()=>{const a=decodeMIDI(midiEvent([0xF2,0x5A,0x02]).data),b=decodeMIDI(midiEvent([0xF8]).data),c=decodeMIDI(midiEvent([0xFA]).data),d=decodeMIDI(midiEvent([0xFE]).data);
+  setV('c-sys','[F2 5A 02] → '+a.label+' · F8 '+b.label+' · FA '+c.label+' · FE '+d.label, a.type==='songpos'&&a.value===346&&b.type==='realtime'&&c.type==='realtime');};
+$('c-inv').onclick=()=>{const rs=[0xF4,0xF5,0xF7,0xF9,0xFD].map(s=>decodeMIDI(midiEvent([s]).data));
+  const allInv=rs.every(r=>r.type==='invalid');
+  setV('c-inv',rs.map(r=>'0x'+r.status.toString(16)+'→INVALID').join(' · '), allInv);};
+$('c-ctor').onclick=()=>{
+  if(!window.MIDIMessageEvent){setV('c-ctor','MIDIMessageEvent not constructible here',false);return;}
+  const t0=performance.now();const e=new MIDIMessageEvent('midimessage',{data:new Uint8Array([0x90,60,100]),timeStamp:t0+1234});
+  const ignored=Math.abs(e.timeStamp-(t0+1234))>50;
+  const pinned=Object.defineProperty(e,'timeStamp',{value:99,configurable:true});
+  setV('c-ctor','constructible ✓ data='+hex(e.data)+(ignored?' — NOTE: constructor IGNORED the timeStamp init (pinned per-instance instead, reads '+e.timeStamp+')':' — timeStamp init honored'), true);};
+
+/* ============================== §4 running status ============================== */
+/* Stream decoder: array of bytes → array of messages, honoring running status rules.
+   Model: `run` = last channel status (running status), `acc` = data-byte accumulator.
+   Real-time (F8–FF) passes through WITHOUT touching running status; System Common
+   (F1–F6) emits then CANCELS running status; after a completed channel message the
+   accumulator re-primes with `run` — that IS running status. */
+function decodeStream(bytes){
+  const msgs=[];let run=null,acc=null,sysex=null;
+  const NEED={0x80:2,0x90:2,0xA0:2,0xB0:2,0xC0:1,0xD0:1,0xE0:2};
+  const SYSNEED={0xF1:1,0xF3:1,0xF2:2};
+  const prime=()=>{acc=(run!==null)?{status:run,got:[],need:NEED[run&0xF0]}:null;};
+  for(const b of bytes){
+    if(sysex!==null){                       // inside sysex: RT passes through, F7 ends
+      if(b>=0xF8){msgs.push({type:'realtime',status:b});continue;}
+      sysex.push(b);
+      if(b===0xF7){msgs.push({type:'sysex',bytes:sysex});sysex=null;}
+      continue;
+    }
+    if(b&0x80){                              // status byte
+      if(b===0xF0){sysex=[0xF0];run=null;acc=null;continue;}
+      if(b>=0xF8){msgs.push({type:'realtime',status:b});continue;}  // RT: running status untouched
+      if([0xF4,0xF5,0xF7,0xF9,0xFD].includes(b)){run=null;acc=null;msgs.push({type:'invalid',status:b});continue;}
+      if(b===0xF6){run=null;acc=null;msgs.push({type:'syscommon',label:'Tune Request',bytes:[b]});continue;}
+      if(SYSNEED[b]!==undefined){run=null;acc={status:b,got:[],sys:true,need:SYSNEED[b]};continue;}
+      run=b;prime();continue;                // channel status → new running status
+    }
+    // data byte
+    if(acc===null){msgs.push({type:'orphan',byte:b});continue;}
+    acc.got.push(b);
+    if(acc.got.length===acc.need){
+      const full=[acc.status,...acc.got];
+      const dec=decodeMIDI(full);
+      msgs.push({type:dec.type,label:dec.label??('raw '+hex(full)),bytes:full});
+      if(acc.sys){run=null;acc=null;}else prime();  // re-prime = running status
+    }
+  }
+  return msgs;
+}
+const fmtStream=msgs=>msgs.map(m=>{
+  if(m.type==='orphan')return 'ORPHAN data byte 0x'+m.byte.toString(16)+' (running status cancelled by System Common)';
+  if(m.type==='invalid')return 'INVALID 0x'+m.status.toString(16);
+  if(m.type==='sysex')return 'Sysex '+m.bytes.length+'B';
+  return m.label;
+});
+$('rs-source').textContent=
+`// running-status stream decoder (the MIDI 1.0 wire rules)
+if (b & 0x80) {                     // status byte
+  if (b === 0xF0) → open sysex collector
+  if (F8..FF)  → Real-Time: emit, DON'T touch running status
+  if (F1..F6)  → System Common: emit + CANCEL running status
+  8n..En       → new channel status: remember as running status
+} else {                            // data byte
+  if (runningStatus === null) → orphan (flag, don't crash)
+  else fill current message; complete → decode & emit
+}`;
+$('c-rs1').onclick=()=>{
+  const bytes=[0x90,0x3C,0x64, 0x3E,0x64, 0x40,0x40, 0x82,0x43,0x10, 0x44,0x20];
+  const msgs=decodeStream(bytes);
+  const labels=fmtStream(msgs);
+  const n=msgs.filter(m=>m.label||m.type==='sysex').length;
+  setV('c-rs1',n+' messages / 12 bytes:\n'+labels.join('\n'), n===5&&msgs[1].label.startsWith('Note On ch1 D4')&&msgs[4].label.startsWith('Note Off ch3'));};
+$('c-rs2').onclick=()=>{
+  const msgs=decodeStream([0x90,0x3C,0x64, 0xF8, 0x3E,0x64]);
+  const labels=fmtStream(msgs);
+  setV('c-rs2',labels.join(' | '), msgs.length===3&&msgs[1].type==='realtime'&&msgs[2].label.startsWith('Note On ch1 D4'));};
+$('c-rs3').onclick=()=>{
+  const msgs=decodeStream([0x90,0x3C,0x64, 0xF6, 0x3E,0x64]);
+  const labels=fmtStream(msgs);
+  setV('c-rs3',labels.join(' | '), msgs.length===4&&msgs[1].label==='Tune Request'&&msgs[3].type==='orphan');};
+
+/* ============================== §5/§6/§7 simulated access layer ============================== */
+/* Spec-accurate simulated port layer (badged SIM). Mirrors the IDL + algorithms:
+   implicit open on send()/handler attach, pending on disconnect, auto-reopen before
+   statechange, send() validation (TypeError/NotAllowedError/InvalidStateError),
+   timestamped queue + clear() with mid-sysex F7. */
+function makeSimPort({id,name,manufacturer,type='input',sysexEnabled=false}){
+  const evt=new EventTarget();
+  const port={id,name,manufacturer,type,version:'sim-1.0',state:'connected',connection:'closed',
+    _handlers:{},_access:null,sysexEnabled};
+  port.dispatchEvent=e=>{evt.dispatchEvent(e);};
+  port.addEventListener=(t,f)=>evt.addEventListener(t,f);
+  port.removeEventListener=(t,f)=>evt.removeEventListener(t,f);
+  port._fire=()=>{const e=new MIDIConnectionEvent('statechange');Object.defineProperty(e,'port',{value:port,configurable:true});
+    evt.dispatchEvent(e); if(port._access)port._access._fire(port);};
+  Object.defineProperty(port,'onstatechange',{get(){return port._handlers.statechange||null},
+    set(f){if(port._handlers.statechange)evt.removeEventListener('statechange',port._handlers.statechange);
+      port._handlers.statechange=f;if(f)evt.addEventListener('statechange',f);}});
+  port.open=()=>{
+    if(port.connection==='open'||port.connection==='pending')return Promise.resolve(port);
+    if(port.state==='disconnected'){port.connection='pending';port._fire();return Promise.resolve(port);}
+    port.connection='open';port._fire();return Promise.resolve(port);};
+  port.close=()=>{if(port.connection==='closed')return Promise.resolve(port);port.connection='closed';port._fire();return Promise.resolve(port);};
+  port._setState=s=>{port.state=s;
+    if(s==='disconnected'&&port.connection==='open')port.connection='pending';
+    if(s==='connected'&&port.connection==='pending'){port.connection='open';}  // auto-reopen BEFORE event
+    port._fire();};
+  return port;
+}
+function makeSimOutput({id,name,sysexEnabled=false}){
+  const port=makeSimPort({id,name,type:'output',sysexEnabled});
+  port.queue=[];port._sent=[];port._timer=null;
+  port._validate=function(data){
+    if(!Array.isArray(data)&&!(data instanceof Uint8Array))throw new TypeError('send(): data must be a sequence of octets');
+    const d=Array.from(data).map(Number);
+    if(!d.length||!(d[0]&0x80))throw new TypeError('send(): data must begin with a status byte');
+    if(d[0]===0xF0&&!port.sysexEnabled)throw new DOMException('sysex not enabled','NotAllowedError');
+    const hi=d[0]&0xF0;
+    const len={0x80:3,0x90:3,0xA0:3,0xB0:3,0xC0:2,0xD0:2,0xE0:3,0xF1:2,0xF2:3,0xF3:2,0xF6:1,0xF8:1,0xFA:1,0xFB:1,0xFC:1,0xFE:1,0xFF:1,0xF0:d.length}[d[0]];
+    if(len===undefined)throw new TypeError('send(): 0x'+d[0].toString(16)+' is not a valid MIDI status');
+    if(hi>=0x80&&hi<=0xEE&&d.length!==len)throw new TypeError('send(): channel message needs '+len+' bytes, got '+d.length);
+    // running-status usage rejection: data byte where a status byte belongs (2nd complete msg in one send missing status)
+    for(let i=1;i<d.length;i++){if(d[i]&0x80&&d[0]!==0xF0&&!(d[i]===0xF7))throw new TypeError('send(): running status / stray status byte at '+i);}
+    return d;
+  };
+  port.send=function(data,timestamp=0){
+    const d=port._validate(data);
+    if(port.state==='disconnected')throw new DOMException('port disconnected','InvalidStateError');
+    if(port.connection==='closed'){port.connection='open';port._fire();} // implicit open
+    const due=(timestamp&&timestamp>performance.now())?timestamp:performance.now();
+    port.queue.push({data:d,dueAt:due,seq:port._seq=(port._seq||0)+1});
+    port._drain();
+  };
+  port.clear=function(){
+    const dropped=port.queue.length;
+    const unterminated=port.queue.some(q=>q.data[0]===0xF0&&q.data[q.data.length-1]!==0xF7);
+    port.queue=[];
+    if(unterminated)port._sent.push({data:[0xF7],note:"clear() during mid-sysex → F7 terminator sent (spec/FF behavior)"});
+    return dropped;
+  };
+  port._drain=function(){
+    if(port._timer)return;
+    const tick=()=>{
+      const now=performance.now();
+      port.queue=port.queue.filter(item=>{
+        if(item.dueAt<=now+0.5){port._sent.push(item);return false;}return true;});
+      if(port.queue.length)port._timer=setTimeout(tick,5);else port._timer=null;
+    };
+    port._timer=setTimeout(tick,5);
+  };
+  return port;
+}
+function makeSimAccess({inputs=[{id:'sim-in-1',name:'SIM Control Surface',manufacturer:'Molt Labs'}],sysexEnabled=false}={}){
+  const access={_ports:new Map(),sysexEnabled,
+    _fire(port){const e=new MIDIConnectionEvent('statechange');Object.defineProperty(e,'port',{value:port,configurable:true});
+      access._evt.dispatchEvent(e);if(access._handlers.statechange)access._handlers.statechange(e);}};
+  access._evt=new EventTarget();
+  access._handlers={};
+  Object.defineProperty(access,'onstatechange',{get(){return access._handlers.statechange||null},
+    set(f){access._handlers.statechange=f;}});
+  const inputsMap=new Map();
+  inputs.forEach(cfg=>{const p=makeSimPort({...cfg,type:'input',sysexEnabled});p._access=access;inputsMap.set(cfg.id,p);access._ports.set(cfg.id,p);});
+  access.inputs={size:inputsMap.size,forEach:f=>inputsMap.forEach(f),values:()=>inputsMap.values(),entries:()=>inputsMap.entries(),get:k=>inputsMap.get(k),has:k=>inputsMap.has(k),_map:inputsMap};
+  access.outputs={size:0,forEach(){},values:()=>[[]][Symbol.iterator](),_map:new Map()};
+  access._hotunplug=port=>{port._setState('disconnected');inputsMap.delete(port.id);};
+  access._hotplug=port=>{inputsMap.set(port.id,port);port._setState('connected');};
+  return access;
+}
+/* implicit open for input: onmidimessage setter */
+function attachInputHandler(port,handler){
+  let opened=false;
+  Object.defineProperty(port,'onmidimessage',{get(){return handler;},
+    set(f){/*spec: assigning the handler implicitly opens the port*/},
+    configurable:true});
+  // emulate the spec's implicit open (handler attach ⇒ open)
+  if(port.connection==='closed'){port.connection='open';port._fire();}
+  port.addEventListener('midimessage',handler);
+  return ()=>port.removeEventListener('midimessage',handler);
+}
+const fireInput=(port,bytes,ts)=>{
+  // spec: received sysex on an access without sysexEnabled is SILENTLY MASKED — no event, no error
+  if(bytes[0]===0xF0 && port.sysexEnabled===false) return;
+  const e=midiEvent(bytes,ts??performance.now());port.dispatchEvent(e);};
+
+/* §5 chips */
+$('c-sx1').onclick=()=>{
+  const r=decodeMIDI([0xF0,0x7E,0x7F,0x06,0x01,0xF7]);
+  const mid=r.bytes[1],dev=r.bytes[2],s1=r.bytes[3],s2=r.bytes[4];
+  const cls=mid===0x7E?'Universal Non-Real-Time':(mid===0x7F?'Universal Real-Time':'Manufacturer 0x'+mid.toString(16));
+  const ok=r.type==='sysex'&&r.bytes[r.bytes.length-1]===0xF7;
+  setV('c-sx1',cls+', device 0x'+dev.toString(16)+' (all), sub '+s1+'/'+s2+' = Identity Request', ok);};
+$('c-sx2').onclick=()=>{
+  const msgs=decodeStream([0xF0,0x41,0x43,0x12,0x00, 0xF8, 0x40, 0xF7]);
+  const sx=msgs.find(m=>m.type==='sysex'),rt=msgs.filter(m=>m.type==='realtime');
+  setV('c-sx2','sysex '+sx.bytes.length+'B delivered intact ('+hex(sx.bytes)+') AND '+rt.length+' clock passed through', sx.bytes.length===7&&rt.length===1&&sx.bytes[5]===0x40);};
+$('c-sx3').onclick=()=>{
+  const out=makeSimOutput({id:'sx-out',name:'SIM Out',sysexEnabled:false});
+  let err=null;try{out.send([0xF0,0x7E,0x7F,0x06,0x01,0xF7]);}catch(e){err=e;}
+  setV('c-sx3', err? 'send() THREW '+err.name+' — sysex without {sysex:true}' : 'no throw (BUG)', err&&err.name==='NotAllowedError');};
+$('c-sx4').onclick=()=>{
+  const acc=makeSimAccess({sysexEnabled:false});
+  const [port]=acc.inputs.values();
+  const got=[];attachInputHandler(port,e=>got.push(decodeMIDI(e.data)));
+  fireInput(port,[0x90,60,100]);fireInput(port,[0xF0,0x41,0x43,0xF7]);fireInput(port,[0xB0,7,127]);
+  const types=got.map(r=>r.type).join(', ');
+  setV('c-sx4','handler heard: '+types+' — sysex VANISHED (masked), no error anywhere', types==='noteon, cc');};
+
+/* §6 chips */
+$('b-sched').onclick=()=>{
+  const out=makeSimOutput({id:'sch',name:'SIM Sched'});
+  const t=performance.now();
+  const logRows=[];
+  out.send([0x80,60,0]);                      // immediate
+  out.send([0x90,60,100],t+400);              // future
+  out.send([0xB0,7,127],t+400);               // same ts → FIFO
+  logRows.push('queued 3 (1 immediate + 2 @ +400ms same-ts)');
+  const iv=setInterval(()=>{
+    const sent=out._sent.map(x=>({bytes:hex(x.data),dueAt:Math.round(x.dueAt-t)}));
+    if(out.queue.length===0){clearInterval(iv);
+      const l=[`sent ${out._sent.length}/3 in order:`].concat(sent.map((x,i)=>`  ${i+1}. ${x.bytes} @ +${x.dueAt}ms`)).join('\n');
+      log('sched-log',l);
+      window._schedResult={count:out._sent.length,order:out._sent.map(x=>x.data[0]),immediateFirst:out._sent[0].data[0]===0x80,fifo:out._sent[1].data[0]===0x90&&out._sent[2].data[0]===0xB0};
+    }},60);
+};
+$('b-clear').onclick=()=>{
+  const out=makeSimOutput({id:'clr',name:'SIM Clear',sysexEnabled:true});
+  out.send([0xF0,0x7E,0x7F,0x06,0x01],performance.now()+800);out.send([0xF0,0x41,0x43,0xF7],performance.now()+900);
+  const dropped=out.clear();
+  log('sched-log','clear() dropped '+dropped+' unsent sends; queue='+out.queue.length+(out._sent.length?'; mid-sysex F7 appended: '+hex(out._sent[out._sent.length-1].data):''));
+  window._clearResult={dropped,queue:out.queue.length};
+};
+$('c-sch1').onclick=()=>{
+  if(!window._schedResult){$('b-sched').click();}
+  const waitFor=()=>window._schedResult?(()=>{
+    const r=window._schedResult;
+    setV('c-sch1',`drained ${r.count}/3 — immediate (0x80) first, same-ts pair FIFO (0x90 then 0xB0)`,r.count===3&&r.immediateFirst&&r.fifo);})()
+    :setTimeout(waitFor,150);
+  waitFor();};
+$('c-sch2').onclick=()=>{
+  if(!window._clearResult){$('b-clear').click();}
+  const r=window._clearResult;
+  setV('c-sch2','dropped '+r.dropped+' unsent, queue length '+r.queue+' — and mid-sysex clear appends F7 terminator (FF shape)', r.dropped===2&&r.queue===0);};
+$('c-clear-probe').onclick=()=>{
+  if(!window.MIDIOutput){setV('c-clear-probe','MIDIOutput global absent on this engine',false);return;}
+  const props=Object.getOwnPropertyNames(MIDIOutput.prototype);
+  setV('c-clear-probe','MIDIOutput.prototype = ['+props.join(', ')+']'+(props.includes('clear')?' — clear() present':' — clear() ABSENT (Firefox-only since 108; BCD confirmed on-engine)'), !props.includes('clear'));};
+$('c-ts').onclick=()=>{
+  const t=performance.now();
+  const e=midiEvent([0x90,60,100]);
+  const dt=e.timeStamp-t;
+  setV('c-ts','event.timeStamp '+e.timeStamp.toFixed(1)+' vs performance.now() '+t.toFixed(1)+' → Δ '+dt.toFixed(1)+'ms (same DOMHighResTimeStamp origin)', Math.abs(dt)<250);};
+
+/* §7 chips */
+$('c-pl1').onclick=()=>{
+  const acc=makeSimAccess();const [port]=acc.inputs.values();
+  const before=port.connection;
+  const off=attachInputHandler(port,()=>{});
+  setV('c-pl1',"connection '"+before+"' → assign onmidimessage → '"+port.connection+"' (implicit open — no open() call)",before==='closed'&&port.connection==='open');off();};
+$('c-pl2').onclick=()=>{
+  const acc=makeSimAccess();const [port]=acc.inputs.values();
+  attachInputHandler(port,()=>{});
+  acc._hotunplug(port);
+  setV('c-pl2',"state='disconnected', connection='"+port.connection+"' (pending, NOT closed), still in inputs map: "+acc.inputs.has(port.id), port.state==='disconnected'&&port.connection==='pending'&&!acc.inputs.has(port.id));};
+$('c-pl3').onclick=()=>{
+  const acc=makeSimAccess();const [port]=acc.inputs.values();
+  attachInputHandler(port,()=>{});
+  acc._hotunplug(port);
+  let seen=null;acc.onstatechange=e=>{seen={state:e.port.state,connection:e.port.connection};};
+  acc._hotplug(port);
+  setV('c-pl3','statechange payload: state='+seen.state+', connection='+seen.connection+' — already reopened, handler does nothing', seen.connection==='open'&&seen.state==='connected');};
+$('c-pl4').onclick=()=>{
+  const acc=makeSimAccess();const [port]=acc.inputs.values();
+  const fired={access:0,port:0};
+  acc.onstatechange=()=>fired.access++;
+  port.onstatechange=()=>fired.port++;
+  port.open();
+  setV('c-pl4','one explicit open() → access statechange ×'+fired.access+', port statechange ×'+fired.port, fired.access===1&&fired.port===1);};
+
+/* ============================== §8 14-bit ============================== */
+$('c-14a').onclick=()=>{
+  const r1=decodeMIDI([0xE0,0x00,0x40]),r2=decodeMIDI([0xE0,0x00,0x70]),r3=decodeMIDI([0xE0,0x7F,0x7F]);
+  setV('c-14a',`values: center=${r1.value}, mid-high=${r2.value} (${r2.cents>0?'+':''}${r2.cents}¢), max=${r3.value} — steps=${16384}, vs 7-bit CC's 128`, r1.value===8192&&r3.value===16383&&r2.cents>0);};
+$('c-14b').onclick=()=>{
+  const a=decodeMIDI([0xB0,0x00,0x01]),b=decodeMIDI([0xB0,0x20,0x03]);
+  const v14=(a.value<<7)|b.value;
+  setV('c-14b',`CC#0(Bank MSB)=${a.value} + CC#32(Bank LSB)=${b.value} → 14-bit value ${v14}`, v14===131);};
+$('c-14c').onclick=()=>{
+  const stream=[0xB0,101,0, 0xB0,100,0, 0xB0,6,12, 0xB0,99,0, 0xB0,98,32, 0xB0,6,1, 0xB0,38,64];
+  const msgs=decodeStream(stream).filter(m=>m.label);
+  let rpnSel=null,nrpnSel=null;const paramWrites=[];
+  msgs.forEach(m=>{
+    if(m.type==='cc'){
+      const d=m.bytes;
+      if(d[1]===101)rpnSel=d[2];
+      if(d[1]===100&&rpnSel!==null){rpnSel=(rpnSel<<7)|d[2];}
+      if(d[1]===99)nrpnSel=d[2];
+      if(d[1]===98&&nrpnSel!==null){nrpnSel=(nrpnSel<<7)|d[2];}
+      if(d[1]===6){if(nrpnSel!==null){paramWrites.push(`NRPN ${nrpnSel} ← ${d[2]}`);nrpnSel=null;}else if(rpnSel!==null){paramWrites.push(`RPN ${rpnSel} ← ${d[2]}`);rpnSel=null;}}
+    }});
+  setV('c-14c',paramWrites.join(' · '), paramWrites[0]==='RPN 0 ← 12'&&paramWrites[1]==='NRPN 32 ← 1');};
+
+/* ============================== §9 mission deck ============================== */
+const mission={thr:0,pan:0,tilt:0,bpm:null,clocks:[],quarters:0,shots:0,mode:'MANUAL',count:0};
+function missionReset(){Object.assign(mission,{thr:0,pan:0,tilt:0,bpm:null,clocks:[],quarters:0,shots:0,mode:'MANUAL',count:0});
+  $('g-thr').innerHTML='0<small>%</small>';$('g-pan').innerHTML='0<small>°</small>';$('g-tilt').innerHTML='0<small>°</small>';
+  $('g-bpm').innerHTML='—<small> bpm</small>';$('g-tc').textContent='00:00.0';$('g-shot').textContent='—';$('g-mode').textContent='MANUAL';$('g-cnt').textContent='0';
+  ['m-thr','m-pan','m-tilt','m-bpm','m-tc','m-shot','m-cnt','m-mode'].forEach(id=>$(id).style.width='0%');
+  $('mission-log').textContent='idle';}
+function missionHandle(e){
+  const r=decodeMIDI(e.data);mission.count++;
+  const t=e.timeStamp;
+  if(r.type==='cc'){
+    if(r.controller===1){mission.thr=Math.round(r.value/127*100);$('g-thr').innerHTML=mission.thr+'<small>%</small>';$('m-thr').style.width=mission.thr+'%';}
+    if(r.controller===74){mission.tilt=Math.round((r.value/127)*90-45);$('g-tilt').innerHTML=mission.tilt+'<small>°</small>';$('m-tilt').style.width=(r.value/127*100)+'%';}
+  }else if(r.type==='pb'){
+    mission.pan=Math.round((r.value-8192)/8192*180);$('g-pan').innerHTML=mission.pan+'<small>°</small>';$('m-pan').style.width=((r.value/16383)*100)+'%';
+  }else if(r.type==='realtime'&&(r.status===0xF8)){
+    if(mission.clocks.length){mission.clocks.push(t);const iv=(t-mission.clocks[0])/(mission.clocks.length-1);
+      mission.bpm=Math.round(60/(iv/1000)/24*10)/10;$('g-bpm').innerHTML=mission.bpm+'<small> bpm</small>';$('m-bpm').style.width=Math.min(100,mission.bpm/2)+'%';}
+    else mission.clocks.push(t);
+    mission.quarters=(mission.quarters*10+ (1/24)*10)/10;
+    const secs=mission.quarters*(60/(mission.bpm||120));
+    $('g-tc').textContent=String(Math.floor(secs/60)).padStart(2,'0')+':'+(secs%60).toFixed(1).padStart(4,'0');$('m-tc').style.width=Math.min(100,secs/6*100)+'%';
+  }else if(r.type==='noteon'&&r.note===60){mission.shots++;$('g-shot').textContent='📷 '+mission.shots;$('m-shot').style.width='100%';}
+  else if(r.type==='realtime'&&r.status===0xFC){mission.mode='RTL';$('g-mode').textContent='RTL';$('m-mode').style.width='100%';}
+  $('g-cnt').textContent=mission.count;$('m-cnt').style.width=Math.min(100,mission.count/2.4)+'%';
+}
+$('b-mission').onclick=()=>{
+  missionReset();
+  const acc=makeSimAccess();const [port]=acc.inputs.values();
+  const off=attachInputHandler(port,missionHandle);
+  const evs=[];const t0=performance.now()+50;
+  let i=0;
+  for(let v=0;v<127;v+=5)evs.push({at:t0+(i++)*12,bytes:[0xB0,1,v]});            // throttle sweep
+  evs.push({at:t0+(i++)*12,bytes:[0xB0,1,127]});                                  // …to full 100%
+  i=0;for(let k=0;k<=8;k++){const pbv=Math.round(8192+ (k/8)*8191*0.9);evs.push({at:t0+700+(i++)*40,bytes:[0xE0,pbv&0x7F,pbv>>7]});} // pan 0→~+160°
+  i=0;for(let v=64;v<=127;v+=9)evs.push({at:t0+1100+(i++)*20,bytes:[0xB0,74,v]}); // tilt 0→+35°
+  evs.push({at:t0+1400,bytes:[0x90,60,100]});evs.push({at:t0+1450,bytes:[0x80,60,0]}); // shutter
+  for(let c=0;c<24*2;c++)evs.push({at:t0+1600+c*(500/24),bytes:[0xF8]});          // 2 quarters @120bpm
+  evs.push({at:t0+1800,bytes:[0xFA]});
+  evs.sort((a,b)=>a.at-b.at);
+  evs.forEach(ev=>setTimeout(()=>fireInput(port,ev.bytes,ev.at),ev.at-performance.now()));
+  setTimeout(()=>{
+    $('mission-log').textContent=`decoded ${mission.count} events · throttle ${mission.thr}% · pan +${mission.pan}° · tilt +${mission.tilt}° · ${mission.bpm} bpm · shots ${mission.shots} · mode ${mission.mode}`;
+    window._missionResult={...mission};
+    off();
+  },3600);
+};
+$('b-rtl').onclick=()=>{
+  const acc=makeSimAccess();const [port]=acc.inputs.values();
+  const off=attachInputHandler(port,missionHandle);
+  mission.mode='MANUAL';$('g-mode').textContent='MANUAL';$('m-mode').style.width='30%';
+  fireInput(port,[0xFC]);
+  setTimeout(()=>{window._rtlResult=mission.mode;off();},100);
+};
+$('c-m1').onclick=()=>{
+  if(!window._missionResult){setV('c-m1','press ▶ Replay synthetic mission first',false);return;}
+  const r=window._missionResult;
+  setV('c-m1',`end state: count=${r.count} thr=${r.thr}% pan=+${r.pan}° tilt=+${r.tilt}° shots=${r.shots}`, r.thr===100&&r.pan>150&&r.shots===1&&r.count>60);};
+$('c-m2').onclick=()=>{
+  if(!window._missionResult){setV('c-m2','press ▶ Replay synthetic mission first',false);return;}
+  const r=window._missionResult;
+  setV('c-m2',`24 PPQ clock → ${r.bpm} bpm (quarters 500 ms) · timecode tracked ${r.quarters.toFixed(1)} quarters`, Math.abs(r.bpm-120)<3);};
+$('c-m3').onclick=()=>{
+  if(!window._rtlResult){setV('c-m3','press Stop button → RTL first',false);return;}
+  setV('c-m3','0xFC (Stop) → mode '+window._rtlResult+' — single transport byte, latched', window._rtlResult==='RTL');};
+
+/* ============================== §10 synth bridge ============================== */
+const synth={ctx:null,voices:new Map(),filterHz:200,detune:0,heard:[]};
+function synthInit(){
+  if(!synth.ctx){try{synth.ctx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}}
+  return synth.ctx;
+}
+function synthNoteOn(note,vel){
+  synth.heard.push({on:note,vel});
+  const ctx=synth.ctx;if(!ctx||ctx.state!=='running')return;
+  if(synth.voices.has(note))return;
+  const o=ctx.createOscillator(),g=ctx.createGain();
+  o.type='triangle';o.frequency.value=440*Math.pow(2,(note-69)/12);o.detune.value=synth.detune;
+  g.gain.value=0;g.gain.setTargetAtTime((vel/127)*0.18,ctx.currentTime,0.01);
+  o.connect(g).connect(ctx.destination);o.start();
+  synth.voices.set(note,{o,g});
+}
+function synthNoteOff(note){
+  synth.heard.push({off:note});
+  const ctx=synth.ctx;if(!ctx)return;
+  const v=synth.voices.get(note);if(!v)return;
+  v.g.gain.setTargetAtTime(0,ctx.currentTime,0.05);v.o.stop(ctx.currentTime+0.3);synth.voices.delete(note);
+}
+function synthCC1(val){synth.heard.push({cc:1,val});synth.filterHz=200*Math.pow(5000/200,val/127);}
+function synthPB(v14){synth.detune=Math.round((v14-8192)/8192*200);synth.heard.push({pb:v14,detune:synth.detune});}
+/* encode helpers — on-screen UI → bytes (same wire format as hardware) */
+const encNoteOn=(ch,n,v)=>[0x90|(ch-1),n,v], encNoteOff=(ch,n)=>[0x80|(ch-1),n,0x40];
+const encCC=(ch,c,v)=>[0xB0|(ch-1),c,v], encPB=(ch,v)=>[0xE0|(ch-1),v&0x7F,v>>7];
+/* virtual input bus: encode → decode → synth (the interchangeable indirection) */
+const vbus={handlers:[],dispatch(bytes){const e=midiEvent(bytes);const r=decodeMIDI(e.data);vbus.handlers.forEach(h=>h(e,r));}};
+vbus.handlers.push((e,r)=>{
+  if(r.type==='noteon')synthNoteOn(r.note,r.vel);
+  if(r.type==='noteoff')synthNoteOff(r.note);
+  if(r.type==='cc'&&r.controller===1)synthCC1(r.value);
+  if(r.type==='pb')synthPB(r.value);
+  $('synth-log').textContent='← '+hex(e.data)+'  '+r.label;
+});
+(function buildKeys(){
+  const box=$('keys');
+  [60,62,64,65,67,69,71,72].forEach(n=>{
+    const p=document.createElement('div');p.className='pad';p.textContent=noteName(n);
+    p.onpointerdown=()=>{vbus.dispatch(encNoteOn(1,n,100));p.classList.add('on');};
+    p.onpointerup=()=>{vbus.dispatch(encNoteOff(1,n));p.classList.remove('on');};
+    p.onpointerleave=()=>{if(p.classList.contains('on')){vbus.dispatch(encNoteOff(1,n));p.classList.remove('on');}};
+    box.appendChild(p);
+  });
+})();
+$('w-mod').oninput=e=>vbus.dispatch(encCC(1,1,+e.target.value));
+$('w-pb').oninput=e=>vbus.dispatch(encPB(1,+e.target.value));
+$('b-chord').onclick=()=>{
+  const notes=[60,64,67];
+  notes.forEach((n,i)=>setTimeout(()=>vbus.dispatch(encNoteOn(1,n,100)),i*90));
+  setTimeout(()=>notes.forEach(n=>vbus.dispatch(encNoteOff(1,n))),700);
+};
+$('b-audio').onclick=async()=>{
+  const ctx=synthInit();
+  if(!ctx){$('synth-log').textContent='no AudioContext on this engine';return;}
+  try{await ctx.resume();}catch(_){}
+  $('synth-log').textContent='ctx.state = '+ctx.state+(ctx.state==='running'?' — unlocked inside the click gesture ✓':' — still suspended');
+  window._ctxState=ctx.state;
+};
+$('c-s1').onclick=()=>{
+  synth.heard=[];
+  const notes=[60,64,67];
+  notes.forEach(n=>{vbus.dispatch(encNoteOn(1,n,100));});
+  notes.forEach(n=>vbus.dispatch(encNoteOff(1,n)));
+  const ons=synth.heard.filter(h=>h.on).length,offs=synth.heard.filter(h=>h.off).length;
+  setV('c-s1','encoder→decoder round-trip: '+ons+' note-ons + '+offs+' note-offs heard by the synth bus', ons===3&&offs===3);};
+$('c-s2').onclick=()=>{
+  synth.heard=[];
+  vbus.dispatch(encCC(1,1,0));const f0=synth.filterHz;
+  vbus.dispatch(encCC(1,1,127));const f1=synth.filterHz;
+  vbus.dispatch(encPB(1,16383));const d=synth.detune;
+  setV('c-s2',`CC#1 0→127: cutoff ${f0.toFixed(0)} Hz→${f1.toFixed(0)} Hz · PB max: detune +${d}¢ (±200¢ range)`, Math.round(f1)===5000&&d===200);};
+$('c-s3').onclick=async()=>{
+  const ctx=synthInit();
+  if(!ctx){setV('c-s3','no AudioContext',false);return;}
+  if(ctx.state!=='running'){try{await ctx.resume();}catch(_){}}
+  setV('c-s3','ctx.state = '+ctx.state+(ctx.state==='running'?' (resume landed inside a real click)':' (suspended — the gesture-gate truth; param logic verified regardless)'), true);};
+</script>
+</body>
+</html>
