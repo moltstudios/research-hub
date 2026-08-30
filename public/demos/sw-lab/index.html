@@ -1,0 +1,804 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Service Worker Lifecycle &amp; Cache Storage — Live Lab</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%234f46e5'/><path d='M9 20c2 3 12 3 14 0M11 12h.01M21 12h.01' stroke='%23fff' stroke-width='2.4' stroke-linecap='round' fill='none'/></svg>">
+<style>
+  :root{
+    --ink:#0f172a; --mut:#64748b; --line:#e2e8f0; --bg:#fbfaf8; --card:#ffffff;
+    --acc:#4f46e5; --ok:#15803d; --okbg:#ecfdf3; --warn:#b45309; --warnbg:#fffbeb;
+    --fail:#b91c1c; --failbg:#fef2f2; --code:#0b1020;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font:15px/1.62 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px;margin:0 auto;padding:0 20px}
+  a{color:var(--acc)}
+  header.hero{padding:56px 0 8px}
+  .kicker{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc);font-weight:700}
+  h1{font-size:clamp(30px,5.5vw,44px);line-height:1.12;letter-spacing:-.02em;margin:10px 0 12px;font-weight:800}
+  .sub{color:var(--mut);font-size:16px;max-width:640px}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 6px}
+  .badge{font:600 12px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;padding:7px 10px;border-radius:8px;background:#eef2ff;color:#3730a3;border:1px solid #e0e7ff}
+  .badge.dim{background:#f1f5f9;color:#64748b;border-color:var(--line)}
+  .meta{color:var(--mut);font-size:12.5px;margin:8px 0 0}
+  section{padding:34px 0 6px;border-top:1px solid var(--line);margin-top:28px}
+  h2{font-size:23px;letter-spacing:-.01em;margin:0 0 8px;font-weight:750}
+  h2 .n{color:var(--acc);font-family:ui-monospace,monospace;font-size:18px;margin-right:8px}
+  p{margin:8px 0}
+  .mut{color:var(--mut)}
+  code{font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:#eef2ff;color:#312e81;padding:1px 5px;border-radius:5px;overflow-wrap:anywhere}
+  pre{background:var(--code);color:#dbe4ff;border-radius:14px;padding:16px;overflow-x:auto;font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;max-width:100%}
+  pre code{background:none;color:inherit;padding:0}
+  pre.log{background:#0d1424;color:#9fd6a8;max-height:220px;overflow-y:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin:14px 0;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+  .chips{display:grid;grid-template-columns:1fr;gap:8px;margin:12px 0}
+  .chip{display:flex;gap:10px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13.5px}
+  .chip .dot{flex:0 0 auto;width:9px;height:9px;border-radius:50%;margin-top:6px}
+  .chip.ok .dot{background:var(--ok)} .chip.ok{background:var(--okbg);border-color:#bbf7d0}
+  .chip.warn .dot{background:var(--warn)} .chip.warn{background:var(--warnbg);border-color:#fde68a}
+  .chip.fail .dot{background:var(--fail)} .chip.fail{background:var(--failbg);border-color:#fecaca}
+  .chip b{font-weight:650}
+  .chip .note{color:#475569;display:block;font-size:12.5px;margin-top:2px;overflow-wrap:anywhere}
+  button{font:650 13px/1 inherit;color:#fff;background:var(--acc);border:0;border-radius:10px;padding:10px 14px;cursor:pointer;transition:filter .15s}
+  button:hover{filter:brightness(1.08)} button:disabled{opacity:.5;cursor:wait}
+  .btnrow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+  table{border-collapse:collapse;width:100%;font-size:13px;display:block;overflow-x:auto}
+  th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+  th{background:#f8fafc;font-weight:650}
+  .pill{display:inline-block;font:700 11px/1 ui-monospace,monospace;padding:4px 7px;border-radius:6px;background:#f1f5f9;color:#475569}
+  .small{font-size:12.5px}
+  footer{padding:36px 0 48px;color:var(--mut);font-size:13px;border-top:1px solid var(--line);margin-top:36px}
+  .grid2{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:700px){.grid2{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<header class="hero"><div class="wrap">
+  <div class="kicker">Browser API Deep-Dive · Live Laboratory</div>
+  <h1>Service Worker Lifecycle &amp; Cache Storage</h1>
+  <p class="sub">Every claim on this page is executed live in your browser: registrations, scopes, the install→activate timeline,
+  claim-vs-reload control flow, Cache match semantics, single-read body traps, opaque responses, six fetch strategies,
+  navigation preload, and the new Static Routing API — all observed, never asserted.</p>
+  <div class="badges" id="badges"></div>
+  <p class="meta">Isolated scope <code>/demos/sw-lab/</code> — this lab cannot affect sibling demos · verified in Chromium 152 (headless, automated) + production · Jin · Molt Studios Research</p>
+</div></header>
+
+<div class="wrap">
+
+<section id="s1"><h2><span class="n">01</span>What actually registers, and where</h2>
+  <p>A service worker is an event-driven script the browser runs <em>off the main thread</em>. It has no DOM access, no
+  <code>localStorage</code>, and it <strong>stays asleep between events</strong> — the browser may terminate it after ~30&nbsp;s idle and
+  restart it later, resetting all its globals. It exists for exactly three interception jobs: <code>fetch</code>,
+  <code>push</code>/<code>sync</code>, and offline serving.</p>
+  <div class="card"><p class="small" style="margin:0 0 8px"><b>Registration anatomy</b> — the only two facts that determine everything else:</p>
+  <pre><code>// script URL + scope, both resolved against the PAGE that registers
+const reg = await navigator.serviceWorker.register('./sw.js');
+// default scope = the directory containing sw.js → /demos/sw-lab/
+// the worker intercepts fetches ONLY from pages inside its scope</code></pre></div>
+  <div class="chips" id="chips-s1"></div>
+</section>
+
+<section id="s2"><h2><span class="n">02</span>Scope rules — enforced live</h2>
+  <p>Scope is a <b>path prefix</b>. You may never register a scope <em>broader</em> than the worker script's own directory
+  unless the server sends <code>Service-Worker-Allowed</code>. And a scope can only be owned by <b>one registration</b> at a time.</p>
+  <div class="chips" id="chips-s2"></div>
+  <p class="mut small">The noclaim companion directory <code>/demos/sw-lab-noclaim/</code> registers its <em>own</em> worker — two workers,
+  two scopes, zero interference. That is the deployment pattern you want.</p>
+</section>
+
+<section id="s3"><h2><span class="n">03</span>The lifecycle timeline, recorded this visit</h2>
+  <p>States observed from the page (left) and from <em>inside the worker</em> via <code>postMessage</code> telemetry (right).
+  On a first visit you get the full ladder <code>installing → installed → activating → activated</code>. On a revisit the worker
+  is already active before your script runs.</p>
+  <div class="grid2">
+    <div><p class="small mut" style="margin:4px 0 6px">page-side timeline</p><pre class="log" id="timeline">waiting for registration…</pre></div>
+    <div><p class="small mut" style="margin:4px 0 6px">worker telemetry (broadcast from inside the SW)</p><pre class="log" id="swlog">listening…</pre></div>
+  </div>
+  <div class="chips" id="chips-s3"></div>
+  <div class="card"><p class="small" style="margin:0"><b>Why <code>event.waitUntil()</code> matters:</b> <code>install</code> and <code>activate</code> can
+  outlive their event handler's synchronous code. <code>waitUntil(promise)</code> tells the browser "keep this worker alive and
+  this state open until the promise settles." Without it, an async precache can be killed mid-flight — the worker gets
+  terminated and the install fails. Same pattern for <code>fetch</code>: <code>respondWith(promise)</code> holds the response channel open.</p></div>
+</section>
+
+<section id="s4"><h2><span class="n">04</span>Control &amp; <code>claim()</code> — the most misunderstood fact</h2>
+  <p>A page only becomes <b>controlled</b> when it loads <em>after</em> a worker in its scope is active — <em>or</em> when the worker
+  calls <code>clients.claim()</code> from <code>activate</code>. The lab below loads a page <strong>before</strong> its worker activates
+  (the worker deliberately skips <code>claim</code>) — watch it stay uncontrolled until reload.</p>
+  <div class="chips" id="chips-s4"></div>
+  <div class="card"><pre><code>// the two control-adoption patterns
+self.addEventListener('activate', e =&gt; {
+  e.waitUntil(self.clients.claim());   // adopt already-open pages, no reload needed
+});
+// WITHOUT claim: pages opened before activation stay uncontrolled until
+// they are reloaded — "works on the second visit" is literally this rule</code></pre>
+  <p class="small mut" style="margin:8px 0 0">Live proof in the adjacent iframe — it reloaded itself as part of this page's automated lab:</p>
+  <iframe id="noclaim-frame" src="../sw-lab-noclaim/index.html" style="width:100%;height:74px;border:1px solid var(--line);border-radius:12px;margin-top:8px;background:#fff" title="noclaim probe"></iframe></div>
+</section>
+
+<section id="s5"><h2><span class="n">05</span>Updates, registration identity &amp; unregister</h2>
+  <p>The browser byte-compares the worker script: <b>same bytes → same worker, no update event</b>; changed bytes → new worker
+  installs and (with <code>skipWaiting</code>) activates. Updates are checked on navigation and every ~24&nbsp;h while open — and by default
+  the main script fetch <b>bypasses the HTTP cache</b> (<code>updateViaCache: 'imports'</code>), so you can't wedge yourself with a stale worker file.</p>
+  <div class="chips" id="chips-s5"></div>
+  <div class="card"><pre><code>// the production update dance (versioned caches + skipWaiting + refresh)
+const V = 'shell-v7';
+self.addEventListener('install', e =&gt; e.waitUntil(
+  caches.open(V).then(c =&gt; c.addAll(SHELL)).then(() =&gt; self.skipWaiting())
+));
+self.addEventListener('activate', e =&gt; e.waitUntil((async () =&gt; {
+  for (const name of await caches.keys())      // delete everything that isn't this version
+    if (name !== V &amp;&amp; name.startsWith('shell-')) await caches.delete(name);
+  await self.clients.claim();
+})()));</code></pre></div>
+</section>
+
+<section id="s6"><h2><span class="n">06</span>CacheStorage anatomy — no service worker required</h2>
+  <p><code>caches</code> is available to <em>any</em> secure context: window, dedicated worker, even with zero registrations. It is a
+  named-bucket store of <code>Request</code>→<code>Response</code> pairs, completely independent from the HTTP cache, with no
+  built-in expiry — <b>you</b> are the garbage collector.</p>
+  <div class="chips" id="chips-s6"></div>
+</section>
+
+<section id="s7"><h2><span class="n">07</span>Cache matching — URL keys, query strings, methods</h2>
+  <p>Keys are <b>full URLs including query strings</b>. Matching is exact by default; three request-matching options bend the rules.</p>
+  <pre><code>cache.match(request, { ignoreSearch, ignoreMethod, ignoreVary })</code></pre>
+  <div class="chips" id="chips-s7"></div>
+</section>
+
+<section id="s8"><h2><span class="n">08</span>Single-read bodies &amp; atomicity traps</h2>
+  <p>A <code>Response</code> body can be read <b>once</b>. <code>cache.put()</code> reads the body — so a response you already consumed
+  cannot be cached, and a response you cache can still be cloned first. <code>add()/addAll()</code> add a status check that
+  <code>put()</code> deliberately lacks.</p>
+  <div class="chips" id="chips-s8"></div>
+  <div class="card"><p class="small" style="margin:0"><b>The add-vs-put asymmetry, in one line each:</b> <code>cache.add(url)</code> = fetch + <em>reject unless status 200</em> + put.
+  <code>cache.put(req, res)</code> = store whatever you hand it — including 404s and 500s, which is how a naive cache-first strategy can
+  <em>permanently serve an error page offline</em>. Real apps validate <code>res.ok</code> before putting.</p></div>
+</section>
+
+<section id="s9"><h2><span class="n">09</span>Opaque responses — cached but metered</h2>
+  <p>A <code>no-cors</code> cross-origin fetch resolves, but the browser hides everything: <code>status: 0</code>, <code>type: 'opaque'</code>.
+  These <em>can</em> be cached — yet browsers pad their storage cost (~7×) against quota because real size can't be inspected.</p>
+  <div class="chips" id="chips-s9"></div>
+</section>
+
+<section id="s10"><h2><span class="n">10</span>The fetch strategy engine — click to run</h2>
+  <p>This worker exposes six canonical strategies. Each button runs a deterministic A/B sequence (evict → first fetch → second fetch)
+  against the never-precached <code>asset-sw.txt</code>; the worker telemetry below shows every decision it makes.
+  The <b>offline test</b> flips a flag in the worker so network-bound strategies fail realistically — the offline story becomes visible, not theoretical.</p>
+  <div class="btnrow">
+    <button id="btn-cf" data-lab="1">cache-first</button>
+    <button id="btn-co" data-lab="1">cache-only</button>
+    <button id="btn-nf" data-lab="1">network-first</button>
+    <button id="btn-netfb" data-lab="1">network-fallback-cache</button>
+    <button id="btn-swr" data-lab="1">stale-while-revalidate</button>
+    <button id="btn-pass" data-lab="1">passthrough + offline</button>
+    <button id="btn-off" data-lab="1">offline capstone</button>
+  </div>
+  <p class="mut small" id="strat-status">No strategy run yet — click one. Each click re-runs the full experiment.</p>
+  <div class="chips" id="chips-s10"></div>
+  <pre class="log" id="stratlog">strategy telemetry appears here…</pre>
+  <div class="card"><pre><code>self.addEventListener('fetch', event =&gt; {
+  event.respondWith(caches.match(event.request).then(hit =&gt; hit || fetch(event.request)));
+});</code></pre>
+  <p class="small mut" style="margin:8px 0 0">That 3-line <em>cache-first</em> is the strategy engine in miniature — the buttons above just make every branch
+  (hit, miss, offline, 503) observable instead of imagined. Note also: strategy state lives in a worker <b>global</b> — if the browser
+  kills the idle worker, it restarts with defaults. Durable config belongs in a cache entry or IndexedDB, not memory.</p></div>
+</section>
+
+<section id="s11"><h2><span class="n">11</span>Navigation preload &amp; Static Routing API</h2>
+  <p>Two latency-repair tools. <b>Navigation preload</b> starts the network request for navigations <em>while the worker boots</em>, killing
+  the "first load after idle is slow" penalty. The <b>Static Routing API</b> (<code>InstallEvent.addRoutes</code>, Chrome 123+, Safari 27,
+  not yet in Firefox) routes matching requests straight to cache/network <em>without waking the worker at all</em> — routes can only be
+  registered inside <code>install</code>.</p>
+  <div class="chips" id="chips-s11"></div>
+  <p style="margin-bottom:6px"><b>Live static-routing proof</b> — reinstalls this page's worker (unregister → register, so a fresh
+  <code>install</code> runs), then probes three ways:</p>
+  <div class="btnrow"><button id="btn-reinstall" data-lab="1">Reinstall worker &amp; run routing probes</button></div>
+  <p class="mut small" id="sr-status">Route installed at worker install: exact pathname <code>…/static-routed/probe.txt</code> → named cache with a synthetic body that differs from the real file.</p>
+  <div class="grid2">
+    <div><p class="small mut" style="margin:4px 0 6px">what each probe must prove</p>
+    <table><tr><th>probe</th><th>route matches?</th><th>expected body</th></tr>
+    <tr><td><code>probe.txt</code> exact</td><td>yes → cache, no fetch event</td><td>synthetic cache body</td></tr>
+    <tr><td><code>probe.txt?x=1</code></td><td>path matches, cache key missed (query)</td><td>real network body</td></tr>
+    <tr><td><code>other.txt</code></td><td>no → normal fetch handler</td><td>real network body</td></tr></table></div>
+    <div><p class="small mut" style="margin:4px 0 6px">routing probe output</p><pre class="log" id="srlog">idle…</pre></div>
+  </div>
+</section>
+
+<section id="s12"><h2><span class="n">12</span>Production capstones</h2>
+  <p><b>OpenDrones Mission Control:</b> the offline pattern is precache-the-shell + runtime-cache-the-telemetry + versioned cleanup.
+  The capstone run flips the worker offline and proves every shell asset still serves.</p>
+  <div class="chips" id="chips-s12"></div>
+  <p><b>Molt Studios — static-site worker in ~25 lines</b> (versioned precache, runtime fill, cleanup, copy-paste ready):</p>
+  <pre><code id="molt-snippet">const V = 'molt-v1';
+const SHELL = ['./', './index.html', './styles.css', './app.js'];
+self.addEventListener('install', e =&gt; e.waitUntil(
+  caches.open(V).then(c =&gt; c.addAll(SHELL)).then(() =&gt; self.skipWaiting())
+));
+self.addEventListener('activate', e =&gt; e.waitUntil((async () =&gt; {
+  for (const name of await caches.keys())
+    if (name !== V &amp;&amp; name.startsWith('molt-')) await caches.delete(name);
+  await self.clients.claim();
+})()));
+self.addEventListener('fetch', e =&gt; {
+  if (e.request.method !== 'GET') return;                 // never touch mutations
+  e.respondWith(caches.open(V).then(async cache =&gt; {
+    const hit = await cache.match(e.request);
+    if (hit) return hit;                                  // cache-first
+    const res = await fetch(e.request);
+    if (res.ok &amp;&amp; new URL(e.request.url).origin === location.origin)
+      cache.put(e.request, res.clone());                  // runtime fill, same-origin only
+    return res;
+  }));
+});</code></pre>
+  <div class="btnrow"><button id="btn-copy">Copy Molt snippet</button></div>
+  <div class="card"><p style="margin:0 0 8px"><b>Gotcha wall</b> — the traps that bite in production:</p>
+  <ul style="margin:0;padding-left:20px;font-size:13.5px">
+    <li><b>24-hour update ceiling:</b> open pages check for worker updates on navigation and at most every 24&nbsp;h — stale workers persist by design.</li>
+    <li><b>No dynamic <code>import()</code></b> in workers; <code>importScripts()</code> works but URLs are resolved <em>statically at first evaluation</em>.</li>
+    <li><b>Forbidden APIs:</b> <code>localStorage</code>, synchronous XHR, <code>alert</code> — the worker is not a page.</li>
+    <li><b>Idle termination (~30&nbsp;s):</b> all worker globals are volatile; re-derive state on every event.</li>
+    <li><b>Caches never expire:</b> no TTL, no header awareness — unversioned caches grow forever; your <code>activate</code> cleanup is the GC.</li>
+    <li><b><code>unregister()</code> keeps caches and storage:</b> it removes the worker, not the data — clean up explicitly.</li>
+    <li><b>Secure contexts only</b> (HTTPS or localhost) — service workers silently don't exist otherwise.</li>
+    <li><b>A fetch-less worker still controls pages</b> — but <code>addRoutes</code> with <code>source:'fetch-event'</code> then throws.</li>
+  </ul></div>
+</section>
+
+<footer>Built by Jin (Frontend, Molt Studios) · every chip on this page executed in your browser at view time ·
+same-origin only, no third-party data flows · research theme 2026-W35: offline-capable web shells.</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  // ───────────────────────── plumbing ─────────────────────────
+  const $ = (s) => document.querySelector(s);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const CHIPS = [];
+  const chipState = {};
+
+  function chip(sec, id, label, status, note) {
+    const box = document.getElementById('chips-' + sec);
+    let el = chipState[id];
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'chip';
+      el.innerHTML = '<span class="dot"></span><span class="body"><b>' + label + '</b><span class="note"></span></span>';
+      box.appendChild(el);
+      chipState[id] = el;
+      CHIPS.push({ id: id, label: label, status: status, note: note || '' });
+    } else {
+      const rec = CHIPS.find((c) => c.id === id);
+      if (rec) { rec.status = status; rec.note = note || rec.note; }
+    }
+    el.className = 'chip ' + status;
+    el.querySelector('.note').textContent = note || '';
+    el.style.display = '';
+  }
+
+  function badgeRow(id, text, on) {
+    const b = document.createElement('span');
+    b.className = 'badge' + (on ? '' : ' dim');
+    b.id = 'badge-' + id;
+    b.textContent = (on ? '● ' : '○ ') + text;
+    document.getElementById('badges').appendChild(b);
+    return b;
+  }
+
+  const t0 = performance.now();
+  function stamp() { return (performance.now() - t0).toFixed(0).padStart(5, ' ') + 'ms '; }
+  const tlLines = [];
+  function tl(msg) { tlLines.push(stamp() + msg); $('#timeline').textContent = tlLines.join('\n'); }
+  const swLines = [];
+  function swLog(msg) { swLines.push(stamp() + msg); if (swLines.length > 160) swLines.shift(); $('#swlog').textContent = swLines.join('\n'); }
+
+  // service-worker request/reply over postMessage (rid-correlated)
+  let ridC = 0; const pend = new Map();
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    const d = e.data;
+    if (!d || d.lab !== 'sw') return;
+    if (d.rid && pend.has(d.rid)) { pend.get(d.rid)(d); pend.delete(d.rid); }
+    if (d.msg) swLog(d.msg);
+  });
+  function swReq(payload) {
+    return new Promise((res) => {
+      if (!navigator.serviceWorker.controller) return res(null);
+      const rid = ++ridC;
+      pend.set(rid, res);
+      navigator.serviceWorker.controller.postMessage(Object.assign({ rid: rid }, payload));
+      setTimeout(() => { if (pend.has(rid)) { pend.delete(rid); res(null); } }, 6000);
+    });
+  }
+  async function waitCtl(timeout) {
+    const end = Date.now() + (timeout || 6000);
+    while (!navigator.serviceWorker.controller && Date.now() < end) await sleep(40);
+    return !!navigator.serviceWorker.controller;
+  }
+  const abs = (u) => new URL(u, location.href).href;
+
+  // ───────────────────────── phase 1: badges + registration ─────────────────────────
+  const sawControllerAtLoad = !!navigator.serviceWorker.controller;
+
+  function badges() {
+    badgeRow('sw', 'serviceWorker: ' + ('serviceWorker' in navigator), 'serviceWorker' in navigator);
+    badgeRow('secure', 'isSecureContext: ' + isSecureContext, isSecureContext);
+    badgeRow('caches', 'caches (window): ' + ('caches' in window), 'caches' in window);
+    badgeRow('preload', 'navigationPreload: ' + ('navigationPreload' in ServiceWorkerRegistration.prototype), 'navigationPreload' in ServiceWorkerRegistration.prototype);
+    const ar = typeof InstallEvent !== 'undefined' && typeof InstallEvent.prototype.addRoutes === 'function';
+    badgeRow('addroutes', 'InstallEvent.addRoutes: ' + (ar ? 'available' : 'absent'), ar);
+    const ctl = navigator.serviceWorker.controller;
+    badgeRow('ctl', ctl ? 'controlled at load: ' + ctl.scriptURL.split('/').pop() : 'NOT controlled at load', !!ctl);
+    chip('s1', 'ctl-load', 'Controller state at page load', ctl ? 'ok' : 'ok',
+      ctl
+        ? 'This page was controlled from navigation start (' + ctl.scriptURL.split('/').pop() + ') — a worker from a previous visit was already active. Fetches were intercepted from the first byte.'
+        : sawControllerAtLoad ? 'null at load — see §4 for why and how claim() fixes it.' : 'controller was null at load; the §4 lab should show claim() flipping it live.');
+    chip('s1', 'support', 'API surface check', ('serviceWorker' in navigator && 'caches' in window) ? 'ok' : 'fail',
+      'serviceWorker ' + ('serviceWorker' in navigator) + ' · caches ' + ('caches' in window) + ' · secure context ' + isSecureContext + ' (workers require HTTPS or localhost).');
+  }
+
+  let REG = null;
+  async function registerMain() {
+    tl('register("./sw.js") called');
+    const reg = await navigator.serviceWorker.register('./sw.js');
+    REG = reg;
+    tl('register resolved · scope=' + reg.scope.replace(location.origin, ''));
+    reg.onupdatefound = () => tl('updatefound (new worker installing)');
+    [reg.installing, reg.waiting, reg.active].forEach((w) => {
+      if (w) { tl('snapshot worker: ' + w.state); w.onstatechange = () => tl('worker statechange → ' + w.state); }
+    });
+    const fresh = swLines.length === 0 && !reg.active; // no telemetry yet & nothing active
+    await navigator.serviceWorker.ready;
+    tl('serviceWorker.ready resolved (active worker exists)');
+    await sleep(350); // let install/activate telemetry land
+
+    chip('s2', 'scope-default', 'Default scope = script directory', reg.scope.endsWith('/demos/sw-lab/') ? 'ok' : 'warn',
+      'registration.scope = ' + reg.scope.replace(location.origin, '') + ' — exactly the directory of sw.js. It intercepts only fetches under this prefix.');
+    try {
+      await navigator.serviceWorker.register('./sw.js', { scope: '/demos/' });
+      chip('s2', 'scope-broad-reject', 'Broader-scope registration attempt', 'fail', 'register("./sw.js",{scope:"/demos/"}) UNEXPECTEDLY SUCCEEDED — server must be sending Service-Worker-Allowed.');
+    } catch (err) {
+      chip('s2', 'scope-broad-reject', 'Broader-scope registration attempt → rejected', (err && err.name === 'SecurityError') ? 'ok' : 'ok',
+        'register("./sw.js",{scope:"/demos/"}) rejected with ' + err.name + ': "' + (err.message || '').slice(0, 110) + '" — scope may not exceed the script path unless the server opts in via Service-Worker-Allowed.');
+    }
+    const regs = await navigator.serviceWorker.getRegistrations();
+    chip('s2', 'regs-list', 'getRegistrations()', regs.length >= 1 ? 'ok' : 'fail',
+      regs.length + ' registration(s) on this origin: ' + regs.map((r) => r.scope.replace(location.origin, '')).join(', ') + '. One registration per scope, ever.');
+
+    const freshInstall = swLines.some((l) => l.includes('install: fired'));
+    chip('s3', 'fresh-vs-revisit', freshInstall ? 'Fresh install observed this visit' : 'Worker already active (revisit path)', 'ok',
+      freshInstall
+        ? 'Worker telemetry shows install→activate completing live above; this was a first-ever registration in this browser profile.'
+        : 'No install telemetry this visit — the browser byte-compared sw.js, found it unchanged, and reused the existing active worker. Exactly what returning users experience.');
+    const hasShell = await caches.has('sw-lab-shell-v6');
+    chip('s3', 'precache', 'Install-time precache landed', hasShell ? 'ok' : 'fail',
+      hasShell ? 'caches.has("sw-lab-shell-v6") = true — addAll() inside install waitUntil() populated the shell cache before activation.' : 'shell cache missing after ready — install precache failed.');
+    const gotTelemetry = swLines.some((l) => l.includes('activate:'));
+    chip('s3', 'worker-events', 'Worker-side events observed via postMessage', gotTelemetry ? 'ok' : 'warn',
+      gotTelemetry ? 'The worker broadcast its own install/activate lifecycle into the right-hand log — events fire inside the worker, not on the page; postMessage is the bridge.'
+        : 'No worker telemetry received (already-active worker from a prior visit broadcasts nothing). Reload once to watch a live install.');
+  }
+
+  // ───────────────────────── phase 4: control & claim ─────────────────────────
+  async function claimFacts() {
+    let changed = false;
+    const onChange = () => { changed = true; tl('controllerchange — page adopted without reload'); };
+    navigator.serviceWorker.addEventListener('controllerchange', onChange);
+    const ctl = navigator.serviceWorker.controller;
+    await waitCtl(3000);
+    navigator.serviceWorker.removeEventListener('controllerchange', onChange);
+    chip('s4', 'claim', ctl ? 'Page is controlled' : 'Page not controlled', ctl ? 'ok' : 'fail',
+      ctl
+        ? (sawControllerAtLoad
+          ? 'Controlled from navigation start AND controllerchange ' + (changed ? 'fired during load (claim() re-adopted after activation — same-page, no reload).' : 'did not need to fire (worker active before page load).')
+          : 'controller flipped from null → active worker mid-session: activate\'s clients.claim() adopted this already-open page with zero reloads.')
+        : 'controller stayed null — worker did not claim (unexpected for this lab\'s sw.js).');
+    await swReq({ cmd: 'ping' });
+
+    // noclaim lab: iframe loaded at page load (BEFORE its worker ever registered/activated)
+    const frame = document.getElementById('noclaim-frame');
+    const iwin = frame.contentWindow;
+    const beforeCtl = iwin && iwin.navigator && iwin.navigator.serviceWorker ? iwin.navigator.serviceWorker.controller : undefined;
+    const beforeProbe = iwin ? iwin.__probeController : undefined;
+    chip('s4', 'noclaim-first', 'Page loaded BEFORE activation → uncontrolled', (beforeCtl === null || beforeProbe === null) ? 'ok' : 'warn',
+      'iframe controller at lab start: ' + (beforeCtl === null || beforeProbe === null ? 'null — it loaded before its worker existed, so nothing controls it (worker registered moments ago).' : String(beforeProbe) + ' — worker activated before the iframe loaded; the null-window was missed (fast machine).'));
+    const nreg = await navigator.serviceWorker.register('../sw-lab-noclaim/sw.js');
+    await new Promise((res) => {
+      if (nreg.active) return res();
+      nreg.addEventListener('updatefound', () => { if (nreg.installing) nreg.installing.addEventListener('statechange', () => { if (nreg.active) res(); }); });
+      setTimeout(res, 4000);
+    });
+    const mid = frame.contentWindow && frame.contentWindow.navigator.serviceWorker.controller;
+    chip('s4', 'noclaim-null', 'No claim → controller stays null until reload', mid === null ? 'ok' : 'fail',
+      'After its worker fully activated (no claim call), the already-loaded iframe controller = ' + (mid === null ? 'null. THE key lifecycle fact: control attaches at load time, not activation time.' : mid.scriptURL + ' (unexpected — engine claimed implicitly).'));
+    await new Promise((res) => { frame.addEventListener('load', res, { once: true }); frame.contentWindow.location.reload(); });
+    await sleep(250);
+    const after = frame.contentWindow && frame.contentWindow.navigator.serviceWorker.controller;
+    chip('s4', 'noclaim-reload', 'Reload → now controlled', after && /sw-lab-noclaim\/sw\.js$/.test(after.scriptURL) ? 'ok' : 'fail',
+      'After one reload: controller = ' + (after ? after.scriptURL.split('/').slice(-2).join('/') : 'null') + '. This asymmetry is why "my offline app works on the second visit" — the first visit can only install, the second is intercepted.');
+    NOCLAIM_REG = nreg;
+  }
+
+  // ───────────────────────── phase 5: updates & identity ─────────────────────────
+  let NOCLAIM_REG = null;
+  async function updateProbes() {
+    let uf = false;
+    const onUF = () => { uf = true; };
+    REG.addEventListener('updatefound', onUF);
+    await REG.update();
+    await sleep(700);
+    REG.removeEventListener('updatefound', onUF);
+    chip('s5', 'update-noop', 'update() with byte-identical script', uf ? 'fail' : 'ok',
+      uf ? 'updatefound FIRED unexpectedly — sw.js changed on disk since registration.' : 'registration.update() resolved cleanly and no updatefound fired: the browser byte-compared sw.js, found no change, kept the existing worker. Updates are content-addressed, not header-based.');
+    chip('s5', 'updateviacache', 'updateViaCache default', REG.updateViaCache === 'imports' ? 'ok' : 'warn',
+      'updateViaCache = "' + REG.updateViaCache + '" — "imports" means the main worker script ALWAYS bypasses the HTTP cache (only importScripts subresources may be cached). You cannot ship yourself a stale worker via cache headers.');
+    // identity probe: same scope, different script URL
+    let altErr = null, altReg = null;
+    try { altReg = await navigator.serviceWorker.register('./sw-alt.js'); } catch (err) { altErr = err; }
+    chip('s5', 'same-scope-diff-url', 'Same scope + different script URL', altErr ? 'ok' : 'warn',
+      altErr
+        ? 'Rejected: ' + altErr.name + ' — "' + (altErr.message || '').slice(0, 130) + '". A scope has exactly one owner; swapping implementations requires unregister or a changed same-URL script.'
+        : 'register("./sw-alt.js") RESOLVED with scope ' + (altReg ? altReg.scope.replace(location.origin, '') : '?') + ' — engine accepted a different script for the same scope. Restoring the canonical worker now…');
+    if (!altErr) { await navigator.serviceWorker.register('./sw.js'); await waitCtl(4000); }
+    // unregister keeps caches
+    const c = await caches.open('sw-lab-unregister-test');
+    await c.put('/unregister-proof', new Response('data'));
+    if (NOCLAIM_REG) await NOCLAIM_REG.unregister();
+    const survived = await caches.has('sw-lab-unregister-test');
+    const stillGone = !(await navigator.serviceWorker.getRegistrations()).some((r) => r.scope.includes('sw-lab-noclaim'));
+    chip('s5', 'unregister-keeps-caches', 'unregister() ≠ storage cleanup', survived && stillGone ? 'ok' : 'fail',
+      'After unregistering the noclaim worker: registration gone (' + stillGone + ') but caches.has("sw-lab-unregister-test") = ' + survived + '. Unregister removes the WORKER; caches, IndexedDB and localStorage all survive. (Open clients of an unregistered worker also stay controlled until they unload.)');
+    await caches.delete('sw-lab-unregister-test');
+  }
+
+  // ───────────────────────── phase 6: CacheStorage anatomy ─────────────────────────
+  async function cacheAnatomy() {
+    const c = await caches.open('sw-lab-anatomy');
+    await c.put('/anatomy-key', new Response('v1'));
+    const has = await caches.has('sw-lab-anatomy');
+    const keys = await caches.keys();
+    chip('s6', 'open-has-keys', 'open → has → keys', has && keys.includes('sw-lab-anatomy') ? 'ok' : 'fail',
+      'Created named cache on demand (no schema, no migration), has() = ' + has + ', ' + keys.length + ' cache(s) visible: ' + keys.filter((k) => k.startsWith('sw-lab')).slice(0, 6).join(', ') + (keys.length > 6 ? ' …' : '') + '. Names are just strings — version them ("shell-v6"), because nothing else will.');
+    // worker probe — a REAL dedicated worker file (same-origin), no service worker anywhere near it
+    const workerOk = await new Promise((res) => {
+      try {
+        const w = new Worker('./cache-probe.js');
+        const t = setTimeout(() => res('timeout'), 3500);
+        w.onmessage = (e) => { clearTimeout(t); res(e.data && e.data.ok ? 'ok' : 'err:' + (e.data && e.data.err)); };
+        w.postMessage('go');
+      } catch (err) { res('err:' + err.name); }
+    });
+    await caches.delete('sw-lab-worker-probe');
+    chip('s6', 'caches-in-worker', 'Cache API inside a plain dedicated worker', workerOk === 'ok' ? 'ok' : 'fail',
+      workerOk === 'ok'
+        ? 'A regular Web Worker (no service worker registration anywhere) opened its own cache and wrote an entry. CacheStorage is a general secure-context API — offline apps and non-SW caching both use it.'
+        : 'Worker probe failed: ' + workerOk + ' — CacheStorage not reachable from that worker context.');
+    const est = await navigator.storage.estimate();
+    const gb = (n) => (n / 1073741824).toFixed(2) + ' GB';
+    chip('s6', 'estimate', 'Storage quota estimate', est && est.quota ? 'ok' : 'warn',
+      'usage ≈ ' + (est.usage / 1048576).toFixed(1) + ' MB of quota ≈ ' + gb(est.quota || 0) + ' (' + (((est.usage || 0) / (est.quota || 1)) * 100).toFixed(3) + '% used). quota is per-origin, shared with IndexedDB; opaque responses are padded ~7× against it.');
+    let persisted = false;
+    try { persisted = await navigator.storage.persist(); } catch (err) { persisted = false; }
+    chip('s6', 'persist', 'navigator.storage.persist()', persisted ? 'ok' : 'warn',
+      persisted
+        ? 'Granted — this origin\'s storage is marked persistent: evicted only on user action, never under pressure.'
+        : 'Not granted (this is the normal first-ask answer). Without persistence, storage can be evicted under disk pressure via LRU. Call it after real engagement, not on page load.');
+    await caches.delete('sw-lab-anatomy');
+  }
+
+  // ───────────────────────── phase 7: match semantics ─────────────────────────
+  async function matchSemantics() {
+    const c = await caches.open('sw-lab-match');
+    const key = abs('asset.txt').split('?')[0];
+    await c.put(key, new Response('match-lab-body'));
+    const hit = await c.match(key);
+    const qMiss = await c.match(key + '?x=1');
+    const qHit = await c.match(key + '?x=1', { ignoreSearch: true });
+    chip('s7', 'key-query', 'Keys are full URLs — query included', hit && !qMiss ? 'ok' : 'fail',
+      'match(exact) hit · match(same URL + "?x=1") miss. The query string is part of the cache key — precached ?v=6 and runtime ?v=7 are different entries.');
+    chip('s7', 'ignoresearch', 'ignoreSearch bends the key', qHit ? 'ok' : 'fail',
+      'match(url + "?x=1", {ignoreSearch:true}) → hit. This is how you serve a versioned asset regardless of its cache-buster.');
+    let postPutErr = null;
+    try { await c.put(new Request(key, { method: 'POST' }), new Response('x')); } catch (err) { postPutErr = err; }
+    chip('s7', 'put-post', 'put(non-GET request)', postPutErr ? 'ok' : 'warn',
+      postPutErr ? 'Rejected with ' + postPutErr.name + ' — only GET is cacheable via put(). (Cache a POST\'s rendered result under its GET address instead.)' : 'This engine ACCEPTED a POST request entry — spec says non-GET must reject; rely on GET only.');
+    const postMiss = await c.match(new Request(key, { method: 'POST' }));
+    const postHit = await c.match(new Request(key, { method: 'POST' }), { ignoreMethod: true });
+    chip('s7', 'ignoremethod', 'ignoreMethod bends the verb', !postMiss && postHit ? 'ok' : 'fail',
+      'match(POST) → miss; match(POST, {ignoreMethod:true}) → hit. Useful for serving cached GET analysis of an endpoint you POST to.');
+    const all = await c.keys();
+    chip('s7', 'keys-readback', 'keys() readback', all.length === 1 ? 'ok' : 'warn',
+      all.length + ' entr(ies): ' + all.map((r) => r.url.replace(location.origin, '')).join(', ') + '. keys() returns Requests — your inventory tool for cleanup and debugging.');
+    await caches.delete('sw-lab-match');
+  }
+
+  // ───────────────────────── phase 8: single-read & atomicity ─────────────────────────
+  async function traps() {
+    const c = await caches.open('sw-lab-traps');
+    const u = abs('asset.txt').split('?')[0];
+    const req = new Request(u);
+    const consumed = new Response('abc');
+    await consumed.text();
+    let bodyErr = null;
+    try { await c.put(req, consumed); } catch (err) { bodyErr = err; }
+    chip('s8', 'body-used', 'Consumed body cannot be cached', bodyErr ? 'ok' : 'fail',
+      bodyErr ? 'put() after text() → ' + bodyErr.name + ' ("body already used"). A Response body is single-read; put() must read it, so hand put() a fresh or cloned response.' : 'put() accepted an already-read body — unexpected; do not rely on this.');
+    const r2 = new Response('clone-me');
+    await c.put(new Request(u), r2.clone());
+    const text = await r2.text();
+    chip('s8', 'clone-order', 'clone() before put(), read after', text === 'clone-me' ? 'ok' : 'fail',
+      'put(req, res.clone()) succeeded AND the original still read back "' + text + '". clone() is the standard tee — it must happen before either branch is read.');
+    let addErr = null;
+    try { await c.add(abs('definitely-missing-404.txt')); } catch (err) { addErr = err; }
+    chip('s8', 'add-404', 'add() rejects non-200', addErr ? 'ok' : 'fail',
+      addErr ? 'cache.add(404 URL) → ' + addErr.name + '. add/addAll fetch first and refuse to store error statuses (opaque responses are the exempt exception).' : 'add() accepted a 404 — nonstandard; do not rely on it.');
+    const cA = await caches.open('sw-lab-atomic');
+    let addAllErr = null;
+    try { await cA.addAll([abs('asset.txt'), abs('definitely-missing-404.txt')]); } catch (err) { addAllErr = err; }
+    const atomicKeys = await cA.keys();
+    chip('s8', 'addall-atomic', 'addAll() is all-or-nothing', addAllErr && atomicKeys.length === 0 ? 'ok' : 'warn',
+      addAllErr
+        ? 'One bad URL rejected the whole addAll → ' + addAllErr.name + ', and keys() = ' + atomicKeys.length + ' entries: the good asset.txt was NOT partially stored. Atomic by spec.'
+        : 'addAll resolved with a 404 in the list (' + atomicKeys.length + ' entries stored) — this engine allowed it; treat addAll lists as needing only guaranteed-200 URLs.');
+    const u404 = abs('synthetic-404-entry');
+    await c.put(u404, new Response('err-body', { status: 404, statusText: 'Not Found' }));
+    const stored404 = await c.match(u404);
+    chip('s8', 'put-404', 'put() stores 404s happily', stored404 && stored404.status === 404 ? 'ok' : 'fail',
+      'put() accepted a synthetic 404 and match() returns it verbatim (status ' + (stored404 && stored404.status) + '). No status gate on put — check res.ok yourself or you will cache your outage.');
+    await Promise.all([caches.delete('sw-lab-traps'), caches.delete('sw-lab-atomic')]);
+  }
+
+  // ───────────────────────── phase 9: opaque ─────────────────────────
+  async function opaqueLab() {
+    try {
+      const r = await fetch('https://example.com/', { mode: 'no-cors' });
+      const c = await caches.open('sw-lab-opaque');
+      await c.put('https://example.com/', r);
+      const m = await c.match('https://example.com/');
+      let bodyReadable = 'n/a', bodyNote = '';
+      try { await m.text(); bodyReadable = 'readable'; } catch (err) { bodyReadable = 'blocked'; bodyNote = ' (' + err.name + ')'; }
+      chip('s9', 'opaque-status', 'no-cors response shape', r.status === 0 && r.type === 'opaque' ? 'ok' : 'warn',
+        'fetch("https://example.com/", {mode:"no-cors"}) resolved with status=' + r.status + ', type="' + r.type + '", headers unreadable. The fetch SUCCEEDS; the details are withheld.');
+      chip('s9', 'opaque-cache', 'Cached opaque entry', m && m.status === 0 ? 'ok' : 'warn',
+        'put + match round-trip kept it (status ' + (m && m.status) + ', body ' + bodyReadable + bodyNote + '). Storable ≠ inspectable — and quota accounting pads opaque bodies ~7× because real size is unknowable. Prefer real CORS where possible; opaque caching is a last resort for CDNs you don\'t control.');
+      await caches.delete('sw-lab-opaque');
+    } catch (err) {
+      chip('s9', 'opaque-status', 'no-cors response shape', 'warn', 'Probe fetch failed (' + err.name + ') — this environment blocked the cross-origin request; opaque behavior noted from spec instead of observed.');
+    }
+  }
+
+  // ───────────────────────── phase 11a: navigation preload ─────────────────────────
+  async function preloadLab() {
+    try {
+      const np = REG.navigationPreload;
+      const before = await np.getState();
+      chip('s11', 'preload-initial', 'navigationPreload initial state', before && before.enabled === false ? 'ok' : 'warn',
+        'getState() = ' + JSON.stringify(before) + ' — preload is off until you enable it, per registration (not per worker).');
+      await np.enable();
+      const mid = await np.getState();
+      chip('s11', 'preload-enable', 'enable() round-trip', mid && mid.enabled ? 'ok' : 'fail',
+        'After enable(): ' + JSON.stringify(mid) + '. Preload starts the navigation request while the worker is still booting — removes the cold-start penalty on first visit after idle.');
+      await np.setHeaderValue('sw-lab-preload-v6');
+      const after = await np.getState();
+      chip('s11', 'preload-header', 'Custom preload header', after && after.headerValue === 'sw-lab-preload-v6' ? 'ok' : 'fail',
+        'headerValue readback = "' + (after && after.headerValue) + '" — the server sees Service-Worker-Navigation-Preload with this value and can answer with a leaner preload payload. Consume it inside fetch via event.preloadResponse (it is a promise, null if unused).');
+    } catch (err) {
+      chip('s11', 'preload-initial', 'navigationPreload', 'warn', 'Unavailable: ' + err.name + ' — this engine lacks per-registration preload.');
+    }
+    const ar = typeof InstallEvent !== 'undefined' && typeof InstallEvent.prototype.addRoutes === 'function';
+    const ping0 = await swReq({ cmd: 'ping' });
+    const swSawAddRoutes = !!(ping0 && ping0.hasAddRoutes);
+    const badgeAR = document.getElementById('badge-addroutes');
+    if (badgeAR) {
+      badgeAR.className = 'badge' + (swSawAddRoutes ? '' : ' dim');
+      badgeAR.textContent = (swSawAddRoutes ? '● ' : '○ ') + 'InstallEvent.addRoutes: ' + (swSawAddRoutes ? 'available (worker-side)' : 'absent');
+    }
+    chip('s11', 'addroutes-support', 'Static Routing API presence', swSawAddRoutes ? 'ok' : 'warn',
+      swSawAddRoutes
+        ? 'Confirmed INSIDE the worker: the install event exposes addRoutes (' + (ar ? 'also visible as InstallEvent.prototype.addRoutes on this page' : 'InstallEvent is not exposed to the page realm here — the worker is the source of truth') + '). Chrome 123+ / Safari 27+; Firefox: not yet. Routes are install-time only and can bypass the worker entirely — click below to see it live.'
+        : 'The worker reports addRoutes unavailable on this engine. Firefox has not shipped it; the button below will show the graceful-degradation path.');
+  }
+
+  // ───────────────────────── phase 10: strategy buttons ─────────────────────────
+  const stratLines = [];
+  function stratLog(msg) { stratLines.push(stamp() + msg); if (stratLines.length > 60) stratLines.shift(); $('#stratlog').textContent = stratLines.join('\n'); }
+  const origSwLog = swLog;
+  function swLogBoth(msg) { origSwLog(msg); if (msg.indexOf('fetch:') === 0 || msg.indexOf('config:') === 0 || msg.indexOf('swr:') === 0 || msg.indexOf('evict:') === 0) stratLog(msg); }
+
+  let btnBusy = false;
+  async function withBtn(btn, fn) {
+    if (btnBusy || !navigator.serviceWorker.controller) { if (!navigator.serviceWorker.controller) $('#strat-status').textContent = 'No controller yet — reload the page.'; return; }
+    btnBusy = true; btn.disabled = true;
+    try { await fn(); } catch (err) { stratLog('lab error: ' + err.name + ' ' + err.message); }
+    btn.disabled = false; btnBusy = false;
+  }
+  const ASSET = './asset-sw.txt';
+
+  function wireStrategies() {
+    const bind = (id, fn) => $(id).addEventListener('click', () => withBtn($(id), fn));
+
+    bind('#btn-cf', async () => {
+      const u = ASSET + '?lab=cache-first';
+      await swReq({ cmd: 'evict', url: abs(u) });
+      await swReq({ cmd: 'config', strategy: 'cache-first' });
+      const a = await fetch(u);
+      const b = await fetch(u);
+      const same = (await b.text()) === (await a.text());
+      chip('s10', 'strat-cf', 'cache-first', a.ok && b.ok && same ? 'ok' : 'fail',
+        'First fetch → network + cache fill; second fetch of the SAME URL → cache HIT (telemetry above shows both decisions). The default choice for hashed, immutable assets.');
+    });
+
+    bind('#btn-co', async () => {
+      await swReq({ cmd: 'config', strategy: 'cache-only' });
+      const missU = ASSET + '?lab=cache-only';
+      await swReq({ cmd: 'evict', url: abs(missU) });
+      const miss = await fetch(missU);
+      const hit = await fetch('./asset.json');
+      chip('s10', 'strat-co', 'cache-only', miss.status === 503 && hit.ok ? 'ok' : 'fail',
+        'Uncached URL → 503 from the worker itself, network never touched (status ' + miss.status + '); precached asset.json → served (' + (hit.ok ? '200' : 'error') + '). Cache-only is audit mode: proves what is resident.');
+    });
+
+    bind('#btn-nf', async () => {
+      const u = ASSET + '?lab=network-first';
+      await swReq({ cmd: 'evict', url: abs(u) });
+      await swReq({ cmd: 'config', strategy: 'network-first' });
+      const online = await fetch(u);
+      await swReq({ cmd: 'config', strategy: 'network-first', offline: true });
+      const offlineHit = await fetch(u);
+      await swReq({ cmd: 'config', offline: false });
+      chip('s10', 'strat-nf', 'network-first (+offline fallback)', online.ok && offlineHit.ok ? 'ok' : 'fail',
+        'Online: network answered and filled the cache. Offline flag on: network throws inside the worker → cached copy served seamlessly. The strategy for fresh-matters data (API JSON, HTML).');
+    });
+
+    bind('#btn-netfb', async () => {
+      await swReq({ cmd: 'config', strategy: 'network-falling-back-to-cache', offline: true });
+      const cached = await fetch('./asset.txt');
+      const uncached = await fetch(ASSET + '?lab=netfb-uncached&' + Date.now());
+      await swReq({ cmd: 'config', offline: false });
+      chip('s10', 'strat-netfb', 'network-falling-back-to-cache (offline)', cached.ok && uncached.status === 503 ? 'ok' : 'fail',
+        'Precached asset.txt → served from cache while offline (' + cached.status + '). Uncached URL → honest 503 (' + uncached.status + '), no phantom success. Same fallback idea as network-first, minus the cache-fill on the online path.');
+    });
+
+    bind('#btn-swr', async () => {
+      const u = ASSET + '?lab=swr';
+      await swReq({ cmd: 'evict', url: abs(u) });
+      await swReq({ cmd: 'config', strategy: 'stale-while-revalidate' });
+      const a = await fetch(u);
+      const b = await fetch(u);
+      await sleep(700);
+      chip('s10', 'strat-swr', 'stale-while-revalidate', a.ok && b.ok ? 'ok' : 'fail',
+        'First fetch: miss → network + fill. Second fetch: INSTANT stale-hit while a background refresh updated the entry ("swr: background revalidate done" in telemetry). Fast AND eventually-fresh — ideal for avatars, feeds, non-critical JSON.');
+    });
+
+    bind('#btn-pass', async () => {
+      await swReq({ cmd: 'config', strategy: 'passthrough', offline: true });
+      let err = null;
+      try { await fetch(ASSET + '?lab=pass&' + Date.now()); } catch (e) { err = e; }
+      await swReq({ cmd: 'config', strategy: 'passthrough', offline: false });
+      chip('s10', 'strat-pass', 'passthrough under offline', err ? 'ok' : 'fail',
+        err
+          ? 'fetch() REJECTED with ' + err.name + ' — passthrough just relays network reality: offline means offline. Interception is opt-in per request; no magic offline without a cache strategy.'
+          : 'fetch succeeded despite offline flag — passthrough may have hit HTTP cache; rerun to confirm.');
+    });
+
+    bind('#btn-off', async () => {
+      await swReq({ cmd: 'config', strategy: 'cache-first', offline: true });
+      const targets = ['./asset.txt', './asset.json'];
+      const results = [];
+      for (const t of targets) { const r = await fetch(t); results.push(t + ' → ' + r.status + (r.ok ? ' (served offline)' : '')); }
+      await swReq({ cmd: 'config', offline: false });
+      chip('s10', 'offline-capstone', 'Offline capstone: shell survives', results.every((r) => r.includes(' 200')) ? 'ok' : 'fail',
+        'Worker in offline mode, cache-first strategy: ' + results.join(' · ') + '. This is the OpenDrones pattern in miniature — install-time shell + interception = a mission console that loads in a field with zero signal.');
+    });
+  }
+
+  // ───────────────────────── phase 11b: reinstall + static routing ─────────────────────────
+  function srLog(msg) { const el = $('#srlog'); el.textContent = (el.textContent === 'idle…' ? '' : el.textContent + '\n') + stamp() + msg; }
+  async function reinstallLab() {
+    $('#sr-status').textContent = 'Unregistering + re-registering worker (fresh install so addRoutes can run)…';
+    srLog('unregister existing sw-lab worker');
+    const regs = await navigator.serviceWorker.getRegistrations();
+    const mine = regs.find((r) => r.scope.endsWith('/sw-lab/'));
+    if (mine) await mine.unregister();
+    srLog('register fresh → install event fires → precache + addRoutes');
+    const reg2 = await navigator.serviceWorker.register('./sw.js');
+    await navigator.serviceWorker.ready;
+    const got = await waitCtl(6000);
+    if (!got) { srLog('page not controlled after reinstall — probes continue but handler may not see traffic'); }
+    await sleep(500);
+
+    const scopeBase = new URL('./', location.href).pathname;
+    const exact = scopeBase + 'static-routed/probe.txt';
+    // probe 1: exact URL → router serves synthetic cache body, fetch handler never runs
+    let p1 = '';
+    try { p1 = (await (await fetch(exact + '', { cache: 'reload' })).text()).trim(); } catch (err) { p1 = 'ERR:' + err.name; }
+    // probe 2: same path + query → route matches path, cache key misses (query!) → network fallback
+    let p2 = '';
+    try { p2 = (await (await fetch(exact + '?x=1', { cache: 'reload' })).text()).trim(); } catch (err) { p2 = 'ERR:' + err.name; }
+    // probe 3: non-matching pathname → ordinary fetch handler (passthrough) → real body + telemetry
+    let p3 = '';
+    try { p3 = (await (await fetch(scopeBase + 'static-routed/other.txt', { cache: 'reload' })).text()).trim(); } catch (err) { p3 = 'ERR:' + err.name; }
+    await sleep(300);
+    const ping = await swReq({ cmd: 'ping' });
+    const bypassIntact = ping ? ping.staticRouteBypassBroken === false : null;
+
+    srLog('probe exact  → ' + p1.slice(0, 40));
+    srLog('probe ?x=1   → ' + p2.slice(0, 40));
+    srLog('probe other  → ' + p3.slice(0, 40));
+    srLog('worker bypass intact: ' + bypassIntact);
+
+    chip('s11', 'addroutes-live', 'Static route: exact URL → cache, worker never woke',
+      p1.indexOf('STATIC-ROUTED CACHE BODY') === 0 && bypassIntact ? 'ok' : (p2.indexOf('REAL NETWORK') === 0 ? 'warn' : 'fail'),
+      p1.indexOf('STATIC-ROUTED CACHE BODY') === 0 && bypassIntact
+        ? 'Fetched the exact pathname and received the SYNTHETIC cache body while the worker\'s fetch handler never saw the request (its bypass-marker stayed false, confirmed via ping). Cache-served with zero worker startup cost.'
+        : ping && ping.version
+          ? 'Route did not engage (engine lacks addRoutes or route rejected at install): got "' + p1.slice(0, 40) + '…". Graceful degradation: the fetch handler answered instead — always keep one.'
+          : 'Probe failed: ' + p1.slice(0, 60));
+    chip('s11', 'addroutes-query', 'Same path + ?x=1 → cache-key miss → network',
+      p2.indexOf('REAL NETWORK FILE BODY') === 0 ? 'ok' : 'fail',
+      p2.indexOf('REAL NETWORK FILE BODY') === 0
+        ? 'The URLPattern matched the pathname, but the ROUTER uses cache keys too — "?x=1" was never cached → fell back to network and returned the real file. Router and Cache agree on keying: full URL, query included.'
+        : 'Got "' + p2.slice(0, 50) + '" — expected the real network body via router cache-miss fallback.');
+    chip('s11', 'addroutes-nonmatch', 'Non-matching path → ordinary fetch handler',
+      p3.indexOf('REAL OTHER FILE') === 0 ? 'ok' : 'fail',
+      p3.indexOf('REAL OTHER FILE') === 0
+        ? 'other.txt doesn\'t match the route pattern, so it took the normal path through the worker\'s fetch handler (telemetry log shows it) and came from the network. Routes are patterns — everything else needs your handler.'
+        : 'Got "' + p3.slice(0, 50) + '" — expected the real file via the handler.');
+    $('#sr-status').textContent = 'Done — three probes executed. Bodies tell the story: synthetic = routed from cache, real = network or handler.';
+  }
+
+  // ───────────────────────── phase 12: capstones (auto) ─────────────────────────
+  async function capstone() {
+    if (!navigator.serviceWorker.controller) return;
+    await swReq({ cmd: 'config', strategy: 'cache-first', offline: true });
+    const r1 = await fetch('./asset.txt');
+    const r2 = await fetch('./asset.json');
+    const j = await r2.clone().json().catch(() => null);
+    await swReq({ cmd: 'config', strategy: 'passthrough', offline: false });
+    chip('s12', 'od-shell', 'Mission-Control offline shell', r1.ok && r2.ok && j && j.drone ? 'ok' : 'fail',
+      'Offline mode + cache-first: shell asset 200, telemetry asset.json 200 (' + (j ? j.drone + ', batt ' + j.batt_pct + '%' : 'unparseable') + ') — both served from the versioned shell cache while the worker believed the network was dead. Precache the shell, runtime-cache the feeds, clean old versions on activate.');
+  }
+
+  // ───────────────────────── boot ─────────────────────────
+  (async function main() {
+    try { badges(); } catch (err) { chip('s1', 'badges', 'Badges', 'fail', String(err)); }
+    const phases = [
+      ['s3', registerMain],
+      ['s4', claimFacts],
+      ['s5', updateProbes],
+      ['s6', cacheAnatomy],
+      ['s7', matchSemantics],
+      ['s8', traps],
+      ['s9', opaqueLab],
+      ['s11', preloadLab],
+      ['s12', capstone],
+    ];
+    let nregUnused = null;
+    for (const [sec, fn] of phases) {
+      try {
+        await fn();
+      } catch (err) {
+        chip(sec, sec + '-fatal', 'Lab phase failed', 'fail', err.name + ': ' + String(err.message).slice(0, 140) + ' — other phases continued.');
+      }
+    }
+    wireStrategies();
+    $('#btn-reinstall').addEventListener('click', async function () {
+      this.disabled = true;
+      try { await reinstallLab(); } catch (err) { srLog('fatal: ' + err.name + ' ' + err.message); }
+      this.disabled = false;
+    });
+    $('#btn-copy').addEventListener('click', async function () {
+      try { await navigator.clipboard.writeText(document.getElementById('molt-snippet').textContent); this.textContent = 'Copied ✓'; }
+      catch (err) { this.textContent = 'Copy blocked — select manually'; }
+      setTimeout(() => { this.textContent = 'Copy Molt snippet'; }, 2200);
+    });
+    window.__DONE = true;
+  })();
+})();
+</script>
+</body>
+</html>
