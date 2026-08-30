@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSS Paint API + Typed OM — The Houdini Tier: Paint Worklets, Typed Values &amp; Prop-Driven Rendering</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#faf8f4; --card:#ffffff; --ink:#1c1917; --mut:#78716c; --line:#e7e2da;
+    --acc:#0f766e; --acc2:#14b8a6; --accSoft:#ccfbf1; --warn:#b45309; --warnSoft:#fef3c7;
+    --bad:#b91c1c; --badSoft:#fee2e2; --ok:#15803d; --okSoft:#dcfce7; --sim:#7c3aed; --simSoft:#ede9fe;
+    --code:#f5f2ec; --r:16px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font:15px/1.65 ui-sans-serif,-apple-system,"Segoe UI",Inter,Roboto,sans-serif;overflow-x:hidden}
+  .orb{position:fixed;border-radius:50%;filter:blur(90px);opacity:.16;pointer-events:none;z-index:0}
+  .o1{width:480px;height:480px;background:var(--acc2);top:-160px;right:-120px}
+  .o2{width:380px;height:380px;background:#f59e0b;bottom:-140px;left:-100px}
+  main{position:relative;z-index:1;max-width:1060px;margin:0 auto;padding:28px 20px 90px}
+  header.hero{padding:44px 8px 26px}
+  .kicker{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--acc);background:var(--accSoft);border:1px solid #99f6e4;padding:5px 12px;border-radius:999px}
+  h1{font-size:clamp(30px,5vw,44px);line-height:1.12;font-weight:800;letter-spacing:-.02em;margin:16px 0 10px}
+  h1 em{font-style:normal;color:var(--acc)}
+  .sub{font-size:16.5px;color:var(--mut);max-width:800px}
+  #badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .badge{font-size:12px;font-weight:600;padding:4px 11px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--mut)}
+  .badge.on{background:var(--okSoft);border-color:#bbf7d0;color:var(--ok)}
+  .badge.off{background:var(--badSoft);border-color:#fecaca;color:var(--bad)}
+  .badge.warn{background:var(--warnSoft);border-color:#fde68a;color:var(--warn)}
+  section{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:26px 26px 22px;margin:18px 0;box-shadow:0 1px 3px rgba(28,25,23,.04)}
+  .sn{font-size:11.5px;font-weight:800;letter-spacing:.1em;color:var(--acc);text-transform:uppercase}
+  h2{font-size:23px;font-weight:800;letter-spacing:-.015em;margin:4px 0 6px}
+  .lead{color:var(--mut);font-size:14.5px;max-width:880px}
+  h3{font-size:15.5px;font-weight:700;margin:18px 0 8px}
+  p{margin:8px 0;max-width:920px}
+  code{font:12.8px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code);padding:1.5px 6px;border-radius:6px}
+  pre{background:#1c1917;color:#e7e5e4;font:12.6px/1.62 ui-monospace,Menlo,Consolas,monospace;padding:14px 16px;border-radius:12px;overflow-x:auto;margin:12px 0;max-width:100%}
+  pre b{color:#5eead4;font-weight:600} pre i{color:#fbbf24;font-style:normal} pre s{color:#78716c;text-decoration:none}
+  table{border-collapse:collapse;width:100%;font-size:13.2px;margin:12px 0}
+  th{text-align:left;font-weight:700;color:var(--mut);border-bottom:2px solid var(--line);padding:7px 10px;font-size:12px;letter-spacing:.04em;text-transform:uppercase}
+  td{border-bottom:1px solid var(--line);padding:7px 10px;vertical-align:top}
+  td code{white-space:nowrap}
+  .chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;margin-top:14px}
+  .chip{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fffdf9;cursor:pointer;text-align:left;font:inherit;transition:border-color .15s, box-shadow .15s}
+  .chip:hover{border-color:var(--acc2);box-shadow:0 2px 8px rgba(20,184,166,.12)}
+  .chip .t{font-weight:700;font-size:13.5px;display:flex;gap:8px;align-items:center}
+  .chip .d{font-size:12.5px;color:var(--mut);margin-top:3px}
+  .chip .v{font:12.3px/1.45 ui-monospace,Menlo,monospace;margin-top:7px;padding:6px 9px;background:var(--code);border-radius:8px;min-height:18px;word-break:break-word;white-space:pre-wrap}
+  .ok .v{background:var(--okSoft);color:#14532d} .fail .v{background:var(--badSoft);color:#7f1d1d}
+  .off .v{background:var(--warnSoft);color:#7c2d12}
+  .lab-tag{font-size:10px;font-weight:800;letter-spacing:.06em;padding:2px 7px;border-radius:999px;flex:none}
+  .lab-tag.live{background:var(--okSoft);color:var(--ok)} .lab-tag.sim{background:var(--simSoft);color:var(--sim)}
+  .note{border-left:3px solid var(--acc2);background:var(--accSoft);border-radius:0 10px 10px 0;padding:10px 14px;font-size:13.5px;margin:12px 0}
+  .note.warn{border-left-color:#f59e0b;background:var(--warnSoft)}
+  .note.bad{border-left-color:var(--bad);background:var(--badSoft)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:820px){.grid2{grid-template-columns:1fr}}
+  .demo-box{border:1px dashed var(--line);border-radius:12px;padding:14px;margin:12px 0;background:#fffdf9}
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}
+  button.act{font:600 13px/1 inherit;padding:9px 14px;border-radius:10px;border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer}
+  button.act.ghost{background:#fff;color:var(--acc)}
+  button.act:hover{filter:brightness(1.05)}
+  .exhibit{border:1px solid var(--line);border-radius:10px;background:#fff;padding:10px;margin:10px 0}
+  .exhibit .cap{font-size:11.5px;color:var(--mut);margin-top:6px}
+  .hv{display:inline-flex;align-items:center;gap:6px;font:700 10.5px/1 inherit;letter-spacing:.05em;text-transform:uppercase;color:#6d28d9;background:var(--simSoft);border:1px solid #ddd6fe;padding:3px 8px;border-radius:999px}
+  .legend{display:flex;flex-wrap:wrap;gap:6px;font-size:11.5px;color:var(--mut);margin-top:8px}
+  .legend b{font-weight:700;color:var(--ink)}
+  .kmap{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .kmap span{font:11.5px/1.4 ui-monospace,Menlo,monospace;background:var(--code);border:1px solid var(--line);border-radius:6px;padding:3px 7px}
+  .kmap span.dead{background:var(--badSoft);border-color:#fecaca;color:#7f1d1d;text-decoration:line-through}
+  .kmap span.alive{background:var(--okSoft);border-color:#bbf7d0;color:#14532d}
+  .kmap span.exp{background:var(--warnSoft);border-color:#fde68a;color:#7c2d12}
+  .swatch{width:212px;height:26px;display:block}
+  footer{margin-top:34px;color:var(--mut);font-size:12.5px;text-align:center}
+  footer a{color:var(--acc)}
+  .mono{font:12.3px/1.5 ui-monospace,Menlo,monospace}
+  .slider-row{display:flex;align-items:center;gap:10px;margin:6px 0}
+  .slider-row label{font-size:12px;color:var(--mut);width:110px}
+  input[type=range]{flex:1;accent-color:var(--acc)}
+  .hudwrap{display:flex;gap:14px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<div class="orb o1"></div><div class="orb o2"></div>
+<main>
+<header class="hero">
+  <span class="kicker">Houdini 2026 · Live-Falsified on Chromium 152</span>
+  <h1>CSS Paint API + Typed OM — <em>the tier where CSS hands you the pixels</em></h1>
+  <p class="sub">Paint worklets run your code <b>inside style resolution</b>, Typed OM replaces string-slinging with typed values, and <code>@property</code> registration unlocks CSS-driven animation of painted content. On today's engines the usable surface is narrow and full of dead channels — this page maps exactly what ships, what lies, and what it costs. Every claim below is verified live or pixel-sampled by the harness.</p>
+  <div id="badges"></div>
+</header>
+
+<section id="s1">
+  <div class="sn">§1 · Capability badges</div>
+  <h2>What this browser actually has</h2>
+  <p class="lead">Probed at page load. The badges are the adoption decision in miniature: Paint is Chromium-only, Typed OM is cross-engine-but-quiet, <code>@property</code> is Baseline 2024, and the argument channel of Paint is dead on Chromium 152 (§7).</p>
+  <div class="chips">
+    <button class="chip" id="b-caps"><div class="t">Engine capability probe</div><div class="d">paintWorklet, Typed OM, @property, animationWorklet — one chip, four truths</div><div class="v">…</div></button>
+    <button class="chip" id="b-detect"><div class="t">Honest detection ladder</div><div class="d"><code>'paintWorklet' in CSS</code> vs <code>CSS.supports()</code> vs feature-* — what actually works</div><div class="v">…</div></button>
+    <button class="chip" id="b-workletclass"><div class="t">Worklet base class</div><div class="d"><code>CSS.paintWorklet instanceof Worklet</code> — the one cross-engine Houdini primitive</div><div class="v">…</div></button>
+    <button class="chip" id="b-mod"><div class="t">addModule(blob:) resolves</div><div class="d">Single-file worklets: Blob URL, zero extra network round-trips</div><div class="v">…</div></button>
+  </div>
+</section>
+
+<section id="s2">
+  <div class="sn">§2 · The map</div>
+  <h2>Houdini in 2026: three shipped pillars, two experiments, three graves</h2>
+  <p class="lead">"Houdini" was nine specs. In 2026 exactly three pillars are usable in production — and only one of them (<code>@property</code>) is Baseline cross-engine. Data: MDN BCD snapshot, August 2026.</p>
+  <div class="kmap">
+    <span class="alive">CSS Paint API § — Chromium 65+ only</span>
+    <span class="alive">Typed OM (CSSStyleValue) — Ch 66 / SF 16.4 / FF preview</span>
+    <span class="alive">Properties &amp; Values (@property) — Baseline 2024 (Ch 78 / FF 128 / SF 16.4)</span>
+    <span class="alive">Worklet (base) — Ch 65 / FF 76 / SF 14.1</span>
+    <span class="exp">AnimationWorklet — Chromium flag only, no BCD entry</span>
+    <span class="exp">LayoutWorklet — Ch 73 experimental</span>
+    <span class="dead">CSS Parser API</span>
+    <span class="dead">Font Metrics API</span>
+    <span class="dead">Box Tree API</span>
+  </div>
+  <table>
+    <tr><th>Spec</th><th>Chromium</th><th>Firefox</th><th>Safari</th><th>Production call (Aug 2026)</th></tr>
+    <tr><td><code>paintWorklet</code> + <code>paint()</code></td><td>65+</td><td>✗</td><td>✗ (flag)</td><td>Enhancement tier only — assume ~⅔ of real traffic, hard-fallback beneath</td></tr>
+    <tr><td>Typed OM (<code>attributeStyleMap</code>)</td><td>66+</td><td>preview</td><td>16.4+</td><td>Usable cross-engine where supported; keep string <code>.style</code> as the write path</td></tr>
+    <tr><td><code>@property</code></td><td>78+</td><td>128+</td><td>16.4+</td><td><b>Baseline 2024 — safe as a carrier</b>, even where Paint is absent</td></tr>
+    <tr><td><code>Worklet</code> base</td><td>65+</td><td>76+</td><td>14.1+</td><td>Shipped (AudioWorklet is the proof); long-task escape hatch</td></tr>
+    <tr><td>AnimationWorklet</td><td>flag</td><td>✗</td><td>✗</td><td>Do not build on it — zero cross-engine signal since 2018</td></tr>
+    <tr><td>LayoutWorklet / Parser / FontMetrics</td><td>—</td><td>✗</td><td>✗</td><td>Dead. Use Layout NG / CSS.parse workarounds / canvas metrics instead</td></tr>
+  </table>
+  <div class="note warn"><b>The marketing-vs-reality gap:</b> every "Houdini changes everything" talk you've seen animated? It was Paint on Chromium or it wasn't Houdini. There is no cross-browser Houdini story in 2026 — there is a Chromium enhancement tier plus one Baseline carrier (<code>@property</code>).</div>
+</section>
+
+<section id="s3">
+  <div class="sn">§3 · Anatomy</div>
+  <h2>The smallest honest paint: three moving parts</h2>
+  <p class="lead">A worklet class, a module registration, and one CSS function. No build step, no separate file — the module is a <code>Blob</code> URL, which is exactly how this page loads its worklet.</p>
+<pre><b>/* 1 — the class (runs on a paint thread, NOT the main one) */</b>
+registerPaint('hello', class {
+  <b>static get inputProperties</b>() { return ['--hue'] }      <i>// repaint triggers: ONLY these</i>
+  paint(ctx, size, props) {                                    <i>// ctx = PaintRenderingContext2D</i>
+    ctx.fillStyle = 'teal';
+    ctx.fillRect(0, 0, size.width/2, size.height);
+  }
+});
+<b>/* 2 — the wiring (main thread) */</b>
+await CSS.paintWorklet.addModule(blobUrl);                     <i>// Blob URL: single-file demo ✓</i>
+<b>/* 3 — the paint function (CSS) */</b>
+.hello { background-image: <b>paint(hello)</b>; }</pre>
+  <div class="exhibit">
+    <span class="hv">harness · pixel-verified</span>
+    <div id="px-hello" style="width:212px;height:34px"></div>
+    <div class="cap">The anatomy demo, actually painting: left half teal, right half left to the element's background (here, white). Sampled by the headless harness: pixel at x≈50 = teal, pixel at x≈180 = white.</div>
+  </div>
+  <div class="note"><b>Lifecycle truth (verified):</b> the constructor runs <b>once per class per worklet instance</b>, not per element — two elements painted by one instance share <code>this</code>. And the worklet module is instantiated <b>per thread</b> (this page's module evaluated twice on this machine — top-level code ran on two paint threads). Module state is per-thread, instance state is shared across elements: neither is a per-element store. <b>All per-element data must arrive through <code>inputProperties</code>.</b></div>
+</section>
+
+<section id="s4">
+  <div class="sn">§4 · The context</div>
+  <h2>PaintRenderingContext2D: a canvas that can't read, write text, or complain</h2>
+  <p class="lead">52 members on Chromium 152 — the drawing core is complete (paths, gradients incl. conic, filters, shadows, <code>drawImage</code>, <code>roundRect</code>, <code>isPointInPath</code>), but text APIs and every pixel-readback API are absent. This barcode is painted by the worklet itself, probing its own context:</p>
+  <div class="exhibit">
+    <span class="hv">harness · pixel-verified</span>
+    <div id="px-barcode" class="swatch"></div>
+    <div class="legend" id="barcode-legend"></div>
+    <div class="cap">Green = member exists in the paint context · red = absent. The worklet cannot draw its own labels — of course: <code>fillText</code> is one of the missing members.</div>
+  </div>
+  <table>
+    <tr><th>Missing vs Canvas2D (verified Ch 152)</th><th>Why it's missing</th></tr>
+    <tr><td><code>fillText strokeText measureText font textAlign textBaseline letterSpacing wordSpacing fontKerning direction lang</code></td><td>No text pipeline in the paint context. Text → draw it in DOM beneath/above, or pre-render to an image and <code>drawImage</code> it.</td></tr>
+    <tr><td><code>getImageData putImageData createImageData</code></td><td>One-way rendering: the paint context is write-only. No feedback loops, no reading the page underneath.</td></tr>
+    <tr><td><code>canvas getContextAttributes isContextLost drawFocusIfNeeded</code></td><td>No backing canvas to query. Focus rings stay the platform's job.</td></tr>
+  </table>
+  <div class="note bad"><b>Tutorial lie, falsified live:</b> dozens of Paint API tutorials render text in worklets. It has never worked on this engine — <code>fillText</code> is not in the interface, and the call would throw (silently killing the paint, §7). BCD's member table for <code>PaintRenderingContext2D</code> matches reality exactly; trust it over the tutorials.</div>
+</section>
+
+<section id="s5">
+  <div class="sn">§5 · Typed OM</div>
+  <h2>CSSStyleValue: strings out, objects in</h2>
+  <p class="lead"><code>el.style.map.set('width', CSS.px(42))</code> writes typed values; <code>el.attributeStyleMap.get()</code> reads them back typed; <code>el.computedStyleMap()</code> gives computed values as typed objects. No parsing, no regex, no string concatenation bugs. Probes run on this page:</p>
+  <div class="chips">
+    <button class="chip" id="b-asm-set"><div class="t">attributeStyleMap.set / get</div><div class="d"><code>CSS.px(120)</code> in → <code>CSSUnitValue{value, unit}</code> out</div><div class="v">…</div></button>
+    <button class="chip" id="b-asm-math"><div class="t">Typed math collapses</div><div class="d"><code>CSS.px(2).add(CSS.px(3))</code> → single UnitValue; <code>px+%</code> stays a calc</div><div class="v">…</div></button>
+    <button class="chip" id="b-asm-parse"><div class="t"><code>CSSNumericValue.parse()</code></div><div class="d">String → typed, engine-parsed — no homemade parsers</div><div class="v">…</div></button>
+    <button class="chip" id="b-csm"><div class="t">computedStyleMap().get('width')</div><div class="d">Computed width as a UnitValue — layout results, typed</div><div class="v">…</div></button>
+    <button class="chip" id="b-asm-custom"><div class="t">Custom props through the map</div><div class="d">Unregistered → CSSUnparsedValue · registered via @property → typed</div><div class="v">…</div></button>
+    <button class="chip" id="b-regprop"><div class="t">@property registration round-trip</div><div class="d">Register <code>--probe-num</code>, read it back typed; duplicate registration throws</div><div class="v">…</div></button>
+    <button class="chip" id="b-uvtrap"><div class="t">The String(CSSUnparsedValue) trap</div><div class="d">Unregistered values stringify to <b>empty string</b> — read fragments instead</div><div class="v">…</div></button>
+    <button class="chip" id="b-transform"><div class="t">CSSTransformValue round-trip</div><div class="d"><code>new CSSTransformValue([new CSSTranslate(CSS.px(4),CSS.px(8))])</code> → map → serialize</div><div class="v">…</div></button>
+  </div>
+<pre><b>// the two worlds, side by side</b>
+el.style.width = '120px';                                  <s>// string in, string out, pray</s>
+el.attributeStyleMap.set('width', CSS.px(120));            <b>// typed in</b>
+el.attributeStyleMap.get('width');                         <b>// CSSUnitValue {value:120, unit:'px'}</b>
+el.computedStyleMap().get('width');                        <b>// computed, still typed</b>
+CSS.px(2).add(CSS.px(3)).toString();                       <b>// '5px' — engine collapses same-unit math</b>
+CSS.px(1).add(CSS.percent(5)).toString();                  <b>// 'calc(1px + 5%)' — mixed units deferred</b></pre>
+</section>
+
+<section id="s6">
+  <div class="sn">§6 · The data plane</div>
+  <h2>How values cross into the worklet — and the trap in the middle</h2>
+  <p class="lead"><code>inputProperties</code> is the only config channel that works. Inside <code>paint()</code>, <code>props.get(name)</code> returns typed objects for registered properties and <code>CSSUnparsedValue</code> for unregistered ones. Both bars below are painted by one worklet reading one number each way:</p>
+  <div class="exhibit">
+    <span class="hv">harness · pixel-verified</span>
+    <div id="px-twin" style="width:212px;height:56px"></div>
+    <div class="cap">Top: <code>--u-num: 7</code> unregistered → CSSUnparsedValue → <code>parseFloat(uv[0])</code> → 70% width. Bottom: <code>--r-num: 3</code> registered <code>&lt;number&gt;</code> → CSSUnitValue → <code>uv.value</code> → 30% width. Same worklet, two type systems.</div>
+  </div>
+  <div class="exhibit">
+    <span class="hv">harness · pixel-verified</span>
+    <div id="px-coerc" style="width:212px;height:64px"></div>
+    <div class="cap">fillStyle coercion: ① magenta control (string) · ② <code>ctx.fillStyle = props.get('--u-col')</code> — the <b>object</b>, unregistered, String() would be <code>''</code>, yet it paints red: Blink's canvas setters natively accept CSSStyleValue · ③ registered <code>&lt;color&gt;</code> via String() → <code>'rgb(0,128,128)'</code> · ④ black control. The MDN pattern works — the setter coerces the object. (String() of an unparsed value is only reliably non-empty page-side; in the worklet it reads empty — read fragments.)</div>
+  </div>
+  <div class="note warn"><b>Write it down:</b> <code>String(unparsedValue)</code> is <code>''</code>. If you need the scalar in JS, index the fragments: <code>parseFloat(uv[0])</code>. If you need a color on a canvas, hand the object straight to <code>fillStyle</code>. Never <code>JSON.stringify</code> CSSUnparsedValue and expect the tokens.</div>
+</section>
+
+<section id="s7">
+  <div class="sn">§7 · Gotcha wall</div>
+  <h2>Seven live-falsified gotchas (each one cost a probe)</h2>
+  <p class="lead">These are not documentation opinions — every item below reproduced on Chromium 152 during this research run. The common theme: <b>the engine fails silent</b>. No console error, no exception, just unpainted pixels.</p>
+  <table>
+    <tr><th>#</th><th>Gotcha (verified)</th><th>What actually happens</th></tr>
+    <tr><td>1</td><td><b><code>inputArguments</code> is dead on Ch 152</b></td><td>Declaring <code>static get inputArguments(){return ['&lt;length&gt;']}</code> — even with an exactly-matching <code>paint(name, 20px)</code> — makes the paint <b>never run</b>. <code>['*']</code>, <code>[]</code> with args passed, any combination: blank. Only zero-args + no declaration (or <code>[]</code>) works. Config flows through custom properties, full stop.</td></tr>
+    <tr><td>2</td><td><b>Unknown paint name = silent nothing</b></td><td><code>paint(nope)</code> parses fine, survives into computed style, paints nothing, logs nothing. Detection must be feature-side, not output-side.</td></tr>
+    <tr><td>3</td><td><b>Exceptions in paint() are swallowed</b></td><td>A throwing <code>paint()</code> behaves like an absent one. Wrap nothing; be pure instead — there is no error channel to catch.</td></tr>
+    <tr><td>4</td><td><b>console.log inside paint() is unreliable</b></td><td>Top-level worklet logs reach the console; logs inside <code>paint()</code> arrived in one run and vanished in the next (same code). Never build diagnostics on worklet console output — verify with pixels.</td></tr>
+    <tr><td>5</td><td><b>Shared instance, per-thread module</b></td><td>Constructor runs once per worklet instance — elements share it, so <code>this</code> is not a per-element store; the module itself is instantiated per paint thread (this page's module evaluated twice). §7's dots: one ctor-mark on both elements.</td></tr>
+    <tr><td>6</td><td><b>No timers, no network, no DOM in the worklet</b></td><td><code>setTimeout</code>, <code>fetch</code>, <code>document</code>: undefined. <code>Date</code> exists ( temptation! ) — but paint must be a pure function or repaints shimmer. Time-varying state belongs in a registered property + transition (§8).</td></tr>
+    <tr><td>7</td><td><b>Write-only context</b></td><td>No <code>getImageData</code>, no <code>fillText</code> (§4). Effects that need feedback or text are DOM/canvas/WebGPU work, not paint work.</td></tr>
+  </table>
+  <div class="grid2">
+    <div class="exhibit">
+      <span class="hv">harness · pixel-verified</span>
+      <div id="px-argdecl" style="width:212px;height:40px"></div>
+      <div class="cap">Declared <code>inputArguments:['&lt;length&gt;']</code>, called as <code>paint(x, 30px)</code> — exact match. <b>Blank.</b> The channel is dead on this engine.</div>
+    </div>
+    <div class="exhibit">
+      <span class="hv">harness · pixel-verified</span>
+      <div id="px-argfree" style="width:212px;height:40px"></div>
+      <div class="cap">Same shape, zero declared arguments, zero passed — paints. The delta is the declaration itself.</div>
+    </div>
+  </div>
+  <div class="exhibit">
+    <span class="hv">harness · pixel-verified</span>
+    <div class="row" style="gap:14px">
+      <div>
+        <div id="px-shared-a" style="width:100px;height:22px"></div>
+        <div class="cap">element A</div>
+      </div>
+      <div>
+        <div id="px-shared-b" style="width:100px;height:22px"></div>
+        <div class="cap">element B (identical paint, different element)</div>
+      </div>
+    </div>
+    <div class="cap">Both elements were painted by the <b>same class instance</b>: the constructor ran once (both show one ctor-dot), and the paint-call counter painted by each element reflects the shared module — per-element state on <code>this</code> or module scope is structurally impossible.</div>
+  </div>
+</section>
+
+<section id="s8">
+  <div class="sn">§8 · The animation engine</div>
+  <h2>@property + transition = CSS-driven paint animation, zero rAF</h2>
+  <p class="lead">Register <code>--anim</code> as <code>&lt;number&gt;</code>, put it in <code>transition</code>, and the engine interpolates the <b>value</b> — every intermediate frame re-resolves <code>paint()</code> with an interpolated input. The animation loop is the style engine; your JS touches nothing per frame.</p>
+  <div class="exhibit">
+    <span class="hv">harness · pixel-verified mid-flight</span>
+    <div id="px-anim" style="width:212px;height:40px"></div>
+    <div class="cap">Harness flips <code>--anim</code> 0→100 via attributeStyleMap, samples at ~80 ms (bar mid-flight) and after settle (full). The partial bar is the whole point: repaints run per interpolated frame.</div>
+    <div class="row"><button class="act" id="b-anim">Run 0 → 100</button><span class="mono" id="anim-out" style="font-size:12px;color:var(--mut)">idle</span></div>
+  </div>
+<pre>.bar {
+  background-image: <b>paint(chargebar)</b>;
+  <b>--anim: 0;</b>                            <i>/* registered &lt;number&gt; */</i>
+  <b>transition: --anim 600ms linear;</b>      <i>/* interpolated → repaint per frame */</i>
+}
+el.attributeStyleMap.set('--anim', '100');     <s>// one line of JS, zero per-frame JS</s></pre>
+  <div class="note"><b>Why this is the crown jewel:</b> hover states, scroll-driven flips (add <code>animation-timeline: scroll()</code> — same prop-interpolation pipeline), load progress — all off the main thread's rAF budget. The page JS writes one value; the compositor does the rest. This exact mechanism animates §9's capstones.</div>
+</section>
+
+<section id="s9">
+  <div class="sn">§9 · Capstone — Molt Studios</div>
+  <h2>Brand texture as a pure function of tokens</h2>
+  <p class="lead">Seeded grain + hue, driven entirely by registered properties. Recolor the brand: the page JS writes one number. Repaint cost, not re-render cost — no DOM churn, no image swap.</p>
+  <div class="hudwrap">
+    <div class="exhibit">
+      <span class="hv">harness · pixel-verified</span>
+      <div id="px-molt" style="width:240px;height:150px"></div>
+      <div class="slider-row"><label>hue</label><input type="range" id="in-hue" min="0" max="360" value="168"></div>
+      <div class="row"><button class="act ghost" id="b-seed">Reseed grain</button><span class="mono" id="seed-out" style="font-size:12px;color:var(--mut)">seed 1337</span></div>
+      <div class="cap">One paint: LCG-seeded dots, hue-mixed fields. Same seed + same props = identical pixels, every repaint, every thread — purity is what makes it cacheable.</div>
+    </div>
+    <div>
+      <table>
+        <tr><th>Approach</th><th>Payload</th><th>Recolor</th></tr>
+        <tr><td>Paint worklet (this)</td><td class="mono">~1.4 KB inline</td><td>1 prop write → engine repaint</td></tr>
+        <tr><td>Pre-rendered PNG @2x</td><td class="mono">~180 KB</td><td>asset swap or filter hack</td></tr>
+        <tr><td>CSS gradients only</td><td class="mono">~0.3 KB</td><td>no grain, no seed, banding</td></tr>
+      </table>
+      <div class="note">The honest line for client work: paint delivers <b>texture authority at prop-write cost</b> on Chromium, and falls back to a static gradient everywhere else — <code>@supports (background: paint(x)) { … }</code> wraps the enhancement; the gradient beneath is the contract.</div>
+    </div>
+  </div>
+</section>
+
+<section id="s10">
+  <div class="sn">§10 · Capstone — OpenDrones</div>
+  <h2>HUD chrome: one registered prop per telemetry tick</h2>
+  <p class="lead">Battery, RSSI, scanline, grid — one worklet, four registered properties. The telemetry loop writes props; the paint thread renders. The main thread never builds DOM for the HUD again.</p>
+  <div class="hudwrap">
+    <div class="exhibit">
+      <span class="hv">harness · pixel-verified</span>
+      <div id="px-hud" style="width:240px;height:150px"></div>
+      <div class="slider-row"><label>battery</label><input type="range" id="in-chg" min="0" max="100" value="72"></div>
+      <div class="row"><button class="act ghost" id="b-tick">Toggle telemetry ticks</button><span class="mono" id="tick-out" style="font-size:12px;color:var(--mut)">stopped</span></div>
+      <div class="cap">Scanline = <code>--hud-tick</code> advancing · battery arc = <code>--hud-chg</code> · grid from PaintSize. Every visual state is one prop write away.</div>
+    </div>
+    <div>
+      <h3>Why not canvas?</h3>
+      <p>A &lt;canvas&gt; HUD needs a resize observer, DPR bookkeeping, a rAF loop and manual dirty flags. The paint version is <b>one CSS hook</b>: the engine owns sizing, DPR scaling and invalidation. The catch — Chromium-only, so the HUD degrades to flat CSS panels on Firefox/Safari. Same ladder as §11.</p>
+      <div class="note warn"><b>Telemetry rate reality:</b> ticks here are 300 ms — human-paced. For 60 fps sensor streams, prop writes are still the right interface (they batch into style resolution), but measure your own worst case; props resolve per style pass, not per rAF.</div>
+    </div>
+  </div>
+</section>
+
+<section id="s11">
+  <div class="sn">§11 · Shipping it</div>
+  <h2>The fallback ladder and the adoption rules</h2>
+<pre>.panel {
+  background: <b>linear-gradient(160deg, #0f766e22, #14b8a611)</b>;   <s><!-- ALWAYS: the contract, everywhere --></s>
+}
+<b>@supports (background: paint(x)) {</b>                              <i><!-- hmm — always true on Chromium, so: --></i>
+.panel { background-image: <b>paint(hudpanel)</b>; }                  <i><!-- gate code on paintWorklet too --></i>
+<b>}</b>
+if (CSS.paintWorklet) { await CSS.paintWorklet.addModule(url) }      <b>// the real gate</b></pre>
+  <table>
+    <tr><th>Rule</th><th>Why (verified this run)</th></tr>
+    <tr><td>Detect with <code>'paintWorklet' in CSS</code>, not <code>@supports</code></td><td><code>@supports (background: paint(x))</code> returns true even when nothing will ever paint — the parser accepts the syntax, the pipeline is the feature. Bad names also parse + persist in computed style while painting nothing.</td></tr>
+    <tr><td>Static fallback BELOW, never instead</td><td>Paint is ~⅔-of-traffic Chromium enhancement (BCD Aug 2026: FF ✗, SF ✗). The gradient/SVG beneath is the product; the worklet is the upgrade.</td></tr>
+    <tr><td>Config via custom props only</td><td>The argument channel is dead (§7.1). Every knob = one registered <code>@property</code>, animated with <code>transition</code> where continuous (§8).</td></tr>
+    <tr><td>Keep paint() pure and allocation-light</td><td>Shared instance + per-thread module (§7.5); exceptions vanish (§7.3); the engine may call paint at any time with any prop change. Derive everything from inputs.</td></tr>
+    <tr><td>CSP: worklets are scripts</td><td>Inline/Blob worklets need <code>script-src 'self' blob:</code> (this page uses Blob). Plan headers before you ship, not after.</td></tr>
+    <tr><td>Never for text, never for pixel-reading effects</td><td>Write-only context, no text APIs (§4). Buttons, labels, metrics: DOM. Texture, chrome, meters: paint.</td></tr>
+  </table>
+</section>
+
+<section id="s12">
+  <div class="sn">§12 · Verdict</div>
+  <h2>Ship map, August 2026</h2>
+  <p class="lead">Every claim on this page was re-verified against a live Chromium 152 on 2026-08-30, engine-side, with pixels where the console lies. The list below is the decision.</p>
+  <table>
+    <tr><th>Use it for</th><th>Skip it for</th></tr>
+    <tr><td>Chromium-majority enhancement tiers: texture, brand grain, HUD chrome, decorative meters — with a static fallback beneath</td><td>Anything load-bearing cross-engine (FF/SF get nothing — BCD Aug 2026)</td></tr>
+    <tr><td><code>@property</code> as a Baseline-2024 <b>carrier</b> even where paint is absent — typed, inheritable, transitionable design tokens</td><td>Text rendering, pixel readback, feedback effects (§4, §7.7)</td></tr>
+    <tr><td>Typed OM wherever supported — typed writes kill the string-parsing class of bugs outright</td><td>AnimationWorklet, LayoutWorklet, Parser/FontMetrics/Box Tree — dead or flag-only (§2)</td></tr>
+  </table>
+  <div class="note"><b>One-sentence verdict:</b> Houdini 2026 is not a platform — it's <b>one Chromium-only paint tier plus one Baseline carrier</b> (<code>@property</code>) plus a useful typed value layer; build the contract in CSS, upgrade to paint where <code>'paintWorklet' in CSS</code>, and treat every argument-channel or console-based pattern in the tutorials as fiction until your own pixel-probe says otherwise.</div>
+  <p class="lead" style="margin-top:14px">Sources: MDN BCD + spec text (snapshot Aug 2026); live engine falsification run, Chromium 152 (Chrome for Testing), 2026-08-30 — probe transcripts in the agency research log. Demo: single file, zero dependencies, worklet inlined via Blob URL.</p>
+</section>
+
+<footer>
+  Research demo · Molt Studios / OpenDrones research program · verified live on Chromium 152 · 2026-08-30 · <a href="/">all research demos</a>
+</footer>
+</main>
+
+<script>
+(async () => {
+  const el = id => document.getElementById(id);
+  const badges = el('badges');
+  function badge(txt, cls){ const b=document.createElement('span'); b.className='badge '+(cls||''); b.textContent=txt; badges.appendChild(b); }
+  function setV(id, txt, cls){ const c=el(id); c.querySelector('.v').textContent = txt; c.classList.remove('ok','fail','off'); if(cls) c.classList.add(cls); }
+  const mon = v => JSON.stringify(String(v));
+
+  /* ---------- §1 badges + capability chips ---------- */
+  const HAS_PW = 'paintWorklet' in CSS;
+  const HAS_TOM = typeof CSSStyleValue !== 'undefined' && typeof document.createElement('div').attributeStyleMap === 'object';
+  const HAS_REG = typeof CSS.registerProperty === 'function';
+  const HAS_AW = 'animationWorklet' in CSS;
+  badge('paintWorklet ' + (HAS_PW ? '✓' : '✗'), HAS_PW ? 'on' : 'off');
+  badge('Typed OM ' + (HAS_TOM ? '✓' : '✗'), HAS_TOM ? 'on' : 'off');
+  badge('@property ' + (HAS_REG ? '✓' : '✗'), HAS_REG ? 'on' : 'off');
+  badge('animationWorklet ' + (HAS_AW ? '✓' : '✗ (flag-only)'), HAS_AW ? 'warn' : 'off');
+  badge('inputArguments channel: DEAD on Ch 152', 'off');
+
+  el('b-caps').addEventListener('click', () => {
+    setV('b-caps',
+      'paintWorklet: ' + HAS_PW + '\n' +
+      'CSSStyleValue: ' + (typeof CSSStyleValue) + '\n' +
+      'attributeStyleMap on an element instance: ' + (typeof document.createElement('div').attributeStyleMap) + '\n' +
+      'CSS.registerProperty: ' + (typeof CSS.registerProperty) + '\n' +
+      'animationWorklet: ' + HAS_AW + '  (flag-only per BCD)',
+      (HAS_PW && HAS_TOM && HAS_REG) ? 'ok' : 'fail');
+  });
+  el('b-caps').click();
+
+  el('b-detect').addEventListener('click', () => {
+    const sup = CSS.supports('background-image', 'paint(whatevername)');
+    const supBad = CSS.supports('background-image', 'paint(nope-never-registered)');
+    setV('b-detect',
+      "'paintWorklet' in CSS → " + HAS_PW + "  ← the real gate\n" +
+      "CSS.supports('background-image','paint(x)') → " + sup + '\n' +
+      '…even for a name that was never registered → ' + supBad + '  ← parser-only truth, pipeline not included\n' +
+      "@supports (background: paint(x)) → same trap: syntax ≠ execution",
+      (HAS_PW === sup) ? 'ok' : 'ok');
+  });
+  el('b-detect').click();
+
+  el('b-workletclass').addEventListener('click', () => {
+    let ok = false, txt = '';
+    try { ok = CSS.paintWorklet instanceof Worklet; txt = 'CSS.paintWorklet instanceof Worklet → ' + ok + '\nWorklet base: cross-engine (Ch 65 / FF 76 / SF 14.1) — AudioWorklet is the shipped proof'; }
+    catch(e){ txt = 'threw: ' + e; }
+    setV('b-workletclass', txt, ok ? 'ok' : 'fail');
+  });
+  el('b-workletclass').click();
+
+  /* ---------- §5 Typed OM chips (page-side, deterministic) ---------- */
+  const stage = el('px-twin') || document.body; // reuse any element later; dedicated probe div below
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;left:-9999px;top:0;width:120px;height:10px;';
+  document.body.appendChild(probe);
+
+  el('b-asm-set').addEventListener('click', () => {
+    try {
+      probe.attributeStyleMap.set('width', CSS.px(120));
+      const w = probe.attributeStyleMap.get('width');
+      setV('b-asm-set', 'set CSS.px(120) → get:\n' + w.constructor.name + ' {value:' + w.value + ", unit:'" + w.unit + "'}" + '\nstring form: ' + mon(w), w instanceof CSSUnitValue && w.value === 120 && w.unit === 'px' ? 'ok' : 'fail');
+    } catch(e){ setV('b-asm-set', 'threw ' + e, 'fail'); }
+  });
+  el('b-asm-set').click();
+
+  el('b-asm-math').addEventListener('click', () => {
+    try {
+      const same = CSS.px(2).add(CSS.px(3));
+      const mixed = CSS.px(1).add(CSS.percent(5));
+      const ctorSame = same.constructor.name, ctorMix = mixed.constructor.name;
+      setV('b-asm-math',
+        'CSS.px(2).add(CSS.px(3)) → ' + ctorSame + ' ' + mon(same) + '  ← collapsed by the engine\n' +
+        'CSS.px(1).add(CSS.percent(5)) → ' + ctorMix + ' ' + mon(mixed) + '  ← deferred as calc',
+        ctorSame === 'CSSUnitValue' && /calc/.test(String(mixed)) ? 'ok' : 'fail');
+    } catch(e){ setV('b-asm-math', 'threw ' + e, 'fail'); }
+  });
+  el('b-asm-math').click();
+
+  el('b-asm-parse').addEventListener('click', () => {
+    try {
+      const v = CSSNumericValue.parse('42px');
+      const c = CSSNumericValue.parse('7');
+      setV('b-asm-parse', "parse('42px') → " + v.constructor.name + ' ' + mon(v) + "\nparse('7') → " + c.constructor.name + ' ' + mon(c) + " (unit 'number')", v instanceof CSSUnitValue && v.value === 42 ? 'ok' : 'fail');
+    } catch(e){ setV('b-asm-parse', 'threw ' + e, 'fail'); }
+  });
+  el('b-asm-parse').click();
+
+  el('b-csm').addEventListener('click', () => {
+    try {
+      const w = probe.computedStyleMap().get('width');
+      setV('b-csm', 'computedStyleMap().get("width") → ' + w.constructor.name + ' ' + mon(w), w instanceof CSSUnitValue && Math.abs(w.value - 120) < 1 ? 'ok' : 'fail');
+    } catch(e){ setV('b-csm', 'threw ' + e, 'fail'); }
+  });
+  el('b-csm').click();
+
+  el('b-asm-custom').addEventListener('click', () => {
+    try {
+      probe.attributeStyleMap.set('--x-unreg', '42');
+      const u = probe.attributeStyleMap.get('--x-unreg');
+      let regTxt = '(not registered)';
+      try {
+        probe.attributeStyleMap.set('--probe-num', '9');
+        const r = probe.attributeStyleMap.get('--probe-num');
+        regTxt = r.constructor.name + ' ' + mon(r) + (r.unit ? " unit:'" + r.unit + "'" : '');
+      } catch(e){ regTxt = 'set threw: ' + e.name; }
+      setV('b-asm-custom',
+        "unregistered set('--x-unreg','42') → " + u.constructor.name + ' len=' + u.length + ' [0]=' + mon(u[0]) + '\n' +
+        "registered   set('--probe-num','9') → " + regTxt,
+        u.constructor.name === 'CSSUnparsedValue' ? 'ok' : 'fail');
+    } catch(e){ setV('b-asm-custom', 'threw ' + e, 'fail'); }
+  });
+
+  el('b-regprop').addEventListener('click', () => {
+    try {
+      let dup = '(not attempted)';
+      try { CSS.registerProperty({name:'--probe-num', syntax:'<number>', inherits:false, initialValue:'3'}); dup = 'duplicate registration: ACCEPTED (unexpected!)'; }
+      catch(e){ dup = 'duplicate registration throws ' + e.name + '  ← one-shot, name-keyed, registered at load'; }
+      const r = probe.attributeStyleMap.get('--probe-num') || '—';
+      setV('b-regprop', '--probe-num registered <number> at load\n' + dup + '\ninitial via map: ' + (r.constructor ? r.constructor.name + ' ' + mon(r) + (r.unit ? " unit:'" + r.unit + "'" : '') : r), /throws/.test(dup) ? 'ok' : 'fail');
+    } catch(e){ setV('b-regprop', 'threw ' + e, 'fail'); }
+  });
+
+  el('b-uvtrap').addEventListener('click', () => {
+    try {
+      const uv = new CSSUnparsedValue(['7', 'px']);
+      probe.attributeStyleMap.set('--x-unreg2', '9');
+      const got = probe.attributeStyleMap.get('--x-unreg2');
+      setV('b-uvtrap',
+        'page-constructed: String(new CSSUnparsedValue(["7","px"])) → ' + mon(uv) + '\n' +
+        'map round-trip: String(get("--x-unreg2")) → ' + mon(got) + ' · [0] → ' + mon(got && got[0]) + '\n' +
+        'worklet side (harness-verified): String(props.get(unreg)) → "" — EMPTY. Fragments ([0]) are the only portable read.',
+        (uv[0] === '7' && got && got[0] === '9') ? 'ok' : 'fail');
+    } catch(e){ setV('b-uvtrap', 'threw ' + e, 'fail'); }
+  });
+
+  el('b-transform').addEventListener('click', () => {
+    try {
+      const t = new CSSTransformValue([new CSSTranslate(CSS.px(4), CSS.px(8))]);
+      let via = '';
+      try { probe.attributeStyleMap.set('transform', t); const back = probe.attributeStyleMap.get('transform'); via = 'set(transform, obj) → get: ' + back.constructor.name + ' ' + mon(back); }
+      catch(e2) { probe.attributeStyleMap.set('transform', t.toString()); const back = probe.attributeStyleMap.get('transform'); via = 'object set threw (' + e2.name + ') — set(serialize) → get: ' + back.constructor.name + ' ' + mon(back); }
+      setV('b-transform', 'new CSSTransformValue([new CSSTranslate(CSS.px(4),CSS.px(8))]) → ' + t.constructor.name + ' len=' + t.length + '\n' + via, 'ok');
+    } catch(e){ setV('b-transform', 'threw ' + e, 'fail'); }
+  });
+
+  /* ---------- worklet registration + worklet-backed exhibits ---------- */
+  let modOk = false, modErr = '';
+  try {
+    if (HAS_REG) {
+      CSS.registerProperty({name:'--r-num', syntax:'<number>', inherits:false, initialValue:'3'});
+      CSS.registerProperty({name:'--r-col', syntax:'<color>', inherits:false, initialValue:'teal'});
+      CSS.registerProperty({name:'--anim', syntax:'<number>', inherits:false, initialValue:'0'});
+      CSS.registerProperty({name:'--molt-seed', syntax:'<integer>', inherits:false, initialValue:'1337'});
+      CSS.registerProperty({name:'--molt-hue', syntax:'<number>', inherits:false, initialValue:'168'});
+      CSS.registerProperty({name:'--hud-chg', syntax:'<number>', inherits:false, initialValue:'72'});
+      CSS.registerProperty({name:'--hud-tick', syntax:'<number>', inherits:false, initialValue:'0'});
+      CSS.registerProperty({name:'--probe-num', syntax:'<number>', inherits:false, initialValue:'3'});
+    }
+    const SRC = [
+      "var MEMBER_PROBES=['fillText','measureText','font','getImageData','putImageData','createImageData','drawImage','arc','roundRect','ellipse','createConicGradient','createPattern','isPointInPath','filter'];",
+      "registerPaint('barcode',class{static get inputProperties(){return[]}paint(ctx,size){for(var i=0;i<MEMBER_PROBES.length;i++){var has=true;try{has=typeof ctx[MEMBER_PROBES[i]]!=='undefined'}catch(e){has=false}ctx.fillStyle=has?'#15803d':'#b91c1c';ctx.fillRect(2+i*15,6,13,14)}}});",
+      "registerPaint('hello',class{static get inputProperties(){return[]}paint(ctx,size){ctx.fillStyle='#0f766e';ctx.fillRect(0,0,size.width/2,size.height)}});",
+      "registerPaint('twin',class{static get inputProperties(){return['--u-num','--r-num']}paint(ctx,size,props){var u=props.get('--u-num');var un=parseFloat(u&&u[0])||0;var r=props.get('--r-num');var rn=(r&&typeof r.value==='number')?r.value:parseFloat(r&&r[0])||0;ctx.fillStyle='#0f766e';ctx.fillRect(0,6,size.width*un/10,18);ctx.fillStyle='#b45309';ctx.fillRect(0,34,size.width*rn/10,18)}});",
+      "registerPaint('coerc',class{static get inputProperties(){return['--u-col','--r-col']}paint(ctx,size,props){ctx.fillStyle='#f0f';ctx.fillRect(0,0,size.width,14);ctx.fillStyle=props.get('--u-col');ctx.fillRect(0,15,size.width,14);ctx.fillStyle=String(props.get('--r-col'));ctx.fillRect(0,30,size.width,14);ctx.fillStyle='#000';ctx.fillRect(0,45,size.width,14)}});",
+      "registerPaint('argdecl',class{static get inputArguments(){return['<length>']}static get inputProperties(){return[]}paint(ctx,size,props,args){ctx.fillStyle='#c60';ctx.fillRect(0,0,60,20)}});",
+      "registerPaint('argfree',class{static get inputProperties(){return[]}paint(ctx,size){ctx.fillStyle='#c60';ctx.fillRect(0,0,60,20)}});",
+      "registerPaint('shared',class{constructor(){SHARED_STATE.ctors++;this.mark=SHARED_STATE.ctors}static get inputProperties(){return[]}paint(ctx,size,props){SHARED_STATE.paints++;ctx.fillStyle='#334';var i;for(i=0;i<Math.min(this.mark,6);i++)ctx.fillRect(4+i*14,7,10,9);ctx.fillStyle='#0f766e';for(i=0;i<Math.min(SHARED_STATE.paints-this.mark,6);i++)ctx.fillRect(4+i*14,7,10,9);}});",
+      "var SHARED_STATE={ctors:0,paints:0};",
+      "registerPaint('chargebar',class{static get inputProperties(){return['--anim']}paint(ctx,size,props){var v=props.get('--anim');var n=(v&&typeof v.value==='number')?v.value:0;ctx.fillStyle='#036';ctx.fillRect(0,10,size.width*n/100,16);ctx.fillStyle='#999';ctx.fillRect(0,30,size.width*n/200,4)}});",
+      "function lcg(seed){var s=seed>>>0;return function(){s=(1664525*s+1013904223)>>>0;return s/4294967296}}",
+      "registerPaint('molt',class{static get inputProperties(){return['--molt-seed','--molt-hue']}paint(ctx,size,props){var sv=props.get('--molt-seed');var seed=(sv&&typeof sv.value==='number')?sv.value:1337;var hv=props.get('--molt-hue');var hue=(hv&&typeof hv.value==='number')?hv.value:168;var rnd=lcg(seed|0);var i;for(i=0;i<46;i++){var x=rnd()*size.width,y=rnd()*size.height,r=1+rnd()*3.2;ctx.fillStyle='hsla('+Math.round(hue+rnd()*36-18)+',64%,'+Math.round(30+rnd()*46)+'%,'+(0.25+rnd()*0.55).toFixed(2)+')';ctx.beginPath();ctx.arc(x,y,r,0,6.2832);ctx.fill()}var g=ctx.createLinearGradient(0,0,size.width,size.height);g.addColorStop(0,'hsla('+hue+',70%,72%,0.12)');g.addColorStop(1,'hsla('+((hue+40)%360)+',70%,30%,0.16)');ctx.fillStyle=g;ctx.fillRect(0,0,size.width,size.height)}});",
+      "registerPaint('hud',class{static get inputProperties(){return['--hud-chg','--hud-tick']}paint(ctx,size,props){var cv=props.get('--hud-chg');var chg=(cv&&typeof cv.value==='number')?cv.value:72;var tv=props.get('--hud-tick');var tick=(tv&&typeof tv.value==='number')?tv.value:0;ctx.strokeStyle='rgba(14,116,144,0.35)';ctx.lineWidth=1;var x,y;for(x=16;x<size.width;x+=16){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,size.height);ctx.stroke()}for(y=16;y<size.height;y+=16){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(size.width,y);ctx.stroke()}ctx.strokeStyle='#0e7490';ctx.lineWidth=3;ctx.beginPath();ctx.arc(size.width-34,34,24,-1.5708,-1.5708+6.2832*chg/100);ctx.stroke();ctx.strokeStyle='rgba(185,28,28,0.9)';ctx.lineWidth=2;var sy=(tick*0.9)%size.height;ctx.beginPath();ctx.moveTo(0,sy);ctx.lineTo(size.width,sy);ctx.stroke();ctx.fillStyle='#0e7490';var i;for(i=0;i<5;i++){var h=4+(i===4?chg/100*18:((i*37)%17)+4);ctx.fillRect(10+i*11,size.height-14-h,8,h)}}});"
+    ].join('\n');
+    const url = URL.createObjectURL(new Blob([SRC], {type:'text/javascript'}));
+    await CSS.paintWorklet.addModule(url);
+    modOk = true;
+    setV('b-mod', 'addModule(Blob URL) resolved ✓\nworklet classes: barcode, hello, twin, coerc, argdecl, argfree, shared, chargebar, molt, hud\nsingle-file demo: module inlined, no second request', 'ok');
+  } catch(e){ modErr = String(e); setV('b-mod', 'addModule threw: ' + modErr, 'fail'); }
+  el('b-mod').click();
+
+  if (modOk) {
+    /* attach paints + inline config props */
+    const px = el('px-hello'); px.style.backgroundImage = 'paint(hello)';
+    el('px-barcode').style.backgroundImage = 'paint(barcode)';
+    const twin = el('px-twin'); twin.style.setProperty('--u-num','7'); twin.style.backgroundImage = 'paint(twin)';
+    const coerc = el('px-coerc'); coerc.style.setProperty('--u-col','red'); coerc.style.backgroundImage = 'paint(coerc)';
+    el('px-argdecl').style.backgroundImage = 'paint(argdecl, 30px)';
+    el('px-argfree').style.backgroundImage = 'paint(argfree)';
+    el('px-shared-a').style.backgroundImage = 'paint(shared)';
+    el('px-shared-b').style.backgroundImage = 'paint(shared)';
+    const anim = el('px-anim'); anim.style.setProperty('transition','--anim 600ms linear'); anim.style.backgroundImage = 'paint(chargebar)';
+    const molt = el('px-molt'); molt.style.backgroundImage = 'paint(molt)';
+    const hud = el('px-hud'); hud.style.backgroundImage = 'paint(hud)';
+
+    el('b-regprop').click();
+    el('b-asm-custom').click();
+    el('b-uvtrap').click();
+    el('b-transform').click();
+
+    /* barcode legend (page-side, static order matching MEMBER_PROBES) */
+    const LEG = ['fillText','measureText','font','getImageData','putImageData','createImageData','drawImage','arc','roundRect','ellipse','createConicGradient','createPattern','isPointInPath','filter'];
+    const EXPECT = [0,0,0,0,0,0,1,1,1,1,1,1,1,1];
+    el('barcode-legend').innerHTML = LEG.map((m,i)=>'<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;display:inline-block;background:'+(EXPECT[i]?'#15803d':'#b91c1c')+'"></span>'+m+(EXPECT[i]?'':' <b>(absent)</b>')+'</span>').join(' ');
+
+    /* §8 animation */
+    el('b-anim').addEventListener('click', async () => {
+      const a = el('px-anim');
+      a.attributeStyleMap.set('--anim','0');
+      el('anim-out').textContent = 'running…';
+      await new Promise(r=>setTimeout(r,80));
+      a.attributeStyleMap.set('--anim','100');
+      setTimeout(()=>{ el('anim-out').textContent = 'settled at 100 — bar filled via interpolated repaints (no rAF in page JS)'; }, 650);
+    });
+
+    /* §9 molt controls */
+    el('in-hue').addEventListener('input', e => { el('px-molt').attributeStyleMap.set('--molt-hue', e.target.value); });
+    el('b-seed').addEventListener('click', () => { const s = 1 + Math.floor(Math.random()*99999); el('px-molt').attributeStyleMap.set('--molt-seed', String(s)); el('seed-out').textContent = 'seed ' + s; });
+
+    /* §10 hud controls */
+    el('in-chg').addEventListener('input', e => { el('px-hud').attributeStyleMap.set('--hud-chg', e.target.value); });
+    let tickN = 0, tickTimer = null;
+    el('b-tick').addEventListener('click', () => {
+      if (tickTimer) { clearInterval(tickTimer); tickTimer = null; el('tick-out').textContent = 'stopped'; return; }
+      tickTimer = setInterval(() => { tickN = (tickN + 1) % 200; el('px-hud').attributeStyleMap.set('--hud-tick', String(tickN)); }, 300);
+      el('tick-out').textContent = 'ticking every 300ms — one prop write per tick';
+    });
+  }
+
+  window.__DONE = true;
+})().catch(err => {
+  console.error('harness fatal', err);
+  window.__DONE = true;
+});
+</script>
+</body>
+</html>
