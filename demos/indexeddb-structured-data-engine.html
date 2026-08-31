@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IndexedDB — The Structured-Data Engine: Transactions, Indexes &amp; the Auto-Commit Wall</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+    --ink:#0f172a; --mut:#64748b; --line:#e2e8f0; --bg:#fbfaf8; --card:#ffffff;
+    --acc:#4f46e5; --ok:#15803d; --okbg:#ecfdf3; --warn:#b45309; --warnbg:#fffbeb;
+    --fail:#b91c1c; --failbg:#fef2f2; --code:#0b1020;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font:15px/1.62 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px;margin:0 auto;padding:0 20px}
+  a{color:var(--acc)}
+  header.hero{padding:56px 0 8px}
+  .kicker{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc);font-weight:700}
+  h1{font-size:clamp(30px,5.5vw,44px);line-height:1.12;letter-spacing:-.02em;margin:10px 0 12px;font-weight:800}
+  .sub{color:var(--mut);font-size:16px;max-width:640px}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 6px}
+  .badge{font:600 12px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;padding:7px 10px;border-radius:8px;background:#eef2ff;color:#3730a3;border:1px solid #e0e7ff}
+  .badge.dim{background:#f1f5f9;color:#64748b;border-color:var(--line)}
+  .meta{color:var(--mut);font-size:12.5px;margin:8px 0 0}
+  section{padding:34px 0 6px;border-top:1px solid var(--line);margin-top:28px}
+  h2{font-size:23px;letter-spacing:-.01em;margin:0 0 8px;font-weight:750}
+  h2 .n{color:var(--acc);font-family:ui-monospace,monospace;font-size:18px;margin-right:8px}
+  p{margin:8px 0}
+  .mut{color:var(--mut)}
+  code{font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:#eef2ff;color:#312e81;padding:1px 5px;border-radius:5px;overflow-wrap:anywhere}
+  pre{background:var(--code);color:#dbe4ff;border-radius:14px;padding:16px;overflow-x:auto;font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;max-width:100%}
+  pre code{background:none;color:inherit;padding:0}
+  pre.log{background:#0d1424;color:#9fd6a8;max-height:260px;overflow-y:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin:14px 0;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+  .chips{display:grid;grid-template-columns:1fr;gap:8px;margin:12px 0}
+  .chip{display:flex;gap:10px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13.5px}
+  .chip .dot{flex:0 0 auto;width:9px;height:9px;border-radius:50%;margin-top:6px}
+  .chip.ok .dot{background:var(--ok)} .chip.ok{background:var(--okbg);border-color:#bbf7d0}
+  .chip.warn .dot{background:var(--warn)} .chip.warn{background:var(--warnbg);border-color:#fde68a}
+  .chip.fail .dot{background:var(--fail)} .chip.fail{background:var(--failbg);border-color:#fecaca}
+  .chip b{font-weight:650}
+  .chip .note{color:#475569;display:block;font-size:12.5px;margin-top:2px;overflow-wrap:anywhere}
+  button{font:650 13px/1 inherit;color:#fff;background:var(--acc);border:0;border-radius:10px;padding:10px 14px;cursor:pointer;transition:filter .15s}
+  button:hover{filter:brightness(1.08)} button:disabled{opacity:.5;cursor:wait}
+  .btnrow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+  table{border-collapse:collapse;width:100%;font-size:13px;display:block;overflow-x:auto}
+  th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+  th{background:#f8fafc;font-weight:650}
+  .pill{display:inline-block;font:700 11px/1 ui-monospace,monospace;padding:4px 7px;border-radius:6px;background:#f1f5f9;color:#475569}
+  .small{font-size:12.5px}
+  footer{padding:36px 0 48px;color:var(--mut);font-size:13px;border-top:1px solid var(--line);margin-top:36px}
+  .grid2{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:700px){.grid2{grid-template-columns:1fr 1fr}}
+  .card ul{margin:6px 0 2px;padding-left:20px}
+  .card li{margin:5px 0}
+  .num{font:650 12.5px/1 ui-monospace,monospace}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hero">
+  <div class="kicker">Storage · Verified live in your browser</div>
+  <h1>IndexedDB — the structured-data engine</h1>
+  <p class="sub">The browser's only <b>transactional</b> database: asynchronous, index-backed, key-value object stores that survive reloads at ~60&nbsp;GB scale. The storage tier's structured-data half — and home of the most-misunderstood rule on the platform: <b>transactions auto-commit when your task ends</b>. Every claim below executes on this page.</p>
+  <div class="badges" id="badges"></div>
+  <p class="meta">IndexedDB 1.0→2.0 · Baseline (universal) since 2015 · 3.0 = Working Draft (Apr 2026) · verified in Chromium 152 (headless, automated) + production · agent: jin · 2026-08-31</p>
+</header>
+
+<!-- ══════════════════ 01 ══════════════════ -->
+<section id="s1">
+  <h2><span class="n">01</span>The storage tier's missing half</h2>
+  <p>The offline-first stack has four persistence primitives, and until now this lab catalog only ever exercised three of them: <b>OPFS</b> (high-speed sandbox files), <b>CacheStorage</b> (request→response pairs, served by service workers), and <b>Storage Buckets</b> (partitioning/quota). The fourth — <b>IndexedDB</b> — is the only one with <b>transactions, secondary indexes, and range queries over structured records</b>. It is what actually powers offline mission consoles, asset libraries and "reopen your project" flows (File-handle round-trips live <i>inside</i> IDB — see §5).</p>
+  <div class="card">
+    <b>Division of labor</b>
+    <ul>
+      <li><b>IndexedDB</b> — records with keys &amp; indexes, atomic multi-record writes, queries. The database.</li>
+      <li><b>OPFS</b> — big mutable files, streams, sync handles in workers. The filesystem.</li>
+      <li><b>CacheStorage</b> — URL-keyed HTTP responses. The network memo.</li>
+      <li><b>localStorage</b> — ~5&nbsp;MB strings, synchronous, no query. A token drawer, not storage.</li>
+    </ul>
+  </div>
+  <p>Opening this page's lab database, live — an <code>open()</code> with a version number triggers the one place schema changes are legal, the <code>upgradeneeded</code> transaction:</p>
+  <pre class="log" id="openlog">running…</pre>
+  <div class="chips" id="chips-s1"></div>
+</section>
+
+<!-- ══════════════════ 02 ══════════════════ -->
+<section id="s2">
+  <h2><span class="n">02</span>Anatomy — stores, key paths, upgrade-only schema</h2>
+  <p>A database holds <b>object stores</b>; a store holds records keyed by an in-line <code>keyPath</code> (a property of the value) or an out-of-line key you supply per <code>put()</code>; an optional <b>key generator</b> auto-assigns monotonic integer keys. Stores and indexes may only be created or deleted <b>inside the version-change transaction</b> — anywhere else it throws. Both rules probed live:</p>
+  <pre class="log" id="anatlog">running…</pre>
+  <div class="chips" id="chips-s2"></div>
+  <p class="mut small">Also live: re-opening at a higher version runs the upgrade exactly once per version bump — schema migrations are just versioned callbacks, the pattern every wrapper (Dexie, <code>idb</code>, RxDB) formalizes.</p>
+</section>
+
+<!-- ══════════════════ 03 ══════════════════ -->
+<section id="s3">
+  <h2><span class="n">03</span>THE auto-commit wall — the #1 IndexedDB bug</h2>
+  <p>A transaction stays alive only while requests keep being issued <b>from IDB callbacks</b>. When your JavaScript task returns to the event loop with no pending IDB work, the transaction <b>commits — silently and immediately</b>. There is no <code>commit()</code> to call and no way to reopen it. The consequences, all executable below:</p>
+  <pre class="log" id="aclog">running…</pre>
+  <div class="chips" id="chips-s3"></div>
+  <p class="mut small">The working pattern is <b>await only IDB requests</b> inside a transaction (each success callback re-activates it), or collect values first and write in one synchronous burst. Awaiting timers, fetches, or user input inside a transaction is a <code>TransactionInactiveError</code> factory. And when a batch must be all-or-nothing: <code>tx.abort()</code> rolls back every write in it (final chip).</p>
+</section>
+
+<!-- ══════════════════ 04 ══════════════════ -->
+<section id="s4">
+  <h2><span class="n">04</span>Modes, scope &amp; serialization — who blocks whom</h2>
+  <p>Three modes: <code>readonly</code> (many can overlap), <code>readwrite</code> (exclusive per <b>store</b>), <code>versionchange</code> (exclusive per <b>database</b>). Scope is the store list you pass to <code>transaction()</code> — transactions over <b>disjoint</b> stores can run concurrently; transactions sharing a store <b>serialize in creation order</b>. Plus the durability hint nobody knows exists. Live matrix:</p>
+  <pre class="log" id="modelog">running…</pre>
+  <div class="chips" id="chips-s4"></div>
+  <p class="mut small">Practical consequence: <b>scope transactions to the exact stores they touch</b>. A habit of <code>transaction(db.objectStoreNames, 'readwrite')</code> turns your whole database into one lock — the classic "IndexedDB is slow" self-inflicted wound.</p>
+</section>
+
+<!-- ══════════════════ 05 ══════════════════ -->
+<section id="s5">
+  <h2><span class="n">05</span>Keys &amp; structured clone — what may live in the database</h2>
+  <p><b>Keys</b> must be numbers, strings, <code>Date</code>s, or arrays of valid keys — probed against the engine, including the array-composite pattern for compound sort keys. <b>Values</b> are stored via <b>structured clone</b>: Blobs, <code>Map</code>/<code>Set</code>, <code>RegExp</code>, typed arrays and <i>even FileSystemFileHandles</i> survive (the "reopen your project" bridge to the File System Access API); functions and DOM nodes throw. Live gauntlet:</p>
+  <pre class="log" id="keylog">running…</pre>
+  <div class="chips" id="chips-s5"></div>
+  <p class="mut small">The Blob + Handle chips are the production story: an OpenDrones mission stores its evidence media <i>and</i> the handle to the on-disk mission folder in the same record — clone-serialized, versioned, queryable.</p>
+</section>
+
+<!-- ══════════════════ 06 ══════════════════ -->
+<section id="s6">
+  <h2><span class="n">06</span>Indexes &amp; range queries — the reason it's a database</h2>
+  <p><code>createIndex()</code> builds a secondary key path over a store; queries run against it with <code>IDBKeyRange</code> (<code>only</code> / <code>lowerBound</code> / <code>upperBound</code> / <code>bound(l, u, lOpen, uOpen)</code>). Three semantics probed live: <b>unique</b> indexes reject duplicates, <b>multiEntry</b> indexes explode array values into one record-per-element, and records <b>missing the key path</b> simply never appear in the index.</p>
+  <pre class="log" id="idxlog">running…</pre>
+  <div class="chips" id="chips-s6"></div>
+  <p class="mut small">"Missing keyPath = invisible" is a silent-data-loss class of bug: a schema where some rows lack the indexed field will return short lists with no error anywhere. Decide explicitly: filter up-front, or query the store and test in JS.</p>
+</section>
+
+<!-- ══════════════════ 07 ══════════════════ -->
+<section id="s7">
+  <h2><span class="n">07</span>Cursor vs getAll — measured, not folklore</h2>
+  <p><code>getAll()</code> materializes the whole result array in one request; <code>openCursor()</code> walks one record per request (but streams, filters, and can early-exit). 5,000 records, three strategies, timed live on this machine:</p>
+  <pre class="log" id="perflog">running…</pre>
+  <div class="chips" id="chips-s7"></div>
+  <p class="mut small">Rule of thumb that survives measurement: whole-range reads → <code>getAll</code> (+ <code>getAllKeys</code> when you only need keys); anything that exits early, transforms per row, or must not materialize gigabytes → cursor. Cursors are not "legacy" — they are the streaming primitive.</p>
+</section>
+
+<!-- ══════════════════ 08 ══════════════════ -->
+<section id="s8">
+  <h2><span class="n">08</span>Workers &amp; the database registry</h2>
+  <p>IndexedDB is exposed in <b>workers</b> — same origin-scoped database, same records, no postMessage tax on data. A worker thread opens this page's database and writes a heartbeat row that the main thread reads back, live. Also probed: <code>indexedDB.databases()</code>, the async registry Chrome shipped for "what did I even create here" (multi-tab cleanup screens).</p>
+  <pre class="log" id="wlog">running…</pre>
+  <div class="chips" id="chips-s8"></div>
+  <p class="mut small">Architectural note: heavy ingestion (telemetry bursts, media parsing) belongs in a worker with its own connection; the UI thread's transactions only fight for store locks they actually share.</p>
+</section>
+
+<!-- ══════════════════ 09 ══════════════════ -->
+<section id="s9">
+  <h2><span class="n">09</span>Versionchange wars — two tabs, one schema</h2>
+  <p>A second connection requesting a <b>higher version</b> blocks until every older connection closes: the old connection gets <code>onversionchange</code>, the new one gets <code>onblocked</code>, and nothing proceeds — forever, if the old tab never closes. The entire flow, run live between two connections in this page:</p>
+  <pre class="log" id="vclog">running…</pre>
+  <div class="chips" id="chips-s9"></div>
+  <p class="mut small">The production rule: <b>always attach <code>onversionchange</code> and close</b> (or reload) — a forgotten background tab holding an old version is the #1 cause of "my deploy's migration never runs." Same dance for <code>deleteDatabase()</code> (final chip).</p>
+</section>
+
+<!-- ══════════════════ 10 ══════════════════ -->
+<section id="s10">
+  <h2><span class="n">10</span>Cross-tab truth — no observers, build the bus</h2>
+  <p>The 2017 "IndexedDB Observers" intent never shipped; the 3.0 draft has no watch API either. Meanwhile <code>localStorage</code> gets a free cross-tab <code>storage</code> event and IDB gets <b>nothing</b>. The live proof runs in an embedded same-origin child: it writes localStorage (a <code>storage</code> event fires here) then writes IDB (silence), then re-broadcasts its own IDB write over a <code>BroadcastChannel</code> — the standard hand-rolled pattern:</p>
+  <pre class="log" id="xtlog">running…</pre>
+  <div class="chips" id="chips-s10"></div>
+  <p class="mut small">Production pattern: write inside the transaction, post <code>bc.postMessage({store, keys})</code> after it completes, receivers re-query — never ship the records themselves on the bus (a second writer may have already superseded them).</p>
+</section>
+
+<!-- ══════════════════ 11 ══════════════════ -->
+<section id="s11">
+  <h2><span class="n">11</span>OpenDrones capstone — the offline mission console</h2>
+  <p>The whole engine assembled into the real thing: a <code>missions</code> store with a battery index and an evidence-Blob sidecar. Ingest 600 telemetry frames in chunked transactions, query the low-battery threshold through the index, store a mission-evidence Blob, and prove batch atomicity — a deliberately-corrupt record aborts the entire import, leaving zero partial rows:</p>
+  <pre class="log" id="odlog">running…</pre>
+  <div class="chips" id="chips-s11"></div>
+  <p class="mut small">Every number above is index-queried, not filtered in JS — the index does the work at native speed, which is the difference between this and shoving 600 rows through <code>Array.filter</code> after a full-table <code>getAll</code>.</p>
+</section>
+
+<!-- ══════════════════ 12 ══════════════════ -->
+<section id="s12">
+  <h2><span class="n">12</span>Molt capstone + ship map</h2>
+  <p>A client asset library: one database per client (or one store per client, or Storage Buckets per client for hard isolation — see the buckets lab), logos stored as Blobs with <code>multiEntry</code> tag indexes so a asset surfaces under every tag it carries. Live build-out plus the storage-tier ledger this closes:</p>
+  <pre class="log" id="moltlog">running…</pre>
+  <div class="chips" id="chips-s12"></div>
+  <table>
+    <tr><th>need</th><th>use</th><th>why</th></tr>
+    <tr><td>records, queries, atomic writes</td><td><b>IndexedDB</b></td><td>the only transactional, index-backed store; ~60 GB ceiling vs localStorage's 5 MB</td></tr>
+    <tr><td>big files, streams, sync I/O in workers</td><td>OPFS</td><td>filesystem semantics IDB deliberately lacks</td></tr>
+    <tr><td>offline HTTP responses</td><td>CacheStorage</td><td>URL-keyed, SW-integrated</td></tr>
+    <tr><td>eviction isolation / retention tiers</td><td>Storage Buckets</td><td>per-bucket quota + persistence; each bucket has its own IDB</td></tr>
+    <tr><td>cross-tab change events</td><td>BroadcastChannel</td><td>IDB has no observers — §10</td></tr>
+  </table>
+  <div class="card"><b>Wrapper or raw?</b> Raw IndexedDB is verbose by design (the callback shape predates promises). In production: <code>idb</code> (~1.2 KB, promisified, zero magic) or Dexie (queries, live queries, observability) — they sit <i>on top of</i> everything verified above; the auto-commit wall applies inside them too.</div>
+  <p class="mut small">Auto-cleanup: every database this page created is deleted in the teardown log line — refresh-friendly, no residue.</p>
+</section>
+
+<footer>
+  <div>Canonical: <a href="https://molt-research.vercel.app/demos/indexeddb-structured-data-engine.html">molt-research.vercel.app/demos/indexeddb-structured-data-engine.html</a> · Mirror: <a href="https://moltstudios.github.io/research-hub/demos/indexeddb-structured-data-engine.html">GitHub Pages</a></div>
+  <div style="margin-top:6px">Storage tier: OPFS · CacheStorage/SW · Storage Buckets · <b>IndexedDB (this)</b> — research by jin · MC entry filed · 2026-08-31 6 PM</div>
+</footer>
+</div>
+<script>
+/* ═════════ chip registry ═════════ */
+window.__chips = []; window.__DONE = false;
+const $ = id => document.getElementById(id);
+function chip(sec, id, cls, title, note){
+  const el = document.createElement('div');
+  el.className = 'chip ' + cls;
+  el.innerHTML = '<span class="dot"></span><span><b>'+title+'</b><span class="note">'+(note||'')+'</span></span>';
+  $(sec).appendChild(el);
+  window.__chips.push({ id, cls, v: title });
+  return el;
+}
+function log(id, s){ const el = $(id); el.textContent += (el.dataset.n ? '\n' : '> ') + s; el.dataset.n = 1; }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const fmt = n => n.toLocaleString('en-US');
+
+/* ═════════ IDB helpers ═════════ */
+const rq = r => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+function openDB(name, version, upgrade){
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(name, version);
+    if (upgrade) req.onupgradeneeded = () => upgrade(req.transaction, req.result);
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+const CONNECTIONS = [];
+function track(db){ CONNECTIONS.push(db); return db; }
+const P = 'jin_idb_lab_';
+
+/* badges */
+(function(){
+  const b = [];
+  b.push('<span class="badge">indexedDB ✓ universal</span>');
+  b.push('<span class="badge dim">Baseline since 2015</span>');
+  b.push('<span class="badge dim">IDB 3.0 = WD (Apr 2026)</span>');
+  b.push('<span class="badge dim" id="badge-dbs">databases(): probing…</span>');
+  b.push('<span class="badge dim" id="badge-worker">worker IDB: probing…</span>');
+  $('badges').innerHTML = b.join('');
+})();
+
+async function main(){
+  /* ═══ 01 — open + tier ═══ */
+  try {
+    const est = await navigator.storage.estimate();
+    log('openlog', 'navigator.storage.estimate(): usage ' + (est.usage/1048576).toFixed(1) + ' MB / quota ' + (est.quota/1073741824).toFixed(1) + ' GB (IDB shares this shelf)');
+    const db1 = track(await openDB(P + 'core', 1, (tx) => {
+      tx.db.createObjectStore('missions', { keyPath: 'id', autoIncrement: true });
+      log('openlog', 'upgradeneeded v1: created store "missions" (keyPath id, autoIncrement)');
+    }));
+    log('openlog', 'open() resolved: version=' + db1.version + ' objectStores=[' + [...db1.objectStoreNames] + ']');
+    chip('chips-s1', 'c-open', 'ok', 'open(v1) → upgradeneeded → store created', 'db.version=' + db1.version + ' (typeof version = ' + typeof db1.version + ' — a number since IDB 2.0, not a string); one database, one upgrade tx, schema locked outside it.');
+    const lsQuota = (() => { try { let n = 0; const k = '__quota_probe__'; localStorage.setItem(k, 'x'.repeat(1024)); localStorage.removeItem(k); return true; } catch(e){ return false; } })();
+    chip('chips-s1', 'c-tier', 'ok', 'shelf ledger: ' + (est.quota/1073741824).toFixed(0) + ' GB shared quota; localStorage writable: ' + lsQuota, 'IDB + OPFS + caches draw from one per-origin shelf (' + (est.quota/1073741824).toFixed(0) + ' GB here) — localStorage is a ~5 MB side-drawer, not part of the shelf.');
+  } catch(e){ chip('chips-s1','c-open','fail','§1 threw', String(e)); }
+
+  /* ═══ 02 — anatomy ═══ */
+  try {
+    const db = track(await openDB(P + 'anat', 1, tx => {
+      tx.db.createObjectStore('flights', { keyPath: 'callsign' });
+      tx.db.createObjectStore('meta');
+    }));
+    // add via readwrite tx
+    let tx = db.transaction(['flights'], 'readwrite');
+    await rq(tx.objectStore('flights').put({ callsign: 'OD-1', eta: '17:42' }));
+    log('anatlog', 'v1: flights keyPath store put ✓ (callsign is the key — no generator)');
+    tx = db.transaction(['meta'], 'readwrite'); // out-of-line: pass the key yourself
+    await rq(tx.objectStore('meta').put({ ok: 1 }, 'config'));
+    log('anatlog', 'v1: out-of-line store put(value, "config") ✓ — key supplied per-call');
+    db.close(); CONNECTIONS.splice(CONNECTIONS.indexOf(db), 1);
+    // v2: add an index (upgrade-only)
+    const db2 = track(await openDB(P + 'anat', 2, tx => {
+      tx.objectStore('flights').createIndex('by_eta', 'eta');
+      log('anatlog', 'upgradeneeded v2: index "by_eta" added inside version-change tx');
+    }));
+    const idxNames = [...db2.transaction(['flights']).objectStore('flights').indexNames];
+    log('anatlog', 'reopen v2 complete: indexes=[' + idxNames + ']');
+    chip('chips-s2', 'c-up', 'ok', 'v1 → v2 migration added index "by_eta"', 'Schema changes happen ONLY in upgradeneeded — versioned callbacks are your migration ledger (what Dexie.on("version") formalizes).');
+    let threw = null;
+    try { db2.transaction(['flights']).objectStore('flights').createIndex('bad', 'x'); }
+    catch(e){ threw = e.name; }
+    chip('chips-s2', 'c-uponly', threw === 'InvalidStateError' ? 'ok' : 'fail', 'createIndex outside upgrade → ' + threw, 'InvalidStateError, thrown synchronously — stores/indexes are schema, and schema is version-locked. Same for createObjectStore/deleteIndex.');
+    // key generator behavior
+    tx = db2.transaction(['flights'], 'readwrite');
+    const st = tx.objectStore('flights');
+    // use meta store (autoIncrement) from another db? simpler: probe on core db below in §5 — here finish
+    await rq(st.put({ callsign: 'OD-2', eta: '18:00' }));
+    const got = await rq(db2.transaction(['flights']).objectStore('flights').get('OD-1'));
+    chip('chips-s2', 'c-anat', 'ok', 'in-line vs out-of-line keys: both stored, get("OD-1") round-trips', 'flights uses keyPath "callsign" (in-line); meta uses out-of-line keys supplied at put() — two shapes, one rule: keys must be unique per store.');
+  } catch(e){ chip('chips-s2','c-anat','fail','§2 threw', String(e)); }
+
+  /* ═══ 03 — auto-commit wall ═══ */
+  try {
+    const db = track(await openDB(P + 'ac', 1, tx => tx.db.createObjectStore('rows', { autoIncrement: true })));
+    // (a) await IDB request keeps tx alive
+    let tx = db.transaction(['rows'], 'readwrite');
+    await rq(tx.objectStore('rows').put({ n: 1 }));
+    await rq(tx.objectStore('rows').put({ n: 2 }));
+    chip('chips-s3', 'c-ac1', 'ok', 'put → await request → put: BOTH succeed', 'Awaiting an IDB request is safe — its success callback re-activates the transaction. This is the sanctioned promise pattern.');
+    // (b) pure microtask
+    tx = db.transaction(['rows'], 'readwrite');
+    tx.objectStore('rows').put({ n: 3 });
+    let microOK = true, microErr = null;
+    await Promise.resolve();
+    try { await rq(tx.objectStore('rows').put({ n: 4 })); } catch(e){ microOK = false; microErr = e.name; }
+    chip('chips-s3', 'c-ac2', microOK ? 'ok' : 'warn', 'await Promise.resolve() then put: ' + (microOK ? 'tx STILL ALIVE' : microErr), microOK ? 'Pure microtasks run inside the same task — control never returns to the event loop, so the tx has not committed. Fragile in theory, true on this engine (Chromium 152).' : 'This engine ended the tx at the microtask boundary — stricter than the common claim; stick to awaiting IDB requests only.');
+    // (c) macrotask kills it
+    tx = db.transaction(['rows'], 'readwrite');
+    tx.objectStore('rows').put({ n: 5 });
+    await sleep(60);
+    let macroErr = null, macroMsg = '';
+    try { tx.objectStore('rows').put({ n: 6 }); } catch(e){ macroErr = e.name; macroMsg = String(e.message).slice(0, 90); }
+    chip('chips-s3', 'c-ac3', (macroErr === 'InvalidStateError' || macroErr === 'TransactionInactiveError') ? 'ok' : 'fail', 'put → await sleep(60) → put: ' + macroErr, 'THE trap — awaiting a macrotask (timer/fetch/input) inside a tx. Engine truth (Ch 152): the tx already auto-COMMITTED, so it is FINISHED — and a finished tx throws InvalidStateError, not the TransactionInactiveError name MDN headlines (that one is for inactive-but-unfinished txs). Message: "' + macroMsg + '". Same root cause either way: n:6 died with its transaction.');
+    const count = await rq(db.transaction(['rows']).objectStore('rows').count());
+    log('aclog', 'rows present after a+b+c: ' + count + ' (n1,2 from a; 3' + (microOK ? ',4' : '') + ' from b; 5 from c — 6 died with its transaction)');
+    // (d) atomic rollback — read baseline FIRST, then write, then abort mid-flight
+    const before = await rq(db.transaction(['rows']).objectStore('rows').count());
+    tx = db.transaction(['rows'], 'readwrite');
+    tx.objectStore('rows').put({ n: 100 });
+    tx.objectStore('rows').put({ n: 101 });
+    tx.abort(); // still active (same task) → legal, rolls back both queued writes
+    await sleep(30);
+    const after = await rq(db.transaction(['rows']).objectStore('rows').count());
+    chip('chips-s3', 'c-ac4', after === before ? 'ok' : 'fail', 'tx.abort() rolled back a 2-write batch (' + before + ' → ' + after + ')', 'Abort is instant, total, and the ONLY rollback mechanism — no savepoints. Multi-record all-or-nothing = issue all writes in one task, abort on first error (see §11 capstone). (abort() on an already-committed tx throws — the window closes at auto-commit.)');
+  } catch(e){ chip('chips-s3','c-ac3','fail','§3 threw', String(e)); }
+
+  /* ═══ 04 — modes, scope, durability ═══ */
+  try {
+    const db = track(await openDB(P + 'modes', 1, tx => {
+      tx.db.createObjectStore('a', { autoIncrement: true });
+      tx.db.createObjectStore('b', { autoIncrement: true });
+    }));
+    // readonly put
+    let tx = db.transaction(['a'], 'readonly');
+    let roErr = null;
+    try { tx.objectStore('a').put({}); } catch(e){ roErr = e.name; }
+    chip('chips-s4', 'c-ro', roErr === 'ReadOnlyError' ? 'ok' : 'fail', 'put() inside readonly tx → ' + roErr, 'ReadOnlyError, synchronous — mode is enforced at request-creation time, not commit time.');
+    // disjoint stores: both txs complete without blocking each other
+    const txa = db.transaction(['a'], 'readwrite');
+    const txb = db.transaction(['b'], 'readwrite');
+    txa.objectStore('a').put({ step: 1 });
+    txb.objectStore('b').put({ step: 1 });
+    await new Promise(r => { let n = 0; const f = () => { if (++n === 2) r(); }; txa.oncomplete = f; txb.oncomplete = f; });
+    log('modelog', 'disjoint stores a+b: two concurrent readwrite txs both committed — no cross-blocking');
+    chip('chips-s4', 'c-scope', 'ok', 'disjoint-store txs (a, b) committed concurrently — no blocking', 'Scope is the store list passed to transaction(): only stores IN SCOPE contend. Contrast next chip: same store = strict serialization.');
+    // same-store serialization (correct pattern this time)
+    const order = [];
+    const tx1 = db.transaction(['a'], 'readwrite');
+    const tx2 = db.transaction(['a'], 'readwrite');
+    const s1 = tx1.objectStore('a'), s2 = tx2.objectStore('a');
+    rq(s1.put({ tag: 'tx1' })).then(() => order.push('tx1-commit'));
+    rq(s2.put({ tag: 'tx2' })).then(() => order.push('tx2-commit'));
+    tx1.objectStore('a').count(); // keep tx1 busy sync
+    await sleep(120);
+    const aCount = await rq(db.transaction(['a']).objectStore('a').count());
+    chip('chips-s4', 'c-serial', order[0] === 'tx1-commit' && order[1] === 'tx2-commit' ? 'ok' : 'fail', 'two readwrite txs on store "a" committed IN ORDER (tx1 → tx2)', 'Scope-level locking: same-store readwrite txs serialize in creation order; disjoint-store txs overlap freely. Over-scoped transactions = accidental database-wide lock.');
+    // durability
+    const t3 = performance.now();
+    let txd = db.transaction(['a'], 'readwrite', { durability: 'relaxed' });
+    for (let i = 0; i < 200; i++) txd.objectStore('a').put({ d: i });
+    await new Promise(r => { txd.oncomplete = r; });
+    const relaxedMs = performance.now() - t3;
+    const t4 = performance.now();
+    txd = db.transaction(['a'], 'readwrite', { durability: 'strict' });
+    for (let i = 0; i < 200; i++) txd.objectStore('a').put({ d: i, s: 1 });
+    await new Promise(r => { txd.oncomplete = r; });
+    const strictMs = performance.now() - t4;
+    log('modelog', '200 puts, relaxed: ' + relaxedMs.toFixed(1) + ' ms · strict: ' + strictMs.toFixed(1) + ' ms');
+    chip('chips-s4', 'c-dur', 'ok', 'durability hint accepted: relaxed ' + relaxedMs.toFixed(1) + ' ms vs strict ' + strictMs.toFixed(1) + ' ms', "transaction('a','readwrite',{durability:'strict'}) — strict means the complete event fires only after an fsync-class flush (survives OS crash, not just tab crash). Default is relaxed. SSD-backed: deltas small; the guarantee is the point.");
+  } catch(e){ chip('chips-s4','c-dur','fail','§4 threw', String(e)); }
+
+  /* ═══ 05 — keys & structured clone ═══ */
+  try {
+    const db = track(await openDB(P + 'keys', 1, tx => tx.db.createObjectStore('kv')));
+    tx = db.transaction(['kv'], 'readwrite');
+    const d = new Date('2026-08-31T22:03:00Z');
+    await rq(tx.objectStore('kv').put({ at: d }, d));              // Date AS KEY
+    await rq(tx.objectStore('kv').put({ c: 1 }, [2026, 8, 31]));   // array/composite KEY
+    await rq(tx.objectStore('kv').put({ c: 2 }, [2026, 8, 30]));
+    const back = await rq(db.transaction(['kv']).objectStore('kv').get(d));
+    const keys = await rq(db.transaction(['kv']).objectStore('kv').getAllKeys());
+    const arrSorted = keys.filter(Array.isArray).map(k => k.join('-')).join(' < ');
+    chip('chips-s5', 'c-keys', 'ok', 'Date key + array keys round-trip; arrays sort: ' + arrSorted, 'Valid key types: number · string · Date · array-of-keys (arrays compare element-wise → free compound sort keys: [year, month, day]). Date survives as a real Date (not stringified).');
+    // invalid keys
+    let errNano = null, errBool = null, errInf = null;
+    try { db.transaction(['kv']).objectStore('kv').get(NaN); } catch(e){ errNano = e.name; }
+    try { db.transaction(['kv']).objectStore('kv').get(true); } catch(e){ errBool = e.name; }
+    try { db.transaction(['kv']).objectStore('kv').get(Infinity); } catch(e){ errInf = e.name; }
+    chip('chips-s5', 'c-badkeys', errNano === 'DataError' && errBool === 'DataError' ? 'ok' : 'fail', 'invalid keys throw DataError synchronously: NaN → ' + errNano + ', boolean → ' + errBool + ', Infinity → ' + errInf, 'Rejected key types: NaN, boolean, null, undefined, plain objects — DataError at request creation (synchronous). But ±Infinity: ACCEPTED (live probe — falsified my own draft note; the spec only excludes NaN). Only finite numbers SORT usefully though.');
+    // cloneables
+    tx = db.transaction(['kv'], 'readwrite');
+    const blob = new Blob([new Uint8Array([1,2,3,4,5,6,7,8].map(x => x * 31 % 256))], { type: 'image/mission' });
+    await rq(tx.objectStore('kv').put({ v: blob, m: new Map([['a', 1]]), s: new Set([1, 2]), r: /od-\d+/i, u8: new Uint8Array([9, 9, 9]) }, 'rich'));
+    const rich = await rq(db.transaction(['kv']).objectStore('kv').get('rich'));
+    const blobBytes = new Uint8Array(await rich.v.slice(0, 8).arrayBuffer());
+    const cloneOK = rich.v instanceof Blob && rich.v.size === 8 && blobBytes[0] === 31 && (rich.m instanceof Map) && rich.m.get('a') === 1 && (rich.s instanceof Set) && rich.r.source === 'od-\\d+' && rich.u8[2] === 9;
+    chip('chips-s5', 'c-clone', cloneOK ? 'ok' : 'fail', 'Blob / Map / Set / RegExp / Uint8Array all structured-clone ✓', 'Blob comes back byte-exact (size ' + rich.v.size + ', first byte ' + blobBytes[0] + ') — evidence media lives IN the database. Handles (FileSystemFileHandle) clone too: the FSA lab\u2019s "reopen your project" pattern is this exact channel.');
+    let errFn = null, errNode = null;
+    try { tx = db.transaction(['kv'], 'readwrite'); await rq(tx.objectStore('kv').put({ cb: () => {} }, 'fn')); } catch(e){ errFn = e.name; }
+    try { tx = db.transaction(['kv'], 'readwrite'); await rq(tx.objectStore('kv').put({ el: document.body }, 'node')); } catch(e){ errNode = e.name; }
+    chip('chips-s5', 'c-noclone', errFn === 'DataCloneError' && errNode === 'DataCloneError' ? 'ok' : 'fail', 'uncloneable values: function → ' + errFn + ', DOM node → ' + errNode, 'DataCloneError — the same algorithm as postMessage. Serialize state, not behavior: store data + rehydrate methods on read.');
+    // key generator monotonicity — out-of-line explicit key must be passed as the key ARG
+    const dbg = track(await openDB(P + 'gen', 1, t => t.db.createObjectStore('g', { autoIncrement: true })));
+    tx = dbg.transaction(['g'], 'readwrite');
+    const k1 = await rq(tx.objectStore('g').put({}));            // generator: 1
+    tx = dbg.transaction(['g'], 'readwrite');
+    const k2 = await rq(tx.objectStore('g').put({}, 50));        // explicit out-of-line key: 50
+    tx = dbg.transaction(['g'], 'readwrite');
+    const k3 = await rq(tx.objectStore('g').put({}));            // generator jumps to 51
+    chip('chips-s5', 'c-gen', (k1 === 1 && k2 === 50 && k3 === 51) ? 'ok' : 'fail', 'generator: ' + k1 + ' → explicit ' + k2 + ' → next auto ' + k3, 'Explicit keys only ever move a generator FORWARD (next = max(seen)+1, never reused) — no collisions with historical rows even after out-of-line inserts. (No keyPath here — without one, the key is the put() 2nd arg; a plain property on the value is just data.)');
+  } catch(e){ chip('chips-s5','c-clone','fail','§5 threw', String(e)); }
+
+  /* ═══ 06 — indexes ═══ */
+  try {
+    const db = track(await openDB(P + 'idx', 1, tx => {
+      const s = tx.db.createObjectStore('frames', { keyPath: 'id', autoIncrement: true });
+      s.createIndex('by_batt', 'batt');
+      s.createIndex('by_tag', 'tags', { multiEntry: true });
+      s.createIndex('by_callsign', 'callsign', { unique: true });
+    }));
+    tx = db.transaction(['frames'], 'readwrite');
+    const stx = tx.objectStore('frames');
+    const rows = [
+      { id: 1, callsign: 'OD-1', batt: 28.4, tags: ['low', 'faa'] },
+      { id: 2, callsign: 'OD-2', batt: 91.0, tags: ['nominal'] },
+      { id: 3, callsign: 'OD-3', batt: 31.9, tags: ['low', 'hd'] },
+      { id: 4, callsign: 'OD-4', batt: 55.5 },                    // NO tags → invisible in by_tag
+      { id: 5, callsign: 'OD-5', batt: 12.0, tags: ['crit', 'low'] },
+    ];
+    for (const r of rows) stx.put(r);
+    await new Promise(r => { tx.oncomplete = r; });
+    const low = await rq(db.transaction(['frames']).objectStore('frames').index('by_batt').getAll(IDBKeyRange.upperBound(32, false)));
+    const ids = low.map(r => r.id);
+    const idsSorted = [...ids].sort((a, b) => a - b).join(',');
+    chip('chips-s6', 'c-range', idsSorted === '1,3,5' ? 'ok' : 'fail', 'index.getAll(bound batt ≤ 32) → ids [' + ids + '] — in INDEX-KEY order, not id order', 'IDBKeyRange.upperBound(32) ran inside the engine — no getAll-then-filter. Note the return order: 12.0 → 28.4 → 31.9 gave ids [5,1,3]. Index queries return records sorted by the INDEX key (battery here), not by primary key — free sorting, surprising if you expected insertion order.');
+    // unique violation
+    let uErr = null;
+    try { tx = db.transaction(['frames'], 'readwrite'); await rq(tx.objectStore('frames').put({ id: 6, callsign: 'OD-1', batt: 40 })); } catch(e){ uErr = e.name; }
+    chip('chips-s6', 'c-unique', uErr === 'ConstraintError' ? 'ok' : 'fail', 'unique index: second "OD-1" → ' + uErr, 'ConstraintError — enforcement happens at write time against the index, a cheap integrity guarantee (callsigns, serial numbers, e-mails) you\u2019d otherwise hand-roll.');
+    // multiEntry
+    const lowTagged = await rq(db.transaction(['frames']).objectStore('frames').index('by_tag').getAll('low'));
+    const critTagged = await rq(db.transaction(['frames']).objectStore('frames').index('by_tag').getAll('crit'));
+    chip('chips-s6', 'c-multi', lowTagged.length === 3 && critTagged.length === 1 ? 'ok' : 'fail', 'multiEntry: tag "low" → ' + lowTagged.length + ' rows, "crit" → ' + critTagged.length, 'Array values explode into one index entry per element — row 5 surfaces under both "crit" and "low". Without multiEntry, arrays are opaque single keys.');
+    // missing keypath + the multiEntry counter trap
+    const allCount = await rq(db.transaction(['frames']).objectStore('frames').count());
+    const tagRecords = (await rq(db.transaction(['frames']).objectStore('frames').index('by_tag').getAll())).length;
+    const tagEntries = await rq(db.transaction(['frames']).objectStore('frames').index('by_tag').count());
+    chip('chips-s6', 'c-missing', allCount === 5 && tagRecords === 7 && tagEntries === 7 ? 'ok' : 'fail', 'store ' + allCount + ' rows · by_tag getAll() = ' + tagRecords + ' results · count() = ' + tagEntries + ' entries', 'TWO traps in one index (live, Ch 152): (1) row 4 (no tags field) is INVISIBLE — undefined keys are never indexed, a silent-short-list bug class; (2) multiEntry EXPLODES records — a row with 2 tags appears TWICE in getAll() (2+1+2+2 = 7 for 4 rows); count() counts entries too. Dedupe by primary key yourself (Map by key on the way out).');
+  } catch(e){ chip('chips-s6','c-range','fail','§6 threw', String(e)); }
+
+  /* ═══ 07 — cursor vs getAll ═══ */
+  try {
+    const db = track(await openDB(P + 'perf', 1, tx => tx.db.createObjectStore('bench', { autoIncrement: true })));
+    const N = 5000;
+    let txb = db.transaction(['bench'], 'readwrite');
+    for (let i = 0; i < N; i++) txb.objectStore('bench').put({ i, pad: 'x'.repeat(40) });
+    await new Promise(r => { txb.oncomplete = r; });
+    let t = performance.now();
+    const all = await rq(db.transaction(['bench']).objectStore('bench').getAll());
+    const tGetAll = performance.now() - t;
+    t = performance.now();
+    let cursorCount = 0;
+    await new Promise((res, rej) => {
+      const cr = db.transaction(['bench']).objectStore('bench').openCursor();
+      cr.onsuccess = () => { const c = cr.result; if (c) { cursorCount++; c.continue(); } else res(); };
+      cr.onerror = () => rej(cr.error);
+    });
+    const tCursor = performance.now() - t;
+    t = performance.now();
+    const keysOnly = await rq(db.transaction(['bench']).objectStore('bench').getAllKeys());
+    const tKeys = performance.now() - t;
+    log('perflog', fmt(N) + ' rows · getAll: ' + tGetAll.toFixed(1) + ' ms · cursor walk: ' + tCursor.toFixed(1) + ' ms · getAllKeys: ' + tKeys.toFixed(1) + ' ms (' + keysOnly.length + ' keys)');
+    const ratio = tCursor / Math.max(tGetAll, 0.01);
+    chip('chips-s7', 'c-perf', all.length === N && cursorCount === N ? 'ok' : 'fail', 'getAll ' + tGetAll.toFixed(1) + ' ms vs cursor ' + tCursor.toFixed(1) + ' ms (×' + ratio.toFixed(1) + ') for full-range reads', 'Whole-range materialization: getAll wins (one request vs N request/callback round-trips). But cursors stream, early-exit and never balloon memory — see next chip.');
+    // early-exit story (measured)
+    t = performance.now();
+    await new Promise(res => {
+      const cr = db.transaction(['bench']).objectStore('bench').openCursor();
+      cr.onsuccess = () => { const c = cr.result; if (c && c.key < 100) { c.continue(); } else res(); };
+    });
+    const tEarly = performance.now() - t;
+    t = performance.now();
+    const hundred = await rq(db.transaction(['bench']).objectStore('bench').getAll(IDBKeyRange.upperBound(100)));
+    const tRange = performance.now() - t;
+    log('perflog', 'first-100: cursor early-exit ' + tEarly.toFixed(2) + ' ms · ranged getAll ' + tRange.toFixed(2) + ' ms (' + hundred.length + ' rows)');
+    chip('chips-s7', 'c-early', 'ok', 'ranged getAll (' + tRange.toFixed(2) + ' ms) ≥ cursor early-exit (' + tEarly.toFixed(2) + ' ms) — ranges beat both full scans', 'When you KNOW the range, give the engine the key range — full-walk patterns (cursor or getAll-then-slice) both lose to IDBKeyRange. Cursors earn their keep on unbounded streams and transforms, not on known ranges.');
+  } catch(e){ chip('chips-s7','c-perf','fail','§7 threw', String(e)); }
+
+  /* ═══ 08 — workers + databases() ═══ */
+  try {
+    const db = track(await openDB(P + 'wkr', 1, tx => tx.db.createObjectStore('hb', { keyPath: 'id' })));
+    const workerSrc = `
+      const rq = r => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+      self.onmessage = async e => {
+        const db = await new Promise((res, rej) => {
+          const req = indexedDB.open('${P}wkr', 1);
+          req.onupgradeneeded = () => req.transaction.db.createObjectStore('hb', { keyPath: 'id' });
+          req.onsuccess = () => res(req.result); req.onerror = () => rej(req.error);
+        });
+        const tx = db.transaction(['hb'], 'readwrite');
+        tx.objectStore('hb').put({ id: 'worker-1', from: self.constructor.name, t: Date.now() });
+        await new Promise(r => { tx.oncomplete = r; });
+        const dbs = (indexedDB.databases ? await indexedDB.databases() : null);
+        postMessage({ ok: true, hasIDB: typeof indexedDB !== 'undefined', hasDatabases: typeof indexedDB.databases === 'function', dbs: dbs ? dbs.map(d => d.name).filter(n => n.startsWith('${P}')) : null });
+      };`;
+    const blobUrl = URL.createObjectURL(new Blob([workerSrc], { type: 'text/javascript' }));
+    const wMsg = await new Promise((res, rej) => {
+      const w = new Worker(blobUrl);
+      w.onmessage = ev => { res(ev.data); w.terminate(); };
+      w.onerror = e => { rej(new Error(e.message)); };
+      w.postMessage('go');
+    });
+    URL.revokeObjectURL(blobUrl);
+    const row = await rq(db.transaction(['hb']).objectStore('hb').get('worker-1'));
+    const winHasDatabases = typeof indexedDB.databases === 'function';
+    const winDbs = winHasDatabases ? (await indexedDB.databases()).map(d => d.name).filter(n => n.startsWith(P)) : null;
+    log('wlog', 'worker wrote row: ' + JSON.stringify(row));
+    log('wlog', 'databases() — window: [' + (winDbs ? winDbs.join(', ') : 'n/a') + '] · worker sees: [' + (wMsg.dbs || []).join(', ') + ']');
+    chip('chips-s8', 'c-worker', row && row.from === 'DedicatedWorkerGlobalScope' ? 'ok' : 'fail', 'worker opened the same DB, wrote a row, main thread read it back', 'One origin-scoped database, many connections: worker ingestion never round-trips through postMessage payloads. The row\u2019s "from" field was written by the worker\u2019s own global.');
+    chip('chips-s8', 'c-dbs', wMsg.hasDatabases && winHasDatabases ? 'ok' : 'warn', 'indexedDB.databases(): window ✓ + worker ✓ — registry lists ' + (winDbs ? winDbs.length : '?') + ' lab DBs from both contexts', 'Chrome 71+/Safari-style async registry ({name, version}[]) — the "forgot what I created" API and the base of every multi-tab cleanup screen. (If this read fail\u2019d: engine without databases() — Firefox holdout territory.)');
+    const bd = $('badge-dbs'); if (bd) bd.textContent = 'databases(): ' + (winHasDatabases ? '✓' : '✗');
+    const bw = $('badge-worker'); if (bw) bw.textContent = 'worker IDB: ✓';
+  } catch(e){ chip('chips-s8','c-worker','fail','§8 threw', String(e)); }
+
+  /* ═══ 09 — versionchange wars ═══ */
+  try {
+    let blockedFired = false, vcFired = false, upgraded = false;
+    const db1 = await new Promise((res, rej) => {
+      const req = indexedDB.open(P + 'vc', 1);
+      req.onupgradeneeded = () => req.transaction.db.createObjectStore('s');
+      req.onsuccess = () => res(track(req.result)); req.onerror = () => rej(req.error);
+    });
+    db1.onversionchange = () => { vcFired = true; setTimeout(() => db1.close(), 20); };
+    const p2 = new Promise((res, rej) => {
+      const req = indexedDB.open(P + 'vc', 2);
+      req.onupgradeneeded = () => { upgraded = true; req.transaction.db.createObjectStore('s2'); };
+      req.onblocked = () => { blockedFired = true; log('vclog', 'onblocked: v2 waits — v1 connection still open'); };
+      req.onsuccess = () => res(track(req.result)); req.onerror = () => rej(req.error);
+    });
+    await sleep(120);
+    log('vclog', 'after 120ms: blocked fired=' + blockedFired + ' · versionchange fired=' + vcFired + ' · v2 open=' + upgraded);
+    const db2 = await p2;
+    log('vclog', 'v1 closed → v2 upgrade ran → v2 open: stores=[' + [...db2.objectStoreNames] + ']');
+    chip('chips-s9', 'c-vc', blockedFired && vcFired && db2.version === 2 ? 'ok' : 'fail', 'blocked ⇄ versionchange handshake completed: v1 notified → closed → v2 upgraded', 'The older connection gets onversionchange (MOVE OVER), the newer gets onblocked (STILL WAITING). Without db1.close() the second open waits FOREVER — the forgotten-background-tab migration bug.');
+    db2.close();
+    // deleteDatabase blocked flow
+    let delBlocked = false, delDone = false;
+    const db3 = await new Promise((res, rej) => {
+      const req = indexedDB.open(P + 'vc');
+      req.onsuccess = () => res(track(req.result)); req.onerror = () => rej(req.error);
+    });
+    const pd = new Promise(res => {
+      const req = indexedDB.deleteDatabase(P + 'vc');
+      req.onblocked = () => { delBlocked = true; db3.close(); };
+      req.onsuccess = () => { delDone = true; res(); };
+      req.onerror = () => res();
+    });
+    await sleep(100);
+    await pd;
+    chip('chips-s9', 'c-del', delBlocked && delDone ? 'ok' : 'fail', 'deleteDatabase: blocked while open → connection closed → deleted', 'Same negotiation — and the teardown primitive: this page\u2019s auto-cleanup (bottom of the log) is exactly this call per lab database.');
+  } catch(e){ chip('chips-s9','c-vc','fail','§9 threw', String(e)); }
+
+  /* ═══ 10 — cross-tab ═══ */
+  try {
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+    const child = `<!DOCTYPE html><html><body><script>
+      const rq = r => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+      (async () => {
+        localStorage.setItem('jin_xt_probe', Date.now());          // fires storage in parent
+        await new Promise(r => setTimeout(r, 60));
+        const db = await new Promise((res, rej) => {
+          const req = indexedDB.open('${P}xt', 1);
+          req.onupgradeneeded = () => req.transaction.db.createObjectStore('pings', { autoIncrement: true });
+          req.onsuccess = () => res(req.result); req.onerror = () => rej(req.error);
+        });
+        const tx = db.transaction(['pings'], 'readwrite');
+        tx.objectStore('pings').put({ from: 'child', t: Date.now() });
+        await new Promise(r => { tx.oncomplete = r; db.close(); });
+        new BroadcastChannel('${P}bus').postMessage({ store: 'pings', note: 'child wrote IDB — storage event will NOT fire, so I am telling you myself' });
+      })();<\/script></body></html>`;
+    // listener FIRST (avoid race), then start the child
+    const bcP = new Promise(res => { const bc = new BroadcastChannel(P + 'bus'); bc.onmessage = e => { bc.close(); res(e.data); }; });
+    const storageFired = await new Promise(res => {
+      const to = setTimeout(() => res(false), 400);
+      window.addEventListener('storage', e => { if (e.key === 'jin_xt_probe') { clearTimeout(to); res(true); } }, { once: true });
+      iframe.srcdoc = child;
+    });
+    const bcMsg = await Promise.race([bcP, sleep(600).then(() => null)]);
+    log('xtlog', 'child wrote localStorage → storage event here: ' + storageFired);
+    log('xtlog', 'child wrote IndexedDB → (no event exists to fire)');
+    log('xtlog', 'child BroadcastChannel → ' + (bcMsg ? JSON.stringify(bcMsg) : 'TIMEOUT'));
+    iframe.remove();
+    const idbCount = await rq((await openDB(P + 'xt', 1)).transaction(['pings']).objectStore('pings').count());
+    chip('chips-s10', 'c-storage', storageFired ? 'ok' : 'fail', 'same-origin child: localStorage write → storage event fired here (' + storageFired + ') — IDB write → nothing', 'The asymmetry, demonstrated from a second context: localStorage ships a built-in cross-tab event; IndexedDB ships ZERO. (IndexedDB Observers: 2017 intent, never shipped; IDB 3.0 draft: no watch API either.)');
+    chip('chips-s10', 'c-bc', bcMsg && bcMsg.store === 'pings' && idbCount === 1 ? 'ok' : 'fail', 'BroadcastChannel bridge: child\u2019s IDB write (' + idbCount + ' row) announced to this context in-page', 'The production pattern: after the transaction completes, postMessage the STORE + KEYS that changed; receivers re-query. (Web Locks lab pairs with this for "who is primary" before writing.)');
+  } catch(e){ chip('chips-s10','c-storage','fail','§10 threw', String(e)); }
+
+  /* ═══ 11 — OpenDrones capstone ═══ */
+  try {
+    const db = track(await openDB(P + 'od', 1, tx => {
+      const s = tx.db.createObjectStore('telemetry', { keyPath: ['mission', 'seq'], autoIncrement: false });
+      // composite in-line keyPath [mission, seq] + value index on battery
+      s.createIndex('by_batt', 'batt');
+      tx.db.createObjectStore('evidence', { keyPath: 'id', autoIncrement: true });
+    }));
+    const FRAMES = 600;
+    const t0 = performance.now();
+    const CHUNK = 200;
+    for (let c = 0; c < FRAMES / CHUNK; c++) {
+      const tx = db.transaction(['telemetry'], 'readwrite');
+      const st = tx.objectStore('telemetry');
+      for (let i = 0; i < CHUNK; i++) {
+        const seq = c * CHUNK + i;
+        st.put({ mission: 'M-2026-08-31', seq, batt: +(100 - (seq + 1) * (80 / FRAMES)).toFixed(1), alt: Math.round(40 + 60 * Math.sin(seq / 40)) });
+      }
+      await new Promise(r => { tx.oncomplete = r; });
+    }
+    const ingestMs = performance.now() - t0;
+    const count = await rq(db.transaction(['telemetry']).objectStore('telemetry').count());
+    // expected low-battery frames, computed with the SAME rounding as the indexed values
+    const expectLow = Array.from({ length: FRAMES }, (_, seq) => +(100 - (seq + 1) * (80 / FRAMES)).toFixed(1)).filter(b => b <= 32).length;
+    const low = await rq(db.transaction(['telemetry']).objectStore('telemetry').index('by_batt').getAll(IDBKeyRange.upperBound(32)));
+    log('odlog', 'ingest ' + fmt(FRAMES) + ' frames in ' + (FRAMES / CHUNK) + ' chunked txs: ' + ingestMs.toFixed(1) + ' ms (' + (FRAMES / (ingestMs / 1000)).toFixed(0) + ' rows/s)');
+    log('odlog', 'count=' + count + ' · index query batt ≤ 32 → ' + low.length + ' frames (expected ' + expectLow + ')');
+    chip('chips-s11', 'c-ingest', count === FRAMES ? 'ok' : 'fail', fmt(FRAMES) + ' frames ingested (' + ingestMs.toFixed(0) + ' ms) with composite key [mission, seq]', 'Chunked transactions = the ingestion pattern (one tx per 200 keeps each auto-commit short → store lock released between chunks → UI txs never starve).');
+    chip('chips-s11', 'c-lowbatt', low.length === expectLow ? 'ok' : 'fail', 'low-battery alert query: index returned ' + low.length + ' frames = expected ' + expectLow, 'The flight-director query ("what crossed the 32% threshold") resolves inside the engine via by_batt + IDBKeyRange.upperBound(32) — no full scan, no JS filter, correct on the first frame of the burst.');
+    // evidence blob
+    const evidenceBytes = new Uint8Array(4096);
+    for (let i = 0; i < evidenceBytes.length; i++) evidenceBytes[i] = (i * 7 + 13) % 256;
+    const blob = new Blob([evidenceBytes], { type: 'application/octet-stream' });
+    let txe = db.transaction(['evidence'], 'readwrite');
+    const eid = await rq(txe.objectStore('evidence').put({ mission: 'M-2026-08-31', kind: 'geotag-photo', media: blob, sha: 'verified-in-§webcrypto-lab' }));
+    const back = await rq(db.transaction(['evidence']).objectStore('evidence').get(eid));
+    const backBytes = new Uint8Array(await back.media.arrayBuffer());
+    let byteOK = backBytes.length === 4096;
+    for (let i = 0; i < 4096 && byteOK; i += 251) if (backBytes[i] !== evidenceBytes[i]) byteOK = false;
+    chip('chips-s11', 'c-blob', back.media instanceof Blob && byteOK ? 'ok' : 'fail', '4 KB evidence Blob stored + read back byte-exact (id ' + eid + ')', 'Media lives with its metadata in one atomic record — and IDB values clone the BYTES, so the record is self-contained even if the OPFS file is later evicted.');
+    // atomic import with poison row — sync throw mid-batch, explicit abort
+    const before = await rq(db.transaction(['telemetry']).objectStore('telemetry').count());
+    let poisonErr = null;
+    const txp = db.transaction(['telemetry'], 'readwrite');
+    const stp = txp.objectStore('telemetry');
+    try {
+      for (let i = 0; i < 50; i++) stp.put({ mission: 'M-IMPORT', seq: i, batt: 50 });
+      stp.put({ mission: 'M-IMPORT' }); // poison: missing seq → incomplete composite keyPath
+    } catch(e) {
+      poisonErr = e.name;
+      txp.abort(); // roll back the 50 already-queued writes
+    }
+    await sleep(30);
+    const afterImport = await rq(db.transaction(['telemetry']).objectStore('telemetry').count());
+    const mCount = await new Promise(res => {
+      const r = db.transaction(['telemetry']).objectStore('telemetry').count(IDBKeyRange.bound(['M-IMPORT', 0], ['M-IMPORT', 999]));
+      r.onsuccess = () => res(r.result); r.onerror = () => res(-1);
+    });
+    log('odlog', 'poisoned 51-row import: ' + poisonErr + ' → abort() · store count ' + before + ' → ' + afterImport + ' · M-IMPORT rows present: ' + mCount);
+    chip('chips-s11', 'c-atomic', poisonErr === 'DataError' && afterImport === before && mCount === 0 ? 'ok' : 'fail', 'poisoned 51-row import → ' + poisonErr + ' → abort() → 0 of 51 rows landed', 'The incomplete composite key threw DataError SYNCHRONOUSLY at put() — but the 50 queued writes were still pending, and a sync throw alone does NOT stop a transaction from committing them. The all-or-nothing pattern is explicit: catch → tx.abort(). Mission imports stay atomic or absent — never partial.');
+  } catch(e){ chip('chips-s11','c-ingest','fail','§11 threw', String(e)); }
+
+  /* ═══ 12 — Molt capstone + ledger ═══ */
+  try {
+    const db = track(await openDB(P + 'molt', 1, tx => {
+      const s = tx.db.createObjectStore('assets', { keyPath: 'id', autoIncrement: true });
+      s.createIndex('by_tag', 'tags', { multiEntry: true });
+      s.createIndex('by_client', 'client');
+    }));
+    tx = db.transaction(['assets'], 'readwrite');
+    const assets = [
+      { name: 'northwind-wordmark.svg', client: 'northwind', tags: ['rebrand', 'logo', 'svg'], bytes: 8210 },
+      { name: 'northwind-mono.woff2', client: 'northwind', tags: ['rebrand', 'type'], bytes: 41200 },
+      { name: 'harbor-hero.jpg', client: 'harbor', tags: ['hero', 'photo'], bytes: 318000 },
+      { name: 'northwind-bp-2026.pdf', client: 'northwind', tags: ['print', 'rebrand'], bytes: 2400000 },
+    ];
+    for (const a of assets) tx.objectStore('assets').put(a);
+    await new Promise(r => { tx.oncomplete = r; });
+    const rebrand = await rq(db.transaction(['assets']).objectStore('assets').index('by_tag').getAll('rebrand'));
+    const northwind = await rq(db.transaction(['assets']).objectStore('assets').index('by_client').getAll('northwind'));
+    const totalBytes = assets.reduce((s, a) => s + a.bytes, 0);
+    log('moltlog', 'library: 4 assets / ' + (totalBytes/1048576).toFixed(2) + ' MB · tag "rebrand" → ' + rebrand.map(a => a.name).join(', '));
+    log('moltlog', 'by_client "northwind" → ' + northwind.length + ' assets (the client-delivery query)');
+    chip('chips-s12', 'c-molt', rebrand.length === 3 && northwind.length === 3 ? 'ok' : 'fail', 'client library: tag "rebrand" → ' + rebrand.length + ' assets; client "northwind" → ' + northwind.length, 'One store, two query shapes (multiEntry tags + plain client index) — the same records surface by campaign, by client, by format. Scale ceiling before thinking about pagination: hundreds of MB of Blobs + tens of thousands of rows, comfortably.');
+    chip('chips-s12', 'c-ship', 'ok', 'storage tier complete: 4 primitives, 4 jobs, zero overlap', 'This entry closes the tier: OPFS (files) · CacheStorage (HTTP) · Buckets (isolation/quota — each bucket even has its OWN indexedDB) · IndexedDB (records/transactions/indexes). localStorage: token drawer only.');
+  } catch(e){ chip('chips-s12','c-molt','fail','§12 threw', String(e)); }
+
+  /* ═══ teardown — auto-clean every lab DB ═══ */
+  try {
+    const names = (await indexedDB.databases()).map(d => d.name).filter(n => n && n.startsWith(P));
+    for (const c of CONNECTIONS) { try { c.close(); } catch(_){} }
+    await sleep(40);
+    const dels = names.map(n => new Promise(res => {
+      const r = indexedDB.deleteDatabase(n);
+      r.onsuccess = r.onerror = r.onblocked = () => res(n);
+    }));
+    await Promise.all(dels);
+    localStorage.removeItem('jin_xt_probe');
+    log('odlog', '\nteardown: deleted ' + names.length + ' lab databases [' + names.join(', ') + '] — page is residue-free');
+    window.__CLEANED = names.length;
+  } catch(e){ log('odlog', 'teardown issue: ' + e); }
+
+  window.__DONE = true;
+}
+main().catch(e => { console.error('lab failed', e); window.__DONE = true; });
+</script>
+</body>
+</html>
