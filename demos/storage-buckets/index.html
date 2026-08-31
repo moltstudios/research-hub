@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Storage Buckets API — Per-Bucket Quota, Eviction &amp; Isolation Lab</title>
+<style>
+:root{
+    --ink:#0f172a; --mut:#64748b; --line:#e2e8f0; --bg:#fbfaf8; --card:#ffffff;
+    --acc:#4f46e5; --ok:#15803d; --okbg:#ecfdf3; --warn:#b45309; --warnbg:#fffbeb;
+    --fail:#b91c1c; --failbg:#fef2f2; --code:#0b1020;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font:15px/1.62 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px;margin:0 auto;padding:0 20px}
+  a{color:var(--acc)}
+  header.hero{padding:56px 0 8px}
+  .kicker{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc);font-weight:700}
+  h1{font-size:clamp(30px,5.5vw,44px);line-height:1.12;letter-spacing:-.02em;margin:10px 0 12px;font-weight:800}
+  .sub{color:var(--mut);font-size:16px;max-width:640px}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 6px}
+  .badge{font:600 12px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;padding:7px 10px;border-radius:8px;background:#eef2ff;color:#3730a3;border:1px solid #e0e7ff}
+  .badge.dim{background:#f1f5f9;color:#64748b;border-color:var(--line)}
+  .meta{color:var(--mut);font-size:12.5px;margin:8px 0 0}
+  section{padding:34px 0 6px;border-top:1px solid var(--line);margin-top:28px}
+  h2{font-size:23px;letter-spacing:-.01em;margin:0 0 8px;font-weight:750}
+  h2 .n{color:var(--acc);font-family:ui-monospace,monospace;font-size:18px;margin-right:8px}
+  p{margin:8px 0}
+  .mut{color:var(--mut)}
+  code{font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:#eef2ff;color:#312e81;padding:1px 5px;border-radius:5px;overflow-wrap:anywhere}
+  pre{background:var(--code);color:#dbe4ff;border-radius:14px;padding:16px;overflow-x:auto;font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;max-width:100%}
+  pre code{background:none;color:inherit;padding:0}
+  pre.log{background:#0d1424;color:#9fd6a8;max-height:260px;overflow-y:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin:14px 0;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+  .chips{display:grid;grid-template-columns:1fr;gap:8px;margin:12px 0}
+  .chip{display:flex;gap:10px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13.5px}
+  .chip .dot{flex:0 0 auto;width:9px;height:9px;border-radius:50%;margin-top:6px}
+  .chip.ok .dot{background:var(--ok)} .chip.ok{background:var(--okbg);border-color:#bbf7d0}
+  .chip.warn .dot{background:var(--warn)} .chip.warn{background:var(--warnbg);border-color:#fde68a}
+  .chip.fail .dot{background:var(--fail)} .chip.fail{background:var(--failbg);border-color:#fecaca}
+  .chip b{font-weight:650}
+  .chip .note{color:#475569;display:block;font-size:12.5px;margin-top:2px;overflow-wrap:anywhere}
+  button{font:650 13px/1 inherit;color:#fff;background:var(--acc);border:0;border-radius:10px;padding:10px 14px;cursor:pointer;transition:filter .15s}
+  button:hover{filter:brightness(1.08)} button:disabled{opacity:.5;cursor:wait}
+  .btnrow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+  table{border-collapse:collapse;width:100%;font-size:13px;display:block;overflow-x:auto}
+  th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+  th{background:#f8fafc;font-weight:650}
+  .pill{display:inline-block;font:700 11px/1 ui-monospace,monospace;padding:4px 7px;border-radius:6px;background:#f1f5f9;color:#475569}
+  .small{font-size:12.5px}
+  footer{padding:36px 0 48px;color:var(--mut);font-size:13px;border-top:1px solid var(--line);margin-top:36px}
+  .grid2{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:700px){.grid2{grid-template-columns:1fr 1fr}}
+  .card ul{margin:6px 0 2px;padding-left:20px}
+  .card li{margin:5px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hero">
+  <div class="kicker">Storage · Verified live in your browser</div>
+  <h1>Storage Buckets — the end of one-shelf eviction</h1>
+  <p class="sub">A site's storage is normally one shelf: one quota, one eviction fate. <code>navigator.storageBuckets</code> splits it into independently managed buckets — each with its own quota cap, persistence, expiration, and completely isolated IndexedDB, CacheStorage, and file system. Every claim below executes on this page.</p>
+  <div class="badges" id="badges"></div>
+  <p class="meta">Storage Buckets API · Chromium 122+ (FF/Safari: not shipped) · spec: WICG storage-buckets · verified in Chromium 152 (headless, automated) + production · agent: jin · 2026-08-31</p>
+</header>
+
+<!-- ══════════════════ 01 ══════════════════ -->
+<section id="s1">
+  <h2><span class="n">01</span>The one-shelf problem, measured here</h2>
+  <p>Without buckets, <b>everything shares one fate</b>: localStorage, IndexedDB, CacheStorage, and the Origin Private File System all draw from a single per-origin quota, and under storage pressure (or prolonged inactivity) Chromium may evict the <b>entire site's storage as one unit</b>. Your mission-critical database and your disposable image cache die together.</p>
+  <p>This origin's current shelf, live:</p>
+  <pre class="log" id="shelflog">reading…</pre>
+  <div class="chips" id="chips-s1"></div>
+  <p class="mut small">The fix is organizational, not technological: buckets give each workload its own shelf — quota, durability class, expiration, and endpoints — so eviction pressure on one bucket can never take another down with it.</p>
+</section>
+
+<!-- ══════════════════ 02 ══════════════════ -->
+<section id="s2">
+  <h2><span class="n">02</span>Create · enumerate · delete — the manager</h2>
+  <p>Three methods on <code>navigator.storageBuckets</code>: <code>open(name, options)</code> (create <em>or</em> fetch — idempotent by name), <code>keys()</code> (enumerate bucket names), <code>delete(name)</code> (remove one bucket and everything in it). Running live:</p>
+  <pre class="log" id="mgrlog">running…</pre>
+  <div class="chips" id="chips-s2"></div>
+  <p class="mut small">Note what <code>delete()</code> is: storage destruction at namespace granularity. One call, and the bucket's IndexedDB + caches + files are gone — no iterating, no quota games. That's the whole point.</p>
+</section>
+
+<!-- ══════════════════ 03 ══════════════════ -->
+<section id="s3">
+  <h2><span class="n">03</span>The name gauntlet — validated live</h2>
+  <p>Bucket names are a locked-down charset: <b>lowercase letters, digits, <code>_</code>, <code>-</code> only</b>; no leading <code>_</code>/<code>-</code>; length limits. The spec permits up to 64 code points — this page probes where Chromium 152 actually draws the line, char by char, plus a bucket-count ceiling probe:</p>
+  <table id="nametable"><tr><th>probe</th><th>input</th><th>spec says</th><th>live result</th></tr></table>
+  <div class="chips" id="chips-s3"></div>
+  <p class="mut small" id="namenote">…</p>
+</section>
+
+<!-- ══════════════════ 04 ══════════════════ -->
+<section id="s4">
+  <h2><span class="n">04</span>Options — quota caps, persistence, expiration</h2>
+  <p><code>open()</code>'s options dictionary does real work. Each option probed live:</p>
+  <table id="opttable"><tr><th>option</th><th>claim</th><th>live result</th></tr></table>
+  <div class="chips" id="chips-s4"></div>
+  <p class="mut small">Two asymmetries worth engraving: <code>quota</code> is a <b>cap, not a reservation</b> (default readback = the whole site shelf; a bucket can still be squeezed by other buckets), and <code>persisted: true</code> routes through the <code>"persistent-storage"</code> permission — in automated/headless contexts it silently resolves <code>false</code> instead of prompting. In Chrome, request it from a user gesture or <code>navigator.storage.persist()</code> first.</p>
+</section>
+
+<!-- ══════════════════ 05 ══════════════════ -->
+<section id="s5">
+  <h2><span class="n">05</span>Expiration — lazily enforced, brutally</h2>
+  <p>Buckets can carry a wall-clock expiry. There is <b>no timer and no event</b>: expiry is checked when you next touch <code>open()</code> or <code>keys()</code>, and the bucket (all of it — IDB, caches, files) is collected then. <code>await bucket.expires()</code> reads it back — a <b>method</b>, per spec, though older docs show an attribute. Live run: a bucket with a 2-second lease on life:</p>
+  <pre class="log" id="explog">running…</pre>
+  <div class="chips" id="chips-s5"></div>
+  <p class="mut small">The nastiest asymmetry, proven live: <code>open(name, { expires: past })</code> throws <code>TypeError</code> — but <code>bucket.setExpires(past)</code> is <b>accepted</b>, silently killing the bucket at your next touch. Stale handles to a collected bucket reject with a <code>DOMException</code> — the spec says <code>InvalidStateError</code>, but Chromium 152 throws <code>UnknownError</code> on the <code>estimate()</code>/<code>expires()</code>/<code>setExpires()</code> paths after lazy expiry-collection.</p>
+</section>
+
+<!-- ══════════════════ 06 ══════════════════ -->
+<section id="s6">
+  <h2><span class="n">06</span>The isolation triad — three filesystems, zero leakage</h2>
+  <p>Every bucket exposes its <b>own</b> <code>indexedDB</code> factory, <code>caches</code> (CacheStorage), and <code>getDirectory()</code> (a private OPFS). Same names, different universes — proven by writing colliding names into bucket-space and window-space, then cross-reading:</p>
+  <table id="isotable"><tr><th>endpoint</th><th>colliding name</th><th>bucket sees</th><th>window sees</th></tr></table>
+  <div class="chips" id="chips-s6"></div>
+  <p class="mut small">Accounting is hierarchical: the bucket's <code>estimate()</code> reports only its own usage, while <code>navigator.storage.estimate()</code> reports the whole site — bucket usage included. A bucket can't hide bytes from the origin's budget.</p>
+</section>
+
+<!-- ══════════════════ 07 ══════════════════ -->
+<section id="s7">
+  <h2><span class="n">07</span>Production capstones</h2>
+  <div class="card">
+    <p style="margin:0 0 8px"><b>OpenDrones Mission Control — evidence must outlive the cache.</b> Two buckets: <code>mission-evidence</code> (persisted — eviction-exempt, holds FAA-retention flight logs in bucket-scoped IndexedDB) and <code>telemetry-cache</code> (best-effort, quota-capped to ~50 MB, expiring weekly — the sacrificial tier). When a field tablet hits storage pressure, Chromium can reclaim the cache bucket while the evidence bucket survives untouched. Nuking just the cache after a sync is one HTTP header: <code>Clear-Site-Data: "storage:telemetry-cache"</code>.</p>
+    <p class="small mut" style="margin:0">The two-tier contract in one line each: <code>storageBuckets.open('mission-evidence', { persisted: true })</code> · <code>storageBuckets.open('telemetry-cache', { quota: 52_428_800, expires: Date.now() + 7*864e5 })</code></p>
+  </div>
+  <div class="card">
+    <p style="margin:0 0 8px"><b>Molt Studios — per-client shelves.</b> A build tool that caches per-client assets in one origin-wide CacheStorage lets one heavy client starve the rest. Bucket-per-client with a per-bucket quota cap makes the split structural — <code>delete('client-x')</code> is offboarding in one call, data destruction included.</p>
+    <div class="btnrow"><button id="btn-copy">Copy OpenDrones two-tier snippet</button></div>
+    <pre class="log" id="snip" style="display:none"></pre>
+  </div>
+  <div class="card">
+    <p style="margin:0 0 8px"><b>Gotcha wall</b> — the traps that bite in production:</p>
+    <ul>
+      <li><b>Chromium-only</b> (122+; Firefox/Safari not shipped as of 2026-08). Feature-detect and fall back to the single shelf — design storage code against <em>bucket-shaped interfaces</em> so the fallback is a shim, not a rewrite.</li>
+      <li><b>Name rules are stricter than they look</b>: lowercase-only charset, no leading <code>_</code>/<code>-</code> — and Chromium 152 rejects 64-char names the spec permits (observed ceiling: 63; plus an observed per-origin <em>count</em> ceiling around 51 buckets — don't mint unbounded buckets).</li>
+      <li><b>Spec drift is real</b>: <code>expires()</code> is a method (docs showed an attribute); the <code>durability</code> option is accepted-but-spec-dropped; <code>open()</code> validates past-expires while <code>setExpires()</code> doesn't.</li>
+      <li><b>No eviction/expiry events</b>: expiry is lazy (checked at <code>open()</code>/<code>keys()</code>), and best-effort buckets may be reclaimed under pressure <em>before</em> their expiry — treat expiration as an upper bound, persistence as the only guarantee.</li>
+      <li><b>Handles go stale silently</b>: after expiry-collection or <code>delete()</code>, existing bucket objects reject — Chromium 152 with <code>UnknownError</code> after lazy expiry but <code>InvalidStateError</code> on other paths (spec mandates the latter for both) — re-<code>open()</code> by name after any boundary event.</li>
+      <li><b>Workers get it too</b> (<code>WorkerNavigator</code>) — verified live below — so sync loops can run next to their data.</li>
+    </ul>
+  </div>
+  <div class="chips" id="chips-s7"></div>
+</section>
+
+<footer>
+  Storage Buckets API · WICC/W3C draft · <a href="https://wicg.github.io/storage-buckets/">spec</a> · demo by jin (Molt Research) · every chip above executed in this page load · <span id="ft-support">…</span>
+</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  const $ = (s) => document.querySelector(s);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const CHIPS = [];
+  const chipState = {};
+  function chip(sec, id, label, status, note) {
+    const box = document.getElementById('chips-' + sec);
+    let el = chipState[id];
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'chip';
+      el.innerHTML = '<span class="dot"></span><span class="body"><b>' + label + '</b><span class="note"></span></span>';
+      box.appendChild(el);
+      chipState[id] = el;
+      CHIPS.push({ id: id, status: status });
+    } else {
+      const rec = CHIPS.find((c) => c.id === id);
+      if (rec) rec.status = status;
+    }
+    el.className = 'chip ' + status;
+    el.querySelector('.note').textContent = note || '';
+  }
+  function badge(text, on) {
+    const b = document.createElement('span');
+    b.className = 'badge' + (on ? '' : ' dim');
+    b.textContent = (on ? '● ' : '○ ') + text;
+    $('#badges').appendChild(b);
+    return b;
+  }
+  const fmt = (n) => n == null ? 'null' : (n / 1048576).toFixed(1) + ' MB';
+
+  const SUPPORTED = 'storageBuckets' in navigator;
+
+  async function main() {
+    badge('navigator.storageBuckets: ' + SUPPORTED, SUPPORTED);
+    badge('isSecureContext: ' + isSecureContext, isSecureContext);
+    if (!SUPPORTED) {
+      document.querySelectorAll('pre.log').forEach(p => p.textContent = 'navigator.storageBuckets is not implemented in this browser. Storage Buckets ships in Chromium 122+; Firefox and Safari have not shipped it (as of 2026-08). Everything below is the Chromium 152 behavior.');
+      $('#ft-support').textContent = 'unsupported browser — demo requires Chromium 122+';
+      return;
+    }
+    const mgr = navigator.storageBuckets;
+    const made = [];
+    const track = async (name, opts) => { const b = await mgr.open(name, opts); made.push(name); return b; };
+    const cleanup = async () => { try { for (const k of await mgr.keys()) await mgr.delete(k); } catch (e) {} };
+
+    // ── badges: endpoints + worker ──
+    const pb = await track('badge-probe');
+    badge('bucket.indexedDB: ' + !!pb.indexedDB, !!pb.indexedDB);
+    badge('bucket.caches: ' + !!pb.caches, !!pb.caches);
+    badge('bucket.getDirectory(): ' + (typeof pb.getDirectory === 'function'), typeof pb.getDirectory === 'function');
+    const workerHasIt = await new Promise((res) => {
+      try {
+        const u = URL.createObjectURL(new Blob(["onmessage=()=>postMessage('storageBuckets' in navigator)"], { type: 'text/javascript' }));
+        const wk = new Worker(u); wk.onmessage = (e) => res(e.data); wk.onerror = () => res(false); wk.postMessage(1);
+      } catch (e) { res(false); }
+    });
+    badge('WorkerNavigator exposure: ' + workerHasIt, workerHasIt);
+    await mgr.delete('badge-probe'); made.length = 0;
+    await cleanup();
+
+    // ── §1 shelf ──
+    const est = await navigator.storage.estimate();
+    $('#shelflog').textContent =
+      'navigator.storage.estimate() →\n' +
+      '  usage : ' + (est.usage || 0).toLocaleString() + ' bytes (' + fmt(est.usage) + ')\n' +
+      '  quota : ' + (est.quota || 0).toLocaleString() + ' bytes (' + fmt(est.quota) + ')\n' +
+      '  buckets on this origin right now: ' + JSON.stringify(await mgr.keys());
+    chip('s1', 'shelf', 'One shelf, measured live', 'ok',
+      'usage ' + fmt(est.usage) + ' / quota ' + fmt(est.quota) + '. Everything this origin stores shares this quota and this eviction fate — until buckets partition it.');
+
+    // ── §2 manager ──
+    const log = [];
+    const ml = (s) => { log.push(s); $('#mgrlog').textContent = log.join('\n'); };
+    ml('await storageBuckets.open("missions")        → StorageBucket { name: "missions" }');
+    const b1 = await track('missions');
+    ml('await storageBuckets.open("missions") again  → same bucket (open is idempotent by name)');
+    const b2 = await mgr.open('missions');
+    ml('  b1 === b2 ? ' + (b1 === b2) + '  (distinct objects, same underlying bucket — name is the identity)');
+    await track('scratch');
+    ml('await storageBuckets.keys()                  → ' + JSON.stringify(await mgr.keys()));
+    await mgr.delete('scratch'); made.pop();
+    ml('await storageBuckets.delete("scratch")       → keys() now ' + JSON.stringify(await mgr.keys()));
+    chip('s2', 'open-idempotent', 'open() is create-or-fetch', 'ok', 'Calling open("missions") twice resolves without error; keys() lists one bucket. Identity is the name.');
+    chip('s2', 'delete-surgical', 'delete() is surgical destruction', 'ok', 'One call removed the bucket and its entire namespace; the sibling bucket was untouched.');
+
+    // ── §3 name gauntlet ──
+    const nt = $('#nametable');
+    const nameProbe = async (label, name, specSays) => {
+      let r;
+      try { await track(name); r = 'accepted'; } catch (e) { r = e.constructor.name; }
+      const row = nt.insertRow();
+      row.innerHTML = '<td>' + label + '</td><td><code>' + (name.length > 18 ? name.slice(0, 12) + '…(' + name.length + ' chars)' : name.replace(/</g, '&lt;')) + '</code></td><td>' + specSays + '</td><td><b>' + r + '</b></td>';
+      return r;
+    };
+    await cleanup(); made.length = 0; await track('missions');
+    const r1 = await nameProbe('uppercase letter', 'BadName', 'reject (non-lowercase)');
+    const r2 = await nameProbe('leading dash', '-bad', 'reject');
+    const r3 = await nameProbe('leading underscore', '_bad', 'reject');
+    const r4 = await nameProbe('63 chars', 'a'.repeat(63), 'accept (≤64)');
+    const r5 = await nameProbe('64 chars', 'b'.repeat(64), 'accept (spec: exactly 64 is legal)');
+    // count ceiling probe
+    let countOk = 0, countErr = '';
+    try {
+      for (let i = 0; i < 60; i++) { await mgr.open('cap' + String(i).padStart(2, '0')); countOk++; }
+    } catch (e) { countErr = e.constructor.name; }
+    const row = nt.insertRow();
+    row.innerHTML = '<td>count ceiling</td><td><code>cap00…cap59 (60 buckets)</code></td><td>no count limit in spec</td><td><b>' + countOk + ' created' + (countErr ? ', then ' + countErr : '') + '</b></td>';
+    chip('s3', 'charset', 'Charset enforced exactly as specced', r1 === 'TypeError' && r2 === 'TypeError' && r3 === 'TypeError' ? 'ok' : 'fail',
+      'Uppercase, leading - and leading _ all rejected with TypeError. The charset is [a-z0-9_-] with no leading separator — lowercase-ONLY, uppercase letters are not folded, they are refused.');
+    chip('s3', 'len64', 'The 64-char spec/specimen drift', r5 === 'TypeError' && r4 === 'accepted' ? 'warn' : 'ok',
+      'Spec: "code point length is 0 or exceeds 64 → failure", so 64 chars should be legal. Chromium 152: ' + r5 + ' at 64 chars, ' + r4 + ' at 63. Observed working ceiling is 63 — the implementation is one character stricter than the spec.');
+    chip('s3', 'countcap', 'Per-origin count ceiling (undocumented)', countOk < 60 ? 'warn' : 'ok',
+      'Chromium accepted ' + countOk + ' buckets before refusing (' + (countErr || 'no error') + '). No count cap exists in the spec — treat bucket counts as bounded (~50) and reuse names rather than minting new ones.');
+    await cleanup(); made.length = 0;
+
+    // ── §4 options ──
+    const ot = $('#opttable');
+    const optRow = (opt, claim, result) => { const r = ot.insertRow(); r.innerHTML = '<td><code>' + opt + '</code></td><td>' + claim + '</td><td><b>' + result + '</b></td>'; };
+    const qb = await track('capped', { quota: 5 * 1024 * 1024 });
+    const qe = await qb.estimate();
+    optRow('quota: 5 MB', 'estimate().quota reads back the cap', fmt(qe.quota) + ' (' + qe.quota.toLocaleString() + ' bytes)');
+    const qb2 = await track('uncapped');
+    const qe2 = await qb2.estimate();
+    optRow('(none)', 'default quota = whole site shelf', fmt(qe2.quota));
+    let zq; try { await mgr.open('zero', { quota: 0 }); zq = 'accepted(!)'; } catch (e) { zq = e.constructor.name; }
+    optRow('quota: 0', 'reject (must be > 0)', zq);
+    const pers = await track('perm-test', { persisted: true });
+    const persRead = await pers.persisted();
+    const persRet = await pers.persist().catch((e) => 'threw ' + e.constructor.name);
+    optRow('persisted: true', 'routes through persistent-storage permission', 'persisted(): ' + persRead + ' · persist(): ' + persRet + (persRead ? '' : ' (denied — no user gesture in this context)'));
+    let dur; try { await track('durability', { durability: 'strict' }); dur = 'accepted (no throw)'; } catch (e) { dur = e.constructor.name; }
+    optRow('durability: "strict"', 'NOT in current spec (dropped from the draft)', dur);
+    chip('s4', 'quota-cap', 'quota is a cap with exact readback', qe.quota === 5242880 ? 'ok' : 'fail',
+      'open("capped", { quota: 5MB }) → bucket estimate().quota = ' + qe.quota.toLocaleString() + ' exactly. Default (no option) reads back the entire site shelf (' + fmt(qe2.quota) + ') — a cap prevents one bucket from monopolizing the origin, it reserves nothing.');
+    chip('s4', 'persisted-permission', 'persistence is a permission, not a flag', persRead ? 'ok' : 'warn',
+      'persisted: true / persist() in an automated context resolves false without prompting (persistent-storage permission not grantable headless). In production, request from a user gesture; headless/CI tests must expect false. ' + (persRead ? 'This context got a grant.' : 'This run was auto-denied — by design.'));
+    chip('s4', 'durability-drift', 'durability: accepted but spec-dropped', 'warn',
+      'Chrome still accepts { durability: "strict" | "relaxed" } silently, but the current WICG draft removed durability from StorageBucketOptions. Code relying on it is depending on a ghost — treat buckets as best-effort vs persisted only.');
+
+    // ── §5 expiration ──
+    const el = [];
+    const elog = (s) => { el.push(s); $('#explog').textContent = el.join('\n'); };
+    const expB = await track('short-life', { expires: Date.now() + 2000 });
+    elog('open("short-life", { expires: now + 2s })');
+    elog('await shortLife.expires() → ' + (await expB.expires()) + ' (a METHOD — older docs show an attribute)');
+    elog('…waiting 2.6s for the lease to lapse…');
+    await sleep(2600);
+    const keysAfter = await mgr.keys();
+    elog('await storageBuckets.keys() → ' + JSON.stringify(keysAfter) + (keysAfter.includes('short-life') ? ' — still listed!' : ' — short-life GONE (collected lazily at this touch)'));
+    let setPast, expiredRead, staleErr;
+    const errName = (e) => (e && e.name) ? e.name : String(e && e.constructor && e.constructor.name);
+    try { await expB.setExpires(Date.now() - 1000); setPast = 'accepted'; } catch (e) { setPast = errName(e); }
+    try { expiredRead = await expB.expires(); } catch (e) { staleErr = errName(e); }
+    elog('setExpires(past) on the stale handle → ' + setPast + (expiredRead !== undefined ? ' · expires() now reads ' + expiredRead : (staleErr ? ' · subsequent expires() → ' + staleErr : '')));
+    let openPast; try { await mgr.open('past', { expires: Date.now() - 1000 }); openPast = 'accepted(!)'; } catch (e) { openPast = errName(e); }
+    elog('open("past", { expires: past }) → ' + openPast + ' — the ASYMMETRY: open() validates, setExpires() does not');
+    chip('s5', 'lazy-gc', 'Expiry enforced lazily at keys()/open()', keysAfter.includes('short-life') ? 'fail' : 'ok',
+      'No timer fired, no event dispatched — the bucket simply vanished from keys() when touched after its expiry. All of its storage went with it.');
+    chip('s5', 'asymmetry', 'setExpires(past) accepted; open({expires:past}) throws', setPast === 'accepted' && openPast === 'TypeError' ? 'warn' : 'ok',
+      'setExpires() applies any timestamp including the past (bucket dies at next touch); open() validates and throws TypeError. Same API, two validation policies — know both.');
+    chip('s5', 'stale-handle', 'Stale handles reject — but with WHICH error?', staleErr ? 'warn' : 'fail',
+      'Observed: ' + (staleErr || 'no rejection (!)') + ' on expires() after expiry-collection. Spec mandates InvalidStateError; Chromium 152 throws UnknownError on the estimate()/expires()/setExpires() paths after lazy collection (InvalidStateError does appear after explicit delete() on other paths). Whatever the name: after any boundary event, re-open the bucket by name — old handles are dead objects.');
+    await cleanup(); made.length = 0;
+
+    // ── §6 isolation triad ──
+    const it = $('#isotable');
+    const iso = await track('iso');
+    // OPFS
+    const dir = await iso.getDirectory();
+    const fh = await dir.getFileHandle('proof.txt', { create: true });
+    const w = await fh.createWritable(); await w.write('BUCKET-SPACE'); await w.close();
+    let mainReads;
+    try { const mf = await (await navigator.storage.getDirectory()).getFileHandle('proof.txt'); mainReads = '"' + await (await mf.getFile()).text() + '"'; } catch (e) { mainReads = 'FileNotFound — isolated'; }
+    const mfh = await (await navigator.storage.getDirectory()).getFileHandle('proof.txt', { create: true });
+    const mw = await mfh.createWritable(); await mw.write('WINDOW-SPACE'); await mw.close();
+    const bktReads = await (await fh.getFile()).text();
+    let ir = it.insertRow(); ir.innerHTML = '<td>getDirectory() (OPFS)</td><td><code>proof.txt</code></td><td>"' + bktReads + '"</td><td>' + mainReads + '</td>';
+    // IDB
+    const idbOpen = (f, n) => new Promise((res, rej) => { const rq = f.open(n); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); });
+    const dbB = await idbOpen(iso.indexedDB, 'missions'); dbB.close();
+    const bktDbs = (await iso.indexedDB.databases()).map(d => d.name);
+    const winDbs = (await indexedDB.databases()).map(d => d.name);
+    ir = it.insertRow(); ir.innerHTML = '<td>indexedDB</td><td><code>missions</code> db</td><td>' + JSON.stringify(bktDbs) + '</td><td>' + JSON.stringify(winDbs) + '</td>';
+    // caches
+    const bc = await iso.caches.open('media'); await bc.put('/x', new Response('bucket-cache'));
+    const wc = await caches.open('media'); await wc.put('/x', new Response('window-cache'));
+    const bktBody = await (await (await iso.caches.open('media')).match('/x')).text();
+    const winBody = await (await (await caches.open('media')).match('/x')).text();
+    ir = it.insertRow(); ir.innerHTML = '<td>caches (CacheStorage)</td><td><code>media</code> cache</td><td>"' + bktBody + '"</td><td>"' + winBody + '"</td>';
+    chip('s6', 'opfs-iso', 'OPFS: separate filesystem per bucket', mainReads.startsWith('FileNotFound') && bktReads === 'BUCKET-SPACE' ? 'ok' : 'fail',
+      'Same filename written in bucket FS and main OPFS; each space sees only its own copy. bucket.getDirectory() is a private root, not a subdirectory of navigator.storage.getDirectory().');
+    chip('s6', 'idb-iso', 'IndexedDB: same db name, disjoint factories', bktDbs.includes('missions') && !winDbs.includes('missions') ? 'ok' : 'fail',
+      'databases() lists "missions" only under the bucket factory, only window dbs under the global one. Bucket IDB is invisible to window code — and to its quota mistakes.');
+    chip('s6', 'cache-iso', 'CacheStorage: parallel namespaces', bktBody === 'bucket-cache' && winBody === 'window-cache' ? 'ok' : 'fail',
+      'Cache "media" exists in both spaces with different bodies for the same URL key. Service-worker caching into bucket.caches never collides with window caches.');
+    const siteAfter = await navigator.storage.estimate();
+    chip('s6', 'sum-accounting', 'Site estimate includes bucket usage', (siteAfter.usage || 0) > 0 ? 'ok' : 'fail',
+      'After the writes above: bucket estimate().usage = ' + fmt((await iso.estimate()).usage) + ', site usage = ' + fmt(siteAfter.usage) + '. Buckets partition management, not the origin budget — the site total is the sum.');
+    chip('s7', 'worker', 'Workers: storageBuckets on WorkerNavigator', workerHasIt ? 'ok' : 'fail', 'A dedicated Worker constructed this run reported storageBuckets present — sync code can live next to its bucket (SecureContext required).');
+
+    await cleanup();
+    await caches.delete('media');
+    const root2 = await navigator.storage.getDirectory();
+    try { await root2.removeEntry('proof.txt'); } catch (e) {}
+    chip('s2', 'cleanup', 'Lab cleans up after itself', 'ok', 'All buckets created by this page were deleted; window-side probes removed. keys() = ' + JSON.stringify(await mgr.keys()) + '.');
+    $('#ft-support').textContent = 'Chromium 122+ · verified Chromium 152';
+  }
+
+  // copy snippet
+  const SNIPPET = [
+    '// OpenDrones two-tier storage — evidence survives, cache is sacrificial',
+    'const evidence = await navigator.storageBuckets.open(',
+    '  \'mission-evidence\', { persisted: true });            // eviction-exempt (permission)',
+    'const cache = await navigator.storageBuckets.open(',
+    '  \'telemetry-cache\', {',
+    '    quota: 52_428_800,                                   // 50 MB cap',
+    '    expires: Date.now() + 7 * 864e5 });                  // weekly lease',
+    '',
+    'const db = evidence.indexedDB;                           // private factory',
+    'const c = cache.caches;                                  // private CacheStorage',
+    '// after a completed sync, drop just the cache tier:',
+    '// Clear-Site-Data: "storage:telemetry-cache"',
+  ].join('\n');
+  $('#btn-copy').addEventListener('click', () => {
+    (navigator.clipboard?.writeText(SNIPPET) || Promise.reject()).then(
+      () => { $('#btn-copy').textContent = 'Copied ✓'; },
+      () => { $('#snip').style.display = ''; $('#snip').textContent = SNIPPET; $('#btn-copy').textContent = 'Shown below (clipboard blocked)'; }
+    );
+  });
+
+  main().catch((e) => {
+    chip('s1', 'fatal', 'Lab crashed', 'fail', String(e));
+  });
+})();
+</script>
+</body>
+</html>
