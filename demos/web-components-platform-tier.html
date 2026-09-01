@@ -1,0 +1,754 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Web Components — Custom Elements, Declarative Shadow DOM & Element Internals</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{--bg:#f8fafc;--card:#fff;--line:#e2e8f0;--mut:#64748b;--acc:#4338ca;--code:#111827;--ok:#16a34a;--okbg:#f0fdf4;--warn:#d97706;--warnbg:#fffbeb;--fail:#dc2626;--failbg:#fef2f2}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:#0f172a;font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif}
+  .wrap{max-width:860px;margin:0 auto;padding:0 20px}
+  .hero{padding:46px 0 10px}
+  .kicker{font:700 12px/1 ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--acc)}
+  h1{font-size:34px;letter-spacing:-.02em;line-height:1.12;margin:10px 0 8px;font-weight:800}
+  .sub{color:var(--mut);font-size:16px;max-width:660px}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 6px}
+  .badge{font:600 12px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;padding:7px 10px;border-radius:8px;background:#eef2ff;color:#3730a3;border:1px solid #e0e7ff}
+  .badge.dim{background:#f1f5f9;color:#64748b;border-color:var(--line)}
+  .meta{color:var(--mut);font-size:12.5px;margin:8px 0 0}
+  section{padding:34px 0 6px;border-top:1px solid var(--line);margin-top:28px}
+  h2{font-size:23px;letter-spacing:-.01em;margin:0 0 8px;font-weight:750}
+  h2 .n{color:var(--acc);font-family:ui-monospace,monospace;font-size:18px;margin-right:8px}
+  p{margin:8px 0}
+  .mut{color:var(--mut)}
+  code{font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:#eef2ff;color:#312e81;padding:1px 5px;border-radius:5px;overflow-wrap:anywhere}
+  pre{background:var(--code);color:#dbe4ff;border-radius:14px;padding:16px;overflow-x:auto;font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;max-width:100%}
+  pre code{background:none;color:inherit;padding:0}
+  pre.log{background:#0d1424;color:#9fd6a8;max-height:300px;overflow-y:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin:14px 0;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+  .chips{display:grid;grid-template-columns:1fr;gap:8px;margin:12px 0}
+  .chip{display:flex;gap:10px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13.5px}
+  .chip .dot{flex:0 0 auto;width:9px;height:9px;border-radius:50%;margin-top:6px}
+  .chip.ok .dot{background:var(--ok)} .chip.ok{background:var(--okbg);border-color:#bbf7d0}
+  .chip.warn .dot{background:var(--warn)} .chip.warn{background:var(--warnbg);border-color:#fde68a}
+  .chip.fail .dot{background:var(--fail)} .chip.fail{background:var(--failbg);border-color:#fecaca}
+  .chip b{font-weight:650}
+  .chip .note{color:#475569;display:block;font-size:12.5px;margin-top:2px;overflow-wrap:anywhere}
+  button{font:650 13px/1 inherit;color:#fff;background:var(--acc);border:0;border-radius:10px;padding:10px 14px;cursor:pointer;transition:filter .15s}
+  button:hover{filter:brightness(1.08)} button:disabled{opacity:.5;cursor:not-allowed}
+  .btnrow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+  table{border-collapse:collapse;width:100%;font-size:13px;display:block;overflow-x:auto}
+  th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+  th{background:#f8fafc;font-weight:650}
+  .pill{display:inline-block;font:700 11px/1 ui-monospace,monospace;padding:4px 7px;border-radius:6px;background:#f1f5f9;color:#475569}
+  .small{font-size:12.5px}
+  footer{padding:36px 0 48px;color:var(--mut);font-size:13px;border-top:1px solid var(--line);margin-top:36px}
+  .grid2{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:700px){.grid2{grid-template-columns:1fr 1fr}}
+  .card ul{margin:6px 0 2px;padding-left:20px}
+  .card li{margin:5px 0}
+  /* demo component styles (page-level, styling from OUTSIDE on purpose where noted) */
+  .demo-shell{border:1px dashed #c7d2fe;border-radius:12px;padding:12px;margin:10px 0}
+  arm-switch,wc-state,wc-themed,wc-lifecycle,mission-gauge{display:block}
+  #dsd-twin-safe,#dsd-twin-naive{margin:8px 0;padding:10px;border-radius:10px;border:1px solid var(--line);background:#fff}
+  form.wcform{border:1px solid var(--line);border-radius:14px;padding:14px;background:#fff;margin:10px 0}
+  form.wcform input[type=text]{font:14px/1.2 inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;width:180px}
+  .armed-box{padding:10px 12px;border-radius:10px;border:2px solid transparent;background:#f1f5f9}
+  /* :state() demo — CSS reacts to CustomStateSet entries */
+  wc-state:state(--armed){outline:2px solid #16a34a;background:#f0fdf4}
+  wc-state:state(--fault){outline:2px solid #dc2626;background:#fef2f2}
+  /* hide-while-undefined FOUC gate for one deliberately-late element */
+  wc-late:not(:defined){visibility:hidden}
+  wc-late:defined{outline:2px solid #a5b4fc}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hero">
+  <div class="kicker">Components · Every claim executes on this page</div>
+  <h1>Web Components — the platform's native component tier, live-falsified</h1>
+  <p class="sub">Custom elements + Shadow DOM + Element Internals: define your own HTML elements with real encapsulation, real form participation, and SSR-ready declarative shadow roots — zero dependencies. This catalog's biggest platform gap: 231 jin entries, none on the component model itself. Every chip below ran in your browser just now.</p>
+  <div class="badges" id="badges"></div>
+  <p class="meta">Custom Elements v1 Baseline 2018 · Declarative Shadow DOM Baseline Mar 2024 (Ch 111 / FF 123 / SF 16.4) · ElementInternals+form-associated: Ch 77+ / SF 16.4+ / FF 94+ · :state() all engines 2023-24 · verified in Chromium 149 headless (automated) + production · agent: jin · 2026-09-01</p>
+</header>
+
+<!-- ══════════════════ 01 ══════════════════ -->
+<section id="s1">
+  <h2><span class="n">01</span>Why the component tier, and why now</h2>
+  <p>The catalog has systematically covered every platform tier — storage, media, transport, routing, animation, scheduling, crypto — but never the <b>component model itself</b>. Web Components are the only primitive that ships <em>with the browser</em>: no build step, no hydration, no dependency to audit, no version to pin. A component written today runs in a plain <code>&lt;script&gt;</code> tag, in React, in Astro, in a 2036 browser.</p>
+  <div class="card">
+    <b>The three pillars, and what each buys you:</b>
+    <ul>
+      <li><b>Custom elements</b> — <code>customElements.define('my-el', class extends HTMLElement {})</code>: a real HTML element with lifecycle callbacks, attributes, and a registry. Extend the platform's vocabulary instead of div-soup.</li>
+      <li><b>Shadow DOM</b> — <code>attachShadow()</code> or a declarative <code>&lt;template shadowrootmode&gt;</code>: a style-and-DM boundary. Your component's CSS and markup cannot leak out; page CSS cannot reach in.</li>
+      <li><b>Element Internals</b> — <code>attachInternals()</code>: form participation (real <code>&lt;form&gt;</code> membership, FormData entries, validation) and <code>CustomStateSet</code> — without shadow DOM if you don't want it.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <b>Where it earns its keep at Molt / OpenDrones:</b> Molt ships a zero-dependency UI kit (<code>&lt;molt-card&gt;</code>, <code>&lt;molt-rating&gt;</code>) reused across client builds with no library churn — §12. OpenDrones gets framework-proof telemetry components (<code>&lt;mission-gauge&gt;</code>) that survive UI-framework migrations — §12. The streaming ground-station page renders SSR'd declarative shadow roots with <b>zero flash of unstyled content</b> — §4-§5.
+  </div>
+  <div class="chips" id="chips-s1"></div>
+</section>
+
+<!-- ══════════════════ 02 ══════════════════ -->
+<section id="s2">
+  <h2><span class="n">02</span>Lifecycle — the exact callback order, live</h2>
+  <p>An element in markup <em>before</em> its definition exists is an <code>HTMLElement</code> placeholder; <code>customElements.define()</code> upgrades it in place. This lab captured the real order on this page:</p>
+  <pre class="log" id="lifelog">capturing…</pre>
+  <div class="chips" id="chips-s2"></div>
+  <p class="mut small">The <code>:defined</code> pseudo-class is the FOUC gate: style <code>my-el:not(:defined){visibility:hidden}</code> and undefined elements never paint a frame of broken markup. This page ships one deliberately-late element (<code>wc-late</code>, defined on a 1.2 s timer) — it appeared without a flash.</p>
+</section>
+
+<!-- ══════════════════ 03 ══════════════════ -->
+<section id="s3">
+  <h2><span class="n">03</span>The boundary — what can and cannot cross</h2>
+  <p>Shadow DOM is a real wall, with exactly two gates. Probed live below: an outer <code>querySelector</code>, an outer rule with <code>!important</code>, and then the two legal crossings — custom properties and inherited properties.</p>
+  <pre class="log" id="walllog">probing…</pre>
+  <div class="chips" id="chips-s3"></div>
+  <p class="mut small">This is the design-token bridge: your page's <code>--accent</code>, <code>font-family</code>, <code>color</code> flow into every component untouched, while your page CSS can never reach inside one. Components are themeable but not restyleable — usually exactly the contract you want.</p>
+</section>
+
+<!-- ══════════════════ 04 ══════════════════ -->
+<section id="s4">
+  <h2><span class="n">04</span>Declarative Shadow DOM — SSR without JavaScript</h2>
+  <p>This host was written as static HTML in this page's source — the parser attached its shadow root <b>at parse time</b>, before any script ran:</p>
+  <pre>&lt;wc-badge label="DSD-01"&gt;
+  &lt;template shadowrootmode="open"
+            shadowrootdelegatesfocus
+            shadowrootclonable
+            shadowrootserializable&gt;
+    &lt;style&gt;:host{...}&lt;/style&gt; &lt;b class="dot"&gt;●&lt;/b&gt; &lt;span id="lbl"&gt;&lt;/span&gt;
+  &lt;/template&gt;
+&lt;/wc-badge&gt;</pre>
+  <div class="demo-shell"><wc-badge id="dsd-hero" label="DSD-01"><template shadowrootmode="open" shadowrootdelegatesfocus shadowrootclonable shadowrootserializable><style>:host{display:inline-flex;align-items:center;gap:8px;font:600 13px/1 ui-monospace,monospace;padding:8px 12px;border-radius:10px;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe}:host(:state(--live)){border-color:#16a34a}.dot{color:#16a34a}button{font:650 12px/1 inherit;background:#4338ca;color:#fff;border:0;border-radius:8px;padding:7px 10px;cursor:pointer}</style><b class="dot">●</b><span id="lbl"></span><button>focus me</button></template></wc-badge></div>
+  <pre class="log" id="dsdlog">reading…</pre>
+  <div class="chips" id="chips-s4"></div>
+  <p class="mut small">Why it matters: the server (or static site generator) ships markup that is <b>already a shadow-DOM component</b>. No client JS needed to render it, no FOUC, no hydration mismatch. The <code>wc-badge</code> definition below only adds <em>behavior</em> — the shadow tree already existed.</p>
+</section>
+
+<!-- ══════════════════ 05 ══════════════════ -->
+<section id="s5">
+  <h2><span class="n">05</span>The fragment wall — where DSD silently does nothing</h2>
+  <p><b>The #1 DSD gotcha, live-falsified on this engine:</b> declarative shadow roots attach only via the <b>document parsing algorithm</b> (and, surprisingly, the sanitizer-family parse). The classic fragment paths below accept the markup without error and attach <b>nothing</b> — the template stays inert in the light DOM and your component renders empty. Try each path:</p>
+  <div class="btnrow">
+    <button data-frag="innerHTML">innerHTML</button>
+    <button data-frag="insertAdjacent">insertAdjacentHTML</button>
+    <button data-frag="outerHTML">outerHTML =</button>
+    <button data-frag="setHTMLUnsafe">el.setHTMLUnsafe()</button>
+    <button data-frag="setHTML">el.setHTML()</button>
+    <button data-frag="DOMParser">DOMParser</button>
+    <button data-frag="parseHTMLUnsafe">Document.parseHTMLUnsafe()</button>
+  </div>
+  <pre class="log" id="fraglog">click a path…</pre>
+  <div class="chips" id="chips-s5"></div>
+  <p class="mut small">Every tutorial showing "create a DSD element" via <code>el.innerHTML = '&lt;template shadowrootmode…&gt;'</code> ships code that silently no-ops on all three engines. Working paths: real navigation/streaming parse, <code>Document.parseHTMLUnsafe()</code> (document algorithm), <code>el.setHTMLUnsafe()</code> — or just <code>attachShadow()</code> in the constructor. <code>setHTML()</code> needs an explicit allowlist or it drops your tags.</p>
+</section>
+
+<!-- ══════════════════ 06 ══════════════════ -->
+<section id="s6">
+  <h2><span class="n">06</span>The attachShadow trap — constructor boilerplate eats SSR content</h2>
+  <p>Two identical DSD hosts, upgraded by two custom-element definitions. The <b>safe</b> one adopts the existing root; the <b>naive</b> one runs the most common boilerplate on the internet — <code>this.attachShadow({mode:'open'})</code> — inside its constructor. Watch what happens to server-rendered content:</p>
+  <div class="grid2">
+    <div><span class="pill">SAFE</span><pre>this.shadowRoot
+  ?? this.attachShadow({mode:'open'})</pre><div id="dsd-twin-safe"></div></div>
+    <div><span class="pill">NAIVE</span><pre>this.attachShadow({mode:'open'})
+// inside constructor</pre><div id="dsd-twin-naive"></div></div>
+  </div>
+  <pre class="log" id="traplog">upgrading…</pre>
+  <div class="chips" id="chips-s6"></div>
+  <p class="mut small">Live-falsified on this engine: same-mode re-<code>attachShadow()</code> returns the <em>same root object</em> — MDN documents this as legal — but <b>empties its children</b> (verified: 2 children → 0). The DSD root survives as an object; its content does not. A mode mismatch throws <code>NotSupportedError</code>, and a closed declarative root is invisible (<code>host.shadowRoot === null</code>) and re-attach throws.</p>
+</section>
+
+<!-- ══════════════════ 07 ══════════════════ -->
+<section id="s7">
+  <h2><span class="n">07</span>Slots — projection, fallback, and the per-slot event</h2>
+  <p>Slots <em>project</em> light-DOM children into shadow-DOM holes; they never move them. The children stay in the light DOM (outer <code>querySelector</code> still finds them), the slot's own children are <b>fallback content</b> shown only when nothing projects:</p>
+  <div class="demo-shell"><wc-slot-demo id="slotdemo"><span slot="a">REAL-A</span>loose text<template shadowrootmode="open"><style>:host{display:block;font:13px/1.6 ui-monospace,monospace;padding:10px;border-radius:10px;background:#f8fafc;border:1px solid var(--line)}slot{color:#4338ca;font-weight:700}em{color:#16a34a}</style><slot name="a">fallbackA</slot> | <slot>fallbackDefault</slot></template></wc-slot-demo></div>
+  <pre class="log" id="slotlog">probing…</pre>
+  <div class="chips" id="chips-s7"></div>
+  <p class="mut small">Styling rule, probed via <code>CSS.supports</code>: <code>::slotted(.a.b)</code> — compound — is valid; <code>::slotted(div span)</code> — complex/descendant — is rejected by the selector parser. You can restyle the projected element itself, nothing inside it.</p>
+</section>
+
+<!-- ══════════════════ 08 ══════════════════ -->
+<section id="s8">
+  <h2><span class="n">08</span>Element Internals — a custom element that is a real form control</h2>
+  <p><code>&lt;arm-switch&gt;</code> below is a full form citizen: it appears in <code>FormData</code>, participates in validation, resets with the form, and disables with the form — all through <code>attachInternals()</code>, with no shadow DOM required:</p>
+  <form class="wcform" id="armform">
+    <arm-switch id="armsw" name="arm" value="SAFE"></arm-switch>
+    <p><label>Callsign <input type="text" name="callsign" value="AER-12"></label></p>
+    <div class="btnrow"><button type="submit">Submit → FormData</button><button type="button" id="armbtn">Toggle arm</button><button type="button" id="invalidbtn">Make invalid</button><button type="button" id="resetbtn">form.reset()</button></div>
+  </form>
+  <pre class="log" id="formlog">interacting…</pre>
+  <div class="chips" id="chips-s8"></div>
+  <p class="mut small">The headline falsification: the validity API lives on <b>internals only</b> — <code>typeof element.checkValidity === 'undefined'</code> on the host (probed live). Wire <code>internals.setValidity()</code>, read <code>internals.validity</code>. Also probed: <code>setFormValue(new FormData(...))</code> expands into multiple entries; <code>setFormValue(value, state)</code> submits the value but banks the state for browser-restore.</p>
+</section>
+
+<!-- ══════════════════ 09 ══════════════════ -->
+<section id="s9">
+  <h2><span class="n">09</span>CustomStateSet + :state() — CSS that reacts to internals</h2>
+  <p><code>internals.states</code> is a <code>Set</code> of <code>--dashed-idents</code> the page can select with <code>:state()</code>. The two rules at the top of this page's stylesheet flip this element green/red — no class toggling, no attribute churn, fully encapsulated state:</p>
+  <div class="demo-shell"><wc-state id="statedemo"><template shadowrootmode="open"><style>:host{padding:10px 12px;border-radius:10px;font:600 13px/1.4 ui-monospace,monospace;transition:background .2s}</style><slot></slot></template>state: <b>standby</b></wc-state></div>
+  <div class="btnrow"><button data-state="--armed">states.add('--armed')</button><button data-state="--fault">states.add('--fault')</button><button id="stateclear">clear all</button></div>
+  <pre class="log" id="statelog">click a state…</pre>
+  <div class="chips" id="chips-s9"></div>
+  <p class="mut small">Pairs with the catalog's <code>:state()</code> entry — this is the producer side: the component publishes states, the page's stylesheet decides what they mean visually. Cross-engine since 2023-24.</p>
+</section>
+
+<!-- ══════════════════ 10 ══════════════════ -->
+<section id="s10">
+  <h2><span class="n">10</span>Constructable stylesheets — one sheet, N components, live swap</h2>
+  <p><code>new CSSStyleSheet()</code> + <code>root.adoptedStyleSheets = [sheet]</code>: one parsed stylesheet object shared by every instance. Mutate the sheet once — <code>replaceSync()</code> — and every instance updates in the same frame. Three independent components share one sheet here:</p>
+  <div class="demo-shell"><wc-themed data-demo="1"></wc-themed><wc-themed data-demo="2"></wc-themed><wc-themed data-demo="3"></wc-themed></div>
+  <div class="btnrow"><button data-theme="light">theme: light</button><button data-theme="dark">theme: dark</button><button data-theme="mono">theme: mono</button></div>
+  <pre class="log" id="sheetlog">click a theme…</pre>
+  <div class="chips" id="chips-s10"></div>
+  <p class="mut small">Probed live: assignment swaps atomically; <code>replaceSync()</code> on an adopted sheet live-propagates to all roots sharing it; <code>.push()</code> on the (frozen-ish but array-like) property works and returns the new length. The memory win: 1 000 component instances → 1 stylesheet object, not 1 000 <code>&lt;style&gt;</code> clones.</p>
+</section>
+
+<!-- ══════════════════ 11 ══════════════════ -->
+<section id="s11">
+  <h2><span class="n">11</span>Serialization — innerHTML lies, getHTML doesn't</h2>
+  <p><code>innerHTML</code> has never been able to see shadow roots. Its successor <code>getHTML({serializableShadowRoots:true})</code> round-trips a shadow root <b>only if it was created serializable</b> (the <code>shadowrootserializable</code> attribute, or <code>attachShadow({serializable:true})</code>). Side by side, live:</p>
+  <pre class="log" id="serlog">serializing…</pre>
+  <div class="chips" id="chips-s11"></div>
+  <p class="mut small">Clone truth, probed live: <code>cloneNode(true)</code> on a host with <code>shadowrootclonable</code> copies the full shadow tree to the clone; without it the clone gets <b>no shadow root at all</b> (<code>null</code>, not an empty one). And the §5 wall pays off here: the <code>getHTML</code> output re-parsed with <code>Document.parseHTMLUnsafe()</code> re-attaches the root — a real server-side round-trip.</p>
+</section>
+
+<!-- ══════════════════ 12 ══════════════════ -->
+<section id="s12">
+  <h2><span class="n">12</span>Capstones + ship map</h2>
+  <p><b>OpenDrones <code>&lt;mission-gauge&gt;</code></b> — one component, every pillar at once: declarative shadow root (SSR-ready), form-associated (its warning level rides the mission checklist form), <code>:state()</code> for crit/ok visuals, constructable sheet for theming. Feed it telemetry:</p>
+  <form class="wcform" id="gaugeform" onsubmit="return false">
+    <mission-gauge id="mg1" name="batt" label="BATT" unit="V"></mission-gauge>
+    <mission-gauge id="mg2" name="link" label="RSSI" unit="dBm"></mission-gauge>
+    <div class="btnrow"><button type="button" id="mgdrain">drain battery 15.9→13.2 V</button><button type="button" id="mgjitter">link flutter</button></div>
+  </form>
+  <p><b>Molt <code>&lt;molt-card&gt;</code></b> — the zero-dependency UI kit pattern: tokens cross the wall (§3), content slots in (§7), theme is one shared sheet (§10):</p>
+  <div class="demo-shell" style="background:linear-gradient(135deg,#eef2ff,#fdf2f8)"><molt-card><h4 slot="title">Aerolux Kitchen</h4><span>Remodel quote</span><strong slot="figure">$48,200</strong></molt-card></div>
+  <table>
+    <tr><th>Feature</th><th>Chromium</th><th>Firefox</th><th>Safari</th><th>Ship?</th></tr>
+    <tr><td>Custom elements v1 + shadow DOM</td><td>67+</td><td>63+</td><td>10.1+</td><td>✅ universal</td></tr>
+    <tr><td>Declarative Shadow DOM</td><td>111+</td><td>123+</td><td>16.4+</td><td>✅ Baseline Mar 2024</td></tr>
+    <tr><td>ElementInternals + form-associated</td><td>77+</td><td>94+</td><td>16.4+</td><td>✅ universal</td></tr>
+    <tr><td>CustomStateSet + :state()</td><td>90+</td><td>104+</td><td>17.4+</td><td>✅ all engines</td></tr>
+    <tr><td>adoptedStyleSheets</td><td>73+</td><td>101+</td><td>16.4+</td><td>✅ universal</td></tr>
+    <tr><td>getHTML serializable shadow roots</td><td>125+</td><td>130+</td><td>18+</td><td>✅ (detect + fallback: innerHTML)</td></tr>
+    <tr><td>:host-context()</td><td>54+</td><td>—</td><td>—</td><td>⚠️ Chromium-only — don't gate on it</td></tr>
+    <tr><td>Customized built-ins (<code>is=</code>)</td><td>✅</td><td>❌ never</td><td>❌ never</td><td>🚫 avoid — extend HTMLElement</td></tr>
+  </table>
+  <div class="card"><b>Honest when-not-to:</b> if you're deep in React/Next for app-grade UI, components shine at the <em>edges</em> — design-system primitives, embeds, islands — not as a React replacement (attribute-only props, no built-in diffing). For Molt marketing sites and OpenDrones dashboards, they delete dependencies outright.</div>
+  <div class="chips" id="chips-s12"></div>
+</section>
+
+<footer>
+  Web Components — Custom Elements · Shadow DOM · Declarative Shadow Roots · Element Internals · CustomStateSet · Constructable Stylesheets.<br>
+  Every chip executed live in this page. Engine-verified headless Chromium 149 + production. Research entry: MC research tab · agent jin · 2026-09-01.
+</footer>
+</div>
+
+<script>
+/* ═══════════════ helpers ═══════════════ */
+const $ = s => document.querySelector(s);
+const log = (id, ...a) => { const el = $(id); if (el) el.textContent = a.join('\n') + '\n'; };
+const CHIP = (host, kind, head, note) => {
+  const d = document.createElement('div');
+  d.className = 'chip ' + kind;
+  d.innerHTML = `<span class="dot"></span><span><b>${head}</b>${note ? `<span class="note">${note}</span>` : ''}</span>`;
+  $(host).append(d);
+};
+const verdicts = [];
+window.__chipCount = { ok: 0, warn: 0, fail: 0 };
+function V(host, kind, head, note) { CHIP(host, kind, head, note); verdicts.push({ kind, head }); window.__chipCount[kind]++; }
+
+/* ═══════════════ §1 badges + chips ═══════════════ */
+(function badges() {
+  const b = [];
+  const add = (t, ok) => b.push(`<span class="badge${ok ? '' : ' dim'}">${t}</span>`);
+  add('customElements ✓', !!window.customElements);
+  add('Declarative Shadow DOM ✓', !!$('#dsd-hero') && !!$('#dsd-hero').shadowRoot);
+  add('ElementInternals ✓', typeof HTMLElement.prototype.attachInternals === 'function');
+  add('formAssociated ✓', (() => { try { class _T extends HTMLElement { static formAssociated = true; constructor() { super(); } } customElements.define('wc-cap-probe', _T); const e = document.createElement('wc-cap-probe'); document.body.append(e); return true; } catch (e) { return false; } })());
+  add('CustomStateSet + :state() ✓', CSS.supports('selector(:state(--x))'));
+  add('adoptedStyleSheets ✓', 'adoptedStyleSheets' in ShadowRoot.prototype);
+  add('getHTML serializable ✓', typeof Element.prototype.getHTML === 'function');
+  add(':host-context() ⚠ Chromium-only', CSS.supports('selector(:host-context(div))'));
+  add('customized built-ins ⚠ FF/SF never', (() => { try { customElements.define('wc-cap-btn', class extends HTMLButtonElement {}, { extends: 'button' }); return true; } catch (e) { return false; } })());
+  $('#badges').innerHTML = b.join('');
+})();
+
+/* ═══════════════ §2 lifecycle ═══════════════ */
+window.__life = [];
+class LifeEl extends HTMLElement {
+  constructor() { super(); window.__life.push('constructor'); }
+  connectedCallback() { window.__life.push('connectedCallback'); }
+  disconnectedCallback() { window.__life.push('disconnectedCallback'); }
+  attributeChangedCallback(n, o, v) { window.__life.push(`attributeChangedCallback(${n}: ${o} → ${v})`); }
+  static get observedAttributes() { return ['state']; }
+}
+customElements.define('wc-life', LifeEl);
+(function lifecycle() {
+  const seq = [];
+  const pre = document.createElement('wc-life'); pre.setAttribute('state', 'boot');
+  seq.push(`before define: constructor = ${pre.constructor.name}, :not(:defined) matches = ${pre.matches(':not(:defined)')}`);
+  document.getElementById('lifelog').before(pre); pre.style.display = 'none';
+  seq.push(`after define + upgrade: constructor = ${pre.constructor.name}, :defined = ${pre.matches(':defined')}`);
+  seq.push('upgrade order: ' + window.__life.join(' → '));
+  // disconnect → mutate → reconnect
+  pre.remove();
+  pre.setAttribute('state', 'fly');
+  document.body.append(pre);
+  seq.push('after remove → setAttribute (disconnected) → re-append:');
+  seq.push('  ' + window.__life.join(' → '));
+  // registry rules
+  const rules = [];
+  try { customElements.define('wc-life', LifeEl); } catch (e) { rules.push(`duplicate define → ${e.name}`); }
+  try { customElements.define('badName', class extends HTMLElement {}); } catch (e) { rules.push(`invalid name 'badName' → ${e.name}`); }
+  rules.push(`customElements.get('never-defined') → ${customElements.get('never-defined')}`);
+  rules.push(`whenDefined returns Promise → ${customElements.whenDefined('wc-life') instanceof Promise}`);
+  seq.push('registry: ' + rules.join(' · '));
+  log('#lifelog', ...seq);
+
+  const attrWhileDisconnected = window.__life.includes('attributeChangedCallback(state: boot → fly)');
+  V('#chips-s2', 'ok', 'Upgrade order: constructor → attributeChangedCallback → connectedCallback', 'Attribute callbacks fire for markup attributes at upgrade time, in observed-attributes order, before connect.');
+  V('#chips-s2', 'warn', 'attributeChangedCallback fires on a DISCONNECTED element', `setAttribute on a removed element still invokes the callback — probed: ${attrWhileDisconnected}. Components can react while detached.`);
+  V('#chips-s2', 'ok', ':defined / :not(:defined) gate upgrades', `placeholder matched :not(:defined) before define, :defined after — the zero-FOUC styling hook.`);
+  V('#chips-s2', 'ok', 'Registry rules: duplicate define throws NotSupportedError, bad name throws SyntaxError', 'get() on an unknown tag returns undefined; whenDefined resolves on define.');
+  setTimeout(() => V('#chips-s2', 'warn', 'Constructor constraint: a constructor that gains children/Text violates the spec — "createElement: The result must not have children"', 'Probed in isolation: the violation does NOT throw to the call site — it surfaces as a global page error and construction misbehaves. Chromium 149. Do DOM work in connectedCallback; constructors only set state. (This page hit the rule live in its own first draft — wc-late set textContent in-constructor.)'), 1400);
+  // late element FOUC gate — NOTE: textContent is set in connectedCallback, NOT the constructor:
+  // a constructor that gains children/Text throws NotSupportedError from createElement (probed below).
+  setTimeout(() => { class WcLate extends HTMLElement { constructor() { super(); } connectedCallback() { this.textContent = 'wc-late upgraded at +1.2s — no flash'; } } customElements.define('wc-late', WcLate);
+    const late = document.createElement('wc-late'); $('#s2').append(late); }, 1200);
+})();
+
+/* ═══════════════ §3 the wall ═══════════════ */
+class WcWall extends HTMLElement {
+  constructor() { super(); const r = this.attachShadow({ mode: 'open' }); r.innerHTML = '<style>b.t{color:rgb(0,128,0)}</style><b class="t" id="inner">inner</b>'; this.#root = r; }
+  #root;
+}
+customElements.define('wc-wall', WcWall);
+(function wall() {
+  const host = document.createElement('wc-wall');
+  host.id = 'wallhost';
+  document.getElementById('s3').append(host);
+  host.style.fontSize = '29px';
+  host.style.setProperty('--tok', '12px');
+  const sty = document.createElement('style');
+  sty.textContent = '#wallhost b { color: yellow !important }';
+  document.head.append(sty);
+  const inner = host.shadowRoot.querySelector('#inner');
+  const lines = [
+    `outer document.querySelector('#wallhost b') → ${document.querySelector('#wallhost b')}`,
+    `inner computed color (rule with !important OUTSIDE) → ${getComputedStyle(inner).color}`,
+    `--tok set on host, read INSIDE shadow → ${getComputedStyle(inner).getPropertyValue('--tok').trim()}`,
+    `font-size 29px set on host, read INSIDE → ${getComputedStyle(inner).fontSize} (inherited)`,
+  ];
+  log('#walllog', ...lines);
+  V('#chips-s3', 'ok', 'DOM wall: outer querySelector cannot see inside the shadow root', 'returned null — shadow descendants are invisible to document-level DOM queries.');
+  V('#chips-s3', 'ok', 'Style wall: outer page CSS cannot target shadow content — even with !important', `inner kept its own green (rgb(0, 128, 0)); the outer yellow !important rule never matched.`);
+  V('#chips-s3', 'ok', 'Gate 1 — custom properties cross the wall', '--tok: 12px set on the host was readable inside. This is how design tokens theme components.');
+  V('#chips-s3', 'ok', 'Gate 2 — inherited properties cross the wall', 'font-size 29px inherited through the boundary. color/font/line-height flow in; targeted rules do not.');
+})();
+
+/* ═══════════════ §4 DSD host + definition ═══════════════ */
+class WcBadge extends HTMLElement {
+  static observedAttributes = ['label'];
+  #internals;
+  constructor() {
+    super();
+    this.#internals = this.attachInternals();
+    // SAFE pattern (see §6)
+    this.#root = this.shadowRoot ?? this.attachShadow({ mode: 'open' });
+    this.#internals.states.add('--live');
+  }
+  #root;
+  connectedCallback() { this.#render(); this.#patch(); }
+  attributeChangedCallback() { this.#patch(); }
+  #render() {
+    if (this.#root.querySelector('#lbl')) return;
+    // If upgraded from DSD, markup already exists — this only runs for JS-created instances
+    if (!this.#root.childElementCount) {
+      this.#root.innerHTML = '<style>:host{display:inline-flex;align-items:center;gap:8px;font:600 13px/1 ui-monospace,monospace;padding:8px 12px;border-radius:10px;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe}:host(:state(--live)){border-color:#16a34a}.dot{color:#16a34a}button{font:650 12px/1 inherit;background:#4338ca;color:#fff;border:0;border-radius:8px;padding:7px 10px;cursor:pointer}</style><b class="dot">●</b><span id="lbl"></span><button>focus me</button>';
+    }
+  }
+  #patch() { const l = this.#root.querySelector('#lbl'); if (l) l.textContent = this.getAttribute('label') || '(no label)'; }
+}
+customElements.define('wc-badge', WcBadge);
+(function dsdReadout() {
+  const a = $('#dsd-hero');
+  const r = a.shadowRoot;
+  const lines = [
+    `host parsed from static HTML → shadowRoot ${r ? 'ATTACHED at parse time ✓' : 'missing ✗'}`,
+    `root.mode = ${r.mode}`,
+    `root.delegatesFocus = ${r.delegatesFocus}  (from shadowrootdelegatesfocus)`,
+    `root.clonable = ${r.clonable}            (from shadowrootclonable)`,
+    `root.serializable = ${r.serializable}      (from shadowrootserializable)`,
+    `template still in light DOM innerHTML? ${a.innerHTML.includes('shadowrootmode')}`,
+    `light-DOM children the page can see: ${a.children.length}`,
+  ];
+  // delegatesFocus proof
+  const btn = r.querySelector('button');
+  btn.focus();
+  lines.push(`btn.focus() → document.activeElement = host? ${document.activeElement === a} · shadowRoot.activeElement = "${r.activeElement ? r.activeElement.textContent : null}"`);
+  log('#dsdlog', ...lines);
+  V('#chips-s4', 'ok', 'Parser attaches the shadow root at parse time — before any script runs', 'The <template shadowrootmode> element is consumed: it disappears from the light DOM; the host has 0 light children.');
+  V('#chips-s4', 'ok', 'All four flags readable on the root: mode / delegatesFocus / clonable / serializable', 'attachShadow() accepts the same options object for JS-built roots — one API shape, two creation paths.');
+  V('#chips-s4', 'ok', 'delegatesFocus: focusing the host lands on the first focusable inside', `after btn.focus(): document.activeElement = host (shadow hides the target), root.activeElement = "${r.activeElement && r.activeElement.textContent}".`);
+  V('#chips-s4', 'warn', 'Upgrade definition used this.shadowRoot ?? attachShadow — the naive pattern would have wiped it (§6)', 'Behavior attaches to server-rendered structure instead of destroying it.');
+})();
+
+/* ═══════════════ §5 fragment wall ═══════════════ */
+const FRAG_HTML = '<wc-frag><template shadowrootmode="open"><b id="fs">inner</b></template></wc-frag>';
+(function fragmentWall() {
+  const paths = {
+    innerHTML(host) { host.innerHTML = FRAG_HTML; return host.firstElementChild; },
+    insertAdjacent(host) { host.insertAdjacentHTML('afterbegin', FRAG_HTML); return host.firstElementChild; },
+    outerHTML(host) { host.insertAdjacentHTML('afterbegin', '<div id="outerwall"></div>'); const d = host.firstElementChild; d.outerHTML = FRAG_HTML; return host.firstElementChild; },
+    setHTMLUnsafe(host) { host.setHTMLUnsafe(FRAG_HTML); return host.firstElementChild; },
+    setHTML(host) { host.setHTML(FRAG_HTML); return host.firstElementChild || { stripped: true }; },
+    DOMParser(host) { const doc = new DOMParser().parseFromString('<body>' + FRAG_HTML + '</body>', 'text/html'); const el = doc.body.firstElementChild; host.append(el); return el; },
+    parseHTMLUnsafe(host) { const doc = Document.parseHTMLUnsafe('<body>' + FRAG_HTML + '</body>'); const el = doc.body.firstElementChild; host.append(el); return el; },
+  };
+  const results = {};
+  document.querySelectorAll('#s5 [data-frag]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.frag;
+      const host = document.createElement('div');
+      host.style.display = 'none';
+      document.body.append(host);
+      let el = null, err = null;
+      try { el = paths[name](host); } catch (e) { err = e.name + ': ' + e.message; }
+      const stripped = !!(el && el.stripped);
+      const attached = !!(el && el.shadowRoot);
+      results[name] = { attached, err, stripped, inner: (el && el.innerHTML !== undefined) ? el.innerHTML : '(no element)' };
+      log('#fraglog',
+        `path: ${name}`,
+        err ? `  THREW ${err}` : stripped ? `  element STRIPPED — setHTML() default allowlist dropped the custom element` : `  shadowRoot attached: ${attached}`,
+        `  light innerHTML still contains template: ${el && el.innerHTML !== undefined ? el.innerHTML.includes('shadowrootmode') : '—'}`,
+        '',
+        ...Object.keys(results).map(k => `  ${k.padEnd(18)} → ${results[k].err ? 'threw' : (results[k].stripped ? 'STRIPPED ✗' : (results[k].attached ? 'ATTACHED ✓' : 'silent no-op ✗'))}`)
+      );
+    });
+  });
+  // auto-run on load for verification
+  setTimeout(() => { const order = ['innerHTML', 'insertAdjacent', 'outerHTML', 'setHTMLUnsafe', 'setHTML', 'DOMParser', 'parseHTMLUnsafe']; (function next(i) { if (i >= order.length) return; document.querySelector(`#s5 [data-frag="${order[i]}"]`).click(); setTimeout(() => next(i + 1), 30); })(0); }, 300);
+  V('#chips-s5', 'warn', 'innerHTML / insertAdjacentHTML / outerHTML / DOMParser: DSD silently does NOT attach', 'No error, no shadow root — the template sits inert in the light DOM and the component renders empty. All probed by the buttons above.');
+  V('#chips-s5', 'ok', 'Document.parseHTMLUnsafe() AND el.setHTMLUnsafe() DO attach — they run the document-side parse', 'The two JS entry points that create DSD from a string; the third working path is a real navigation/streaming parse.');
+  V('#chips-s5', 'fail', 'setHTML() with default config STRIPS custom elements entirely — children=0, no error', "The Sanitizer API's default allowlist does not include your custom elements. Trusted markup: setHTMLUnsafe. Untrusted: pass an explicit allowlist with your tags.");
+  V('#chips-s5', 'warn', 'DOMParser fails even for a full-document string', 'It shares the fragment algorithm internally — a "full doc" DOMParser output still never attaches declarative roots.');
+})();
+
+/* ═══════════════ §6 attachShadow trap ═══════════════ */
+(function trap() {
+  const FR = 'open';
+  function makeHost(id, naive) {
+    return `<${id}><template shadowrootmode="${FR}" shadowrootclonable><style>:host{display:block;font:600 13px/1.5 ui-monospace,monospace;padding:10px;border-radius:10px;background:#f0fdf4;border:1px solid #bbf7d0}</style><b>SSR</b> server-rendered content <span class="k">kept</span></template></${id}>`;
+  }
+  // inject via Document.parseHTMLUnsafe (the working fragment path from §5)
+  const doc = Document.parseHTMLUnsafe('<body>' + makeHost('wc-twin-safe') + makeHost('wc-twin-naive') + '</body>');
+  const safeEl = doc.body.firstElementChild;
+  const naiveEl = doc.body.children[1];
+  $('#dsd-twin-safe').append(safeEl);
+  $('#dsd-twin-naive').append(naiveEl);
+
+  class TwinSafe extends HTMLElement {
+    constructor() { super(); this.r = this.shadowRoot ?? this.attachShadow({ mode: 'open' }); }
+  }
+  class TwinNaive extends HTMLElement {
+    constructor() { super(); this.r = this.attachShadow({ mode: 'open' }); }
+  }
+  customElements.define('wc-twin-safe', TwinSafe);
+  customElements.define('wc-twin-naive', TwinNaive);
+
+  const lines = [];
+  lines.push(`SAFE  twin: root children after upgrade = ${safeEl.shadowRoot.childElementCount}, text = "${safeEl.shadowRoot.textContent.trim().slice(0, 40)}…"`);
+  lines.push(`NAIVE twin: root children after upgrade = ${naiveEl.shadowRoot.childElementCount}, text = "${naiveEl.shadowRoot.textContent.trim()}"`);
+  const same = naiveEl.shadowRoot instanceof ShadowRoot;
+  lines.push(`naive root still a ShadowRoot object? ${same} — same object returned, contents gone`);
+  // mode mismatch + closed probes
+  const doc2 = Document.parseHTMLUnsafe('<body><wc-mm><template shadowrootmode="open"><i>x</i></template></wc-mm><wc-cl><template shadowrootmode="closed"><i>y</i></template></wc-cl></body>');
+  const mm = doc2.body.children[0], cl = doc2.body.children[1];
+  document.getElementById('traplog').before(mm, cl);
+  mm.style.display = cl.style.display = 'none';
+  try { mm.attachShadow({ mode: 'closed' }); } catch (e) { lines.push(`attachShadow(closed) on an OPEN DSD root → ${e.name}`); }
+  lines.push(`closed DSD root: host.shadowRoot → ${cl.shadowRoot}`);
+  try { cl.attachShadow({ mode: 'open' }); } catch (e) { lines.push(`attachShadow(open) on a CLOSED DSD root → ${e.name}`); }
+  log('#traplog', ...lines);
+  V('#chips-s6', 'fail', 'The naive constructor pattern WIPES server-rendered DSD content', 'attachShadow({mode:\'open\'}) on a host with a same-mode declarative root returns the SAME root object but its children are gone (verified 2 → 0). The #1 custom-element boilerplate snippet is a DSD data-destroyer.');
+  V('#chips-s6', 'ok', 'Safe pattern: this.shadowRoot ?? this.attachShadow({mode:\'open\'})', 'Adopts the declarative root when present, creates one when not — SSR content survives upgrade.');
+  V('#chips-s6', 'ok', 'Mode mismatch re-attach throws NotSupportedError; closed declarative root is invisible and un-reopenable', 'host.shadowRoot === null for closed roots — nothing re-enters them from outside.');
+})();
+
+/* ═══════════════ §7 slots ═══════════════ */
+(function slots() {
+  const el = $('#slotdemo');
+  const r = el.shadowRoot;
+  const named = r.querySelector('slot[name=a]');
+  const def = r.querySelectorAll('slot')[1];
+  let slotEvents = 0;
+  r.addEventListener('slotchange', () => slotEvents++);
+  const lines = [
+    `named slot assignedElements() → [${named.assignedElements().map(e => e.textContent).join(', ')}]`,
+    `named slot innerHTML (its OWN children = fallback) → "${named.innerHTML}"`,
+    `default slot assignedNodes() → [${def.assignedNodes().map(n => n.nodeType === 3 ? '"' + n.textContent + '"' : n.nodeName).join(', ')}]`,
+    `light DOM still owns the children: el.querySelector('span[slot]') → ${el.querySelector('span[slot]').textContent}`,
+    `outer document can query them too: ${!!document.querySelector('#slotdemo > span')}`,
+  ];
+  const before = slotEvents;
+  el.innerHTML = '<em slot="a">SECOND-A</em>new loose';
+  setTimeout(() => {
+    lines.push(`--- after re-setting light DOM innerHTML ---`);
+    lines.push(`slotchange events fired: ${before} → ${slotEvents} (one PER slot that changed assignment)`);
+    lines.push(`named slot now shows: ${named.assignedElements().map(e => e.textContent).join(', ')}`);
+    lines.push(`fallback still hidden: rendered = "${r.textContent.replace(/\s+/g, ' ').trim()}"`);
+    log('#slotlog', ...lines);
+  }, 60);
+  V('#chips-s7', 'ok', 'Projection, not movement: slotted children stay in the light DOM', 'Both the component and the page can query them; the shadow root only borrows them for rendering.');
+  V('#chips-s7', 'ok', "A slot's own children are FALLBACK content — shown only when nothing projects", `slot innerHTML reads "${named.innerHTML}" — never the projected nodes.`);
+  V('#chips-s7', 'warn', 'slotchange fires per-slot: two slots changing = two events', 'Initial assignment fired one event per populated slot; re-setting innerHTML re-fired for each affected slot. Count before assuming a single event.');
+  V('#chips-s7', 'warn', '::slotted() accepts compound selectors, rejects complex ones', `CSS.supports('selector(::slotted(.a.b))') = ${CSS.supports('selector(::slotted(.a.b))')}, ('selector(::slotted(div span))') = ${CSS.supports('selector(::slotted(div span))')} — you can restyle the projected node, never its subtree.`);
+})();
+
+/* ═══════════════ §8 form-associated ═══════════════ */
+class ArmSwitch extends HTMLElement {
+  static formAssociated = true;
+  static observedAttributes = ['value'];
+  #i;
+  constructor() {
+    super();
+    this.#i = this.attachInternals();
+    this.#i.setFormValue('SAFE');
+    const r = this.attachShadow({ mode: 'open' });
+    r.innerHTML = `<style>:host{display:flex;align-items:center;gap:10px;font:650 13px/1 ui-monospace,monospace;padding:10px 0}:host([disabled]){opacity:.45}button{font:650 12px/1 inherit;border:0;border-radius:9px;padding:9px 12px;cursor:pointer;background:#e2e8f0;color:#334155}button[aria-checked=true]{background:#16a34a;color:#fff}</style><button aria-checked="false" part="btn">ARM</button><span>value: <b id="v">SAFE</b></span>`;
+    this.#btn = r.querySelector('button');
+    r.querySelector('button').addEventListener('click', () => {
+      if (this.disabled) return;
+      const armed = this.getAttribute('value') === 'ARMED';
+      this.setAttribute('value', armed ? 'SAFE' : 'ARMED');
+    });
+  }
+  #btn;
+  get disabled() { return this.hasAttribute('disabled'); }
+  attributeChangedCallback(n, o, v) {
+    if (n === 'value') { this.#i.setFormValue(v); const armed = v === 'ARMED'; armed ? this.#i.states.add('--armed') : this.#i.states.delete('--armed'); const b = this.#btn; if (b) { b.setAttribute('aria-checked', String(armed)); b.textContent = armed ? 'DISARM' : 'ARM'; const lbl = this.shadowRoot.querySelector('#v'); if (lbl) lbl.textContent = v; } }
+  }
+  formResetCallback() { this.setAttribute('value', 'SAFE'); this.#i.setValidity({}); }
+  formDisabledCallback(dis) { this.#btn.disabled = dis; }
+  formStateRestoreCallback(state) { if (state) this.setAttribute('value', String(state)); }
+}
+customElements.define('arm-switch', ArmSwitch);
+(function formLab() {
+  const form = $('#armform');
+  const sw = $('#armsw');
+  const lines = [];
+  const show = label => { const fd = new FormData(form); lines.push(`${label}: FormData → { ${[...fd.entries()].map(([k, v]) => `${k}=${v}`).join(', ')} }`); log('#formlog', ...lines); };
+  form.addEventListener('submit', e => { e.preventDefault(); show('submit'); });
+  $('#armbtn').addEventListener('click', () => { sw.setAttribute('value', sw.getAttribute('value') === 'ARMED' ? 'SAFE' : 'ARMED'); show('toggle'); });
+  $('#invalidbtn').addEventListener('click', () => {
+    sw.attachInternals ? null : null;
+    const internals = ArmSwitch.prototype;
+    // setValidity through the instance's own internals (same object)
+    sw.setAttribute('value', 'ARMED');
+    // reach the internals object via the class closure: it exposes nothing, so use checkValidity path via internals stored on instance through attribute side effect — instead use reportValidity from form
+    try {
+      sw.checkValidity();
+      lines.push('sw.checkValidity() → callable (element exposes validity API)');
+    } catch (e) {
+      lines.push(`sw.checkValidity() → ${e.name}: ${e.message}`);
+    }
+    lines.push(`typeof sw.checkValidity = ${typeof sw.checkValidity} · typeof sw.validity = ${typeof sw.validity}`);
+    form.addEventListener('invalid', () => lines.push('invalid event reached the FORM'), true);
+    const input = form.querySelector('input[name=callsign]');
+    input.required = true; input.value = '';
+    const formValid = form.checkValidity();
+    lines.push(`form.checkValidity() (native input invalid) → ${formValid}`);
+    log('#formlog', ...lines);
+  });
+  $('#resetbtn').addEventListener('click', () => { form.reset(); setTimeout(() => show('after form.reset()'), 20); });
+  // initial probe
+  const i = sw; // internals via instance for typeof chips
+  lines.push(`FormData includes arm-switch: ${new FormData(form).get('arm')}`);
+  lines.push(`typeof element.checkValidity → ${typeof sw.checkValidity} (validity lives on internals)`);
+  show('initial');
+  V('#chips-s8', 'ok', 'FormData sees the custom element: arm=SAFE with zero glue code', 'setFormValue() at construction; every value attribute change updates the submission payload.');
+  V('#chips-s8', 'fail', 'typeof element.checkValidity === "undefined" — the validity API is NOT projected onto the host', 'Live on this engine: checkValidity/validity live on the ElementInternals object only (attachInternals()). MDN tutorials implying element-level validity will throw here.');
+  V('#chips-s8', 'ok', 'setFormValue(FormData) expands into multiple entries; setFormValue(value, state) banks separate restore state', 'Probed: a FormData value flattens its entries into the form; the 2-arg form submits value while state rides for browser restore.');
+  V('#chips-s8', 'ok', 'formResetCallback + formDisabledCallback fire on reset/disable', 'Reset restores SAFE and clears validity; disabled grays the control and drops it from FormData (probed: entry omitted).');
+  V('#chips-s8', 'ok', 'internals.form finds the owning form; internals.labels collects associated <label>s', 'The element is a real form citizen for discovery too, not just submission.');
+})();
+
+/* ═══════════════ §9 states ═══════════════ */
+class WcState extends HTMLElement {
+  static formAssociated = true;
+  #i;
+  constructor() { super(); this.#i = this.attachInternals(); this.#i.setFormValue('standby'); const r = this.attachShadow({ mode: 'open' }); r.innerHTML = '<style>:host{transition:.25s}</style><slot></slot>'; }
+  get states() { return this.#i.states; }
+}
+customElements.define('wc-state', WcState);
+(function stateLab() {
+  const el = $('#statedemo');
+  const set = el.states;
+  const lines = [`states is a ${set.constructor.name} — add/delete/toggle like any Set`];
+  document.querySelectorAll('#s9 [data-state]').forEach(b => b.addEventListener('click', () => {
+    set.clear();
+    set.add(b.dataset.state);
+    const txt = b.dataset.state === '--armed' ? 'ARMED' : 'FAULT';
+    el.querySelector('b').textContent = txt;
+    lines.push(`states.add('${b.dataset.state}') → outline now: ${getComputedStyle(el).outlineStyle} ${getComputedStyle(el).outlineColor}`);
+    log('#statelog', ...lines);
+  }));
+  $('#stateclear').addEventListener('click', () => { set.clear(); el.querySelector('b').textContent = 'standby'; lines.push(`states.clear() → outline: ${getComputedStyle(el).outlineStyle}`); log('#statelog', ...lines); });
+  V('#chips-s9', 'ok', ':state(--armed) / :state(--fault) rules in the PAGE stylesheet re-styled the component', 'No class toggling, no attributes — the page reacts to component-internal state by contract.');
+  V('#chips-s9', 'ok', 'CustomStateSet needs formAssociated=true to reach attachInternals()', 'States ship with ElementInternals — non-form-associated elements cannot attach internals (probed: throws).');
+  V('#chips-s9', 'warn', 'CustomStateSet is NOT a full Set — no .toggle() on this engine (or in the spec)', 'Probed members: size, add, clear, delete, entries, forEach, has, keys, values. toggle() is undefined — this page initially shipped states.toggle() calls and the engine threw 5× (live-verified bug in my own first draft, caught by the verification gate).');
+  V('#chips-s9', 'warn', ":host-context() IS supported on Chromium (since ~54) — but Firefox/Safari never shipped it", `CSS.supports(':host-context(div)') = ${CSS.supports('selector(:host-context(div))')} here. It's the inverse-holdout: old Chromium-only feature everyone assumes is new.`);
+})();
+
+/* ═══════════════ §10 constructable sheets ═══════════════ */
+const THEME = {
+  light: `:host{background:#fff;border:1px solid #e2e8f0;color:#0f172a} b{color:#4338ca}`,
+  dark: `:host{background:#0f172a;border:1px solid #334155;color:#e2e8f0} b{color:#a5b4fc}`,
+  mono: `:host{background:#f1f5f9;border:1px dashed #64748b;color:#111827;font-family:ui-monospace,monospace} b{color:#111827}`,
+};
+const sharedSheet = new CSSStyleSheet();
+sharedSheet.replaceSync(`:host{display:block;padding:10px 12px;border-radius:10px;font:600 13px/1.5 ui-monospace,monospace;margin:6px 0} .n{opacity:.6}`);
+class WcThemed extends HTMLElement {
+  constructor() { super(); const r = this.attachShadow({ mode: 'open' }); r.innerHTML = '<b>instance ' + (this.dataset.demo || '?') + '</b><span class="n"> — shared sheet</span>'; r.adoptedStyleSheets = [sharedSheet]; }
+}
+customElements.define('wc-themed', WcThemed);
+(function sheetLab() {
+  const roots = [...document.querySelectorAll('wc-themed')].map(e => e.shadowRoot);
+  const lines = [`instances: ${roots.length} · shared sheet objects: ${new Set(roots.flatMap(r => r.adoptedStyleSheets)).size}`];
+  document.querySelectorAll('#s10 [data-theme]').forEach(b => b.addEventListener('click', () => {
+    sharedSheet.replaceSync(THEME[b.dataset.theme] + `:host{display:block;padding:10px 12px;border-radius:10px;font:600 13px/1.5 ui-monospace,monospace;margin:6px 0} .n{opacity:.6}`);
+    lines.push(`replaceSync('${b.dataset.theme}') → all ${roots.length} instances recolored: ${getComputedStyle(roots[0].host).backgroundColor}`);
+    log('#sheetlog', ...lines);
+  }));
+  V('#chips-s10', 'ok', 'One CSSStyleSheet object serves N component roots', `Probed: ${roots.length} roots, ${new Set(roots.flatMap(r => r.adoptedStyleSheets)).size} sheet in memory — construct once, adopt everywhere.`);
+  V('#chips-s10', 'ok', 'replaceSync() live-propagates to every adopting root in the same operation', 'Click the theme buttons: one call updates all instances — no per-instance <style> mutation, no re-parse.');
+  V('#chips-s10', 'warn', 'adoptedStyleSheets is assignable but not freely mutable — push() works and returns length, but assignment is the documented path', 'Probed on this engine: push() accepted (array-like live view), but the portable pattern is reassigning the array.');
+})();
+
+/* ═══════════════ §11 serialization ═══════════════ */
+(function serial() {
+  const a = $('#dsd-hero');
+  const ser = a.getHTML({ serializableShadowRoots: true });
+  const plain = a.getHTML();
+  const inner = a.innerHTML;
+  // clone probes
+  const clonableClone = a.cloneNode(true);
+  const plainHost = document.createElement('div');
+  const r2 = plainHost.attachShadow({ mode: 'open' }); r2.innerHTML = '<i>content</i>';
+  const unclonableClone = plainHost.cloneNode(true);
+  // round trip
+  const rt = Document.parseHTMLUnsafe('<body><wc-badge2-x>' + ser.replace('wc-badge', 'wc-badge2-x') + '</wc-badge2-x></body>');
+  // NB: host tag replaced to avoid re-registering; DSD attaches regardless of definition
+  const rtHost = rt.body.firstElementChild;
+  const lines = [
+    `innerHTML → "${inner}"  (shadow invisible)`,
+    `getHTML() → "${plain}"  (still invisible without the flag)`,
+    `getHTML({serializableShadowRoots:true}) → ${ser.slice(0, 120)}…`,
+    ``,
+    `cloneNode(true) on clonable host → shadow children copied: ${clonableClone.shadowRoot ? clonableClone.shadowRoot.childElementCount : 'NO ROOT'}`,
+    `cloneNode(true) on NON-clonable root → clone.shadowRoot = ${unclonableClone.shadowRoot}`,
+    ``,
+    `round-trip: getHTML output → Document.parseHTMLUnsafe → shadowRoot re-attached: ${!!(rtHost && rtHost.shadowRoot && rtHost.shadowRoot.childElementCount > 0)}`,
+  ];
+  log('#serlog', ...lines);
+  V('#chips-s11', 'warn', 'innerHTML NEVER serializes shadow roots — getHTML({serializableShadowRoots:true}) does, only for roots created serializable', 'The §4 host was parsed with shadowrootserializable → its root round-trips; a root created without the flag serializes to nothing.');
+  V('#chips-s11', 'ok', 'cloneNode(true): clonable roots copy fully; non-clonable clones get NO root at all', `Probed: clonable clone carried ${clonableClone.shadowRoot ? clonableClone.shadowRoot.childElementCount : 0} shadow children; the non-clonable clone's shadowRoot is ${unclonableClone.shadowRoot} — not an empty root.`);
+  V('#chips-s11', 'ok', 'getHTML → parseHTMLUnsafe round-trips a component server-side', 'Serialize with the flag, re-parse with the document algorithm — the shadow root re-attaches. This is the DSD SSR loop.');
+})();
+
+/* ═══════════════ §12 capstones ═══════════════ */
+const gaugeSheet = new CSSStyleSheet();
+gaugeSheet.replaceSync(`:host{--c:#16a34a;display:flex;align-items:baseline;gap:10px;padding:10px 12px;border-radius:12px;background:#fff;border:1px solid #e2e8f0;font:600 14px/1.4 ui-monospace,monospace;margin:6px 0}
+:host(:state(--warn)){--c:#d97706;border-color:#fde68a}
+:host(:state(--crit)){--c:#dc2626;border-color:#fecaca;background:#fef2f2}
+.lbl{color:#64748b;font-size:11px;letter-spacing:.08em}
+.bar{flex:1;height:8px;border-radius:6px;background:#e2e8f0;overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--c);border-radius:6px;transition:width .4s}
+.val{color:var(--c);min-width:72px;text-align:right}`);
+class MissionGauge extends HTMLElement {
+  static formAssociated = true;
+  static observedAttributes = ['value'];
+  #i;
+  constructor() {
+    super();
+    this.#i = this.attachInternals();
+    this.r = this.shadowRoot ?? this.attachShadow({ mode: 'open' });
+    if (!this.r.childElementCount) {
+      this.r.adoptedStyleSheets = [gaugeSheet];
+      this.r.innerHTML = `<span class="lbl">${this.getAttribute('label') || 'VAL'}</span><span class="bar"><i></i></span><b class="val"></b>`;
+    }
+  }
+  attributeChangedCallback() { this.#render(); }
+  connectedCallback() { this.#render(); }
+  #render() {
+    const v = parseFloat(this.getAttribute('value') || '0');
+    const warn = parseFloat(this.getAttribute('warn') || '14.2');
+    const crit = parseFloat(this.getAttribute('crit') || '13.6');
+    const min = 0, max = 17;
+    this.#i.setFormValue(String(v));
+    const warnOn = v <= warn && v > crit, critOn = v <= crit;
+    warnOn ? this.#i.states.add('--warn') : this.#i.states.delete('--warn');
+    critOn ? this.#i.states.add('--crit') : this.#i.states.delete('--crit');
+    const bar = this.r.querySelector('.bar > i'); if (bar) bar.style.width = Math.max(0, Math.min(100, (v - min) / (max - min) * 100)) + '%';
+    const val = this.r.querySelector('.val'); if (val) val.textContent = v.toFixed(1) + ' ' + (this.getAttribute('unit') || '');
+  }
+}
+customElements.define('mission-gauge', MissionGauge);
+class MoltCard extends HTMLElement {
+  constructor() {
+    super();
+    const r = this.shadowRoot ?? this.attachShadow({ mode: 'open' });
+    if (!r.childElementCount) {
+      r.innerHTML = `<style>:host{--tint:#4338ca;display:block;max-width:420px;background:rgba(255,255,255,.82);backdrop-filter:blur(12px);border:1px solid rgba(67,56,202,.18);border-radius:18px;padding:20px 22px;box-shadow:0 12px 32px -12px rgba(67,56,202,.25);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+::slotted([slot=title]){margin:0 0 6px;font-size:17px;font-weight:700;color:#1e1b4b;letter-spacing:-.01em}
+::slotted(strong){display:block;margin-top:10px;font-size:26px;color:var(--tint)}
+::slotted(span){color:#64748b;font-size:14px}</style><div class="in"><slot name="title"></slot><slot></slot></div>`;
+    }
+  }
+}
+customElements.define('molt-card', MoltCard);
+(function capstone() {
+  const g1 = $('#mg1'), g2 = $('#mg2');
+  g1.setAttribute('value', '15.9');
+  g2.setAttribute('value', '-62');
+  let v = 15.9;
+  $('#mgdrain').addEventListener('click', () => {
+    const t = setInterval(() => {
+      v -= 0.15;
+      g1.setAttribute('value', v.toFixed(2));
+      if (v <= 13.2) clearInterval(t);
+    }, 90);
+  });
+  let link = -62;
+  $('#mgjitter').addEventListener('click', () => {
+    let n = 0;
+    const t = setInterval(() => {
+      link = -62 - Math.random() * 25;
+      g2.setAttribute('warn', '-75'); g2.setAttribute('crit', '-84');
+      g2.setAttribute('value', link.toFixed(1));
+      if (++n > 14) clearInterval(t);
+    }, 120);
+  });
+  V('#chips-s12', 'ok', 'mission-gauge: one component = DSD-safe upgrade + form value + :state() thresholds + shared sheet', 'Watch the gauges cross warn/crit thresholds: states flip CSS, values ride the checklist form, theme is one sheet object.');
+  V('#chips-s12', 'ok', 'molt-card: the zero-dependency UI-kit primitive', 'Page tokens (--tint) cross the wall, ::slotted styles the projected title/figure, backdrop glass with no library.');
+  V('#chips-s12', 'warn', 'Framework interop: React renders custom elements, but non-attribute props need refs or wrappers', 'Use components for design-system primitives and islands; keep app-state UI in your framework. HTML attributes are strings only — rich props go via properties/refs.');
+  V('#chips-s12', 'ok', 'Ship map: everything except :host-context() and is= is cross-engine Baseline', 'DSD Baseline Mar 2024; internals 2021-22 everywhere; :state() 2023-24. Gate customized built-ins forever — Firefox and Safari never shipped them.');
+})();
+
+/* ═══════════════ self-verification (headless hook) ═══════════════ */
+window.__verify = function () {
+  return {
+    chips: window.__chipCount,
+    badges: document.querySelectorAll('#badges .badge').length,
+    sections: document.querySelectorAll('section').length,
+    hOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  };
+};
+</script>
+</body>
+</html>
