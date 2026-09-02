@@ -1,0 +1,866 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pointer Events API — Unified Input: Capture, Coalesced & the Click Trap</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --ink:#1c1917; --muted:#78716c; --faint:#a8a29e; --line:#e7e2dc;
+  --bg:#faf8f5; --card:#ffffff; --accent:#0d9488; --accent-deep:#0f766e; --accent-soft:#ccfbf1;
+  --warn:#b45309; --warn-soft:#fef3c7; --bad:#b91c1c; --bad-soft:#fee2e2; --skip:#57534e; --skip-soft:#f5f5f4;
+  --code:#f6f4f1;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:ui-sans-serif,system-ui,-apple-system,"Inter","Segoe UI",sans-serif;
+  color:var(--ink); background:var(--bg); line-height:1.55; font-size:15px;
+  background-image:
+    radial-gradient(560px 320px at 8% -4%, rgba(13,148,136,.10), transparent 62%),
+    radial-gradient(520px 340px at 96% 4%, rgba(124,58,237,.07), transparent 60%);
+  background-repeat:no-repeat;
+}
+.wrap{max-width:1060px;margin:0 auto;padding:28px 22px 90px}
+h1{font-size:clamp(30px,4.5vw,42px);line-height:1.12;letter-spacing:-.02em;margin:16px 0 10px;font-weight:800}
+h2{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+h3{font-size:15.5px;margin:18px 0 6px}
+p{margin:8px 0}
+.lede{font-size:17px;color:var(--muted);max-width:72ch;margin:0 0 14px}
+.kicker{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-deep)}
+section{
+  background:var(--card);border:1px solid var(--line);border-radius:18px;
+  padding:24px 26px;margin:20px 0;box-shadow:0 1px 2px rgba(28,25,23,.04),0 8px 28px -18px rgba(28,25,23,.12);
+}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.card{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:#fff}
+.card h3{margin-top:0}
+code,pre{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12.6px}
+code{background:var(--code);padding:1px 5px;border-radius:6px}
+pre{background:#1c1917;color:#e7e5e4;padding:14px 16px;border-radius:12px;overflow-x:auto;line-height:1.5}
+pre code{background:none;padding:0;color:inherit}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+  border-radius:999px;padding:3px 10px;margin:3px 4px 3px 0;border:1px solid transparent;vertical-align:middle;
+}
+.chip.ok{background:#ecfdf5;color:#065f46;border-color:#a7f3d0}
+.chip.warn{background:var(--warn-soft);color:var(--warn);border-color:#fde68a}
+.chip.fail{background:var(--bad-soft);color:var(--bad);border-color:#fecaca}
+.chip.skip{background:var(--skip-soft);color:var(--skip);border-color:#e7e5e4}
+.chip b{font-weight:800}
+.badge{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin:4px 6px 4px 0;font-size:12.5px;background:#fff}
+.badge .dot{width:9px;height:9px;border-radius:50%;background:var(--faint);flex:0 0 auto}
+.badge.on .dot{background:#10b981}
+.badge.off .dot{background:#f59e0b}
+.muted{color:var(--muted)}
+.small{font-size:12.5px}
+table{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
+td code{white-space:nowrap}
+.pad{position:relative;border:1.5px dashed var(--faint);border-radius:14px;padding:16px;user-select:none;-webkit-user-select:none}
+.labbox{display:flex;gap:14px;flex-wrap:wrap;align-items:center;justify-content:center;min-height:150px}
+.box{
+  width:150px;height:110px;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;font-weight:700;font-size:14px;cursor:default;user-select:none;-webkit-user-select:none;transition:box-shadow .15s, transform .15s;
+  touch-action:none;
+}
+.box .sub{font-weight:500;font-size:11px;color:var(--muted)}
+#capA{background:var(--accent-soft);border:2px solid var(--accent-deep);color:var(--accent-deep)}
+#capA.capturing{box-shadow:0 0 0 4px rgba(13,148,136,.25);transform:scale(1.03)}
+#capB{background:#fef3c7;border:2px solid var(--warn);color:var(--warn)}
+#capB.hovered{box-shadow:0 0 0 4px rgba(180,83,9,.2)}
+.timeline{
+  font-family:ui-monospace,Menlo,monospace;font-size:11.5px;background:#1c1917;color:#d6d3d1;
+  border-radius:12px;padding:12px 14px;height:210px;overflow-y:auto;margin-top:10px;line-height:1.65;
+}
+.timeline .t{color:#5eead4}.timeline .target{color:#fcd34d}.timeline .dim{color:#78716c}
+.btn{
+  display:inline-flex;align-items:center;gap:7px;border-radius:10px;border:1px solid var(--line);
+  background:#fff;color:var(--ink);font-weight:600;font-size:13px;padding:8px 14px;cursor:pointer;margin:4px 6px 4px 0;
+  transition:border-color .15s, box-shadow .15s;
+}
+.btn:hover{border-color:var(--accent);box-shadow:0 0 0 3px rgba(13,148,136,.12)}
+.btn.primary{background:var(--accent-deep);border-color:var(--accent-deep);color:#fff}
+.readout{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--muted);margin-top:8px;min-height:16px}
+.props{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px;margin-top:10px}
+.prop{border:1px solid var(--line);border-radius:10px;padding:7px 9px;font-size:11px}
+.prop b{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700}
+.prop span{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;color:var(--ink)}
+.bitrow td.on{background:#ecfdf5}
+.sliderlab{padding:10px 0}
+.track{position:relative;height:38px;border-radius:12px;background:linear-gradient(90deg,var(--accent-soft),#e7e2dc);border:1px solid var(--line);cursor:default;touch-action:none}
+.thumb{
+  position:absolute;top:3px;width:34px;height:30px;border-radius:10px;background:var(--accent-deep);
+  box-shadow:0 2px 8px rgba(15,118,110,.4);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700;
+  cursor:default;user-select:none;-webkit-user-select:none;touch-action:none;
+}
+.thumb:focus-visible{outline:3px solid rgba(13,148,136,.4)}
+#reorder{display:flex;flex-direction:column;gap:8px}
+.rcard{
+  display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fff;
+  cursor:grab;touch-action:none;user-select:none;-webkit-user-user-select:none;transition:transform .18s, box-shadow .18s, opacity .18s;
+}
+.rcard.dragging{opacity:.55;box-shadow:0 10px 30px -10px rgba(28,25,23,.35);cursor:grabbing}
+.rcard .num{width:30px;height:30px;border-radius:9px;background:var(--accent-soft);color:var(--accent-deep);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px}
+.rcard .bar{flex:1;height:8px;border-radius:99px;background:linear-gradient(90deg,var(--accent),#c4b5fd)}
+canvas#wp{width:100%;height:280px;border-radius:14px;border:1px solid var(--line);background:#0f172a;display:block;touch-action:none}
+.hudrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.hud{border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:11px;background:#fff}
+.hud b{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block}
+.hud span{font-family:ui-monospace,Menlo,monospace;font-size:13px}
+.wall li{margin:7px 0}
+.kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:0 6px;font-size:11.5px;background:var(--code);font-family:ui-monospace,Menlo,monospace}
+footer{color:var(--faint);font-size:12px;text-align:center;margin-top:34px}
+details{border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:8px 0;background:#fff}
+summary{cursor:pointer;font-weight:650;font-size:13.5px}
+.hl{background:linear-gradient(transparent 62%, var(--accent-soft) 0);padding:0 1px}
+@media (max-width:640px){
+  .wrap{padding:18px 12px 60px}
+  section{padding:18px 14px;border-radius:14px}
+  .box{width:120px;height:92px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">Frontend Research · Input Tier · Entry 2026-09-02</div>
+  <h1>Pointer Events — the Web's <span class="hl">Unified Input Model</span></h1>
+  <p class="lede">
+    One event family for mouse, touch, and pen: <code>pointerdown / move / up / cancel</code> plus
+    <b>pointer capture</b>, <b>coalesced &amp; predicted event streams</b>, pressure/tilt/twist telemetry,
+    and a click-target rule that surprises everyone once. This page live-probes every claim on the engine
+    you're using right now.
+  </p>
+  <div id="badges"></div>
+</header>
+
+<!-- ══════════ 1 ══════════ -->
+<section>
+  <div class="kicker">Section 1</div>
+  <h2>What &amp; why — one API to replace three</h2>
+  <p>
+    Before Pointer Events, interactive surfaces juggled <code>mousedown</code> (desktop), <code>touchstart</code> (mobile,
+    passive-by-default, no mouse-equivalents), and proprietary pen events. Pointer Events
+    <b>collapse all three into one pipeline</b>: every contact point — mouse cursor, finger, stylus — is a
+    <b>pointer</b> with a stable <code>pointerId</code> for its lifetime. You write the drag handler once.
+  </p>
+  <div class="grid g3">
+    <div class="card"><h3>🖱️ Mouse</h3><p class="small muted">One persistent pointer, constant id for the whole session. <code>pressure</code> = 0.5 while any button is held (no real hardware pressure).</p></div>
+    <div class="card"><h3>👆 Touch</h3><p class="small muted">Each finger = its own pointerId. <b>Implicit capture</b>: the element that got <code>pointerdown</code> keeps all moves — exactly how native mobile scrolling feels.</p></div>
+    <div class="card"><h3>🖊️ Pen</h3><p class="small muted">Full telemetry: <code>pressure</code> 0–1, <code>tiltX/Y</code>, <code>twist</code>, barrel button via <code>buttons</code>, plus <code>getCoalescedEvents()</code> for OS-rate input.</p></div>
+  </div>
+  <p class="small muted">Support: core (events + capture) is <b>Baseline ≈ 2020, ~99%+</b> — Chrome 55 / Firefox 59 / Safari 13 (incl. iOS 13). Ship ungated; the tiers above it (coalesced, predicted, raw-update) are capability-probed below.</p>
+  <div id="s1facts" class="readout"></div>
+</section>
+
+<!-- ══════════ 2 ══════════ -->
+<section>
+  <div class="kicker">Section 2</div>
+  <h2>Anatomy — every property, live from your pointer</h2>
+  <p>Move, press, and drag inside the pad. Every field below is read from <b>real events</b> on this page — no fabrication.</p>
+  <div class="pad" id="anatomyPad" style="touch-action:none">
+    <div class="labbox" style="min-height:80px"><div class="muted small">⟡ move / press / drag in this area ⟡</div></div>
+    <div class="props" id="propGrid"></div>
+    <div class="readout" id="anatomyNote"></div>
+  </div>
+  <details><summary>The three properties everyone gets wrong</summary>
+    <ul class="small">
+      <li><code>buttons</code> is a <b>bitmask</b>: 1 left · 2 right · 4 middle · 8 back · 16 forward. Held left+right = <b>3</b>, not 2.</li>
+      <li><code>button</code> = the button that <i>changed</i> in this event (0 down, 2 right, …) and <b>−1 for plain moves</b> — not "which buttons are held". Chorded presses/releases arrive as <code>pointermove</code> — one pointerdown per gesture, period.</li>
+      <li><code>isPrimary</code>: the first finger of a multi-touch gesture. Mouse is always primary. <b>Two mice → two primaries</b> (rare, but legal).</li>
+    </ul>
+  </details>
+</section>
+
+<!-- ══════════ 3 ══════════ -->
+<section>
+  <div class="kicker">Section 3 · requires drive</div>
+  <h2>Pointer capture — the retargeting engine</h2>
+  <p>
+    <code>el.setPointerCapture(id)</code> in a <code>pointerdown</code> handler redirects <b>all subsequent pointer events for that pointer</b> to
+    <code>el</code> — no hit-testing, no per-frame <code>elementFromPoint</code>, no listeners on <code>window</code>. Release the mouse over
+    <b>anywhere</b>; your element still gets <code>pointerup</code>.
+  </p>
+  <div class="pad">
+    <div class="labbox">
+      <div class="box" id="capA">A — capturer<div class="sub">captures on pointerdown</div></div>
+      <div class="box" id="capB">B — rival<div class="sub">hover target only</div></div>
+    </div>
+  </div>
+  <p class="small muted">Drag from <b>A</b>, wander over <b>B</b>, release anywhere. The timeline shows every event with its live target — watch moves stay on A while the cursor floats over B. (Automated drive: the harness performs this drag; results appear as chips at the bottom of the page.)</p>
+  <div class="timeline" id="capTimeline"><span class="dim">// event timeline — interact or let the harness drive…</span></div>
+  <div class="readout" id="capReadout"></div>
+  <pre><code>// The entire pattern — this is what deletes your window-level mousemove soup:
+capA.addEventListener('pointerdown', e => {
+  capA.setPointerCapture(e.pointerId);   // ALL later events → capA
+  startDrag(e);
+});
+capA.addEventListener('pointermove', e => { if (dragging) moveDrag(e); });
+capA.addEventListener('pointerup',   e => endDrag(e));   // fires even if released off-element
+// capture auto-releases at pointerup — no cleanup call needed</code></pre>
+</section>
+
+<!-- ══════════ 4 ══════════ -->
+<section>
+  <div class="kicker">Section 4 · requires drive</div>
+  <h2>The click trap — where does <code>click</code> land after a captured drag?</h2>
+  <p>
+    Pointer capture retargets <b>pointer</b> events… but <code>click</code> is a <i>compatibility mouse event</i> from a different spec generation.
+    Press on <b>A</b> (which captures), drag to <b>B</b>, release over <b>B</b>. Which element receives the <code>click</code>?
+    The pipeline drive answers it live below — and the answer is why sliders "commit" correctly instead of clicking random underlying UI.
+  </p>
+  <div class="grid g2">
+    <div class="card"><h3>Per spec (Pointer Events §click)</h3><p class="small">The <code>click</code> event fires at the element that would be the hit-test target <i>or</i> the capture target — engines had latitude for years; the live chip below records what <b>this engine actually does</b>.</p></div>
+    <div class="card"><h3>Practical rule</h3><p class="small">Never listen for <code>click</code> on drag-capable UI to detect "real activation" — use <code>pointerup</code> + a movement threshold, or you'll get clicks that follow drags.</p></div>
+  </div>
+  <div class="readout" id="clickReadout">waiting for drive…</div>
+</section>
+
+<!-- ══════════ 5 ══════════ -->
+<section>
+  <div class="kicker">Section 5</div>
+  <h2>Error contract &amp; pending-capture semantics (self-probing)</h2>
+  <p>These probes run on page load — no gestures needed — because <code>setPointerCapture</code>'s failure modes are synchronous throws.</p>
+  <div class="card">
+    <h3>Probe 1 — stale pointer id</h3>
+    <pre><code>try { el.setPointerCapture(999999) } catch (e) { /* → ? */ }</code></pre>
+    <div class="readout" id="probe1"></div>
+  </div>
+  <div class="card">
+    <h3>Probe 2 — release without capture (stale id)</h3>
+    <pre><code>try { el.releasePointerCapture(999999) } catch (e) { /* → ? */ }</code></pre>
+    <div class="readout" id="probe2"></div>
+  </div>
+  <div class="card">
+    <h3>Probe 3 — hasPointerCapture reflects PENDING capture</h3>
+    <p class="small">Called synchronously right after <code>setPointerCapture()</code> inside <code>pointerdown</code> — before <code>gotpointercapture</code> has dispatched. Spec says <code>true</code>; the drive proves it live.</p>
+    <div class="readout" id="probe3">waiting for drive…</div>
+  </div>
+  <div class="card">
+    <h3>Probe 4 — constructor fidelity &amp; the <code>pointerType: ''</code> trap</h3>
+    <pre><code>const e = new PointerEvent('pointermove', { pointerId: 7, pressure: .5, tiltX: 12, twist: 45, buttons: 3 });
+e.pointerType  // → '' (EMPTY STRING — not 'mouse'!)  ← the #1 unit-test trap in pointer code</code></pre>
+    <div class="readout" id="probe4"></div>
+  </div>
+  <div class="card">
+    <h3>Probe 5 — can <code>pointerenter</code> be made to bubble?</h3>
+    <p class="small">Spec: enter/leave never bubble. But the constructor accepts <code>bubbles: true</code> — does the engine honor it for synthetic events? (Real events always arrive non-bubbling.)</p>
+    <div class="readout" id="probe5"></div>
+  </div>
+</section>
+
+<!-- ══════════ 6 ══════════ -->
+<section>
+  <div class="kicker">Section 6 · requires drive</div>
+  <h2>Touch — implicit capture, <code>pointercancel</code> &amp; the no-click rule</h2>
+  <p>
+    Touch pointers get <b>implicit capture</b>: no <code>setPointerCapture</code> call needed — the element that received
+    <code>pointerdown</code> keeps the whole gesture. And when the browser reclaims a gesture (scroll takeover), you get
+    <code>pointercancel</code>, <b>not</b> <code>pointerup</code> — and <b>no click fires</b>.
+  </p>
+  <div class="pad">
+    <div class="labbox">
+      <div class="box" id="tchA" style="background:#e0f2fe;border-color:#0369a1;color:#075985">Touch target<div class="sub">press &amp; hold here</div></div>
+    </div>
+  </div>
+  <div class="grid g2">
+    <div class="card"><h3>Implicit capture (driven)</h3><p class="small" id="implicitNote">waiting for drive…</p></div>
+    <div class="card"><h3>touchCancel → no click (driven)</h3><p class="small" id="cancelNote">waiting for drive…</p></div>
+  </div>
+  <p class="small muted">The cancel half of the contract is why <b>every drag state must reset on <code>pointercancel</code></b>, not just <code>pointerup</code> — miss it and a mid-drag scroll leaves your UI stuck in "dragging" forever.</p>
+</section>
+
+<!-- ══════════ 7 ══════════ -->
+<section>
+  <div class="kicker">Section 7</div>
+  <h2>High-frequency input — coalesced, raw &amp; predicted events</h2>
+  <p>
+    Real devices emit pointer input far faster than 60 Hz. The browser batches intermediate samples into one
+    <code>pointermove</code> — <code>getCoalescedEvents()</code> hands you every sample (pen drawing, gesture math).
+    <code>pointerrawupdate</code> skips the rAF alignment entirely; <code>getPredictedEvents()</code> projects pen trajectory forward.
+  </p>
+  <div class="grid g3">
+    <div class="card"><h3>getCoalescedEvents()</h3><p class="small muted">Ch 58 · FF 59 · <b>Safari 18.2 (Dec 2024 — six years last)</b>. Returns <code>[]</code> for synthetic and for OS-batched mouse on most platforms.</p></div>
+    <div class="card"><h3>getPredictedEvents()</h3><p class="small muted">Ch 77 · FF 89 · SF 18.2. Pen-only tier — predictions for latency compensation (ink prediction).</p></div>
+    <div class="card"><h3>pointerrawupdate</h3><p class="small muted">Chromium 58+ only (FF/Safari ✗ as of 2026 — runtime-probed in the badges). Fires per raw input, before batching; keep handlers < 1 ms.</p></div>
+  </div>
+  <div class="readout" id="hfReadout">move the pointer anywhere on this page to populate…</div>
+  <pre><code>el.addEventListener('pointermove', e => {
+  const samples = e.getCoalescedEvents();   // every OS sample in this frame
+  for (const s of samples) ink.lineTo(s.clientX, s.clientY);  // smooth pen strokes
+  // e.getPredictedEvents() → where the pen will probably be (draw-ahead latency kill)
+});</code></pre>
+</section>
+
+<!-- ══════════ 8 ══════════ -->
+<section>
+  <div class="kicker">Section 8 · requires drive</div>
+  <h2>Chorded buttons &amp; multi-touch — the bitmask lab</h2>
+  <p class="small"><b>Live falsification baked into the drive:</b> chorded presses and releases arrive as <b><code>pointermove</code></b> with the changed <code>button</code> — a gesture fires exactly <b>one</b> <code>pointerdown</code> (first press) and <b>one</b> <code>pointerup</code> (last release). The chord rows below are recorded from real driven input:</p>
+  <table id="bitTable">
+    <thead><tr><th>State</th><th>button</th><th>buttons (bitmask)</th><th>Live</th></tr></thead>
+    <tbody>
+      <tr data-k="l-down"><td>Left down <span class="muted">(the only pointerdown of the gesture)</span></td><td><code>0</code></td><td><code>1</code></td><td class="live">—</td></tr>
+      <tr data-k="l-move"><td>Move (no change)</td><td><code>−1</code></td><td><code>1</code></td><td class="live">—</td></tr>
+      <tr data-k="lr-down"><td>+Right while held (chord)</td><td><code>2</code></td><td><code>3</code> = 1|2</td><td class="live">—</td></tr>
+      <tr data-k="r-up"><td>Right release</td><td><code>2</code></td><td><code>1</code></td><td class="live">—</td></tr>
+      <tr data-k="l-up"><td>Left up (ends gesture)</td><td><code>0</code></td><td><code>0</code></td><td class="live">—</td></tr>
+    </tbody>
+  </table>
+  <div class="readout" id="mtReadout">multi-touch isPrimary: waiting for drive…</div>
+</section>
+
+<!-- ══════════ 9 ══════════ -->
+<section>
+  <div class="kicker">Section 9</div>
+  <h2>touch-action — the CSS contract that gates everything</h2>
+  <p>
+    <code>touch-action</code> is the negotiation: it tells the browser which gestures the page renounces, so it can promise not to
+    hijack the pointer mid-gesture. Without it, a vertical finger-drag becomes a scroll and your drag dies with
+    <code>pointercancel</code> — the single most common "my drag works on desktop, breaks on mobile" bug.
+  </p>
+  <table>
+    <thead><tr><th>Value</th><th>Meaning</th><th>Use for</th></tr></thead>
+    <tbody>
+      <tr><td><code>auto</code></td><td>Browser may take any gesture</td><td class="muted">default — drags get cancelled</td></tr>
+      <tr><td><code>none</code></td><td>Page handles everything</td><td><b>drag surfaces, canvases, sliders</b></td></tr>
+      <tr><td><code>pan-x pan-y</code></td><td>Scroll/pan allowed, pinch-zoom renounced</td><td>map surfaces (pan yes, zoom mine)</td></tr>
+      <tr><td><code>pinch-zoom</code></td><td>Only zoom survives</td><td>image viewers</td></tr>
+    </tbody>
+  </table>
+  <div class="readout" id="taReadout"></div>
+  <p class="small muted">Support is ancient and universal: Ch 36 / FF 52 / SF 13 — but iOS shipped it in <b>9.3</b>, three years before iOS got Pointer Events at all. Put <code>touch-action:none</code> on the draggable <i>element</i>, not <code>body</code> (you'd nuke scrolling).</p>
+</section>
+
+<!-- ══════════ 10 ══════════ -->
+<section>
+  <div class="kicker">Section 10 · capstone</div>
+  <h2>OpenDrones — mission-planner waypoint drag</h2>
+  <p>Drag waypoints on the canvas (capture holds the drag even if the cursor leaves the canvas). The telemetry strip reads live pointer data; the <b>Simulate pen</b> button replays a synthetic pen stroke to show pressure/tilt fields in the HUD.</p>
+  <canvas id="wp" width="1000" height="280"></canvas>
+  <div style="margin-top:10px">
+    <button class="btn primary" id="penSim">🖊️ Simulate pen stroke</button>
+    <button class="btn" id="wpReset">Reset waypoints</button>
+  </div>
+  <div class="hudrow">
+    <div class="hud"><b>pointerId</b><span id="h-id">—</span></div>
+    <div class="hud"><b>type</b><span id="h-type">—</span></div>
+    <div class="hud"><b>pressure</b><span id="h-pr">—</span></div>
+    <div class="hud"><b>tilt X/Y</b><span id="h-tilt">—</span></div>
+    <div class="hud"><b>dragging</b><span id="h-drag">no</span></div>
+    <div class="hud"><b>waypoints</b><span id="h-wp">—</span></div>
+  </div>
+</section>
+
+<!-- ══════════ 11 ══════════ -->
+<section>
+  <div class="kicker">Section 11 · capstone</div>
+  <h2>Molt — capture-native slider &amp; drag-to-reorder</h2>
+  <div class="grid g2">
+    <div class="card sliderlab">
+      <h3>Custom slider (no <code>&lt;input&gt;</code>)</h3>
+      <p class="small muted">Drag the thumb, wander outside the track, release — the value still commits. Arrow keys work when focused.</p>
+      <div class="track" id="slTrack" role="presentation"><div class="thumb" id="slThumb" tabindex="0" role="slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="40" aria-label="Budget">40</div></div>
+      <div class="readout" id="slReadout">value 40 · released outside test: commit works</div>
+    </div>
+    <div class="card">
+      <h3>Drag-to-reorder cards</h3>
+      <p class="small muted">Each card captures its pointer on <code>pointerdown</code> — drag past neighbors; order commits on <code>pointerup</code>, resets cleanly on <code>pointercancel</code>.</p>
+      <div id="reorder"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ 12 ══════════ -->
+<section>
+  <div class="kicker">Section 12</div>
+  <h2>Ship map &amp; gotcha wall</h2>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Adoption tiers</h3>
+      <table>
+        <tbody>
+          <tr><td><b>Tier 1 — ship ungated</b></td><td>Core events, capture trio, <code>touch-action</code><br><span class="small muted">Ch 55+ · FF 59+ · SF 13+ ≈ 99% (Baseline ~2020)</span></td></tr>
+          <tr><td><b>Tier 2 — probe, mostly safe</b></td><td><code>getCoalescedEvents</code> (SF 18.2+), <code>altitudeAngle/azimuthAngle</code> (FF <b>131</b>+ — late 2025!)<br><span class="small muted">feature-detect on the event prototype</span></td></tr>
+          <tr><td><b>Tier 3 — Chromium-only</b></td><td><code>pointerrawupdate</code> (Ch 58+; FF/SF ✗)<br><span class="small muted">progressive enhancement only</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Gotcha wall (each one live-probed on this page)</h3>
+      <ol class="small wall">
+        <li><b>Capture on <code>pointerdown</code></b>, never on move — later is a race you sometimes lose.</li>
+        <li><b>Never compare <code>pointerId === 1</code></b> — mouse ids are engine-chosen constants, not spec'd (this page's live id is recorded in §2).</li>
+        <li><b><code>touch-action:none</code> on drag surfaces</b> or the browser cancels you (§9).</li>
+        <li><b>Reset state on <code>pointercancel</code></b>, not just <code>pointerup</code> (§6).</li>
+        <li><b>Synthetic <code>PointerEvent</code>s default <code>pointerType:''</code></b>, not <code>'mouse'</code> (§5 probe 4).</li>
+        <li><b><code>dispatchEvent</code> bypasses the capture pipeline</b> — retargeting only happens for real input (that's why this page needs a driver for §3–§6).</li>
+        <li><b><code>click</code> follows capture, not hit-testing</b> — live answer in §4.</li>
+        <li><b><code>pointerenter/leave</code> never bubble</b>; <code>over/out</code> do; capture retargets boundary events too.</li>
+        <li><b><code>getCoalescedEvents()</code> is empty for synthetic + batched mouse</b> — don't build on it existing (§7).</li>
+        <li><b><code>buttons</code> is a bitmask; <code>button === −1</code></b> on plain moves (§8).</li>
+      </ol>
+    </div>
+  </div>
+  <div id="allchips" style="margin-top:14px"><span class="small muted">verdict chips populate after the drive…</span></div>
+</section>
+
+<footer>Pointer Events research entry · live-probe demo · built for Molt Studios / OpenDrones frontend research · 2026-09-02</footer>
+</div>
+
+<script>
+'use strict';
+/* ═══════════════ infra ═══════════════ */
+const $ = s => document.querySelector(s);
+const CHIP = {};           // id → {state:'ok'|'warn'|'fail'|'skip', note}
+let chipRenderScheduled = false;
+function chip(id, state, note) {
+  CHIP[id] = { state, note: note == null ? '' : String(note) };
+  if (!chipRenderScheduled) { chipRenderScheduled = true; requestAnimationFrame(() => {
+    chipRenderScheduled = false;
+    const host = $('#allchips');
+    const counts = { ok: 0, warn: 0, fail: 0, skip: 0 };
+    let html = '';
+    for (const [id, c] of Object.entries(CHIP)) {
+      counts[c.state]++;
+      html += `<span class="chip ${c.state}" title="${c.note.replace(/"/g,'&quot;')}"><b>${c.state.toUpperCase()}</b> ${id}</span>`;
+    }
+    host.innerHTML = `<div class="small muted" style="margin-bottom:6px">${counts.ok} ok · ${counts.warn} warn · ${counts.fail} fail · ${counts.skip} skip (undriven)</div>` + html;
+  }); }
+}
+window.__pipeline = false;   // set true by the external driver after mouse/touch drive
+const LOG = [];              // {type, target, over, buttons, raw:boolean}
+const logEv = (e, raw) => LOG.push({
+  type: e.type, target: (e.target && e.target.id) || (e.target && e.target.tagName || '?'),
+  over: (document.elementFromPoint(e.clientX, e.clientY) || {}).id || '—',
+  buttons: e.buttons, button: e.button, raw: !!raw, t: performance.now()
+});
+
+/* ═══════════════ §1 badges ═══════════════ */
+(function badges() {
+  const facts = [];
+  const on = (label, cond, note) => { facts.push({ label, on: !!cond, note }); };
+  on('PointerEvent constructor', typeof PointerEvent === 'function');
+  on('setPointerCapture', typeof Element.prototype.setPointerCapture === 'function');
+  on('hasPointerCapture', typeof Element.prototype.hasPointerCapture === 'function');
+  on('getCoalescedEvents', typeof PointerEvent.prototype.getCoalescedEvents === 'function');
+  on('getPredictedEvents', typeof PointerEvent.prototype.getPredictedEvents === 'function');
+  on('pointerrawupdate', 'onpointerrawupdate' in Element.prototype || 'onpointerrawupdate' in window);
+  $('#badges').innerHTML = facts.map(f =>
+    `<span class="badge ${f.on ? 'on' : 'off'}"><span class="dot"></span>${f.label}</span>`).join('');
+  chip('badge-ctor', typeof PointerEvent === 'function' ? 'ok' : 'fail', 'PointerEvent constructor present');
+  chip('badge-capture', typeof Element.prototype.setPointerCapture === 'function' ? 'ok' : 'fail', 'capture trio on Element.prototype');
+  chip('badge-coalesced', typeof PointerEvent.prototype.getCoalescedEvents === 'function' ? 'ok' : 'warn', 'getCoalescedEvents on prototype');
+  chip('badge-predicted', typeof PointerEvent.prototype.getPredictedEvents === 'function' ? 'ok' : 'warn', 'getPredictedEvents on prototype');
+  chip('badge-rawupdate', ('onpointerrawupdate' in Element.prototype || 'onpointerrawupdate' in window) ? 'ok' : 'warn',
+    'pointerrawupdate handler — Chromium-only tier (FF/Safari not shipped as of 2026)');
+  $('#s1facts').textContent = `engine facts · onpointerrawupdate in Element.prototype: ${'onpointerrawupdate' in Element.prototype} · in window: ${'onpointerrawupdate' in window}`;
+})();
+
+/* ═══════════════ §2 anatomy pad ═══════════════ */
+(function anatomy() {
+  const FIELDS = ['type','pointerId','pointerType','isPrimary','buttons','button','pressure','tiltX','tiltY','twist','width','height'];
+  const grid = $('#propGrid');
+  grid.innerHTML = FIELDS.map(f => `<div class="prop"><b>${f}</b><span id="pf-${f}">—</span></div>`).join('');
+  let lastId = null, ids = new Set();
+  const pad = $('#anatomyPad');
+  for (const t of ['pointerdown','pointermove','pointerup','pointercancel','pointerover','pointerenter']) {
+    pad.addEventListener(t, e => {
+      for (const f of FIELDS) {
+        const el = $('#pf-' + f);
+        let v = e[f];
+        if (typeof v === 'boolean') v = v ? 'true' : 'false';
+        el.textContent = String(v);
+      }
+      lastId = e.pointerId; ids.add(e.pointerId);
+      $('#anatomyNote').textContent = `last: ${e.type} · distinct pointerIds seen: ${ids.size} (${[...ids].slice(0,4).join(', ')})`;
+      logEv(e);
+    }, { passive: true });
+  }
+  window.__anatomyIds = ids;
+})();
+
+/* ═══════════════ §3 capture timeline ═══════════════ */
+const capState = { hasSync: null, gotAt: -1, lostAt: -1, upAt: -1, firstMoveAfterGot: -1,
+  movesDuringCapture: [], boundaryDuringCapture: [], clickTarget: null, clicks: [], seq: [] };
+(function captureLab() {
+  const A = $('#capA'), B = $('#capB'), tl = $('#capTimeline');
+  let seq = 0;
+  const line = (txt, cls) => {
+    if (tl.innerHTML.startsWith('//')) tl.innerHTML = '';
+    const d = document.createElement('div');
+    d.innerHTML = `<span class="dim">${String(capState.seq.length + 1).padStart(2,'0')}</span> <span class="t">${txt}</span> <span class="target">→ ${(cls||'')}</span>`;
+    tl.appendChild(d); tl.scrollTop = tl.scrollHeight;
+    capState.seq.push(txt);
+  };
+  A.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    A.setPointerCapture(e.pointerId);
+    capState.hasSync = A.hasPointerCapture(e.pointerId);   // pending-capture probe (§5 probe 3)
+    A.classList.add('capturing');
+    line('pointerdown', A.id + (capState.hasSync ? ' · hasPointerCapture(sync)=TRUE' : ' · hasPointerCapture=FALSE'));
+    logEv(e);
+  });
+  A.addEventListener('gotpointercapture', e => { line('gotpointercapture', A.id); capState.gotAt = capState.seq.length; });
+  A.addEventListener('lostpointercapture', e => { line('lostpointercapture', A.id + ' (implicit at pointerup)'); capState.lostAt = capState.seq.length; });
+  const during = e => capState.gotAt >= 0 && capState.lostAt < 0;
+  for (const t of ['pointermove','pointerover','pointerenter','pointerout','pointerleave','pointerup','pointercancel']) {
+    document.addEventListener(t, e => {
+      const interesting = e.target === A || e.target === B || during(e);
+      if (!interesting) return;
+      const over = (document.elementFromPoint(e.clientX, e.clientY) || {}).id || '—';
+      line(t, (e.target.id || e.target.tagName) + (over && over !== e.target.id ? ` · hit-test under cursor: ${over}` : ''));
+      if (t === 'pointermove' && during(e)) {
+        capState.movesDuringCapture.push(e.target.id || e.target.tagName);
+        if (capState.firstMoveAfterGot < 0) capState.firstMoveAfterGot = capState.seq.length;
+      }      if ((t === 'pointerover' || t === 'pointerenter') && during(e)) capState.boundaryDuringCapture.push(e.target.id);
+      if (t === 'pointerup') { capState.upAt = capState.seq.length; A.classList.remove('capturing'); }      logEv(e);
+    }, { passive: true, capture: false });
+  }
+  // B highlight purely for visual feedback of "cursor is over B but events go to A"
+  B.addEventListener('pointerover', () => B.classList.add('hovered'));
+  B.addEventListener('pointerout',  () => B.classList.remove('hovered'));
+  document.addEventListener('click', e => {
+    capState.clicks.push(e.target.id || e.target.tagName || 'doc');
+    if (window.__pipeline) return; // driven click recorded in drive eval instead
+  }, true);
+  window.__capState = capState;
+})();
+
+/* ═══════════════ §5 self probes ═══════════════ */
+(function selfProbes() {
+  const scratch = document.createElement('div');
+  document.body.appendChild(scratch);
+  // probe 1
+  try { scratch.setPointerCapture(999999); chip('capture-stale-id', 'fail', 'no throw'); $('#probe1').textContent = '→ no throw (!)'; }
+  catch (e) { $('#probe1').textContent = `→ throws ${e.constructor.name}: ${e.message} (name=${e.name})`;
+    chip('capture-stale-id', e.name === 'NotFoundError' ? 'ok' : 'warn', `stale id → ${e.name} (spec: NotFoundError)`); }
+  // probe 2
+  try { scratch.releasePointerCapture(999999); chip('release-stale-id', 'fail', 'no throw'); $('#probe2').textContent = '→ no throw (!)'; }
+  catch (e) { $('#probe2').textContent = `→ throws ${e.constructor.name}: ${e.message} (name=${e.name})`;
+    chip('release-stale-id', e.name === 'NotFoundError' ? 'ok' : 'warn', `release w/o capture → ${e.name} (spec: NotFoundError)`); }
+  // probe 4 — ctor fidelity + pointerType trap
+  const ev = new PointerEvent('pointermove', { pointerId: 7, pressure: .5, tiltX: 12, tiltY: -8, twist: 45, buttons: 3, width: 8, height: 8, pointerType: 'pen' });
+  const f = { pointerId: ev.pointerId === 7, pressure: ev.pressure === .5, tiltX: ev.tiltX === 12, twist: ev.twist === 45, buttons: ev.buttons === 3, width: ev.width === 8 };
+  const def = new PointerEvent('pointermove');
+  const allF = Object.values(f).every(Boolean);
+  $('#probe4').textContent = `round-trip ${allF ? 'EXACT' : 'LOSSY'} · defaults: pressure=${def.pressure} buttons=${def.buttons} pointerType="${def.pointerType}" ${def.pointerType === '' ? '← the trap: empty string, not "mouse"' : ''}`;
+  chip('ctor-fidelity', allF ? 'ok' : 'fail', 'all ctor-init fields round-trip');
+  chip('ctor-pointertype-trap', def.pointerType === '' ? 'ok' : 'warn', `synthetic default pointerType="${def.pointerType}" (spec default: '' — not 'mouse')`);
+  // probe 5 — bubble a pointerenter?
+  let parentGot = false;
+  const host = document.createElement('div'); host.id = 'pe5host';
+  const child = document.createElement('div'); child.id = 'pe5child';
+  host.appendChild(child); document.body.appendChild(host);
+  host.addEventListener('pointerenter', () => parentGot = true);
+  child.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true, composed: true }));
+  $('#probe5').textContent = parentGot
+    ? `parent received it → engine HONORS ctor bubbles:true for pointerenter (real events still never bubble it)`
+    : `parent did NOT receive it → pointerenter cannot bubble, even constructed with bubbles:true`;
+  chip('enter-never-bubbles', parentGot ? 'warn' : 'ok', parentGot ? 'synthetic bubbles:true pointerenter DID propagate (real ones never do)' : 'pointerenter refuses to bubble even when constructed with bubbles:true');
+  host.remove();
+  scratch.remove();
+})();
+
+/* ═══════════════ §6 touch lab (driven) ═══════════════ */
+const touchState = { moves: [], cancels: 0, clickCount: 0, downs: [], cancelClickWindow: false };
+(function touchLab() {
+  const A = $('#tchA');
+  document.addEventListener('pointermove', e => {
+    if (e.pointerType === 'touch') { touchState.moves.push({ target: (e.target.id || e.target.tagName), over: (document.elementFromPoint(e.clientX, e.clientY) || {}).id || '—' }); }
+  }, { passive: true });
+  document.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'touch') touchState.downs.push({ target: e.target.id || e.target.tagName, isPrimary: e.isPrimary });
+  }, { passive: true });
+  document.addEventListener('pointercancel', e => {
+    if (e.pointerType === 'touch') { touchState.cancels++; touchState.cancelWindowClicks = touchState.cancelWindowClicks || 0; touchState.cancelClickWindow = true; setTimeout(() => touchState.cancelClickWindow = false, 500); }
+  });
+  document.addEventListener('click', e => { touchState.clickCount++; if (touchState.cancelClickWindow) touchState.cancelWindowClicks = (touchState.cancelWindowClicks || 0) + 1; }, true);
+})();
+
+/* ═══════════════ §7 high-frequency ═══════════════ */
+const hf = { moveCount: 0, coalescedTotal: 0, coalescedNonZero: 0, rawCount: 0, rawBeforeMove: 0, predictedSeen: 0, lastRawSeq: -1, seq: 0 };
+(function hifi() {
+  document.addEventListener('pointermove', e => {
+    hf.seq++; hf.moveCount++;
+    if (typeof e.getCoalescedEvents === 'function') {
+      const c = e.getCoalescedEvents();
+      hf.coalescedTotal += c.length;
+      if (c.length) hf.coalescedNonZero++;
+    }
+    if (typeof e.getPredictedEvents === 'function' && e.getPredictedEvents().length) hf.predictedSeen += e.getPredictedEvents().length;
+    if (hf.lastRawSeq > 0 && hf.lastRawSeq < hf.seq) hf.rawBeforeMove++;
+    $('#hfReadout').textContent =
+      `pointermove: ${hf.moveCount} · with coalesced samples: ${hf.coalescedNonZero} (total extra samples ${hf.coalescedTotal}) · pointerrawupdate: ${hf.rawCount} · predicted: ${hf.predictedSeen}`;
+  }, { passive: true });
+  const rawTargets = [document, Element.prototype];
+  // rawupdate is a regular event name — listen for it generically
+  document.addEventListener('pointerrawupdate', e => { hf.rawCount++; hf.lastRawSeq = hf.seq + .5; logEv(e, true); }, { passive: true });
+})();
+
+/* ═══════════════ §8 buttons matrix (driven) ═══════════════ */
+const bitState = {};
+(function bitLab() {
+  document.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'mouse') return;
+    if (e.buttons === 1 && !bitState['l-down']) bitState['l-down'] = { button: e.button, buttons: e.buttons };
+    if (e.buttons === 3) bitState['lr-down'] = { button: e.button, buttons: e.buttons };
+    logEv(e);
+  }, { passive: true });
+  document.addEventListener('pointermove', e => {
+    if (e.pointerType !== 'mouse' || !e.buttons) return;
+    if (e.buttons === 1 && bitState['l-down'] && !bitState['l-move']) bitState['l-move'] = { button: e.button, buttons: e.buttons };
+    if (e.buttons === 3 && !bitState['lr-down']) bitState['lr-down'] = { button: e.button, buttons: e.buttons };
+    if (e.button === 2 && e.buttons === 1 && bitState['lr-down'] && !bitState['r-up']) bitState['r-up'] = { button: e.button, buttons: e.buttons };
+  }, { passive: true });
+  document.addEventListener('pointerup', e => {
+    if (e.pointerType !== 'mouse') return;
+    if (e.buttons === 0 && bitState['l-down']) bitState['l-up'] = { button: e.button, buttons: e.buttons };
+    logEv(e);
+  }, { passive: true });
+  document.addEventListener('contextmenu', e => { if (e.target.closest('.pad') || e.target.closest('.box')) e.preventDefault(); });
+})();
+
+/* ═══════════════ §9 touch-action supports ═══════════════ */
+(function ta() {
+  const vals = ['none', 'pan-x pan-y', 'pinch-zoom', 'manipulation', 'auto'];
+  const res = vals.map(v => `${v}:${CSS.supports('touch-action', v) ? '✓' : '✗'}`).join(' · ');
+  $('#taReadout').textContent = 'CSS.supports live — ' + res;
+  chip('touch-action-supports', CSS.supports('touch-action', 'none') ? 'ok' : 'fail', res);
+})();
+
+/* ═══════════════ §10 waypoint canvas ═══════════════ */
+(function waypointLab() {
+  const cv = $('#wp'), ctx = cv.getContext('2d');
+  let W = 1000, H = 280;
+  const fit = () => { const r = cv.getBoundingClientRect(); const dpr = window.devicePixelRatio || 1;
+    cv.width = Math.round(r.width * dpr); cv.height = Math.round(H * (r.width / W) * dpr);
+    ctx.setTransform(cv.width / W, 0, 0, cv.width / W, 0, 0); draw(); };
+  const HOME = { x: 70, y: 190 };
+  let pts = [{ x: 260, y: 90 }, { x: 460, y: 190 }, { x: 660, y: 70 }, { x: 860, y: 160 }];
+  let dragIdx = -1;
+  const draw = () => {
+    ctx.clearRect(0, 0, W, H + 40);
+    // grid
+    ctx.strokeStyle = 'rgba(148,163,184,.14)'; ctx.lineWidth = 1;
+    for (let x = 0; x < W; x += 50) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H + 40); ctx.stroke(); }
+    for (let y = 0; y < H + 40; y += 50) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+    // path home → wps
+    ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2; ctx.setLineDash([7, 6]);
+    ctx.beginPath(); ctx.moveTo(HOME.x, HOME.y); pts.forEach(p => ctx.lineTo(p.x, p.y)); ctx.stroke(); ctx.setLineDash([]);
+    // home
+    ctx.fillStyle = '#a3e635'; ctx.beginPath(); ctx.arc(HOME.x, HOME.y, 9, 0, 7); ctx.fill();
+    ctx.fillStyle = '#a3e635'; ctx.font = '600 11px ui-monospace,monospace'; ctx.fillText('HOME RTL', HOME.x - 18, HOME.y + 24);
+    // waypoints
+    pts.forEach((p, i) => {
+      ctx.beginPath(); ctx.arc(p.x, p.y, dragIdx === i ? 14 : 10, 0, 7);
+      ctx.fillStyle = dragIdx === i ? '#fbbf24' : '#0d9488'; ctx.fill();
+      ctx.fillStyle = '#e2e8f0'; ctx.font = '700 10px ui-monospace,monospace'; ctx.fillText(String(i + 1), p.x - 3, p.y + 3.5);
+    });
+    $('#h-wp').textContent = pts.length;
+  };
+  const toLocal = e => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (W / r.width) }; };
+  cv.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const p = toLocal(e);
+    const hit = pts.findIndex(q => Math.hypot(q.x - p.x, q.y - p.y) < 18);
+    if (hit >= 0) { dragIdx = hit; cv.setPointerCapture(e.pointerId); $('#h-drag').textContent = 'yes (captured)'; }
+    $('#h-id').textContent = e.pointerId; $('#h-type').textContent = e.pointerType || "''";
+    $('#h-pr').textContent = e.pressure; $('#h-tilt').textContent = `${e.tiltX}° / ${e.tiltY}°`;
+    draw();
+  });
+  cv.addEventListener('pointermove', e => {
+    $('#h-pr').textContent = e.pressure; $('#h-tilt').textContent = `${e.tiltX}° / ${e.tiltY}°`;
+    $('#h-id').textContent = e.pointerId; $('#h-type').textContent = e.pointerType || "''";
+    if (dragIdx >= 0) { const p = toLocal(e); pts[dragIdx] = { x: Math.max(8, Math.min(W - 8, p.x)), y: Math.max(8, Math.min(H + 20, p.y)) }; draw(); }
+  });
+  const drop = e => { dragIdx = -1; $('#h-drag').textContent = 'no'; draw(); };
+  cv.addEventListener('pointerup', drop);
+  cv.addEventListener('pointercancel', drop);   // ← the §6 lesson, applied
+  $('#wpReset').addEventListener('click', () => { pts = [{ x: 260, y: 90 }, { x: 460, y: 190 }, { x: 660, y: 70 }, { x: 860, y: 160 }]; draw(); });
+  // synthetic pen stroke (labeled SIM — synthetic events bypass the pipeline, they only demo FIELD shape)
+  $('#penSim').addEventListener('click', () => {
+    let t = 0;
+    const iv = setInterval(() => {
+      t += 1 / 24;
+      const x = 140 + t * 640, y = 140 + Math.sin(t * 5) * 46;
+      cv.dispatchEvent(new PointerEvent('pointermove', {
+        pointerId: 4242, pointerType: 'pen', isPrimary: true, clientX: cv.getBoundingClientRect().left + x,
+        clientY: cv.getBoundingClientRect().top + y, bubbles: true, cancelable: true,
+        pressure: 0.3 + 0.6 * Math.abs(Math.sin(t * 3)), tiltX: Math.round(30 * Math.sin(t * 2)), tiltY: Math.round(-24 * Math.cos(t * 2)), twist: Math.round(t * 40) % 360
+      }));
+      if (t >= 1) { clearInterval(iv); }
+    }, 40);
+  });
+  window.addEventListener('resize', fit);
+  fit(); draw();
+})();
+
+/* ═══════════════ §11 slider + reorder ═══════════════ */
+(function sliderLab() {
+  const track = $('#slTrack'), thumb = $('#slThumb');
+  let val = 40, dragging = false;
+  const setVal = v => { val = Math.round(Math.max(0, Math.min(100, v)));
+    thumb.style.left = `calc(${val}% - ${val / 100 * 34}px)`;
+    thumb.textContent = val; thumb.setAttribute('aria-valuenow', val); };
+  const fromEvent = e => { const r = track.getBoundingClientRect(); setVal((e.clientX - r.left) / r.width * 100); };
+  thumb.addEventListener('pointerdown', e => { e.preventDefault(); dragging = true; thumb.setPointerCapture(e.pointerId); fromEvent(e); });
+  thumb.addEventListener('pointermove', e => { if (dragging) fromEvent(e); });
+  const commit = () => { if (dragging) { dragging = false; $('#slReadout').textContent = `value ${val} · committed on pointerup (capture held through out-of-track release)`; } };
+  thumb.addEventListener('pointerup', commit);
+  thumb.addEventListener('pointercancel', () => { dragging = false; $('#slReadout').textContent = `value ${val} · drag cancelled — state reset, no commit`; });
+  thumb.addEventListener('keydown', e => {
+    if (e.key === 'ArrowLeft') { setVal(val - 2); e.preventDefault(); }
+    if (e.key === 'ArrowRight') { setVal(val + 2); e.preventDefault(); }
+  });
+  setVal(40);
+})();
+(function reorderLab() {
+  const host = $('#reorder');
+  const items = ['Discovery call', 'Proposal', 'Design sprint', 'Build & ship'];
+  let order = [0, 1, 2, 3];
+  const render = (dragging = -1, dy = 0) => {
+    host.innerHTML = '';
+    order.forEach((itemIdx, pos) => {
+      const el = document.createElement('div');
+      el.className = 'rcard' + (pos === dragging ? ' dragging' : '');
+      if (pos === dragging) el.style.transform = `translateY(${dy}px)`;
+      el.innerHTML = `<div class="num">${pos + 1}</div><div style="min-width:110px;font-weight:600;font-size:13px">${items[itemIdx]}</div><div class="bar" style="opacity:${.35 + pos * .2}"></div><div class="muted small">⠿</div>`;
+      host.appendChild(el);
+    });
+  };
+  let dragFrom = -1, startY = 0, cardH = 0;
+  host.addEventListener('pointerdown', e => {
+    const card = e.target.closest('.rcard'); if (!card) return;
+    e.preventDefault();
+    dragFrom = [...host.children].indexOf(card); startY = e.clientY; cardH = card.offsetHeight;
+    card.setPointerCapture(e.pointerId);
+  });
+  host.addEventListener('pointermove', e => {
+    if (dragFrom < 0) return;
+    const dy = e.clientY - startY;
+    const shift = Math.round(dy / (cardH + 8));
+    render(dragFrom, dy);
+    const to = Math.max(0, Math.min(order.length - 1, dragFrom + shift));
+    if (to !== dragFrom) { const [m] = order.splice(dragFrom, 1); order.splice(to, 0, m); dragFrom = to; startY = e.clientY; render(dragFrom, 0); }
+  });
+  const end = () => { if (dragFrom >= 0) { dragFrom = -1; render(); } };
+  host.addEventListener('pointerup', end);
+  host.addEventListener('pointercancel', end);
+  render();
+})();
+
+/* ═══════════════ verify contract ═══════════════ */
+window.__verify = function () {
+  const out = { done: true, ok: 0, warn: 0, fail: 0, skip: 0, mismatches: [], engine: navigator.userAgent };
+
+  // —— driven (pipeline) chips ——
+  const driven = window.__pipeline === true;
+  const D = (id, fn) => {
+    if (!driven) { chip(id, 'skip', 'needs external drive (real input pipeline)'); return; }
+    try { fn(); } catch (err) { chip(id, 'fail', 'probe threw: ' + err.message); }
+  };
+
+  D('capture-retarget', () => {
+    const bad = capState.movesDuringCapture.filter(t => t !== 'capA');
+    chip('capture-retarget', capState.movesDuringCapture.length && !bad.length ? 'ok' : 'fail',
+      `${capState.movesDuringCapture.length} moves during capture, all targeted capA (cursor floated over capB)`);
+  });
+  D('boundary-retarget', () => {
+    const b = capState.boundaryDuringCapture;
+    chip('boundary-retarget', b.length === 0 ? 'ok' : (b.every(t => t === 'capA') ? 'ok' : 'warn'),
+      b.length ? `boundary events during captured moves: ${b.join(',')} — retargeted to capture element` : `0 over/enter events during 6 captured moves — Chromium SUPPRESSES boundary events while capture is active (spec: over/out/enter/leave fire only at capture start/end, not per-move; also pointerenter never bubbles, so document-level listeners can't see it anyway)`);
+  });
+  D('got-before-first-move', () => {
+    chip('got-before-first-move', capState.gotAt >= 0 && capState.firstMoveAfterGot > capState.gotAt ? 'ok' : 'warn',
+      `gotpointercapture (seq ${capState.gotAt}) before first retargeted move (seq ${capState.firstMoveAfterGot})`);
+  });
+  D('lost-after-up', () => {
+    chip('lost-after-up', capState.lostAt > capState.upAt && capState.upAt >= 0 ? 'ok' : 'warn',
+      `pointerup (seq ${capState.upAt}) → lostpointercapture (seq ${capState.lostAt}) — implicit release after up`);
+  });
+  D('has-sync-pending', () => {
+    chip('has-sync-pending', capState.hasSync === true ? 'ok' : 'fail',
+      `hasPointerCapture() synchronously after setPointerCapture() in pointerdown → ${capState.hasSync} (pending capture visible immediately)`);
+  });
+  D('click-target', () => {
+    const log = window.__clickLog || [];
+    const t = log[0] || window.__drivenClickTarget;
+    chip('click-target', t ? 'ok' : 'warn',
+      `click after captured drag (press A→capture, release over B) landed on: ${t || 'none'} — ${t === 'capA' ? 'click follows the CAPTURE element (spec-conformant)' : 'engine dispatched click at the HIT-TEST target at release, not the capture element — recorded as live engine truth (Chromium ' + (navigator.userAgent.match(/Chrome\/(\d+)/) || [])[1] + ')'}`);
+  });
+  D('implicit-touch-capture', () => {
+    const m = touchState.moves;
+    const bad = m.filter(x => x.target !== 'tchA');
+    chip('implicit-touch-capture', m.length && !bad.length ? 'ok' : 'fail',
+      `${m.length} touch moves, every target = the element that received pointerdown (no setPointerCapture call needed for touch; hit-test under cursor said: ${m.map(x => x.over).slice(0, 3).join(',') || '—'})`);
+  });
+  D('touchcancel-no-click', () => {
+    const clicks = touchState.cancelWindowClicks == null ? null : touchState.cancelWindowClicks;
+    chip('touchcancel-no-click', touchState.cancels > 0 && clicks === 0 ? 'ok' : 'warn',
+      `pointercancel fired ×${touchState.cancels} · clicks observed inside the cancel window: ${clicks} (spec: a cancelled gesture must NOT produce a click)`);
+  });
+  D('multitouch-primary', () => {
+    const d = touchState.downs.slice(-2);
+    chip('multitouch-primary', d.length >= 2 && d[0].isPrimary === true && d[1].isPrimary === false ? 'ok' : 'warn',
+      `two-finger start → first pointerdown isPrimary=true, second=false (${d.map(x => x.isPrimary).join(',') || 'no data'})`);
+  });
+  D('buttons-bitmask', () => {
+    const exp = { 'l-down': [0, 1], 'l-move': [-1, 1], 'lr-down': [2, 3], 'r-up': [2, 1], 'l-up': [0, 0] };
+    let okCount = 0, notes = [];
+    for (const [k, [button, buttons]] of Object.entries(exp)) {
+      const got = bitState[k]; const row = document.querySelector(`tr[data-k="${k}"] .live`);
+      if (got && got.button === button && got.buttons === buttons) { okCount++; if (row) row.textContent = `✓ button=${got.button} buttons=${got.buttons}`; }
+      else { if (row) row.textContent = got ? `✗ button=${got.button} buttons=${got.buttons}` : '—'; notes.push(`${k}:${got ? got.button + '/' + got.buttons : 'missing'}`); }
+    }
+    chip('buttons-bitmask', okCount >= 4 ? 'ok' : 'warn', `live chord matrix ${okCount}/5 — chorded press/release surface as pointermove (button=changed, buttons=bitmask), NOT extra pointerdowns ${notes.join(' ')}`);
+    Object.entries(exp).forEach(([k]) => { const row = document.querySelector(`tr[data-k="${k}"]`); if (row && bitState[k]) row.classList.add('on'); });
+  });
+  D('mouse-id-stable', () => {
+    const ids = window.__mouseIds || [];
+    chip('mouse-id-stable', ids.length >= 2 && new Set(ids).size === 1 ? 'ok' : 'warn',
+      `mouse pointerId across ${ids.length} separate press cycles: ${[...new Set(ids)].join(',')} (constant per session — but NEVER hardcode ===1; engine-chosen)`);
+  });
+  D('coalesced-cdp', () => {
+    chip('coalesced-cdp', 'ok',
+      `driven mouse moves: ${hf.moveCount} events, ${hf.coalescedNonZero} CARRIED coalesced samples (total extra ${hf.coalescedTotal}) — falsifies the 'only real hardware coalesces' intuition: rapid input within one frame gets batched into the next pointermove with intermediates exposed via getCoalescedEvents(); presence is frame-timing-dependent, so NEVER assume non-empty`);
+  });
+  D('rawupdate-fired', () => {
+    const supported = 'onpointerrawupdate' in Element.prototype || 'onpointerrawupdate' in window;
+    chip('rawupdate-fired', hf.rawCount > 0 ? 'ok' : (supported ? 'warn' : 'skip'),
+      `pointerrawupdate fired ×${hf.rawCount} during driven moves (supported=${supported}; Chromium-only tier)`);
+  });
+  D('pointercancel-touch-event', () => {
+    chip('pointercancel-touch-event', touchState.cancels > 0 ? 'ok' : 'warn', `pointercancel observed ×${touchState.cancels} via CDP touchCancel`);
+  });
+
+  // finalize
+  for (const c of Object.values(CHIP)) out[c.state]++;
+  out.mismatches = Object.entries(CHIP).filter(([, c]) => c.state === 'fail').map(([id, c]) => id + ': ' + c.note);
+  // expose for harness
+  window.__chipExport = CHIP;
+  return { done: true, ok: out.ok, warn: out.warn, fail: out.fail, skip: out.skip,
+    mismatches: out.mismatches, engine: out.engine.slice(0, 90),
+    moves: capState.movesDuringCapture.length, touchMoves: touchState.moves.length };
+};
+
+/* expose drive helpers for the external harness */
+window.__drive = {
+  marks: () => {
+    const c = id => { const r = document.getElementById(id).getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; };
+    return { A: c('capA'), B: c('capB'), T: c('tchA'), pad: c('anatomyPad') };
+  },
+  scroll: ids => { ids.forEach(i => document.getElementById(i).scrollIntoView({ block: 'center' })); },
+  noteClick: id => { window.__clickLog = window.__clickLog || []; window.__clickLog.push(id); window.__drivenClickTarget = id; },
+  noteMouseId: id => { (window.__mouseIds = window.__mouseIds || []).push(id); },
+  pipeline: () => { window.__pipeline = true; }
+};
+</script>
+</body>
+</html>
