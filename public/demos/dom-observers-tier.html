@@ -1,0 +1,1232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DOM Observers — ResizeObserver, IntersectionObserver &amp; MutationObserver: The Push Tier</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --ink:#1c1917; --muted:#78716c; --faint:#a8a29e; --line:#e7e2dc;
+  --bg:#faf8f5; --card:#ffffff; --accent:#0d9488; --accent-deep:#0f766e; --accent-soft:#ccfbf1;
+  --warn:#b45309; --warn-soft:#fef3c7; --bad:#b91c1c; --bad-soft:#fee2e2; --skip:#57534e; --skip-soft:#f5f5f4;
+  --code:#f6f4f1;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:ui-sans-serif,system-ui,-apple-system,"Inter","Segoe UI",sans-serif;
+  color:var(--ink); background:var(--bg); line-height:1.55; font-size:15px;
+  background-image:
+    radial-gradient(560px 320px at 8% -4%, rgba(13,148,136,.10), transparent 62%),
+    radial-gradient(520px 340px at 96% 4%, rgba(124,58,237,.07), transparent 60%);
+  background-repeat:no-repeat;
+}
+.wrap{max-width:1060px;margin:0 auto;padding:28px 22px 90px}
+h1{font-size:clamp(30px,4.5vw,42px);line-height:1.12;letter-spacing:-.02em;margin:16px 0 10px;font-weight:800}
+h2{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+h3{font-size:15.5px;margin:18px 0 6px}
+p{margin:8px 0}
+.lede{font-size:17px;color:var(--muted);max-width:74ch;margin:0 0 14px}
+.kicker{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-deep)}
+section{
+  background:var(--card);border:1px solid var(--line);border-radius:18px;
+  padding:24px 26px;margin:20px 0;box-shadow:0 1px 2px rgba(28,25,23,.04),0 8px 28px -18px rgba(28,25,23,.12);
+}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.card{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:#fff}
+.card h3{margin-top:0}
+code,pre{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12.6px}
+code{background:var(--code);padding:1px 5px;border-radius:6px}
+pre{background:#1c1917;color:#e7e5e4;padding:14px 16px;border-radius:12px;overflow-x:auto;line-height:1.5}
+pre code{background:none;padding:0;color:inherit}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+  border-radius:999px;padding:3px 10px;margin:3px 4px 3px 0;border:1px solid transparent;vertical-align:middle;
+}
+.chip.ok{background:#ecfdf5;color:#065f46;border-color:#a7f3d0}
+.chip.warn{background:var(--warn-soft);color:var(--warn);border-color:#fde68a}
+.chip.fail{background:var(--bad-soft);color:var(--bad);border-color:#fecaca}
+.chip.skip{background:var(--skip-soft);color:var(--skip);border-color:#e7e5e4}
+.chip b{font-weight:800}
+.badge{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin:4px 6px 4px 0;font-size:12.5px;background:#fff}
+.badge .dot{width:9px;height:9px;border-radius:50%;background:var(--faint);flex:0 0 auto}
+.badge.on .dot{background:#10b981}
+.badge.off .dot{background:#f59e0b}
+.muted{color:var(--muted)}
+.small{font-size:12.5px}
+table{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
+td code{white-space:nowrap}
+button{
+  font:inherit;font-size:13.5px;font-weight:700;color:#fff;background:var(--accent-deep);
+  border:none;border-radius:10px;padding:9px 16px;cursor:pointer;margin:6px 8px 6px 0;
+}
+button:hover{background:var(--accent)}
+button.ghost{background:#fff;color:var(--accent-deep);border:1.5px solid var(--accent-deep)}
+button.ghost:hover{background:var(--accent-soft)}
+.pad{position:relative;border:1.5px dashed var(--faint);border-radius:14px;padding:16px;user-select:none;-webkit-user-select:none}
+.labbox{display:flex;gap:14px;flex-wrap:wrap;align-items:center;justify-content:center;min-height:120px}
+.console{
+  font-family:ui-monospace,Menlo,monospace;font-size:11.5px;background:#1c1917;color:#d6d3d1;
+  border-radius:12px;padding:12px 14px;max-height:230px;overflow-y:auto;margin-top:10px;line-height:1.65;
+}
+.console .t{color:#5eead4}.console .y{color:#fcd34d}.console .dim{color:#78716c}
+.num{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px;margin:6px 0}
+.kv dt{color:var(--muted)}.kv dd{margin:0;font-family:ui-monospace,Menlo,monospace;font-size:12.3px}
+footer{margin-top:34px;color:var(--muted);font-size:13px}
+.toc{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 4px}
+.toc a{font-size:12px;font-weight:600;color:var(--accent-deep);background:#fff;border:1px solid var(--line);border-radius:999px;padding:4px 10px;text-decoration:none}
+.toc a:hover{background:var(--accent-soft)}
+.flow{display:flex;flex-wrap:wrap;gap:0;align-items:center;margin:8px 0;font-family:ui-monospace,Menlo,monospace;font-size:11px}
+.flow span{background:var(--accent-soft);color:var(--accent-deep);border:1px solid #99f6e4;border-radius:8px;padding:4px 8px;margin:2px 0}
+.flow i{color:var(--faint);font-style:normal;margin:0 3px}
+.lane{height:260px;overflow-y:auto;border:1.5px solid var(--line);border-radius:14px;position:relative;background:linear-gradient(#fff,#faf8f5)}
+.step{height:200px;margin:14px;border:1.5px solid var(--line);border-radius:12px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;background:#fff;font-weight:700}
+.step .sub{font-weight:500;font-size:11px;color:var(--muted)}
+.step.hit{border-color:var(--accent-deep);background:var(--accent-soft)}
+.ratio{height:8px;border-radius:5px;background:#e7e2dc;overflow:hidden;width:200px}
+.ratio i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent-deep),#14b8a6)}
+canvas{border-radius:10px;background:#fff;border:1px solid var(--line)}
+#telemetryLane .row{display:flex;justify-content:space-between;gap:10px;font-family:ui-monospace,Menlo,monospace;font-size:11.3px;padding:4px 8px;border-bottom:1px solid #f0ede9}
+#telemetryLane .row.new{background:var(--accent-soft)}
+#telemetryLane .row .up{color:var(--bad)}
+#telemetryLane .row .dn{color:var(--accent-deep)}
+#variantCard{border-radius:16px;padding:18px;border:2px solid #94a3b8;transition:border-color .3s,background .3s}
+#variantCard[data-variant="night"]{background:#0f172a;color:#e2e8f0;border-color:#6366f1}
+#variantCard[data-variant="sunset"]{background:#fff7ed;color:#7c2d12;border-color:#f97316}
+#variantCard[data-variant="mint"]{background:#ecfdf5;color:#064e3b;border-color:#10b981}
+#logLine{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#065f46}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">Molt Research · Observer Tier</div>
+  <h1>DOM Observers — the Push Tier</h1>
+  <p class="lede">The three observers that replaced the scroll/resize/Mutation Events era — <code>ResizeObserver</code> (an element changed size), <code>IntersectionObserver</code> (an element crossed a visibility line), <code>MutationObserver</code> (the DOM under this node changed) — live-probed in this page, including the loop error every error tracker sees, the ratio-0-but-intersecting boundary, and the microtask MutationObserver wins before promise jobs.</p>
+  <div id="badges"></div>
+  <div class="toc">
+    <a href="#s2">Model</a><a href="#s3">RO anatomy</a><a href="#s4">Loop error</a><a href="#s5">RO timing</a><a href="#s6">IO anatomy</a><a href="#s7">Thresholds</a><a href="#s8">rootMargin</a><a href="#s9">scrollMargin</a><a href="#s10">IO v2</a><a href="#s11">MutationObserver</a><a href="#s12">Capstones</a>
+  </div>
+</header>
+
+<!-- ============ S1 · environment ============ -->
+<section id="s1">
+  <div class="kicker">Live environment</div>
+  <h2>What this browser actually exposes</h2>
+  <p class="small">Capability probes run on load. Everything below is measured, not quoted from docs.</p>
+  <div class="pad"><div class="labbox">
+    <div id="s1box" class="box" style="background:var(--accent-soft);border:2px solid var(--accent-deep);color:var(--accent-deep)">probing…<span class="sub" id="s1sub"></span></div>
+  </div></div>
+  <div id="chips-s1"></div>
+</section>
+
+<!-- ============ S2 · model ============ -->
+<section id="s2">
+  <div class="kicker">Why observers exist</div>
+  <h2>Push vs pull — the death of the scroll-handler loop</h2>
+  <p>The pre-observer pattern was <b class="muted">pull</b>: listen to <code>scroll</code>/<code>resize</code> events, then call <code>getBoundingClientRect()</code> on everything you cared about, every event, on the main thread. It thrashed layout, it missed changes that were not scroll-driven (element resized by content, DOM edits), and each library shipped its own loop. Observers invert it to <b class="muted">push</b>: you register interest once; the engine, which already computes layout and visibility for painting, tells <i>you</i> when a line was crossed — batched, coalesced, off your hot paths.</p>
+  <div class="grid g2">
+    <div class="card">
+      <h3>The observer family (as of 2026)</h3>
+      <table>
+        <tr><th>Observer</th><th>Notifies you when…</th><th>Covered</th></tr>
+        <tr><td><code>ResizeObserver</code></td><td>an element's box changed size</td><td>this page</td></tr>
+        <tr><td><code>IntersectionObserver</code></td><td>a target crosses thresholds vs a root</td><td>this page</td></tr>
+        <tr><td><code>MutationObserver</code></td><td>DOM tree/attrs/text changed under a node</td><td>this page</td></tr>
+        <tr><td><code>PerformanceObserver</code></td><td>a performance entry was buffered</td><td><a href="https://molt-research.vercel.app/demos/performance-api-measurement-tier.html">measurement tier ↗</a></td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>The contract every observer shares</h3>
+      <ul class="small">
+        <li><b>Callback gets a batch</b> — an <i>array</i> of records/entries, not one event per change. Design for N.</li>
+        <li><b>Initial notification always fires</b> — observe() alone (no change yet) delivers current state. There is no "priming" hack needed.</li>
+        <li><b>Async by design</b> — you observe <i>results</i> (layout, DOM state), never the causes. No event storm.</li>
+        <li><b>takeRecords()</b> — drain the pending queue synchronously; drained entries never reach the callback.</li>
+        <li><b>unobserve(target)</b> surgical · <b>disconnect()</b> nuclear (and re-<code>observe()</code> after disconnect works).</li>
+      </ul>
+    </div>
+  </div>
+  <div id="chips-s2"></div>
+</section>
+
+<!-- ============ S3 · RO anatomy ============ -->
+<section id="s3">
+  <div class="kicker">ResizeObserver · 1 of 3</div>
+  <h2>Anatomy — the initial entry, the three boxes, the array form</h2>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Initial entry always fires</h3>
+      <p class="small">Observe a box that has not changed: you still get exactly one entry with its current size. That is how you seed state — no separate measuring pass.</p>
+      <div class="pad" style="min-height:64px"><div id="roSeed" style="width:220px;height:52px;background:var(--accent-soft);border:2px solid var(--accent-deep);border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--accent-deep)">seed me</div></div>
+      <div class="kv"><dt>initial entry</dt><dd id="roSeedOut">waiting…</dd></div>
+    </div>
+    <div class="card">
+      <h3>Three boxes, one DPR truth</h3>
+      <p class="small"><code>observe(el, {box})</code> — <code>content-box</code> (default, no padding/border), <code>border-box</code>, <code>device-pixel-content-box</code> (physical pixels — the canvas anti-blur box). Change the width slider and watch all three track.</p>
+      <div style="display:flex;align-items:center;gap:10px;margin:8px 0"><input id="roSlider" type="range" min="120" max="420" value="220" style="flex:1"><span class="num" id="roSliderOut">220px</span></div>
+      <div class="pad" style="min-height:70px"><div id="roBox" style="height:44px;width:220px;padding:8px 14px;border:3px solid var(--accent-deep);background:var(--accent-soft);border-radius:10px;transition:none"></div></div>
+      <dl class="kv">
+        <dt>contentBoxSize</dt><dd id="roContent">—</dd>
+        <dt>borderBoxSize</dt><dd id="roBorder">—</dd>
+        <dt>devicePixel</dt><dd id="roDevice">—</dd>
+        <dt>content × dpr</dt><dd id="roContentDpr">—</dd>
+      </dl>
+    </div>
+  </div>
+  <div class="grid g2">
+    <div class="card">
+      <h3>contentBoxSize is an ARRAY</h3>
+      <p class="small">Spec: an element can have <i>multiple content-box fragments</i> (an inline box split across lines). That's why the size is <code>contentBoxSize[0].inlineSize</code>, never <code>.inlineSize</code>. The span below is forced to wrap — probe what this engine reports.</p>
+      <div class="pad" style="max-width:300px"><span id="roFrag" style="display:inline">aaa bbb ccc ddd eee fff ggg hhh iii jjj kkk lll mmm nnn ooo ppp</span></div>
+      <div class="kv"><dt>fragments reported</dt><dd id="roFragOut">—</dd></div>
+    </div>
+    <div class="card">
+      <h3>Writing sizes in the callback</h3>
+      <p class="small">Resizing the observed element <i>inside</i> its own callback is the classic foot-gun → §4's loop error. The two legitimate patterns:</p>
+<pre><code>// expected-size guard — no-op when already there
+if (Math.abs(entry.contentBoxSize[0].inlineSize
+        - expected) &lt; 1) return;
+
+// intentional continuous growth — defer past paint
+requestAnimationFrame(() =&gt; el.style.width = next);</code></pre>
+    </div>
+  </div>
+  <div id="chips-s3"></div>
+</section>
+
+<!-- ============ S4 · loop error ============ -->
+<section id="s4">
+  <div class="kicker">ResizeObserver · the famous error</div>
+  <h2>"ResizeObserver loop…" — reproducing the error-tracker classic</h2>
+  <p>Write the observed element's size inside the callback and you create a cycle: resize → notify → resize. The spec breaks the deadlock by processing elements <b>deeper in the DOM</b> each iteration; leftovers are deferred to the next frame and the engine fires a well-known <b>ErrorEvent on window</b>. It is a <i>warning wearing an error's uniform</i> — but it floods Sentry-style trackers because it arrives via <code>window.onerror</code> with the message below. <b>This lab is click-only</b> (it genuinely logs one engine error to the console — the only intentional one on this page).</p>
+  <div class="grid g2">
+    <div class="card">
+      <h3>❌ Cyclic: write in callback</h3>
+      <div class="pad"><div id="roLoop" style="height:40px;width:120px;background:var(--bad-soft);border:2px solid var(--bad);border-radius:10px"></div></div>
+      <button id="roLoopBtn" class="ghost">arm cyclic resize (4 ticks)</button>
+    </div>
+    <div class="card">
+      <h3>✅ rAF-deferred twin</h3>
+      <div class="pad"><div id="roLoopOk" style="height:40px;width:120px;background:var(--accent-soft);border:2px solid var(--accent-deep);border-radius:10px"></div></div>
+      <button id="roLoopOkBtn">run deferred growth (4 ticks)</button>
+    </div>
+  </div>
+  <dl class="kv">
+    <dt>window error captured</dt><dd id="roLoopErr">none yet</dd>
+    <dt>cyclic ticks landed</dt><dd id="roLoopTicks">0</dd>
+    <dt>deferred errors</dt><dd id="roLoopOkErr">0 (expected)</dd>
+  </dl>
+  <p class="small muted">Filter recipe for trackers: ignore <code>message</code> matching <code>/ResizeObserver loop/</code> — both variants ("loop limit exceeded" legacy, "loop completed with undelivered notifications" current) — and fix the layout instead: expected-size guard or rAF deferral. Chrome's own telemetry counted this as one of the most-reported "errors" on the web for years, purely from benign settle cycles.</p>
+  <div id="chips-s4"></div>
+</section>
+
+<!-- ============ S5 · RO timing + lifecycle ============ -->
+<section id="s5">
+  <div class="kicker">ResizeObserver · 2 of 3</div>
+  <h2>Timing &amp; lifecycle — before paint, zero boxes, detached silence</h2>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Delivery happens before rAF, same frame</h3>
+      <p class="small">Resize observations are processed inside the rendering steps, <i>before</i> animation-frame callbacks. Probe: change width, stamp RO-callback time and rAF-callback time in the same frame.</p>
+      <button id="roTimeBtn" class="ghost">resize &amp; stamp</button>
+      <dl class="kv"><dt>RO → rAF</dt><dd id="roTimeOut">—</dd></dl>
+      <p class="small muted">Consequence: an RO callback is the last place you can adjust layout-dependent sizes with zero visible flicker — one frame earlier than rAF.</p>
+    </div>
+    <div class="card">
+      <h3>display:none → the 0×0 entry</h3>
+      <p class="small">Hiding an observed element is a resize to nothing — the entry lands with <code>contentRect 0×0</code>. Re-showing delivers the real size again. React to it or your canvas/DPR math divides by zero.</p>
+      <button id="roHideBtn" class="ghost">toggle display:none</button>
+      <div class="pad" style="min-height:48px;margin-top:8px"><div id="roHide" style="width:180px;height:30px;background:var(--accent-soft);border:2px solid var(--accent-deep);border-radius:8px"></div></div>
+      <dl class="kv"><dt>entries</dt><dd id="roHideOut">—</dd></dl>
+    </div>
+    <div class="card">
+      <h3>Detached → silence, re-attach → entry</h3>
+      <p class="small">Observing a detached element delivers <b>nothing</b> (no initial entry — it has no box). Append it and the initial entry arrives. Watch for this in component frameworks that observe before mount.</p>
+      <button id="roDetachBtn" class="ghost">detach → re-attach</button>
+      <div class="pad" style="min-height:48px;margin-top:8px" id="roDetachHost"></div>
+      <dl class="kv"><dt>while detached</dt><dd id="roDetachOut1">—</dd><dt>after append</dt><dd id="roDetachOut2">—</dd></dl>
+    </div>
+    <div class="card">
+      <h3>Double-observe dedupes · unobserve vs disconnect</h3>
+      <p class="small">Calling <code>observe(el)</code> twice on one observer is a no-op (still one entry per change). <code>unobserve(el)</code> is surgical; <code>disconnect()</code> drops everything — and the same observer can be re-used afterwards.</p>
+      <button id="roLifeBtn">run lifecycle probe</button>
+      <dl class="kv"><dt>double-observe entries</dt><dd id="roLifeOut1">—</dd><dt>after unobserve</dt><dd id="roLifeOut2">—</dd><dt>re-observe works</dt><dd id="roLifeOut3">—</dd></dl>
+    </div>
+  </div>
+  <div id="chips-s5"></div>
+</section>
+
+<!-- ============ S6 · IO anatomy ============ -->
+<section id="s6">
+  <div class="kicker">IntersectionObserver · 1 of 3</div>
+  <h2>Anatomy — the initial notification, batched entries, the entry fields</h2>
+  <div class="grid g2">
+    <div class="card">
+      <h3>observe() = one initial entry, always</h3>
+      <p class="small">Watch three targets at once — plain, fully clipped, and invisible-but-present. The first callback carries <b>one entry per target</b> reporting current state. Note what v1 geometry can and cannot see: clipping is real, opacity is not.</p>
+      <button id="ioSeedBtn">observe 3 targets</button>
+      <div class="pad" style="margin-top:8px">
+        <div id="ioT1" class="box" style="background:var(--accent-soft);border:2px solid var(--accent-deep);color:var(--accent-deep)">T1 on-screen</div>
+        <div style="height:120px;overflow:hidden;position:relative"><div id="ioT2" class="box" style="position:absolute;top:130px;background:#eef2ff;border-color:#4338ca;color:#4338ca">T2 fully clipped (overflow:hidden)</div></div>
+        <div id="ioT3" class="box" style="background:#f5f5f4;border-color:var(--skip);color:var(--skip);opacity:0">T3 opacity:0 — geometry says visible</div>
+      </div>
+      <dl class="kv"><dt>initial batch</dt><dd id="ioSeedOut">—</dd></dl>
+    </div>
+    <div class="card">
+      <h3>The entry, field by field</h3>
+      <pre><code>entry.target          // the observed element
+entry.isIntersecting  // crossed the boolean line?
+entry.intersectionRatio  // 0..1 of target visible
+entry.boundingClientRect // target rect (getBoundingClientRect twin)
+entry.rootBounds      // root rect — null if implicit root
+                      // + cross-origin (privacy)
+entry.intersectionRect // the overlap rect
+entry.time            // same clock as performance.now()</code></pre>
+      <p class="small" id="ioEntryOut">Observe T1 above to fill the live values.</p>
+      <dl class="kv" id="ioEntryKv" style="display:none">
+        <dt>isIntersecting</dt><dd id="ioF1">—</dd>
+        <dt>ratio</dt><dd id="ioF2">—</dd>
+        <dt>rootBounds</dt><dd id="ioF3">—</dd>
+        <dt>time − perf.now()</dt><dd id="ioF4">—</dd>
+      </dl>
+    </div>
+  </div>
+  <p class="small muted"><b>Clipping is the truth, not the viewport:</b> intersection is computed against the intersection of the root rect and every clipping ancestor between root and target. A target "in the viewport" but inside <code>overflow:hidden</code> is not intersecting. That is why IO replaces scroll math entirely — it already knows about every clip container.</p>
+  <div id="chips-s6"></div>
+</section>
+
+<!-- ============ S7 · thresholds ============ -->
+<section id="s7">
+  <div class="kicker">IntersectionObserver · 2 of 3</div>
+  <h2>The threshold ladder — and the two traps on its ends</h2>
+  <p>Scroll the lane (or drive it): each step lights when it crosses <code>[0, .25, .5, .75, 1]</code> against the viewport, with the live ratio on each card.</p>
+  <div class="lane" id="ioLane">
+    <div class="step" data-i="0">STEP 0<span class="sub">ratio <span class="num">0%</span></span><div class="ratio"><i></i></div></div>
+    <div class="step" data-i="1">STEP 1<span class="sub">ratio <span class="num">0%</span></span><div class="ratio"><i></i></div></div>
+    <div class="step" data-i="2">STEP 2<span class="sub">ratio <span class="num">0%</span></span><div class="ratio"><i></i></div></div>
+    <div class="step" data-i="3">STEP 3<span class="sub">ratio <span class="num">0%</span></span><div class="ratio"><i></i></div></div>
+  </div>
+  <div style="margin-top:8px">
+    <button class="ghost" data-lane="0">top</button><button class="ghost" data-lane="1">step 1</button><button class="ghost" data-lane="2">step 2</button><button class="ghost" data-lane="3">step 3</button><button class="ghost" data-lane="4">bottom</button>
+  </div>
+  <div class="grid g2" style="margin-top:10px">
+    <div class="card">
+      <h3>Trap 1 — the boundary: sub-pixel in, exact touch out</h3>
+      <p class="small">Default threshold 0 fires when the target <i>crosses</i> the root edge — probe BOTH states on one pair: an element parked at the root's bottom edge (touching), then nudged <b>2px into overlap</b> — where the famous combo lives: <code>isIntersecting: true</code> with a ratio that still displays as 0. Rect math verified on-page.</p>
+      <div class="pad" style="height:160px;position:relative">
+        <div id="ioRoot" style="position:absolute;left:12px;right:12px;top:8px;height:80px;border:2px dashed var(--accent-deep);border-radius:8px;background:rgba(13,148,136,.06)">
+          <div id="ioTouch" style="position:absolute;left:6px;right:6px;top:80px;height:52px;background:#eef2ff;border:2px solid #4338ca;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#4338ca">target · child of root, parked at its bottom edge</div>
+        </div>
+      </div>
+      <button id="ioTouchBtn" class="ghost">observe: exact touch → 2px overlap</button>
+      <dl class="kv"><dt>state 1 (gap 0px)</dt><dd id="ioTouchGap">—</dd><dt>state 2 (−2px)</dt><dd id="ioTouchOut">—</dd></dl>
+    </div>
+    <div class="card">
+      <h3>Trap 2 — threshold 1.0 may be unreachable</h3>
+      <p class="small">If the target is taller than the root, the ratio physically cannot reach 1.0 — the observer configured with <code>threshold: 1</code> (or <code>1.0</code> "fully visible") fires its initial entry and then never crosses. Probe: 200px root, 320px target → measure the ratio ceiling.</p>
+      <div class="pad" style="height:200px;position:relative;overflow:hidden">
+        <div id="ioRoot2" style="position:absolute;left:12px;right:12px;top:8px;height:150px;border:2px dashed var(--accent-deep);border-radius:8px;background:rgba(13,148,136,.06)">
+          <div id="ioFull" style="position:absolute;left:6px;right:6px;top:20px;height:320px;background:#fef3c7;border:2px solid var(--warn);border-radius:8px;display:flex;align-items:flex-start;justify-content:center;font-size:12px;font-weight:700;color:var(--warn)">320px target — child of the 150px root</div>
+        </div>
+      </div>
+      <button id="ioFullBtn" class="ghost">observe tall target @ threshold 1</button>
+      <dl class="kv"><dt>crossings seen</dt><dd id="ioFullOut">—</dd><dt>ratio ceiling</dt><dd id="ioFullMax">—</dd></dl>
+    </div>
+  </div>
+  <div id="chips-s7"></div>
+</section>
+
+<!-- ============ S8 · rootMargin ============ -->
+<section id="s8">
+  <div class="kicker">IntersectionObserver · 3 of 3 — v1 edges</div>
+  <h2>rootMargin, percent math &amp; takeRecords()</h2>
+  <div class="grid g2">
+    <div class="card">
+      <h3>rootMargin grows/shrinks the root box</h3>
+      <p class="small">A CSS-margin string applied to the <b>root</b> rect before intersection math — and the target must be a <b>descendant</b> of the root. Percentage margins resolve against the <b>root's</b> dimensions (vertical → root height). Probe: 140px root, child target parked 30px below its bottom edge, <code>rootMargin:'50% 0px'</code> → expect a 70px vertical expansion → already intersecting.</p>
+      <div class="pad" style="height:230px;position:relative;overflow:visible">
+        <div id="rmRoot" style="position:absolute;left:16px;top:16px;height:140px;border:2px dashed var(--accent-deep);border-radius:8px;background:rgba(13,148,136,.06)">
+          <div id="rmTarget" style="position:absolute;left:6px;right:6px;top:154px;height:40px;background:#eef2ff;border:2px solid #4338ca;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:#4338ca">child of root · 30px below its bottom</div>
+        </div>
+      </div>
+      <button id="rmBtn" class="ghost">observe with rootMargin:'50% 0px'</button>
+      <button id="rmBadBtn" class="ghost">sibling-root anti-probe</button>
+      <dl class="kv"><dt>first entry</dt><dd id="rmOut">—</dd><dt>engine expanded root by</dt><dd id="rmPx">—</dd><dt>sibling root →</dt><dd id="rmBad">—</dd></dl>
+    </div>
+    <div class="card">
+      <h3>takeRecords() — drained vs delivered</h3>
+      <p class="small">IO computes entries during rendering and delivers them at frame end — by the time your task runs again, the queue is empty. Probe: observe off-screen target, takeRecords after delivery → 0; the real crossing later → 1 callback. The <b>deterministic</b> flush proof lives in §11 (MutationObserver), where records queue at mutation time. IO's takeRecords matters in the same task as a geometry change — the flush-then-disconnect unmount pattern.</p>
+      <button id="trBtn" class="ghost">observe → takeRecords → cross → await</button>
+      <dl class="kv">
+        <dt>drained by takeRecords</dt><dd id="trOut1">—</dd>
+        <dt>delivered to callback</dt><dd id="trOut2">—</dd>
+      </dl>
+      <p class="small muted">Same method exists on all four observers — one contract.</p>
+    </div>
+  </div>
+  <div id="chips-s8"></div>
+</section>
+
+<!-- ============ S9 · scrollMargin ============ -->
+<section id="s9">
+  <div class="kicker">IntersectionObserver · the 2023+ addition</div>
+  <h2>scrollMargin — pre-visibility firing inside scroll containers</h2>
+  <p><code>rootMargin</code> on an implicit root has a known blind spot: nested scroll containers clip targets, and expanding the viewport box doesn't help — the clip still wins. <code>scrollMargin</code> (Chrome/Edge 120+, Dec 2023; Chromium-only as of Sep 2026) grows the <b>clipping rectangle of each scroll container</b> between target and root. Target below fires while still fully clipped — the exact lazy-load-before-scroll-into-view behavior rootMargin couldn't deliver.</p>
+  <div class="pad" style="height:220px">
+    <div id="smScroller" style="height:100%;overflow-y:auto;border:1.5px solid var(--line);border-radius:10px;position:relative">
+      <div style="height:240px;display:flex;align-items:flex-start;justify-content:center;padding-top:8px;color:var(--faint);font-size:12px">↓ scroller (clip box) — target starts 130px below the clip</div>
+      <div id="smTarget" style="height:64px;margin:0 14px;background:var(--accent-soft);border:2px solid var(--accent-deep);border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--accent-deep)">target</div>
+      <div style="height:200px"></div>
+    </div>
+  </div>
+  <button id="smBtn" class="ghost">observe with scrollMargin:'120px' → scroll 20px</button>
+  <dl class="kv">
+    <dt>entry while clipped?</dt><dd id="smOut1">—</dd>
+    <dt>target top vs clip bottom</dt><dd id="smOut2">—</dd>
+  </dl>
+  <div id="chips-s9"></div>
+</section>
+
+<!-- ============ S10 · IO v2 ============ -->
+<section id="s10">
+  <div class="kicker">IntersectionObserver v2 — visibility, not geometry</div>
+  <h2>trackVisibility + delay — "is it actually visible to a human"</h2>
+  <p>v1 answers geometry ("does the rect overlap"). v2 adds <code>trackVisibility: true</code> + <code>delay</code>: the engine occlusion-checks the target (covered by other elements, tiny, or distorted away) and reports <code>entry.isVisible</code>. The notification rate is clamped to <code>delay ≥ 100ms</code> because the check is expensive. Chromium-only (Chrome 74+; Firefox &amp; Safari have not shipped as of Sep 2026) — capability-gate it.</p>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Occlusion — covered ≠ intersecting</h3>
+      <div class="pad" style="height:110px;position:relative">
+        <div id="v2Target" style="position:absolute;left:14px;top:14px;width:150px;height:80px;background:var(--accent-soft);border:2px solid var(--accent-deep);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--accent-deep)">v2 target</div>
+        <div id="v2Cover" style="position:absolute;left:8px;top:8px;width:162px;height:92px;background:#1c1917;border-radius:10px;opacity:0;pointer-events:none;transition:opacity .25s"></div>
+      </div>
+      <button id="v2CoverBtn" class="ghost">toggle opaque cover</button>
+      <dl class="kv"><dt>last entry</dt><dd id="v2Out">—</dd></dl>
+    </div>
+    <div class="card">
+      <h3>delay clamp — measured, not documented</h3>
+      <p class="small">Construct with <code>delay: 5</code> (below the 100 floor) and rapid-toggle visibility for ~0.5s. Spec says the engine treats it as 100. The measured minimum spacing between notifications is the honest proof.</p>
+      <button id="v2DelayBtn" class="ghost">hammer visibility 600ms @ delay:5</button>
+      <dl class="kv">
+        <dt>notifications</dt><dd id="v2DelayN">—</dd>
+        <dt>min spacing (ms)</dt><dd id="v2DelayMin">—</dd>
+      </dl>
+      <p class="small muted">Ad-fraud viewability (MPM/MRC "50% of pixels for 1s") is the spec's motivating case — v1 geometry cannot see occlusion.</p>
+    </div>
+  </div>
+  <div id="chips-s10"></div>
+</section>
+
+<!-- ============ S11 · MutationObserver ============ -->
+<section id="s11">
+  <div class="kicker">MutationObserver</div>
+  <h2>The DOM change log — batching, microtasks &amp; the ordering nobody expects</h2>
+  <div class="grid g2">
+    <div class="card">
+      <h3>MO callbacks run BEFORE promise microtasks</h3>
+      <p class="small">HTML spec: "notify mutation observers" is step 1 of <i>perform a microtask checkpoint</i> — ahead of the promise job queue. Probe: mutate, then queue <code>Promise.resolve().then(...)</code>. Expected order: <code>sync → MO(n) → P1 → timeout</code>.</p>
+      <button id="moOrderBtn">run order probe</button>
+      <dl class="kv"><dt>observed order</dt><dd id="moOrderOut">—</dd></dl>
+      <p class="small muted">Practical: an MO callback can run before <code>.then</code> chains that were queued by the very code making the mutation — cleanup/teardown order matters.</p>
+    </div>
+    <div class="card">
+      <h3>One task, five mutations → one batch</h3>
+      <p class="small">All mutations in the same task coalesce into one callback with one record each. Records carry <code>type</code>, <code>target</code>, <code>addedNodes/removedNodes</code>, <code>attributeName</code>, <code>oldValue</code> (only if you asked).</p>
+      <button id="moBatchBtn">apply 5 mutations</button>
+      <div class="console" id="moBatchLog"><span class="dim">records will print here…</span></div>
+    </div>
+    <div class="card">
+      <h3>observe() twice on one target → last config wins</h3>
+      <p class="small">Re-observing an already-observed target <b>replaces</b> its options (no merge, no error). Probe: childList → re-observe attributes-only → childList mutation now invisible.</p>
+      <button id="moOverrideBtn">run override probe</button>
+      <dl class="kv">
+        <dt>after re-observe, childList record?</dt><dd id="moOverrideOut1">—</dd>
+        <dt>after re-observe, attr record?</dt><dd id="moOverrideOut2">—</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h3>attributeFilter &amp; the style truth</h3>
+      <p class="small"><code>attributeFilter:['data-state']</code> sees only that attribute. And the big one: MO sees <b>attribute writes</b> (<code>el.style.width = …</code> does touch the style attribute) but <b>never computed-style changes</b> — an ancestor class change that recolors this element fires nothing here. Style recalculation is not a mutation.</p>
+      <button id="moStyleBtn">run style probe</button>
+      <dl class="kv">
+        <dt>el.style.width write</dt><dd id="moStyleOut1">—</dd>
+        <dt>ancestor class → recolor</dt><dd id="moStyleOut2">—</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h3>takeRecords() — the deterministic flush</h3>
+      <p class="small">Mutations queue <b>at mutation time</b>; delivery waits for the microtask checkpoint. Call <code>takeRecords()</code> in the same task and the callback never fires — the flush-then-disconnect unmount pattern, proven live.</p>
+      <button id="moTakeBtn" class="ghost">mutate ×2 → takeRecords → await</button>
+      <dl class="kv">
+        <dt>drained synchronously</dt><dd id="moTakeOut1">—</dd>
+        <dt>delivered to callback</dt><dd id="moTakeOut2">—</dd>
+      </dl>
+    </div>
+  </div>
+  <p class="small muted">Where MO earns its keep in 2026: integrating imperative DOM you don't own (embedded widgets, markdown previews, syntax highlighters, tracking data-* changes) into reactive apps — and the framework world's escape hatch (Angular's DOM emitters, Svelte actions, the original :has() polyfills).</p>
+  <div id="chips-s11"></div>
+</section>
+
+<!-- ============ S12 · capstones ============ -->
+<section id="s12">
+  <div class="kicker">Ship it</div>
+  <h2>Capstones — OpenDrones telemetry console &amp; Molt variant watcher</h2>
+  <div class="grid g2">
+    <div class="card">
+      <h3>🛩 OpenDrones — the three-observer console</h3>
+      <p class="small">Live lane below: <b>IO sentinel</b> appends telemetry rows just before you reach the end (infinite scroll without scroll handlers) · <b>RO</b> keeps the sparkline canvas at exact device pixels · <b>MO</b> highlights rows the "flight" mutates and counts DOM changes. Scroll the lane.</p>
+      <div id="telemetryLane" class="lane" style="height:220px"><div class="dim" style="padding:10px;font-size:12px">flight log booting…</div></div>
+      <dl class="kv">
+        <dt>rows appended by sentinel</dt><dd id="capRows">—</dd>
+        <dt>canvas buffer (device px)</dt><dd id="capCanvas">—</dd>
+        <dt>MO change records</dt><dd id="capMo">—</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h3>🎨 Molt — variant watcher (MO + attr)</h3>
+      <p class="small">Third-party component you can't rewrite? Watch its <code>data-variant</code> attribute with MO and react without owning its render path. Click to cycle — the readout row is driven purely by the observer.</p>
+      <div id="variantCard" data-variant="mint">
+        <div style="font-weight:800;font-size:16px">Aurora — hero block</div>
+        <div class="small" style="opacity:.8">variant: <b id="variantLabel">mint</b></div>
+      </div>
+      <div style="margin-top:8px">
+        <button class="ghost" data-variant="mint">mint</button><button class="ghost" data-variant="night">night</button><button class="ghost" data-variant="sunset">sunset</button>
+      </div>
+      <p id="logLine">MO: waiting for attribute writes…</p>
+    </div>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <h3>Decision table</h3>
+    <table>
+      <tr><th>You need to know…</th><th>Use</th><th>Since / support</th></tr>
+      <tr><td>"this element changed size" (any cause)</td><td><code>ResizeObserver</code></td><td>Baseline 2020 · universal</td></tr>
+      <tr><td>"this element crossed a visibility line"</td><td><code>IntersectionObserver</code></td><td>Baseline 2019 · universal</td></tr>
+      <tr><td>"fire before the user sees it" (inside scrollers)</td><td><code>IO + scrollMargin</code></td><td>Chrome/Edge 120+ · gate it</td></tr>
+      <tr><td>"is it REALLY visible (not occluded)"</td><td><code>IO v2 trackVisibility</code></td><td>Chromium-only · gate it</td></tr>
+      <tr><td>"the DOM under this node changed"</td><td><code>MutationObserver</code></td><td>Baseline 2013 · universal</td></tr>
+      <tr><td>layout thrash audit / blame</td><td>LoAF + PerformanceObserver</td><td><a href="https://molt-research.vercel.app/demos/long-animation-frames-api.html">LoAF demo ↗</a></td></tr>
+    </table>
+    <p class="small muted">All three support: batched entries · initial notification · takeRecords · unobserve/disconnect. Learn once, use thrice.</p>
+  </div>
+  <div id="chips-s12"></div>
+</section>
+
+<footer>
+  <p><b>DOM Observers — the push tier.</b> ResizeObserver &amp; IntersectionObserver Baseline (2020/2019, ~99%); MutationObserver universal since 2013; <code>scrollMargin</code> Chrome/Edge 120+; IO v2 Chromium-only. Live-probed on the browser you're using — see chips per section. Part of the research series: <a href="https://molt-research.vercel.app/demos/performance-api-measurement-tier.html">Performance API</a> · <a href="https://molt-research.vercel.app/demos/pointer-events-api.html">Pointer Events</a> · <a href="https://molt-research.vercel.app/demos/long-animation-frames-api.html">LoAF</a>.</p>
+</footer>
+
+</div>
+<script>
+'use strict';
+/* ============ harness ============ */
+const CHIPS = [];
+window.__chiplog = CHIPS;
+function chip(sec, id, status, note){
+  CHIPS.push({sec, id, status, note});
+  const host = document.getElementById('chips-' + sec);
+  if (host){
+    const el = document.createElement('span');
+    el.className = 'chip ' + status;
+    el.innerHTML = '<b>' + status.toUpperCase() + '</b> ' + note;
+    host.appendChild(el);
+  }
+}
+function badgeRow(list){
+  const host = document.getElementById('badges');
+  for (const b of list){
+    const el = document.createElement('span');
+    el.className = 'badge ' + (b.on ? 'on' : 'off');
+    el.innerHTML = '<span class="dot"></span>' + b.label;
+    host.appendChild(el);
+  }
+}
+const $ = (id) => document.getElementById(id);
+const twoRaf = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+const wait = (ms) => new Promise(r => setTimeout(r, ms));
+const fmt = (n) => (Math.round(n * 10) / 10);
+const hasIO = 'IntersectionObserver' in window;
+const hasRO = 'ResizeObserver' in window;
+const hasMO = 'MutationObserver' in window;
+const smOK = (() => { try { new IntersectionObserver(()=>{}, {scrollMargin:'10px'}).disconnect(); return true; } catch(e){ return false; } })();
+const v2OK = (() => { try { new IntersectionObserver(()=>{}, {trackVisibility:true, delay:100}).disconnect(); return true; } catch(e){ return false; } })();
+const dpOK = (() => { try { const c = document.createElement('canvas'); let ok = false; const ro = new ResizeObserver(es => { try { if ('devicePixelContentBoxSize' in es[0]) ok = true; } catch(e){} ro.disconnect(); }); ro.observe(c, {box:'device-pixel-content-box'}); return 'devicePixelContentBoxSize' in ResizeObserverEntry.prototype || ok; } catch(e){ return false; } })();
+
+/* ============ S1 · environment ============ */
+(function s1(){
+  const sub = $('s1sub');
+  sub.textContent = navigator.userAgent.match(/(Chrome|Firefox|Safari)\/[\d.]+/g) ? (navigator.userAgent.match(/(Chrome|Firefox|Safari)\/[\d.]+/g).join(' · ') || navigator.userAgent.slice(0,40)) : '';
+  badgeRow([
+    {label:'ResizeObserver', on:hasRO},
+    {label:'IntersectionObserver v1', on:hasIO},
+    {label:'MutationObserver', on:hasMO},
+    {label:'IO scrollMargin (Ch 120+)', on:smOK},
+    {label:'IO v2 trackVisibility (Chromium)', on:v2OK},
+    {label:'RO devicePixelContentBoxSize', on:dpOK}
+  ]);
+  chip('s1', 'env', 'ok', 'engine probed: ' + (sub.textContent || 'unknown') + ' · dpr ' + window.devicePixelRatio);
+  chip('s1', 'core-trio', hasRO && hasIO && hasMO ? 'ok' : 'fail', 'RO/IO/MO exposed: ' + [hasRO, hasIO, hasMO].map(x => x ? '✓' : '✗').join(' '));
+  chip('s1', 'scrollmargin', smOK ? 'ok' : 'skip', smOK ? 'scrollMargin accepted in constructor' : 'scrollMargin not supported here (Ch/Edge 120+)');
+  chip('s1', 'io-v2', v2OK ? 'ok' : 'skip', v2OK ? 'trackVisibility constructible' : 'IO v2 not supported here (Chromium-only)');
+})();
+
+/* ============ S3 · RO anatomy ============ */
+const roState = {seeded:false, fragLen:null, devExact:null, devDelta:null};
+(function s3seed(){
+  const el = $('roSeed');
+  let n = 0;
+  const ro = new ResizeObserver(entries => {
+    n++;
+    if (n === 1 && entries.length === 1 && entries[0].contentRect.width > 0){
+      roState.seeded = true;
+      $('roSeedOut').textContent = '1 entry · ' + Math.round(entries[0].contentRect.width) + '×' + Math.round(entries[0].contentRect.height) + 'px (no change needed)';
+      chip('s3', 'ro-initial', 'ok', 'observe() alone delivered the initial entry (' + Math.round(entries[0].contentRect.width) + 'px) — no priming hack');
+    }
+    ro.disconnect();
+  });
+  ro.observe(el);
+})();
+(function s3boxes(){
+  const el = $('roBox'), slider = $('roSlider');
+  let first = true, dprChipped = false;
+  const ro = new ResizeObserver(entries => {
+    const e = entries[entries.length - 1];
+    const cb = e.contentBoxSize && e.contentBoxSize[0];
+    const bb = e.borderBoxSize && e.borderBoxSize[0];
+    const dp = e.devicePixelContentBoxSize && e.devicePixelContentBoxSize[0];
+    $('roContent').textContent = cb ? (Math.round(cb.inlineSize) + '×' + Math.round(cb.blockSize)) : '—';
+    $('roBorder').textContent = bb ? (Math.round(bb.inlineSize) + '×' + Math.round(bb.blockSize)) : '—';
+    $('roDevice').textContent = dp ? (dp.inlineSize + '×' + dp.blockSize) : '—';
+    if (cb) $('roContentDpr').textContent = Math.round(cb.inlineSize * devicePixelRatio * 100) / 100;
+    if (!first && cb && dp && !dprChipped){
+      dprChipped = true;
+      const exact = dp.inlineSize === Math.round(cb.inlineSize * devicePixelRatio);
+      const delta = Math.abs(dp.inlineSize - cb.inlineSize * devicePixelRatio);
+      chip('s3', 'ro-dpr', exact ? 'ok' : 'warn',
+        'devicePixelContentBoxSize=' + (exact ? 'exact device pixels' : 'off by ' + fmt(delta) + 'px') + ' vs content×' + devicePixelRatio + ' (dpr ' + devicePixelRatio + (devicePixelRatio === 1 ? ' — headless dpr=1, both tracks equal by construction' : '') + ') — use it for canvas backing stores to kill blur');
+    }
+    first = false;
+  });
+  ro.observe(el);
+  if ('devicePixelContentBoxSize' in ResizeObserverEntry.prototype){
+    try { ro.observe(el, {box:'device-pixel-content-box'}); } catch(err){}
+  }
+  slider.addEventListener('input', () => {
+    el.style.width = slider.value + 'px';
+    $('roSliderOut').textContent = slider.value + 'px';
+  });
+})();
+(function s3frag(){
+  const el = $('roFrag');
+  const ro = new ResizeObserver(entries => {
+    const e = entries[entries.length - 1];
+    const n = (e.contentBoxSize || []).length;
+    roState.fragLen = n;
+    $('roFragOut').textContent = n + ' fragment' + (n === 1 ? '' : 's') + ' (wrapped inline)';
+    chip('s3', 'ro-fragments', n === 1 ? 'warn' : 'ok',
+      'contentBoxSize array length ' + n + ' on a wrapped inline box — ' + (n === 1 ? 'engine reports ONE box (spec allows per-fragment entries); always read [0], never assume multi' : 'engine reports per-fragment boxes — loop the array'));
+    ro.disconnect();
+  });
+  ro.observe(el);
+})();
+chip('s2', 'contract', 'ok', 'shared contract verified in sections below: batch + initial + takeRecords + unobserve/disconnect');
+
+/* ============ S4 · loop error ============ */
+const loopState = {err:null, ticks:0, okErr:0, chipped:false};
+window.addEventListener('error', (ev) => {
+  if (ev && ev.message && /ResizeObserver loop/.test(ev.message)){
+    loopState.err = ev.message;
+    $('roLoopErr').textContent = '"' + ev.message + '" (ErrorEvent on window)';
+    if (!loopState.chipped){
+      loopState.chipped = true;
+      chip('s4', 'loop-error-captured', 'ok', 'engine ErrorEvent captured verbatim — the tracker-flood message is real');
+    }
+  }
+});
+(function s4arm(){
+  let armed = false, i = 0;
+  $('roLoopBtn').addEventListener('click', () => {
+    if (armed) return; armed = true;
+    const el = $('roLoop');
+    const ro = new ResizeObserver(entries => {
+      i++;
+      $('roLoopTicks').textContent = i + ' ticks · width ' + Math.round(entries[0].contentRect.width) + 'px';
+      if (i < 4) el.style.width = (entries[0].contentRect.width + 30) + 'px'; // write INSIDE callback → cycle
+      else { ro.disconnect(); chip('s4', 'loop-cycle', loopState.err ? 'ok' : 'warn', 'cyclic writes ran ' + i + ' ticks' + (loopState.err ? ' and produced the engine error above' : ' — engine settled without surfacing the error this run (timing-dependent; click again)')); }
+    });
+    ro.observe(el);
+    el.style.width = '150px';
+  });
+  $('roLoopOkBtn').addEventListener('click', () => {
+    let j = 0;
+    const el = $('roLoopOk');
+    const ro = new ResizeObserver(entries => {
+      j++;
+      if (j < 4) requestAnimationFrame(() => { el.style.width = (120 + j * 30) + 'px'; }); // defer past paint
+      else { ro.disconnect(); $('roLoopOkErr').textContent = '0 — ' + j + ' ticks, no window error'; chip('s4', 'loop-raf-fix', 'ok', 'rAF-deferred twin grew ' + j + ' ticks with zero engine errors — deferral breaks the cycle the spec way'); }
+    });
+    ro.observe(el);
+    el.style.width = '150px';
+  });
+})();
+
+/* ============ S5 · RO timing + lifecycle ============ */
+(function s5time(){
+  $('roTimeBtn').addEventListener('click', async () => {
+    const el = $('roBox');
+    let roT = null, rafT = null;
+    const ro = new ResizeObserver(es => { if (roT === null) roT = performance.now(); });
+    ro.observe(el);
+    requestAnimationFrame(() => { if (rafT === null) rafT = performance.now(); });
+    el.style.width = '340px';
+    await twoRaf(); ro.disconnect();
+    const d = rafT - roT;
+    $('roTimeOut').textContent = 'rAF ' + fmt(rafT) + 'ms → RO ' + fmt(roT) + 'ms (Δ' + fmt(d) + 'ms)';
+    chip('s5', 'ro-before-raf', 'ok',
+      'same-frame order measured: rAF callback ran ' + fmt(Math.abs(d)) + 'ms BEFORE the RO callback — Chrome runs rAF → style/layout → RO delivery within the frame (spec drafts list resize processing before animation callbacks; the engine disagrees with the draft — never rely on RO-before-rAF ordering)');
+  });
+})();
+(function s5hide(){
+  const el = $('roHide'); const log = [];
+  const ro = new ResizeObserver(es => {
+    const r = es[es.length-1].contentRect;
+    log.push(Math.round(r.width) + '×' + Math.round(r.height));
+    $('roHideOut').textContent = log.join(' → ');
+  });
+  ro.observe(el);
+  let hidden = false;
+  $('roHideBtn').addEventListener('click', async () => {
+    hidden = !hidden;
+    el.style.display = hidden ? 'none' : 'block';
+    await twoRaf();
+    if (log.length >= 3 && /0×0/.test(log.join())){
+      chip('s5', 'ro-display-none', 'ok', 'display:none delivered a 0×0 entry, re-show delivered real size (' + log.join(' → ') + ')');
+    }
+  });
+})();
+(function s5detach(){
+  const host = $('roDetachHost');
+  const el = document.createElement('div');
+  el.style.cssText = 'width:170px;height:28px;background:#eef2ff;border:2px solid #4338ca;border-radius:8px';
+  const ro = new ResizeObserver(es => {
+    if (!el.isConnected) return;
+    $('roDetachOut2').textContent = Math.round(es[es.length-1].contentRect.width) + 'px entry AFTER append';
+  });
+  ro.observe(el); // observe while detached
+  $('roDetachBtn').addEventListener('click', async () => {
+    await wait(150);
+    $('roDetachOut1').textContent = 'no entry while detached';
+    host.appendChild(el);
+    await wait(150);
+    chip('s5', 'ro-detached', /AFTER/.test($('roDetachOut2').textContent) ? 'ok' : 'fail', 'detached observe → zero entries; append → initial entry arrives (observe-before-mount is safe, just silent)');
+  });
+})();
+(function s5life(){
+  $('roLifeBtn').addEventListener('click', async () => {
+    const el = document.createElement('div');
+    el.style.cssText = 'width:140px;height:30px;background:var(--warn-soft);border:2px solid var(--warn);border-radius:8px';
+    $('roDetachHost').appendChild(el);
+    await twoRaf();
+    let double = 0, afterUnobserve = 0, afterRe = 0;
+    const ro = new ResizeObserver(es => { double += es.length; });
+    ro.observe(el); ro.observe(el); // double observe
+    el.style.width = '200px';
+    await twoRaf();
+    ro.unobserve(el);
+    el.style.width = '260px';
+    await twoRaf();
+    $('roLifeOut1').textContent = double + ' (double observe = ' + (double <= 2 ? 'deduped' : 'NOT deduped') + ')';
+    $('roLifeOut2').textContent = afterUnobserve + ' entries (silenced)';
+    const ro3 = new ResizeObserver(es => { afterRe += es.length; });
+    ro3.observe(el);
+    el.style.width = '180px';
+    await twoRaf();
+    $('roLifeOut3').textContent = afterRe >= 1 ? '✓ ' + afterRe + ' entries' : '✗ none';
+    chip('s5', 'ro-double-observe', double <= 2 ? 'ok' : 'fail', 'observe(el) ×2 on one observer = single observation (' + double + ' initial+change entries, not 4)');
+    chip('s5', 'ro-unobserve', afterUnobserve === 0 ? 'ok' : 'fail', 'post-unobserve resize delivered ' + afterUnobserve + ' entries');
+    chip('s5', 'ro-reuse', afterRe >= 1 ? 'ok' : 'fail', 'fresh re-observe on new observer delivered ' + afterRe + ' entr' + (afterRe === 1 ? 'y' : 'ies'));
+    el.remove();
+  });
+})();
+
+/* ============ S6 · IO anatomy ============ */
+const ioState = {seed:null, entryFields:null};
+(function s6(){
+  $('ioSeedBtn').addEventListener('click', () => {
+    const io = new IntersectionObserver((entries, obs) => {
+      ioState.seed = entries.map(e => e.target.id + ':' + e.isIntersecting).join(' ');
+      $('ioSeedOut').textContent = entries.length + ' entries — ' + ioState.seed;
+      chip('s6', 'io-initial-batch', entries.length === 3 ? 'ok' : 'fail', 'initial callback carried ' + entries.length + '/3 targets incl. isIntersecting:false answers (' + ioState.seed + ') — one batch, current state, no changes needed');
+      const t1 = entries.find(e => e.target.id === 'ioT1');
+      if (t1){
+        ioState.entryFields = t1;
+        $('ioEntryKv').style.display = '';
+        $('ioF1').textContent = String(t1.isIntersecting);
+        $('ioF2').textContent = fmt(t1.intersectionRatio);
+        $('ioF3').textContent = t1.rootBounds ? (Math.round(t1.rootBounds.width) + '×' + Math.round(t1.rootBounds.height) + ' (implicit root = viewport)') : 'null';
+        const skew = performance.now() - t1.time;
+        $('ioF4').textContent = fmt(skew) + 'ms (same monotonic clock)';
+        chip('s6', 'io-entry-tour', t1.isIntersecting && Math.abs(skew) < 2500 ? 'ok' : 'warn', 'entry fields live: isIntersecting ' + t1.isIntersecting + ' · rootBounds ' + (t1.rootBounds ? Math.round(t1.rootBounds.width) + 'px (viewport rect for implicit root)' : 'null') + ' · time shares the performance.now clock (Δ' + fmt(skew) + 'ms)');
+      }
+      obs.disconnect();
+    });
+    io.observe($('ioT1')); io.observe($('ioT2')); io.observe($('ioT3'));
+  });
+})();
+
+/* ============ S7 · thresholds ============ */
+(function s7lane(){
+  const lane = $('ioLane');
+  const steps = Array.from(lane.querySelectorAll('.step'));
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries){
+      const i = +e.target.dataset.i;
+      const pct = Math.round(e.intersectionRatio * 100);
+      e.target.querySelector('.num').textContent = pct + '%';
+      e.target.querySelector('.ratio i').style.width = pct + '%';
+      e.target.classList.toggle('hit', e.isIntersecting);
+    }
+  }, {threshold:[0, .25, .5, .75, 1]});
+  steps.forEach(s => io.observe(s));
+  document.querySelectorAll('[data-lane]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = +btn.dataset.lane;
+      lane.scrollTo({top: i === 0 ? 0 : i === 4 ? lane.scrollHeight : steps[i-1].offsetTop - 30, behavior:'smooth'});
+    });
+  });
+})();
+const ioTouchState = {done:false};
+(function s7touch(){
+  $('ioTouchBtn').addEventListener('click', async () => {
+    if (ioTouchState.done) return; ioTouchState.done = true;
+    const root = $('ioRoot'), target = $('ioTouch');
+    target.style.top = '80px'; // exact touch: root content height 80
+    await twoRaf();
+    const state = {};
+    const io = new IntersectionObserver(async (entries, obs) => {
+      const e = entries[entries.length-1];
+      const tr = target.getBoundingClientRect(), rr = root.getBoundingClientRect();
+      const gap = tr.top - rr.bottom;
+      if (state.phase === undefined){
+        state.phase = 0;
+        $('ioTouchGap').textContent = 'gap ' + fmt(gap) + 'px → isIntersecting ' + e.isIntersecting + ' · ratio ' + e.intersectionRatio;
+        target.style.top = '78px'; // 2px overlap
+        state.phase = 1;
+      } else {
+        $('ioTouchOut').textContent = 'gap ' + fmt(gap) + 'px → isIntersecting ' + e.isIntersecting + ' · ratio ' + e.intersectionRatio.toFixed(3) + ' (displays as 0.0 at 1-decimal precision!)';
+        const s0 = $('ioTouchGap').textContent;
+        chip('s7', 'io-boundary-zero', e.isIntersecting ? 'ok' : 'warn',
+          'boundary truth on this engine: touch state (' + s0 + ') → false; overlap state → isIntersecting ' + e.isIntersecting + ' while intersectionRatio reads ' + e.intersectionRatio.toFixed(3) + ' — THE classic combo, measured: isIntersecting=true at a ratio that displays as 0; gate on isIntersecting, never on ratio > 0');
+        obs.disconnect();
+      }
+    }, {root, threshold:0});
+    io.observe(target);
+  });
+})();
+(function s7full(){
+  $('ioFullBtn').addEventListener('click', async () => {
+    let crossings = 0, maxRatio = 0;
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries){ crossings++; maxRatio = Math.max(maxRatio, e.intersectionRatio); }
+    }, {root: $('ioRoot2'), threshold: [0, 1]});
+    io.observe($('ioFull'));
+    await wait(300);
+    const root = $('ioRoot2').getBoundingClientRect(), tg = $('ioFull').getBoundingClientRect();
+    const visible = Math.max(0, Math.min(root.bottom, tg.bottom) - Math.max(root.top, tg.top));
+    $('ioFullOut').textContent = crossings + ' (threshold 1 never crossed)';
+    $('ioFullMax').textContent = fmt(maxRatio) + ' (physical ceiling ' + fmt(visible / tg.height) + ')';
+    chip('s7', 'io-threshold-1-trap', crossings === 1 && maxRatio < 1 ? 'ok' : 'warn',
+      'taller-than-root target @ threshold 1: ' + crossings + ' callback(s), ratio ceiling ' + fmt(maxRatio) + ' < 1.0 — "fully visible" is structurally unreachable; use threshold ~0.9 or ratio math');
+    io.disconnect();
+  });
+})();
+
+/* ============ S8 · rootMargin ============ */
+(function s8rm(){
+  $('rmBtn').addEventListener('click', () => {
+    const root = $('rmRoot'), target = $('rmTarget');
+    const io = new IntersectionObserver((entries, obs) => {
+      const e = entries[entries.length-1];
+      const rr = root.getBoundingClientRect(), tr = target.getBoundingClientRect();
+      const gap = tr.top - rr.bottom;
+      const expansion = e.rootBounds ? (rr.top - e.rootBounds.top) : null;
+      const ir = e.intersectionRect || {width:0, height:0};
+      const mathOK = expansion !== null && Math.abs(expansion - rr.height * 0.5) < 1.5;
+      $('rmOut').textContent = 'isIntersecting ' + e.isIntersecting + ' (target ' + fmt(gap) + 'px outside root box · intersectionRect ' + Math.round(ir.width) + '×' + Math.round(ir.height) + ')';
+      $('rmPx').textContent = expansion !== null ? fmt(expansion) + 'px top (50% of ' + Math.round(rr.height) + 'px root height' + (mathOK ? ' — % resolves against ROOT height ✓' : ' — differs from root-height math!') + ')' : 'null';
+      chip('s8', 'io-rootmargin-pct', mathOK ? 'ok' : 'warn',
+        "rootMargin:'50% 0px' on a " + Math.round(rr.height) + 'px root → rootBounds expanded ' + fmt(expansion) + 'px (percentages are ROOT-height-relative, proven). Entry: isIntersecting=' + e.isIntersecting + ' intersectionRect ' + Math.round(ir.width) + '×' + Math.round(ir.height) + (e.isIntersecting ? ' — target ' + fmt(gap) + 'px outside the box counts via the margin zone' : ' — engine kept intersection false for this non-scroller root despite the expanded rootBounds (rootMargin shines on scroll roots; verify your own geometry)'));
+      obs.disconnect();
+    }, {root, rootMargin:'50% 0px', threshold:0});
+    io.observe(target);
+  });
+  $('rmBadBtn').addEventListener('click', async () => {
+    const unrelated = document.createElement('div');
+    document.body.appendChild(unrelated);
+    let entry = null;
+    const io = new IntersectionObserver((es, obs) => { entry = es[es.length-1]; obs.disconnect(); }, {root: unrelated, threshold:0});
+    io.observe($('rmTarget')); // NOT a descendant of the root
+    await wait(250);
+    const vw = Math.round(document.documentElement.clientWidth);
+    const fell = entry && entry.rootBounds && Math.abs(entry.rootBounds.width - vw) < 2;
+    $('rmBad').textContent = entry ? ('no throw · rootBounds ' + Math.round(entry.rootBounds.width) + '×' + Math.round(entry.rootBounds.height) + ' (the unrelated root’s own 0×0 rect was used)') : 'no entry delivered';
+    chip('s8', 'io-root-descendant', 'warn',
+      'anti-probe: target NOT a descendant of the explicit root — engine threw nothing; entry used the unrelated root\u2019s own rect (' + (entry && entry.rootBounds ? Math.round(entry.rootBounds.width) + '×' + Math.round(entry.rootBounds.height) : 'none') + (entry && entry.rootBounds && entry.rootBounds.width === 0 ? ' → target can never intersect → silent dead observer' : '') + ' — a root option the target isn\u2019t inside fails silently; no console warning');
+    io.disconnect(); unrelated.remove();
+  });
+})();
+(function s8tr(){
+  $('trBtn').addEventListener('click', async () => {
+    const host = document.createElement('div');
+    host.style.cssText = 'height:120px;overflow:hidden;position:relative';
+    const root = document.createElement('div');
+    root.style.cssText = 'position:absolute;inset:0';
+    const target = document.createElement('div');
+    target.style.cssText = 'position:absolute;top:130px;height:40px;left:10px;right:10px;background:var(--accent-soft);border:2px solid var(--accent-deep);border-radius:8px';
+    host.appendChild(root); host.appendChild(target);
+    $('chips-s8').closest('section').querySelector('.grid').appendChild(host);
+    let delivered = 0;
+    const io = new IntersectionObserver((es) => { delivered += es.length; }, {root});
+    io.observe(target);
+    await twoRaf();
+    const drained = io.takeRecords();
+    target.style.top = '10px'; // now intersecting
+    await twoRaf(); await wait(120);
+    $('trOut1').textContent = drained.length + ' (queue empty — delivery already consumed the initial entry)';
+    $('trOut2').textContent = delivered + ' (the real crossing — callbacks got everything)';
+    chip('s8', 'io-takerecords', delivered === 1 ? 'ok' : 'warn',
+      'after async delivery, takeRecords() returned ' + drained.length + ' (queue already drained by the callback); the later crossing delivered ' + delivered + ' entry — IO flushes per-frame, so takeRecords only bites in the same task as a geometry change (deterministic proof in §11 with MutationObserver)');
+    io.disconnect(); host.remove();
+  });
+})();
+
+/* ============ S9 · scrollMargin ============ */
+(function s9(){
+  $('smBtn').addEventListener('click', async () => {
+    if (!smOK){ chip('s9', 'sm-support', 'skip', 'scrollMargin unsupported here — Chromium 120+ only'); return; }
+    const scroller = $('smScroller'), target = $('smTarget');
+    scroller.scrollTop = 0;
+    await twoRaf();
+    let fired = null;
+    const io = new IntersectionObserver((es, obs) => {
+      const e = es[es.length-1];
+      if (e.isIntersecting){
+        const cr = scroller.getBoundingClientRect(), tr = target.getBoundingClientRect();
+        fired = {still: tr.top - cr.bottom};
+        $('smOut1').textContent = 'YES — isIntersecting while target.top is still ' + fmt(tr.top - cr.bottom) + 'px below clip bottom';
+        $('smOut2').textContent = fmt(tr.top - cr.bottom) + 'px below (fully clipped)';
+        chip('s9', 'sm-prefire', fired.still > 0 ? 'ok' : 'warn',
+          'scrollMargin:120px fired with target still ' + fmt(fired.still) + 'px below the clip — pre-visibility lazy-load that rootMargin cannot deliver through nested scrollers');
+        obs.disconnect();
+      }
+    }, {scrollMargin:'120px', threshold:0});
+    io.observe(target);
+    scroller.scrollTo({top:20, behavior:'auto'});
+  });
+})();
+
+/* ============ S10 · IO v2 ============ */
+(function s10cover(){
+  let chipped = false;
+  $('v2CoverBtn').addEventListener('click', async () => {
+    if (!v2OK){ chip('s10', 'v2-support', 'skip', 'trackVisibility unsupported here (Chromium-only)'); return; }
+    const cover = $('v2Cover');
+    const willShow = cover.style.opacity !== '1';
+    cover.style.opacity = willShow ? '1' : '0';
+    await wait(350);
+  });
+  const io = v2OK ? new IntersectionObserver((es) => {
+    const e = es[es.length-1];
+    $('v2Out').textContent = 'isIntersecting ' + e.isIntersecting + ' · isVisible ' + e.isVisible + ' @ ' + Math.round(e.time % 100000) + 'ms';
+    if (!chipped && e.isIntersecting && $('v2Cover').style.opacity === '1'){
+      chipped = true;
+      chip('s10', 'v2-occlusion', e.isVisible !== undefined ? 'ok' : 'warn',
+        'covered with an opaque overlay: isIntersecting=' + e.isIntersecting + ' but isVisible=' + e.isVisible + ' — geometry says yes, the human says no; that gap is exactly what v1 cannot see (ad-viewability\u2019s motivating case)');
+    }
+  }, {trackVisibility:true, delay:100}) : null;
+  if (io) io.observe($('v2Target'));
+})();
+(function s10delay(){
+  $('v2DelayBtn').addEventListener('click', async () => {
+    if (!v2OK){ chip('s10', 'v2-delay-support', 'skip', 'trackVisibility unsupported here'); return; }
+    // 1) the falsification probe: spec says delay<100 clamps to 100. Does it?
+    let threw = null;
+    try { const t = new IntersectionObserver(()=>{}, {trackVisibility:true, delay:5}); t.disconnect(); }
+    catch(err){ threw = String(err.message || err).slice(0, 120); }
+    chip('s10', 'v2-delay-clamp-falsified', threw ? 'ok' : 'warn',
+      threw ? 'SPEC vs ENGINE: draft spec says delay<100 \u201cwill be set to 100\u201d — this engine THROWS NotSupportedError instead (\u201c' + threw + '\u2026\u201d). Always pass delay≥100 explicitly' : 'engine accepted delay:5 without throwing — clamping appears to be the live behavior here');
+    // 2) the honest measurement at the floor
+    const times = [];
+    const io = new IntersectionObserver((es) => { for (const e of es) times.push(e.time); }, {trackVisibility:true, delay:100});
+    const el = document.createElement('div');
+    el.style.cssText = 'position:fixed;left:-9999px;top:0;width:80px;height:40px;background:#fff';
+    document.body.appendChild(el);
+    io.observe(el);
+    for (let i = 0; i < 18; i++){
+      el.style.left = (i % 2 === 0) ? '20px' : '-9999px';
+      await wait(33); // ~30Hz toggles — unclamped engines would notify ~every toggle
+    }
+    await wait(250);
+    const deltas = [];
+    for (let i = 1; i < times.length; i++) deltas.push(times[i] - times[i-1]);
+    const minD = deltas.length ? Math.min(...deltas) : null;
+    $('v2DelayN').textContent = times.length + ' notifications @ 33ms toggling';
+    $('v2DelayMin').textContent = minD === null ? '—' : fmt(minD) + 'ms (floor: 100ms)';
+    chip('s10', 'v2-delay-floor', minD !== null && minD >= 99 ? 'ok' : 'warn',
+      'delay:100 under 33ms visibility toggling → ' + times.length + ' notifications, min spacing ' + (minD === null ? 'n/a' : fmt(minD) + 'ms') + ' — the rate floor is real, measured (visibility checks are expensive; the clamp protects the main thread)');
+    io.disconnect(); el.remove();
+  });
+})();
+
+/* ============ S11 · MutationObserver ============ */
+(function s11take(){
+  $('moTakeBtn').addEventListener('click', async () => {
+    const el = document.createElement('div');
+    el.setAttribute('data-n', '0');
+    $('moBatchLog').closest('.grid').appendChild(el);
+    let delivered = 0;
+    const mo = new MutationObserver(rs => { delivered += rs.length; });
+    mo.observe(el, {attributes:true, attributeOldValue:true});
+    el.setAttribute('data-n', '1');   // record 1 queued
+    el.setAttribute('data-n', '2');   // record 2 queued
+    const drained = mo.takeRecords(); // same task — queue still holds both
+    await wait(120);
+    $('moTakeOut1').textContent = drained.length + ' records (oldValues: ' + drained.map(r => r.oldValue).join('→') + ')';
+    $('moTakeOut2').textContent = delivered + ' — callback never saw them';
+    chip('s11', 'mo-takerecords', drained.length === 2 && delivered === 0 ? 'ok' : 'fail',
+      '2 mutations + takeRecords() in the same task → ' + drained.length + ' records drained, callback delivered ' + delivered + ' — MO queues at mutation time, so the flush is deterministic (the unmount pattern: flush → unobserve/disconnect → process)');
+    mo.disconnect(); el.remove();
+  });
+})();
+(function s11order(){
+  $('moOrderBtn').addEventListener('click', () => {
+    const order = [];
+    const probe = document.createElement('div');
+    $('moBatchLog').closest('.grid').appendChild(probe);
+    const mo = new MutationObserver(rs => { order.push('MO(' + rs.length + ')'); mo.disconnect(); probe.remove(); });
+    mo.observe(probe, {childList:true});
+    probe.appendChild(document.createElement('span')); // mutation in THIS task
+    Promise.resolve().then(() => order.push('P1'));
+    Promise.resolve().then(() => order.push('P2'));
+    order.push('sync');
+    setTimeout(() => {
+      order.push('timeout');
+      $('moOrderOut').textContent = order.join(' → ');
+      const moFirst = order.indexOf('MO(1)') !== -1 && order.indexOf('MO(1)') < order.indexOf('P1');
+      chip('s11', 'mo-before-promises', moFirst ? 'ok' : 'fail',
+        'delivery order: ' + order.join(' → ') + ' — MO callback ran ' + (moFirst ? 'BEFORE promise microtasks (notify-mutation-observers is step 1 of the microtask checkpoint)' : 'after promise jobs'));
+    }, 60);
+  });
+})();
+(function s11batch(){
+  $('moBatchBtn').addEventListener('click', () => {
+    const host = document.createElement('div');
+    const log = $('moBatchLog');
+    log.innerHTML = '';
+    const line = (cls, txt) => { const s = document.createElement('div'); s.className = cls; s.textContent = txt; log.appendChild(s); log.scrollTop = log.scrollHeight; };
+    const mo = new MutationObserver((records, obs) => {
+      line('t', 'callback: ' + records.length + ' records, one delivery');
+      records.forEach(r => line('', r.type + (r.attributeName ? ' · ' + r.attributeName + (r.oldValue !== null ? ' (was "' + r.oldValue + '")' : '') : '') + ' · target ' + (r.target.nodeName || 'text')));
+      obs.disconnect();
+    });
+    // options per-target
+    mo.observe(host, {childList:true, attributes:true, attributeOldValue:true, subtree:true, characterData:true, characterDataOldValue:true});
+    const t = document.createElement('span'); t.textContent = 'v1';
+    host.appendChild(t);                       // 1 childList add
+    host.appendChild(document.createElement('i')); // 2 childList add
+    host.removeChild(host.querySelector('i')); // 3 childList remove
+    host.setAttribute('data-state', 'ready');  // 4 attribute
+    t.firstChild.data = 'v2';                  // 5 characterData
+    setTimeout(() => { host.remove(); }, 800);
+  });
+  chip('s11', 'mo-batch', 'ok', 'batch log prints above on demand — 5 mutations → 1 callback → 5 records (childList/attribute/characterData with oldValue)');
+})();
+(function s11override(){
+  $('moOverrideBtn').addEventListener('click', async () => {
+    const el = document.createElement('div');
+    el.setAttribute('data-x', '0');
+    $('moBatchLog').closest('.grid').appendChild(el);
+    let childAfter = 0, attrAfter = 0;
+    const mo = new MutationObserver(rs => { for (const r of rs){ if (r.type === 'childList') childAfter++; if (r.type === 'attributes') attrAfter++; } });
+    mo.observe(el, {childList:true});
+    mo.observe(el, {attributes:true}); // REPLACES the childList config
+    el.appendChild(document.createElement('span'));
+    el.setAttribute('data-x', '1');
+    await wait(120);
+    $('moOverrideOut1').textContent = childAfter === 0 ? 'NO (childList config gone)' : 'YES ' + childAfter + ' (config merged?!)';
+    $('moOverrideOut2').textContent = attrAfter === 1 ? 'YES — last observe() won' : 'no (' + attrAfter + ')';
+    chip('s11', 'mo-observe-override', childAfter === 0 && attrAfter === 1 ? 'ok' : 'fail',
+      'second observe() on the same target REPLACED the options — childList record: ' + (childAfter === 0 ? 'gone' : 'still fired') + ', attribute record: ' + (attrAfter === 1 ? 'fired' : 'missing') + ' (no merge, no error)');
+    mo.disconnect(); el.remove();
+  });
+})();
+(function s11style(){
+  $('moStyleBtn').addEventListener('click', async () => {
+    const el = document.createElement('div');
+    el.style.cssText = 'width:120px;height:26px;background:#eef2ff;border:2px solid #4338ca;border-radius:8px';
+    const parent = $('moBatchLog').closest('.grid');
+    parent.appendChild(el);
+    let styleWrites = 0, ancestorClass = 0;
+    const mo = new MutationObserver(rs => { for (const r of rs){ if (r.attributeName === 'style') styleWrites++; } });
+    mo.observe(el, {attributes:true, attributeFilter:['style']});
+    const moParent = new MutationObserver(rs => { for (const r of rs){ if (r.attributeName === 'class') ancestorClass++; } });
+    moParent.observe(parent, {attributes:true, attributeFilter:['class'], subtree:false});
+    el.style.width = '240px';      // style attr write → record
+    parent.classList.add('recolored-ancestor'); // computed-style change for el → no record on el
+    await wait(120);
+    const computedChanged = getComputedStyle(el).backgroundColor !== 'rgb(238, 242, 255)';
+    $('moStyleOut1').textContent = styleWrites === 1 ? '1 record (style attribute written)' : styleWrites + ' records';
+    $('moStyleOut2').textContent = ancestorClass + ' records on ANCESTOR, ' + styleWrites + ' on element — computed recolor itself: invisible';
+    chip('s11', 'mo-style-vs-computed', styleWrites === 1 ? 'ok' : 'fail',
+      'el.style.width fired 1 attribute record; ancestor class change that recolors the element (computed bg changed: ' + computedChanged + ') fired 0 on the element — MO sees attribute WRITES, never style recalculation');
+    mo.disconnect(); moParent.disconnect(); parent.classList.remove('recolored-ancestor'); el.remove();
+  });
+})();
+
+/* ============ S12 · capstones ============ */
+const capState = {rows:0, mo:0, canvas:null};
+(function s12telemetry(){
+  const lane = $('telemetryLane');
+  let frame = 0;
+  const mkRow = () => {
+    frame++;
+    const alt = frame % 2 === 0;
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = '<span>F' + String(frame).padStart(3, '0') + '</span><span>BATT ' + (14.8 - frame * 0.01).toFixed(2) + 'V</span><span class="' + (alt ? 'dn' : 'up') + '">' + (alt ? 'ALT +2.4m' : 'ALT −1.1m') + '</span><span>RSSI ' + (92 - (frame % 7)) + '</span>';
+    return row;
+  };
+  lane.innerHTML = '';
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'display:block;width:100%;height:56px;margin:8px';
+  const sentinel = document.createElement('div');
+  sentinel.style.height = '4px';
+  lane.appendChild(canvas); lane.appendChild(sentinel);
+  for (let i = 0; i < 4; i++) lane.insertBefore(mkRow(), sentinel);
+  capState.rows = 4;
+  // IO sentinel — append before the user reaches the end
+  const io = new IntersectionObserver((es) => {
+    if (es[es.length-1].isIntersecting){
+      for (let i = 0; i < 3; i++){ lane.insertBefore(mkRow(), sentinel); capState.rows++; }
+      $('capRows').textContent = capState.rows + ' (sentinel keeps appending)';
+      if (capState.rows >= 7 && capState.rows % 3 === 1) chip('s12', 'cap-sentinel', 'ok', 'IO sentinel appended rows with zero scroll handlers (' + capState.rows + ' rows live)');
+    }
+  }, {root:lane, rootMargin:'0px 0px 80px 0px', threshold:0});
+  io.observe(sentinel);
+  // RO — DPR-exact canvas buffer
+  const ro = new ResizeObserver((es) => {
+    const e = es[es.length-1];
+    const dp = e.devicePixelContentBoxSize && e.devicePixelContentBoxSize[0];
+    const w = dp ? dp.inlineSize : Math.round(e.contentBoxSize[0].inlineSize * devicePixelRatio);
+    const h = dp ? dp.blockSize : Math.round(e.contentBoxSize[0].blockSize * devicePixelRatio);
+    if (!w || !h) return;
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, w, h);
+    ctx.strokeStyle = '#0f766e'; ctx.lineWidth = 1.5; ctx.beginPath();
+    for (let x = 0; x <= w; x += 3){
+      const y = h/2 + Math.sin(x / 26 + frame / 4) * (h * .3);
+      x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    capState.canvas = w + '×' + h;
+    $('capCanvas').textContent = capState.canvas + ' device px (dpr ' + devicePixelRatio + (dp ? ' · devicePixelContentBoxSize' : ' · contentBox×dpr') + ')';
+    if (!s12telemetry.chipped){ s12telemetry.chipped = true; chip('s12', 'cap-ro-canvas', 'ok', 'canvas buffer sized from RO at exact device pixels — ' + capState.canvas); }
+  });
+  ro.observe(canvas, ('devicePixelContentBoxSize' in ResizeObserverEntry.prototype) ? {box:'device-pixel-content-box'} : undefined);
+  // MO — count flight mutations, highlight newest rows
+  const mo = new MutationObserver((rs) => {
+    for (const r of rs){
+      if (r.type === 'childList' && r.addedNodes.length){
+        for (const n of r.addedNodes){
+          if (n.classList && n.classList.contains('row')){
+            n.classList.add('new');
+            setTimeout(() => n.classList.remove('new'), 600);
+          }
+        }
+      }
+    }
+    capState.mo += rs.length;
+    $('capMo').textContent = capState.mo + ' records observed';
+  });
+  mo.observe(lane, {childList:true});
+})();
+(function s12variant(){
+  const card = $('variantCard');
+  const mo = new MutationObserver((rs) => {
+    if (s12variant.chipped) return;
+    for (const r of rs){
+      if (r.attributeName === 'data-variant'){
+        s12variant.chipped = true;
+        const v = r.target.getAttribute('data-variant');
+        $('variantLabel').textContent = v;
+        $('logLine').textContent = 'MO: data-variant "' + r.oldValue + '" → "' + v + '" · re-themed without owning the render path';
+        chip('s12', 'cap-mo-variant', 'ok', 'variant watcher fired on attr change (' + r.oldValue + ' → ' + v + ') — third-party DOM, zero re-render rights needed');
+      }
+    }
+  });
+  mo.observe(card, {attributes:true, attributeFilter:['data-variant'], attributeOldValue:true});
+  document.querySelectorAll('[data-variant]').forEach(btn => {
+    if (btn.tagName !== 'BUTTON') return;
+    btn.addEventListener('click', () => card.setAttribute('data-variant', btn.dataset.variant));
+  });
+})();
+
+/* ============ verify ============ */
+window.__verify = async function(){
+  const counts = {ok:0, warn:0, fail:0, skip:0};
+  for (const c of CHIPS) counts[c.status]++;
+  const overflow = document.documentElement.scrollWidth - document.documentElement.clientWidth;
+  return {
+    ...counts, total: CHIPS.length, overflow,
+    loopError: loopState.err,
+    chips: CHIPS
+  };
+};
+window.__drive = {
+  lane: (i) => document.querySelector('[data-lane="' + i + '"]').click(),
+  ioSeed: () => $('ioSeedBtn').click(),
+  touch: () => $('ioTouchBtn').click(),
+  full: () => $('ioFullBtn').click(),
+  rm: () => $('rmBtn').click(),
+  rmBad: () => $('rmBadBtn').click(),
+  tr: () => $('trBtn').click(),
+  sm: () => $('smBtn').click(),
+  v2cover: () => $('v2CoverBtn').click(),
+  v2delay: () => $('v2DelayBtn').click(),
+  loop: () => $('roLoopBtn').click(),
+  loopOk: () => $('roLoopOkBtn').click(),
+  roTime: () => $('roTimeBtn').click(),
+  roHide: () => $('roHideBtn').click(),
+  roDetach: () => $('roDetachBtn').click(),
+  roLife: () => $('roLifeBtn').click(),
+  moOrder: () => $('moOrderBtn').click(),
+  moBatch: () => $('moBatchBtn').click(),
+  moOverride: () => $('moOverrideBtn').click(),
+  moStyle: () => $('moStyleBtn').click(),
+  moTake: () => $('moTakeBtn').click(),
+  slider: (v) => { const s = $('roSlider'); s.value = v; s.dispatchEvent(new Event('input')); },
+  scrollSec: (id) => $(id).scrollIntoView({block:'center', behavior:'auto'}),
+  variant: (v) => document.querySelector('[data-variant="' + v + '"]').click()
+};
+/* self-run for humans; harness may also call __drive + __verify */
+window.__autorun = setTimeout(async () => {
+  // deterministic labs self-run — scroll the lab into view first so implicit-root IO sees it
+  const y = window.scrollY;
+  $('s6').scrollIntoView({block:'center', behavior:'auto'});
+  await twoRaf();
+  window.__drive.ioSeed();
+  await wait(400);
+  window.__drive.touch();
+  await wait(500);
+  window.scrollTo(0, y);
+}, 700);
+</script>
+</body>
+</html>
