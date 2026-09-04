@@ -1,0 +1,1074 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VisualViewport API — Two Viewports: Keyboard, Pinch-Zoom &amp; the Fixed-Position Trap</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --ink:#1c1917; --muted:#78716c; --faint:#a8a29e; --line:#e7e2dc;
+  --bg:#faf8f5; --card:#ffffff; --accent:#0d9488; --accent-deep:#0f766e; --accent-soft:#ccfbf1;
+  --warn:#b45309; --warn-soft:#fef3c7; --bad:#b91c1c; --bad-soft:#fee2e2; --skip:#57534e; --skip-soft:#f5f5f4;
+  --code:#f6f4f1;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:ui-sans-serif,system-ui,-apple-system,"Inter","Segoe UI",sans-serif;
+  color:var(--ink); background:var(--bg); line-height:1.55; font-size:15px;
+  background-image:
+    radial-gradient(560px 320px at 8% -4%, rgba(13,148,136,.10), transparent 62%),
+    radial-gradient(520px 340px at 96% 4%, rgba(124,58,237,.07), transparent 60%);
+  background-repeat:no-repeat;
+}
+.wrap{max-width:1060px;margin:0 auto;padding:28px 22px 90px}
+h1{font-size:clamp(30px,4.5vw,42px);line-height:1.12;letter-spacing:-.02em;margin:16px 0 10px;font-weight:800}
+h2{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+h3{font-size:15.5px;margin:18px 0 6px}
+p{margin:8px 0}
+.lede{font-size:17px;color:var(--muted);max-width:74ch;margin:0 0 14px}
+.kicker{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-deep)}
+section{
+  background:var(--card);border:1px solid var(--line);border-radius:18px;
+  padding:24px 26px;margin:20px 0;box-shadow:0 1px 2px rgba(28,25,23,.04),0 8px 28px -18px rgba(28,25,23,.12);
+}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.card{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:#fff}
+.card h3{margin-top:0}
+code,pre{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12.6px}
+code{background:var(--code);padding:1px 5px;border-radius:6px}
+pre{background:#1c1917;color:#e7e5e4;padding:14px 16px;border-radius:12px;overflow-x:auto;line-height:1.5}
+pre code{background:none;padding:0;color:inherit}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+  border-radius:999px;padding:3px 10px;margin:3px 4px 3px 0;border:1px solid transparent;vertical-align:middle;
+}
+.chip.ok{background:#ecfdf5;color:#065f46;border-color:#a7f3d0}
+.chip.warn{background:var(--warn-soft);color:var(--warn);border-color:#fde68a}
+.chip.fail{background:var(--bad-soft);color:var(--bad);border-color:#fecaca}
+.chip.skip{background:var(--skip-soft);color:var(--skip);border-color:#e7e5e4}
+.chip b{font-weight:800}
+.badge{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin:4px 6px 4px 0;font-size:12.5px;background:#fff}
+.badge .dot{width:9px;height:9px;border-radius:50%;background:var(--faint);flex:0 0 auto}
+.badge.on .dot{background:#10b981}
+.badge.off .dot{background:#f59e0b}
+.muted{color:var(--muted)}
+.small{font-size:12.5px}
+table{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
+td code{white-space:nowrap}
+.num{font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
+.dashrow{display:flex;justify-content:space-between;gap:10px;padding:6px 2px;border-bottom:1px dashed var(--line);font-size:13px}
+.dashrow:last-child{border-bottom:0}
+.dashrow .num{color:var(--accent-deep);font-weight:700}
+.log{
+  background:#1c1917;color:#e7e5e4;border-radius:12px;padding:12px 14px;font-family:ui-monospace,Menlo,monospace;
+  font-size:12px;height:150px;overflow-y:auto;line-height:1.6;
+}
+.log .t{color:#a8a29e}
+.log .vve{color:#5eead4}
+.log .wine{color:#fbbf24}
+.log .sne{color:#c4b5fd}
+.phone{
+  width:340px;max-width:100%;height:540px;border:3px solid #292524;border-radius:26px;position:relative;
+  overflow:hidden;background:#fff;flex:0 0 auto;
+}
+.phone .content{position:absolute;inset:0;overflow-y:auto;padding:14px 12px 70px}
+.phone .bar-native{position:absolute;left:0;right:0;bottom:0;height:44px;background:#78716c;color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:700;z-index:5}
+.phone .bar-pinned{position:absolute;left:8px;height:44px;background:var(--accent);color:#fff;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:700;z-index:6;width:calc(100% - 16px);top:488px}
+.phone .kb{
+  position:absolute;left:0;right:0;bottom:0;height:0;background:#292524;color:#d6d3d1;z-index:7;
+  display:flex;align-items:center;justify-content:center;font-size:12px;transition:height .25s ease;
+}
+.kbrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+button{
+  font:inherit;font-size:13px;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--ink);
+  border-radius:10px;padding:7px 13px;cursor:pointer;
+}
+button:hover{border-color:var(--accent);color:var(--accent-deep)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.primary:hover{background:var(--accent-deep);color:#fff}
+input[type=text],input[type=email]{
+  font:inherit;font-size:14px;border:1px solid var(--line);border-radius:10px;padding:8px 11px;background:#fff;color:var(--ink);width:100%;
+}
+.unitbox{border:2px dashed var(--accent);border-radius:10px;display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:700;color:var(--accent-deep);margin:6px 0;background:var(--accent-soft)}
+.xhair{
+  border:1px solid var(--line);border-radius:14px;background:
+    linear-gradient(var(--line) 1px, transparent 1px) 0 0/100% 28px,
+    linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0/28px 100%, #fff;
+  height:200px;position:relative;cursor:crosshair;overflow:hidden;touch-action:none;
+}
+.xhair .pt{position:absolute;width:11px;height:11px;border-radius:50%;background:var(--accent);transform:translate(-50%,-50%);pointer-events:none}
+.xhair .lbl{position:absolute;font-family:ui-monospace,Menlo,monospace;font-size:11px;background:#1c1917;color:#e7e5e4;
+  padding:2px 7px;border-radius:6px;transform:translate(10px,-22px);pointer-events:none;white-space:nowrap}
+.hud{
+  position:absolute;top:12px;right:12px;background:#1c1917;color:#5eead4;border-radius:10px;padding:8px 11px;
+  font-family:ui-monospace,Menlo,monospace;font-size:13px;font-weight:700;z-index:8;
+}
+.radios label{display:inline-flex;align-items:center;gap:6px;margin:0 12px 6px 0;font-size:13.5px}
+.diagram{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}
+.dia{border:2px solid var(--line);border-radius:12px;padding:12px;position:relative;min-height:150px;background:#fff}
+.dia .vp{position:absolute;border:2px dashed var(--accent);border-radius:8px;background:rgba(13,148,136,.08);
+  display:flex;align-items:flex-end;justify-content:flex-end;padding:6px;font-size:10.5px;font-weight:700;color:var(--accent-deep)}
+.dia h4{margin:0 0 6px;font-size:12.5px}
+.gotcha{border-left:4px solid var(--warn);background:var(--warn-soft);border-radius:0 12px 12px 0;padding:10px 14px;margin:8px 0;font-size:13.5px}
+.gotcha b{color:var(--warn)}
+.finding{border-left:4px solid var(--accent);background:var(--accent-soft);border-radius:0 12px 12px 0;padding:10px 14px;margin:10px 0;font-size:13.5px}
+.finding b{color:var(--accent-deep)}
+.slider{width:170px;accent-color:var(--accent)}
+#vvHud{
+  position:fixed;z-index:60;background:#1c1917;color:#5eead4;border-radius:12px;padding:10px 13px;right:14px;top:14px;
+  font-family:ui-monospace,Menlo,monospace;font-size:11.5px;line-height:1.7;box-shadow:0 10px 30px -10px rgba(0,0,0,.4);
+  border:1px solid #5eead433;max-width:240px;
+}
+#vvHud .h{color:#fbbf24;font-weight:800;font-size:10.5px;letter-spacing:.08em}
+.footer-note{margin-top:34px;text-align:center;color:var(--faint);font-size:12px}
+@media (max-width:640px){ .diagram{grid-template-columns:1fr} section{padding:18px 16px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div id="vvHud" aria-hidden="true">
+  <div class="h">VISUAL-VIEWPORT HUD</div>
+  <div id="hudBody">…</div>
+  <div class="small" style="color:#a8a29e;margin-top:4px">pinned to the VISUAL viewport via the §6 recipe — scrolls/zooms with what you see, not with the page</div>
+</div>
+
+<p class="kicker">Web Platform API · Tier: Viewport &amp; Mobile UX</p>
+<h1>VisualViewport API — Two Viewports: the Keyboard, Pinch-Zoom &amp; the Fixed-Position Trap</h1>
+<p class="lede">
+  Every mobile page has <b>two viewports</b>: the <b>layout viewport</b> (the whole document CSS px) and the
+  <b>visual viewport</b> (the window you actually see — shrunk by pinch-zoom, by the on-screen keyboard, by collapsing
+  URL bars). <code>window.visualViewport</code> is the only API that tells you where that visible window IS and how big
+  it really is. It is the fix for the #1 mobile-layout crime: <span class="chip ok" style="margin:0"><b>position:fixed</b> bars buried under the keyboard</span>
+  Universal since 2019–2021 (Ch 61 / FF 91 / SF 13) — ship ungated.
+</p>
+<div>
+  <span class="badge" id="b-core"><span class="dot"></span>visualViewport core</span>
+  <span class="badge" id="b-send"><span class="dot"></span>vv scrollend</span>
+  <span class="badge" id="b-vk"><span class="dot"></span>VirtualKeyboard API</span>
+  <span class="badge" id="b-units"><span class="dot"></span>svh / lvh / dvh units</span>
+  <span class="badge" id="b-sec"><span class="dot"></span>no secure context needed</span>
+</div>
+
+<!-- ============ 1. MODEL ============ -->
+<section id="s1">
+  <p class="kicker">§1 · The model</p>
+  <h2>Two viewports, one document</h2>
+  <p>The layout viewport is the canvas the page is laid out into. The visual viewport is the porthole you look through.
+  Pinch-zoom <b>shrinks the porthole, not the canvas</b>. The on-screen keyboard (on Android Chrome default) <b>shrinks
+  the porthole without relayout</b>. Collapsing URL bars grow it. Desktop at rest: they are the same box, which is why
+  this API feels invisible until your site hits a phone.</p>
+  <div class="diagram">
+    <div class="dia">
+      <h4>Layout viewport <code class="num">documentElement.clientWidth</code></h4>
+      <div style="height:118px;position:relative;background:linear-gradient(#f5f5f4,#e7e2dc);border-radius:8px;overflow:hidden">
+        <div style="padding:8px;color:#78716c;font-size:11px">full document flow…<br>…keeps going below the fold…</div>
+        <div class="vp" style="inset:34px 58px 18px 26px">visual viewport →</div>
+      </div>
+      <p class="small muted" style="margin:6px 0 0">unchanged by zoom &amp; keyboard</p>
+    </div>
+    <div class="dia">
+      <h4>Visual viewport <code class="num">visualViewport.width/height</code></h4>
+      <div style="height:118px;position:relative;background:linear-gradient(#ccfbf1,#99f6e4);border-radius:8px;overflow:hidden;border:2px dashed var(--accent)">
+        <div style="padding:8px;color:#0f766e;font-size:11px">what the user actually sees<br>− pinch-zoom (scale ↑, box ↓)<br>− keyboard (height ↓)<br>− URL bar (height ↑ when collapsed)</div>
+      </div>
+      <p class="small muted" style="margin:6px 0 0">offsets describe where it sits <i>inside</i> the layout viewport</p>
+    </div>
+  </div>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Layout numbers (the lie on mobile)</h3>
+      <div id="layoutDash"></div>
+    </div>
+    <div class="card">
+      <h3>Visual numbers (the truth)</h3>
+      <div id="visualDash"></div>
+    </div>
+  </div>
+  <p class="small muted">Both dashboards update live on <code>visualViewport</code> <code>resize</code>/<code>scroll</code>/<code>scrollend</code> and window <code>resize</code>/<code>scroll</code>. On desktop they track together — the point is seeing <i>which numbers move</i> when you scroll vs resize.</p>
+</section>
+
+<!-- ============ 2. ANATOMY ============ -->
+<section id="s2">
+  <p class="kicker">§2 · Anatomy</p>
+  <h2>Seven read-only properties, three events</h2>
+  <table>
+    <thead><tr><th>Property</th><th>Meaning</th><th>Live</th></tr></thead>
+    <tbody id="anatomy"></tbody>
+  </table>
+  <div>
+    <span class="chip" data-chip="c-exists">vv exists</span>
+    <span class="chip" data-chip="c-et">instanceof EventTarget</span>
+    <span class="chip" data-chip="c-numeric">7 props all finite ≥ 0</span>
+    <span class="chip" data-chip="c-scale1">scale === 1 at rest (no pinch)</span>
+    <span class="chip" data-chip="c-offset0">offsetLeft/Top === 0 at rest</span>
+  </div>
+  <p class="small muted"><b>Units:</b> all values are CSS pixels of the layout viewport. <code>width/height</code> are the
+  visual box size <i>in layout CSS px</i> (so pinch-zoom <code>scale 2</code> ⇒ <code>width</code> halves).
+  <code>pageLeft/pageTop</code> locate the visual box relative to the document origin (like <code>scrollX/scrollY</code>,
+  but for the porthole). <code>offsetLeft/offsetTop</code> locate it relative to the layout viewport's top-left —
+  nonzero only when zoomed/panned or the keyboard pans the visual viewport.</p>
+</section>
+
+<!-- ============ 3. EVENTS ============ -->
+<section id="s3">
+  <p class="kicker">§3 · Events</p>
+  <h2>resize · scroll · scrollend — and who fires first</h2>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Live event log</h3>
+      <div class="log" id="evlog"><span class="t">waiting for viewport activity — scroll the page or resize the window…</span></div>
+    </div>
+    <div class="card">
+      <h3>Counters &amp; firing order</h3>
+      <div id="counters"></div>
+      <h3 style="margin-top:14px">Why the order matters</h3>
+      <p class="small">If your layout code reads viewport numbers inside a <code>window resize</code> handler and
+      <code>visualViewport resize</code> fires <i>after</i>, you compute with stale visual metrics (or vice-versa).
+      The robust pattern: coalesce both through one rAF.</p>
+    </div>
+  </div>
+  <div>
+    <span class="chip" data-chip="c-scroll-ev">vv scroll fires on window scroll (desktop)</span>
+    <span class="chip" data-chip="c-scrollend-sup">support: onscrollend in vv</span>
+    <span class="chip" data-chip="c-scrollend-ev">scrollend fires after scroll ends</span>
+    <span class="chip" data-chip="c-win-scroll-ev">window scroll also fired</span>
+    <span class="chip" data-chip="c-vvresize">vv resize fired (window resize)</span>
+    <span class="chip" data-chip="c-winresize">window resize fired</span>
+    <span class="chip" data-chip="c-order">first-fire order recorded</span>
+    <span class="chip" data-chip="c-scale-still">scale still 1 after resize</span>
+  </div>
+  <p class="small muted">A real keyboard/pinch event stream only exists on touch devices; on desktop, window
+  <code>resize</code> moves <i>both</i> viewports together — every event here still fires through the same listeners.</p>
+</section>
+
+<!-- ============ 4. COORDINATES ============ -->
+<section id="s4">
+  <p class="kicker">§4 · Coordinates</p>
+  <h2>pageLeft/pageTop vs offsetLeft/offsetTop vs scrollX/scrollY</h2>
+  <div class="grid g2">
+    <div class="card">
+      <h3>The identity (scale = 1)</h3>
+      <pre style="margin:8px 0"><code>pageTop = window.scrollY + offsetTop
+pageLeft = window.scrollX + offsetLeft</code></pre>
+      <p class="small">At rest on desktop the offset terms are 0 and <code>pageTop</code> ≡ <code>scrollY</code>.
+      Under pinch-zoom the offsets go nonzero and <b>client coordinates stop matching visual space</b> — that's when the
+      §6 recipe earns its keep.</p>
+      <div>
+        <span class="chip" data-chip="c-pagey">pageTop ≡ scrollY after scroll</span>
+        <span class="chip" data-chip="c-identity">identity pageTop = scrollY + offsetTop</span>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Crosshair lab — three coordinate systems</h3>
+      <div class="xhair" id="xh"><div class="pt" id="xpt"></div><div class="lbl" id="xlbl">move the pointer</div></div>
+      <p class="small muted" id="xread" style="font-family:ui-monospace,Menlo,monospace">client / page / visual-space readouts appear here</p>
+    </div>
+  </div>
+  <p class="small">Visual-space x = <code>clientX − offsetLeft</code> (divide by nothing at scale 1; at pinch
+  <code>scale</code> a point at visual x <code>v</code> sits at layout <code>offsetLeft + v·scale</code> — see §9).</p>
+</section>
+
+<!-- ============ 5. DESKTOP TRUTHS ============ -->
+<section id="s5">
+  <p class="kicker">§5 · Desktop truths</p>
+  <h2>Scrollbars, iframes, and where the numbers agree</h2>
+  <div class="grid g3">
+    <div class="card">
+      <h3>innerWidth vs vv.width</h3>
+      <div id="sbDash"></div>
+      <p class="small muted"><code>window.innerWidth</code> includes classic (non-overlay) scrollbars; the viewport
+      APIs don't. On overlay-scrollbar systems (macOS default) the diff is 0.</p>
+    </div>
+    <div class="card">
+      <h3>Child iframe proof</h3>
+      <div id="iframeDash">asking child…</div>
+      <p class="small muted">MDN: only the <b>top-level</b> window has a distinct visual viewport. Inside an iframe,
+      visual metrics ≡ that frame's layout metrics — proven live by the embedded child below.</p>
+    </div>
+    <div class="card">
+      <h3>Protocol</h3>
+      <div id="protoDash"></div>
+      <p class="small muted">Unlike half the modern platform (SubtleCrypto, WebUSB…), visualViewport has
+      <b>no secure-context requirement</b> — this page runs fine over http on localhost.</p>
+    </div>
+  </div>
+  <div>
+    <span class="chip" data-chip="c-le">vv.width ≤ innerWidth</span>
+    <span class="chip" data-chip="c-leh">vv.height ≤ innerHeight</span>
+    <span class="chip" data-chip="c-cw">vv.width vs clientWidth diff</span>
+    <span class="chip" data-chip="c-iframe">child vv.width ≡ child clientWidth</span>
+    <span class="chip" data-chip="c-iframe-h">child vv.height ≡ child clientHeight</span>
+  </div>
+  <iframe id="kid" title="child viewport probe" style="width:100%;height:120px;border:1px solid var(--line);border-radius:12px;margin-top:10px;background:#faf8f5"></iframe>
+</section>
+
+<!-- ============ 6. KEYBOARD ============ -->
+<section id="s6">
+  <p class="kicker">§6 · The headline trap</p>
+  <h2>position:fixed anchors to the LAYOUT viewport — the keyboard buries it</h2>
+  <p><code>position:fixed; bottom:0</code> pins to the <i>layout</i> viewport. When the OSK shrinks the <i>visual</i>
+  viewport (Android default), a fixed bar stays at the layout bottom — <b>under the keyboard, invisible</b>. The fix:
+  recompute the bar's position from live visual metrics on every <code>resize</code>/<code>scroll</code>, coalesced
+  through rAF. The function below runs <b>unchanged</b> against the real <code>window.visualViewport</code> in
+  production and against this page's simulated one (a desktop browser cannot open a real OSK, and window-resize moves
+  both viewports together — the divergence physically requires touch hardware).</p>
+  <div style="display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start">
+    <div class="phone" id="phone">
+      <div class="content" id="pcontent">
+        <p class="small" style="color:#78716c;margin:2px 0 8px"><b>Simulated phone</b> — same property semantics a real OSK produces: visual height shrinks, layout height does not.</p>
+        <div class="card" style="margin:6px 0"><b>Neo</b> — telemetry wall chunked, 0 blocking</div>
+        <div class="card" style="margin:6px 0"><b>Maya</b> — client brief in, review Thu</div>
+        <div class="card" style="margin:6px 0"><b>Ghost</b> — Vercel split-brain resolved</div>
+        <div class="card" style="margin:6px 0"><b>Tim</b> — ship the reel update</div>
+        <div class="card" style="margin:6px 0"><b>Neo</b> — LoAF numbers landed</div>
+        <div class="card" style="margin:6px 0"><b>Jin</b> — viewport research out</div>
+        <div class="card" style="margin:6px 0"><b>Ops</b> — disk 46 Gi free</div>
+        <div class="card" style="margin:6px 0"><b>Neo</b> — Web MIDI recap</div>
+        <label class="small" style="display:block;margin:10px 0 4px;color:#78716c">field to focus (real keyboard on a phone would open from here)</label>
+        <input type="text" id="pfield" placeholder="tap me on a phone…">
+      </div>
+      <div class="bar-pinned" id="barPin">pinned via visualViewport ✓</div>
+      <div class="bar-native" id="barNat">position:fixed bottom:0</div>
+      <div class="kb" id="kb">⌨ simulated on-screen keyboard (280px)</div>
+      <div class="hud" id="phud">vv.h 540</div>
+    </div>
+    <div style="flex:1;min-width:280px">
+      <div class="kbrow">
+        <button class="primary" id="kbOpen">Open keyboard</button>
+        <button id="kbClose">Close</button>
+      </div>
+      <div class="card" style="margin-bottom:10px">
+        <h3>Sim viewport state</h3>
+        <div id="simDash"></div>
+      </div>
+      <div class="card">
+        <h3>Bar bottoms vs keyboard top (px in phone space)</h3>
+        <div id="barsDash"></div>
+      </div>
+      <div>
+        <span class="chip" data-chip="c-pin">pinned bar rides above keyboard</span>
+        <span class="chip" data-chip="c-buried">native bar stays buried (the trap)</span>
+        <span class="chip" data-chip="c-simev">sim resize event re-pins (event-driven)</span>
+        <span class="chip" data-chip="c-layout">layout height unchanged by keyboard</span>
+      </div>
+    </div>
+  </div>
+  <pre style="margin-top:16px"><code id="pinCode">/* The production recipe — duck-types any viewport-like object */
+function pinToViewport(bar, vv, { margin = 8 } = {}) {
+  let raf = 0;
+  function update() {
+    raf = 0;
+    bar.style.top    = (vv.offsetTop + vv.height - bar.offsetHeight - margin) + 'px';
+    bar.style.left   = (vv.offsetLeft + margin) + 'px';
+    bar.style.width  = (vv.width - margin * 2) + 'px';
+  }
+  const onVp = () => { if (!raf) raf = requestAnimationFrame(update); };
+  vv.addEventListener('resize', onVp);   // keyboard open/close, pinch, URL-bar collapse
+  vv.addEventListener('scroll', onVp);   // visual pan (keyboard scroll-disambiguation on iOS)
+  window.addEventListener('scroll', onVp, { passive: true });  // iOS fires these too
+  window.addEventListener('resize', onVp);
+  update();
+  return () => { ['resize','scroll'].forEach(e => vv.removeEventListener(e, onVp));
+                 removeEventListener('scroll', onVp); removeEventListener('resize', onVp); };
+}
+/* usage */ pinToViewport(document.querySelector('#cta'), window.visualViewport);</code></pre>
+</section>
+
+<!-- ============ 7. VIRTUAL KEYBOARD ============ -->
+<section id="s7">
+  <p class="kicker">§7 · The Chromium escape hatch</p>
+  <h2>VirtualKeyboard API — overlaysContent, boundingRect(), show()/hide()</h2>
+  <p>The VisualViewport API <b>reacts</b> to the keyboard; the VirtualKeyboard API (Chromium 94+, not in
+  Firefox/Safari) lets you <b>opt out of the reaction</b>: <code>navigator.virtualKeyboard.overlaysContent = true</code>
+  stops the browser resizing the visual viewport at all, and <code>geometrychange</code> + <code>boundingRect()</code>
+  hand you the keyboard's rect so you lay out around it yourself. <code>show()/hide()</code> request the keyboard
+  programmatically (focused, touch-capable contexts only).</p>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Live probes</h3>
+      <div id="vkDash"></div>
+      <div class="kbrow" style="margin-top:8px">
+        <button id="vkOverlayOn">overlaysContent = true</button>
+        <button id="vkOverlayOff">= false (restore)</button>
+        <button id="vkShow">vk.show()</button>
+        <button id="vkHide">vk.hide()</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>When to actually use it</h3>
+      <p class="small">Drawing/whiteboard apps and chat UIs that must keep painting <i>behind</i> a translucent keyboard;
+      games; kiosk surfaces. For forms, prefer VisualViewport pinning (§6) — it works in every engine.</p>
+      <p class="small"><b>Danger:</b> with <code>overlaysContent = true</code> and no manual layout, inputs sit under
+      the keyboard with zero browser help — you own everything.</p>
+    </div>
+  </div>
+  <div>
+    <span class="chip" data-chip="c-vk-present">'virtualKeyboard' in navigator</span>
+    <span class="chip" data-chip="c-vk-surface">surface: boundingRect + geometrychange + show/hide + overlaysContent</span>
+    <span class="chip" data-chip="c-vk-rect">boundingRect() shape {x,y,width,height}</span>
+    <span class="chip" data-chip="c-vk-overlay">overlaysContent round-trips</span>
+    <span class="chip" data-chip="c-vk-geo">geometrychange listener attaches</span>
+  </div>
+</section>
+
+<!-- ============ 8. META + UNITS ============ -->
+<section id="s8">
+  <p class="kicker">§8 · The dials next door</p>
+  <h2>interactive-widget meta &amp; svh/lvh/dvh viewport units</h2>
+  <p class="small" style="margin-top:0">Two adjacent controls decide <i>what the keyboard does to your layout</i> before
+  any JS runs — Android Chromium honors <code>interactive-widget</code> in the viewport meta; iOS Safari ignores it
+  (keyboard always overlays + pans). The small/large/dynamic viewport units are the CSS-side readout of the same
+  machinery.</p>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Meta playground (page-live rewrite)</h3>
+      <div class="radios" id="iwRadios">
+        <label><input type="radio" name="iw" value="none" checked> none (browser default)</label>
+        <label><input type="radio" name="iw" value="resizes-visual"> resizes-visual <span class="small muted">(Chrome default)</span></label>
+        <label><input type="radio" name="iw" value="resizes-content"> resizes-content <span class="small muted">(layout shrinks!)</span></label>
+        <label><input type="radio" name="iw" value="overlays-content"> overlays-content</label>
+      </div>
+      <pre style="margin:10px 0 0"><code id="metaRead">…</code></pre>
+    </div>
+    <div class="card">
+      <h3>Unit boxes — live px vs vv.height</h3>
+      <div class="unitbox" style="height:100svh" id="uSvh">100svh</div>
+      <div class="unitbox" style="height:100lvh;border-color:var(--warn);background:var(--warn-soft);color:var(--warn)" id="uLvh">100lvh</div>
+      <div class="unitbox" style="height:100dvh;border-color:#7c3aed;background:#f3e8ff;color:#6d28d9" id="uDvh">100dvh</div>
+      <p class="small muted" id="unitRead" style="font-family:ui-monospace,Menlo,monospace"></p>
+    </div>
+  </div>
+  <div>
+    <span class="chip" data-chip="c-meta">meta rewrite applies + reads back</span>
+    <span class="chip" data-chip="c-dvh">CSS.supports dvh</span>
+    <span class="chip" data-chip="c-svhlvh">svh + lvh supported</span>
+    <span class="chip" data-chip="c-dvh-track">dvh tracks window resize (Δ ≥ 40px)</span>
+  </div>
+  <p class="small muted"><b>svh</b> = smallest (URL bar expanded), <b>lvh</b> = largest (bar collapsed),
+  <b>dvh</b> = current, animates as the bar collapses — on <b>Android with the keyboard up</b>, only
+  <code>interactive-widget=resizes-content</code> makes dvh shrink; with the default (resizes-visual) dvh ignores the
+  keyboard exactly like the layout viewport does. iOS: dvh never shrinks for the keyboard.</p>
+</section>
+
+<!-- ============ 9. SCALE ============ -->
+<section id="s9">
+  <p class="kicker">§9 · Scale</p>
+  <h2>Pinch-zoom vs browser zoom vs window resize — what moves what</h2>
+  <table>
+    <thead><tr><th>Action</th><th>vv.scale</th><th>vv.width/height</th><th>layout viewport</th><th>DPR</th></tr></thead>
+    <tbody>
+      <tr><td>Pinch-zoom (touch)</td><td><b>1 → 3</b></td><td>÷ scale</td><td>unchanged</td><td>unchanged</td></tr>
+      <tr><td>Browser zoom (Ctrl +)</td><td>stays 1</td><td>≈ unchanged</td><td>shrinks in CSS px</td><td><b>↑</b></td></tr>
+      <tr><td>Window resize (desktop)</td><td>stays 1</td><td>tracks window</td><td>tracks window</td><td>unchanged</td></tr>
+      <tr><td>URL bar collapse (mobile)</td><td>stays 1</td><td>height ↑</td><td>unchanged</td><td>unchanged</td></tr>
+    </tbody>
+  </table>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Simulated pinch → scale-compensated HUD</h3>
+      <p class="small" style="margin-top:0">A zoomed user still needs readable overlays: divide fixed sizes by
+      <code>vv.scale</code> in the same rAF pass as the §6 pin.</p>
+      <div style="display:flex;gap:12px;align-items:center;margin:8px 0">
+        <input type="range" class="slider" id="zoomSlider" min="1" max="3" step="0.1" value="1">
+        <span class="num" id="zoomRead">scale 1.0</span>
+      </div>
+      <div style="position:relative;border:1px solid var(--line);border-radius:12px;height:120px;background:#fff;overflow:hidden" id="zoomStage">
+        <div class="hud" id="zhud" style="font-size:13px">HUD 13px</div>
+        <span class="small muted" style="position:absolute;left:10px;bottom:8px">zoomStage</span>
+      </div>
+      <div><span class="chip" data-chip="c-zoomfont">font halves at scale 2 (13px → ≤ 7px)</span></div>
+    </div>
+    <div class="card">
+      <h3>Readouts</h3>
+      <div id="zoomDash"></div>
+    </div>
+  </div>
+  <div class="finding"><b>Spec truth:</b> <code>scale</code> is the pinch factor applied to the <i>visual</i> viewport
+  only. Layout px never change during pinch — so <code>getBoundingClientRect()</code> in a zoomed page reports the same
+  CSS px while the user sees them magnified. Coordinate math across the boundary:
+  <code>visualX = (clientX − offsetLeft) / 1</code> at rest; a point at visual <code>(vx,vy)</code> within the visual
+  box maps to layout <code>(offsetLeft + vx·scale, offsetTop + vy·scale)</code>.</div>
+</section>
+
+<!-- ============ 10. RECIPES ============ -->
+<section id="s10">
+  <p class="kicker">§10 · Production recipes</p>
+  <h2>Where this earns its keep at Molt &amp; OpenDrones</h2>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Molt — keyboard-aware sticky CTA on the lead form</h3>
+      <pre style="margin:8px 0"><code>const cta = document.querySelector('.hero-cta');
+const vv = window.visualViewport;
+let baseH = null;
+function onVv() {
+  if (baseH === null) baseH = vv.height;
+  const kbOpen = baseH - vv.height > 150;      // heuristic
+  cta.classList.toggle('kb-open', kbOpen);     // swap to compact style
+  pinToViewport(cta, vv);                      // §6 recipe — never buried
+}
+vv.addEventListener('resize', () => requestAnimationFrame(onVv));</code></pre>
+      <p class="small">Mobile lead forms lose the submit button to the OSK constantly; this keeps it one thumb-tap
+      away and restores on blur. Baseline cost: one rAF-coalesced listener.</p>
+    </div>
+    <div class="card">
+      <h3>OpenDrones — HUD that survives pinch on the map</h3>
+      <pre style="margin:8px 0"><code>const hud = document.querySelector('#flight-hud');
+pinToViewport(hud, vv);                         // rides the visual viewport
+hud.style.fontSize = `calc(13px / ${vv.scale})`; // readable at any zoom
+hud.style.setProperty('--vh', vv.height + 'px');
+
+vv.addEventListener('scrollend', () =>          // Safari: no scrollend on vv —
+  settleBlink());                               // fall back to a 120ms debounce
+const onVv = () => debounce(settleBlink, 120);
+vv.addEventListener('scroll', onVv);</code></pre>
+      <p class="small">Pilots pinch into telemetry clusters; the HUD stays pinned + legible, and the map re-centers
+      once the visual pan settles.</p>
+    </div>
+  </div>
+  <div class="card" style="margin-top:2px">
+    <h3>Cross-cutting: honest 100%-of-visible height</h3>
+    <pre style="margin:8px 0"><code>/* CSS-only covers toolbars (dvh) but NOT the keyboard; JS closes the gap: */
+vv.addEventListener('resize', () => {
+  document.documentElement.style.setProperty('--app-h', vv.height + 'px');
+});
+/* panel { height: var(--app-h, 100dvh); } — tracks keyboard, pinch, URL bar */</code></pre>
+  </div>
+</section>
+
+<!-- ============ 11. GOTCHAS + SHIP MAP ============ -->
+<section id="s11">
+  <p class="kicker">§11 · Gotcha wall + ship map</p>
+  <h2>Live-probed engine truths &amp; documented traps</h2>
+  <div class="gotcha"><b>1 · fixed ≠ visible.</b> position:fixed pins to the layout viewport; keyboard + pinch move the
+  visual one. Proven live in §6 (native bar bottom stays at layout bottom under the sim keyboard; pinned bar rides above).</div>
+  <div class="gotcha"><b>2 · innerHeight lies on mobile.</b> Toolbars and the OSK make window.innerHeight stale or
+  keyboard-inclusive (the classic iOS complaint). vv.height is the number that matches the screen.</div>
+  <div class="gotcha"><b>3 · iOS never resizes layout for the keyboard.</b> No interactive-widget support — keyboard
+  overlays, visual viewport shrinks/scrolls, dvh unchanged. Android: interactive-widget=resizes-content opts the
+  layout in (then vv barely changes).</div>
+  <div class="gotcha"><b>4 · iOS 26 regression watch (Sept 2025 reports):</b> after dismissing the keyboard,
+  visualViewport height/offsets can come back different from before it opened — re-measure on blur, never cache
+  baseline heights across focus cycles.</div>
+  <div class="gotcha"><b>5 · Events arrive in bursts.</b> Keyboard open fires resize+scroll together; pan fires a
+  scroll stream. Always coalesce via rAF (recipe does) — per-event layout writes thrash.</div>
+  <div class="gotcha"><b>6 · Only the top-level window has one.</b> In iframes, visualViewport ≡ layout metrics of the
+  frame — proven live in §5. Don't ship keyboard-pinning code inside cross-domain embeds.</div>
+  <div class="gotcha"><b>7 · scrollend is not everywhere.</b> vv scrollend: Ch 126+/FF 150+, Safari ✗ — debounce
+  fallback (§10).</div>
+  <div class="gotcha"><b>8 · Browser zoom ≠ pinch.</b> Ctrl+ + resizes CSS px + DPR with scale pinned at 1; pinch
+  raises scale with layout untouched. Feature-detect by reading <code>vv.scale</code>, never DPR.</div>
+  <div class="gotcha"><b>9 · Fractional values.</b> vv.height arrives fractional at odd zooms/DPRs — round only at
+  paint, never in comparisons.</div>
+  <div class="gotcha"><b>10 · No worker access.</b> visualViewport is window-only; workers must receive metrics by
+  postMessage if they need them.</div>
+  <h3>Support matrix</h3>
+  <table>
+    <thead><tr><th>Surface</th><th>Chromium</th><th>Firefox</th><th>Safari</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td>visualViewport + 7 props + resize/scroll</td><td>61 (2017)</td><td>91 (2021)</td><td>13 (2019)</td><td><b>Baseline — ship ungated</b></td></tr>
+      <tr><td>vv <code>scrollend</code></td><td>126</td><td>150</td><td>✗</td><td>progressive</td></tr>
+      <tr><td>VirtualKeyboard API</td><td>94</td><td>✗</td><td>✗</td><td>Chromium-only enhancement</td></tr>
+      <tr><td><code>interactive-widget</code> meta</td><td>Android only</td><td>✗</td><td>✗ (own model)</td><td>Android enhancement</td></tr>
+      <tr><td>svh/lvh/dvh units</td><td>108</td><td>101</td><td>15.4</td><td>Baseline 2023</td></tr>
+    </tbody>
+  </table>
+  <h3>Ship map</h3>
+  <p class="small">Molt: pin lead-form CTAs (§6) + dvh for hero sizing + svh worst-case for fold checks. OpenDrones:
+  scale-compensated HUD (§9) + scrollend-settled re-center + --app-h panel height (§10). Both: the §6 recipe is the
+  one-liner that deletes an entire class of "button disappears on mobile" support tickets.</p>
+</section>
+
+<p class="footer-note">visualviewport-api-two-viewports.html · researched + live-probed 2026-09-04 · engine: Chrome/150 (Brave) headless · part of the Molt research hub</p>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var vv = window.visualViewport;
+  var $ = function (id) { return document.getElementById(id); };
+  var R = { chips: {}, counters: { vvScroll: 0, winScroll: 0, vvResize: 0, winResize: 0, vvScrollend: 0 }, order: [], kidAck: false, dvh0: null, resized: false };
+
+  function chip(id, state, text) {
+    var el = document.querySelector('[data-chip="' + id + '"]');
+    if (!el) return;
+    el.className = 'chip ' + state;
+    el.innerHTML = text;
+    R.chips[id] = state;
+  }
+  function fmt(n) { return (Math.round(n * 100) / 100).toLocaleString('en-US'); }
+
+  /* ---------- badges ---------- */
+  var supSend = 'onscrollend' in (vv || {});
+  var supVk = 'virtualKeyboard' in navigator;
+  var supDvh = window.CSS && CSS.supports && CSS.supports('height', '1dvh');
+  function badge(id, on, label) {
+    var el = $(id); el.classList.add(on ? 'on' : 'off');
+    el.appendChild(document.createTextNode(' — ' + label));
+  }
+  badge('b-core', !!vv, vv ? 'universal' : 'MISSING');
+  badge('b-send', supSend, supSend ? 'Ch 126+ / FF 150+ · SF ✗' : 'not here');
+  badge('b-vk', supVk, supVk ? 'Chromium 94+' : 'Chromium-only');
+  badge('b-units', !!supDvh, supDvh ? 'Baseline 2023' : 'unsupported');
+  badge('b-sec', true, 'works over ' + location.protocol.replace(':', ''));
+
+  /* ---------- dashboards ---------- */
+  function renderLayout() {
+    var de = document.documentElement;
+    $('layoutDash').innerHTML =
+      dash('documentElement.clientWidth', de.clientWidth) +
+      dash('documentElement.clientHeight', de.clientHeight) +
+      dash('window.innerWidth', innerWidth) +
+      dash('window.innerHeight', innerHeight) +
+      dash('window.scrollX / scrollY', fmt(scrollX) + ' / ' + fmt(scrollY)) +
+      dash('devicePixelRatio', String(devicePixelRatio));
+  }
+  function renderVisual() {
+    $('visualDash').innerHTML =
+      dash('vv.width', fmt(vv.width)) +
+      dash('vv.height', fmt(vv.height)) +
+      dash('vv.pageLeft / pageTop', fmt(vv.pageLeft) + ' / ' + fmt(vv.pageTop)) +
+      dash('vv.offsetLeft / offsetTop', fmt(vv.offsetLeft) + ' / ' + fmt(vv.offsetTop)) +
+      dash('vv.scale', fmt(vv.scale));
+  }
+  function dash(k, v) { return '<div class="dashrow"><span class="muted">' + k + '</span><span class="num">' + v + '</span></div>'; }
+  function renderAnatomy() {
+    var rows = [
+      ['width', 'visual box width, layout CSS px (pinch ÷ scale)'],
+      ['height', 'visual box height — the number that reacts to keyboard + URL bar'],
+      ['offsetLeft', 'visual-left minus layout-left (nonzero when panned/zoomed)'],
+      ['offsetTop', 'visual-top minus layout-top'],
+      ['pageLeft', 'visual-left in document coords (like scrollX for the porthole)'],
+      ['pageTop', 'visual-top in document coords'],
+      ['scale', 'pinch-zoom factor (browser zoom keeps this at 1)']
+    ];
+    $('anatomy').innerHTML = rows.map(function (r) {
+      return '<tr><td><code>vv.' + r[0] + '</code></td><td class="small">' + r[1] + '</td><td class="num" id="an-' + r[0] + '"></td></tr>';
+    }).join('');
+  }
+  function updAnatomy() {
+    ['width', 'height', 'offsetLeft', 'offsetTop', 'pageLeft', 'pageTop', 'scale'].forEach(function (k) {
+      var el = $('an-' + k); if (el) el.textContent = fmt(vv[k]);
+    });
+  }
+  function renderCounters() {
+    $('counters').innerHTML =
+      dash('vv resize', R.counters.vvResize) + dash('window resize', R.counters.winResize) +
+      dash('vv scroll', R.counters.vvScroll) + dash('window scroll', R.counters.winScroll) +
+      dash('vv scrollend', R.counters.vvScrollend);
+  }
+
+  /* ---------- event log + capture (installed first!) ---------- */
+  var logEl, logN = 0;
+  function logEv(cls, name) {
+    if (!logEl) logEl = $('evlog');
+    if (!logEl) return;
+    if (logN === 0) logEl.innerHTML = '';
+    logN++;
+    var d = document.createElement('div');
+    d.innerHTML = '<span class="t">+' + fmt(performance.now() / 1000) + 's</span> <span class="' + cls + '">' + name + '</span>';
+    logEl.appendChild(d);
+    logEl.scrollTop = logEl.scrollHeight;
+    if (logN > 60) logEl.removeChild(logEl.firstChild);
+  }
+  var order0 = [];
+  function markOrder(ev) {
+    if (order0.length < 4) { order0.push(ev); R.order = order0.slice(); }
+    logEv(ev === 'window resize' ? 'wine' : 'vve', ev);
+  }
+  if (vv) {
+    vv.addEventListener('resize', function () { R.counters.vvResize++; markOrder('vv resize'); schedule(); });
+    vv.addEventListener('scroll', function () { R.counters.vvScroll++; logEv('vve', 'vv scroll'); schedule(); });
+    if (supSend) vv.addEventListener('scrollend', function () { R.counters.vvScrollend++; logEv('sne', 'vv scrollend'); schedule(); });
+  }
+  window.addEventListener('resize', function () { R.counters.winResize++; markOrder('window resize'); schedule(); }, { passive: true });
+  window.addEventListener('scroll', function () { R.counters.winScroll++; logEv('wine', 'window scroll'); schedule(); }, { passive: true });
+
+  var rafPend = false;
+  function schedule() {
+    if (rafPend) return;
+    rafPend = true;
+    requestAnimationFrame(function () {
+      rafPend = false;
+      renderAll(); renderCounters(); updHud(); renderSim(); renderBars(); updZoom();
+    });
+  }
+
+  /* ---------- HUD pinned to the real visual viewport (the recipe, live) ---------- */
+  var hudEl, hudBaseW;
+  function updHud() {
+    if (!hudEl) hudEl = $('vvHud');
+    hudEl.style.top = (vv.offsetTop + 12) + 'px';
+    var right = vv.offsetLeft + vv.width - 12;
+    hudEl.style.left = Math.max(8, right - 240) + 'px';
+    hudEl.style.fontSize = 'calc(11.5px / ' + vv.scale + ')';
+    $('hudBody').innerHTML =
+      dash('w×h', fmt(vv.width) + '×' + fmt(vv.height)) +
+      dash('pageTop', fmt(vv.pageTop)) +
+      dash('scale', fmt(vv.scale));
+  }
+
+  /* ---------- crosshair ---------- */
+  var xh = null;
+  document.addEventListener('pointermove', function (e) {
+    if (!xh) xh = $('xh');
+    if (!xh || (e.target !== xh && !xh.contains(e.target))) return;
+    var r = xh.getBoundingClientRect();
+    var lx = e.clientX - r.left, ly = e.clientY - r.top;
+    $('xpt').style.left = lx + 'px'; $('xpt').style.top = ly + 'px';
+    $('xlbl').style.left = lx + 'px'; $('xlbl').style.top = ly + 'px';
+    $('xlbl').textContent = 'client ' + e.clientX + ',' + e.clientY;
+    $('xread').textContent =
+      'client ' + fmt(e.clientX) + ',' + fmt(e.clientY) +
+      ' · page ' + fmt(e.pageX) + ',' + fmt(e.pageY) +
+      ' · visual ' + fmt(e.clientX - vv.offsetLeft) + ',' + fmt(e.clientY - vv.offsetTop) +
+      ' · vv.page ' + fmt(vv.pageLeft) + ',' + fmt(vv.pageTop);
+  }, { passive: true });
+
+  /* ---------- §5 iframe (srcdoc built in JS so the child's closing tag terminates) ---------- */
+  (function buildKid() {
+    var childJs = "var vv=window.visualViewport;" +
+      "function rpt(){ parent.postMessage({__kid:{w:vv.width,h:vv.height,cw:document.documentElement.clientWidth,ch:document.documentElement.clientHeight,iw:innerWidth,ih:innerHeight}},'*'); }" +
+      "vv.addEventListener('resize',rpt); addEventListener('resize',rpt); rpt();";
+    $('kid').srcdoc = "<!doctype html><html><body style='margin:0;font:13px ui-monospace,Menlo,monospace;padding:10px;color:#78716c'>child frame \u2014 reading its own visualViewport\u2026" +
+      "<script>" + childJs + "<\/script></body></html>";
+  })();
+
+  window.addEventListener('message', function (e) {
+    if (e.data && e.data.__kid) {
+      R.kid = e.data.__kid; R.kidAck = true;
+      $('iframeDash').innerHTML =
+        dash('child vv.width', fmt(R.kid.w)) + dash('child clientWidth', fmt(R.kid.cw)) +
+        dash('child vv.height', fmt(R.kid.h)) + dash('child clientHeight', fmt(R.kid.ch)) +
+        dash('child innerWidth', fmt(R.kid.iw)) + dash('parent vv.width', fmt(vv.width));
+      staticChips();   /* chips were 'pending' at boot — child reports async */
+    }
+  });
+  function renderSb() {
+    var de = document.documentElement;
+    var d = innerWidth - vv.width, dc = vv.width - de.clientWidth;
+    $('sbDash').innerHTML = dash('innerWidth', fmt(innerWidth)) + dash('vv.width', fmt(vv.width)) +
+      dash('diff', fmt(d) + ' px') + dash('vv.width − clientWidth', fmt(dc) + ' px');
+    $('protoDash').innerHTML = dash('protocol', location.protocol) + dash('visualViewport', typeof vv) +
+      dash('secure context', String(window.isSecureContext));
+  }
+
+  /* ---------- §6 sim viewport + keyboard ---------- */
+  function SimViewport() {
+    var t = new EventTarget();
+    t.width = 0; t.height = 0; t.offsetLeft = 0; t.offsetTop = 0; t.pageLeft = 0; t.pageTop = 0; t.scale = 1;
+    return t;
+  }
+  var sim = SimViewport();
+  var PHONE_H = 540, KB_H = 280;
+  var pinApi = null, kbOpenState = false;
+  /* attach the REAL recipe to the sim (duck-typed viewport) */
+  simMeasure();
+  pinApi = pinToViewport($('barPin'), sim);
+  function simMeasure() {
+    var content = $('pcontent');
+    var visible = kbOpenState ? PHONE_H - KB_H : PHONE_H;
+    sim.width = $('phone').clientWidth;
+    sim.height = visible;
+    sim.pageTop = content.scrollTop; sim.pageLeft = 0;
+    sim.offsetTop = 0; sim.offsetLeft = 0;
+  }
+  function simFire() { simMeasure(); sim.dispatchEvent(new Event('resize')); }
+  function openKb() {
+    kbOpenState = true;
+    $('kb').style.height = KB_H + 'px';
+    simFire();
+  }
+  function closeKb() {
+    kbOpenState = false;
+    $('kb').style.height = '0px';
+    simFire();
+  }
+  /* the REAL recipe — duck-typed, unchanged from the code block above */
+  function pinToViewport(bar, v, margin) {
+    margin = margin || 8;
+    var raf = 0;
+    function update() {
+      raf = 0;
+      bar.style.top = (v.offsetTop + v.height - bar.offsetHeight - margin) + 'px';
+      bar.style.left = (v.offsetLeft + margin) + 'px';
+      bar.style.width = (v.width - margin * 2) + 'px';
+    }
+    function onVp() { if (!raf) raf = requestAnimationFrame(update); }
+    v.addEventListener('resize', onVp);
+    v.addEventListener('scroll', onVp);
+    window.addEventListener('scroll', onVp, { passive: true });
+    window.addEventListener('resize', onVp);
+    update();
+    return { update: update };
+  }
+  function renderSim() {
+    $('simDash').innerHTML =
+      dash('sim.height', fmt(sim.height)) + dash('sim.width', fmt(sim.width)) +
+      dash('sim.offsetTop', fmt(sim.offsetTop)) + dash('sim.scale', fmt(sim.scale)) +
+      dash('keyboard', kbOpenState ? 'OPEN (' + KB_H + 'px)' : 'closed');
+    $('phud').textContent = 'vv.h ' + fmt(sim.height);
+    $('phud').style.fontSize = (13 / sim.scale) + 'px';
+  }
+  function renderBars() {
+    var phone = $('phone'), pr = phone.getBoundingClientRect();
+    function rel(id) {
+      var r = $(id).getBoundingClientRect();
+      return { top: r.top - pr.top, bottom: r.bottom - pr.top, h: r.height };
+    }
+    var nat = rel('barNat'), pin = rel('barPin'), kb = kbOpenState ? { top: PHONE_H - KB_H } : null;
+    $('barsDash').innerHTML =
+      (kb ? dash('keyboard top', fmt(kb.top)) : dash('keyboard', 'closed')) +
+      dash('native-fixed bottom', fmt(nat.bottom)) +
+      dash('pinned bottom', fmt(pin.bottom)) +
+      dash('layout height', fmt(PHONE_H));
+  }
+  $('kbOpen').addEventListener('click', openKb);
+  $('kbClose').addEventListener('click', closeKb);
+  $('pcontent').addEventListener('scroll', function () { simMeasure(); sim.dispatchEvent(new Event('scroll')); renderSim(); });
+
+  /* ---------- §7 virtual keyboard ---------- */
+  function vkRect(vk) {
+    return typeof vk.boundingRect === 'function' ? vk.boundingRect() : vk.boundingRect;
+  }
+  function renderVk() {
+    var vk = navigator.virtualKeyboard;
+    if (!vk) { $('vkDash').innerHTML = dash('navigator.virtualKeyboard', 'undefined — Firefox/Safari'); return; }
+    var r = vkRect(vk);
+    var shape = typeof vk.boundingRect === 'function' ? 'method()' : 'ATTRIBUTE (DOMRect)';
+    $('vkDash').innerHTML =
+      dash('boundingRect shape', shape + (shape.indexOf('ATTRIBUTE') === 0 ? ' — docs say method, engine ships property' : '')) +
+      dash('boundingRect', '{x:' + r.x + ', y:' + r.y + ', w:' + r.width + ', h:' + r.height + '}') +
+      dash('overlaysContent', String(vk.overlaysContent)) +
+      dash('ongeometrychange', typeof vk.ongeometrychange);
+  }
+  $('vkOverlayOn').addEventListener('click', function () { var vk = navigator.virtualKeyboard; if (vk) { vk.overlaysContent = true; renderVk(); } });
+  $('vkOverlayOff').addEventListener('click', function () { var vk = navigator.virtualKeyboard; if (vk) { vk.overlaysContent = false; renderVk(); } });
+  $('vkShow').addEventListener('click', function () { var vk = navigator.virtualKeyboard; if (vk) { try { if (typeof vk.show === 'function') vk.show(); } catch (err) { logEv('wine', 'vk.show() → ' + err.name); } renderVk(); } });
+  $('vkHide').addEventListener('click', function () { var vk = navigator.virtualKeyboard; if (vk) { try { if (typeof vk.hide === 'function') vk.hide(); } catch (err) { logEv('wine', 'vk.hide() → ' + err.name); } renderVk(); } });
+
+  /* ---------- §8 meta + units ---------- */
+  var META0 = document.querySelector('meta[name=viewport]').getAttribute('content');
+  function readMeta() {
+    var c = document.querySelector('meta[name=viewport]').getAttribute('content');
+    $('metaRead').textContent = '<meta name="viewport" content="' + c + '">';
+  }
+  $('iwRadios').addEventListener('change', function (e) {
+    var v = e.target.value;
+    var c = META0;
+    if (v !== 'none') c = META0 + ', interactive-widget=' + v;
+    document.querySelector('meta[name=viewport]').setAttribute('content', c);
+    readMeta(); R.metaSet = v;
+  });
+  function renderUnits() {
+    function px(id) { return $(id).getBoundingClientRect().height; }
+    $('unitRead').textContent =
+      'svh ' + fmt(px('uSvh')) + 'px · lvh ' + fmt(px('uLvh')) + 'px · dvh ' + fmt(px('uDvh')) +
+      'px · vv.height ' + fmt(vv.height) + 'px · innerHeight ' + fmt(innerHeight) + 'px';
+    if (R.dvh0 === null) R.dvh0 = px('uDvh');
+    R.dvhNow = px('uDvh'); R.svhNow = px('uSvh'); R.lvhNow = px('uLvh');
+  }
+
+  /* ---------- §9 zoom ---------- */
+  function updZoom() {
+    var s = parseFloat($('zoomSlider').value);
+    sim.scale = s;
+    $('zoomRead').textContent = 'scale ' + s.toFixed(1);
+    var zh = $('zhud');
+    zh.style.fontSize = (13 / sim.scale) + 'px';
+    zh.textContent = 'HUD ' + fmt(13 / sim.scale) + 'px';
+    $('zoomDash').innerHTML =
+      dash('sim.scale', fmt(sim.scale)) + dash('real vv.scale', fmt(vv.scale)) +
+      dash('HUD computed font', getComputedStyle(zh).fontSize) + dash('devicePixelRatio', String(devicePixelRatio));
+    renderSim();
+  }
+  $('zoomSlider').addEventListener('input', updZoom);
+
+  /* ---------- chips: static ---------- */
+  function staticChips() {
+    chip('c-exists', vv ? 'ok' : 'fail', vv ? 'vv exists ✓' : 'vv MISSING');
+    chip('c-et', (vv && vv instanceof EventTarget) ? 'ok' : 'fail', 'instanceof EventTarget ' + (vv instanceof EventTarget));
+    var props = ['width', 'height', 'offsetLeft', 'offsetTop', 'pageLeft', 'pageTop', 'scale'];
+    var badP = props.filter(function (p) { return typeof vv[p] !== 'number' || !isFinite(vv[p]) || vv[p] < 0; });
+    chip('c-numeric', badP.length ? 'fail' : 'ok', '7 props finite ≥ 0' + (badP.length ? ' — bad: ' + badP.join() : ''));
+    chip('c-scale1', vv.scale === 1 ? 'ok' : 'warn', 'scale ' + fmt(vv.scale) + ' at rest');
+    chip('c-offset0', (vv.offsetLeft === 0 && vv.offsetTop === 0) ? 'ok' : 'warn', 'offsets 0/' + fmt(vv.offsetLeft) + ',' + fmt(vv.offsetTop));
+    chip('c-le', vv.width <= innerWidth + 0.5 ? 'ok' : 'fail', 'vv.width ≤ innerWidth (Δ' + fmt(innerWidth - vv.width) + ')');
+    chip('c-leh', vv.height <= innerHeight + 0.5 ? 'ok' : 'fail', 'vv.height ≤ innerHeight (Δ' + fmt(innerHeight - vv.height) + ')');
+    var dc = vv.width - document.documentElement.clientWidth;
+    chip('c-cw', Math.abs(dc) < 1 ? 'ok' : 'warn', 'vv.width − clientWidth = ' + fmt(dc) + 'px (' + (Math.abs(dc) < 1 ? 'equal — overlay or no scrollbar' : 'classic scrollbar gap') + ')');
+    if (R.kidAck) {
+      chip('c-iframe', Math.abs(R.kid.w - R.kid.cw) <= 1 ? 'ok' : 'fail', 'child vv.width ' + fmt(R.kid.w) + ' ≡ clientWidth ' + fmt(R.kid.cw));
+      chip('c-iframe-h', Math.abs(R.kid.h - R.kid.ch) <= 1 ? 'ok' : 'fail', 'child vv.height ' + fmt(R.kid.h) + ' ≡ clientHeight ' + fmt(R.kid.ch));
+    } else {
+      chip('c-iframe', 'skip', 'child report pending'); chip('c-iframe-h', 'skip', 'child report pending');
+    }
+    chip('c-scrollend-sup', supSend ? 'ok' : 'warn', 'onscrollend in vv: ' + supSend + (supSend ? ' (Ch 126+/FF 150+)' : ' (Safari — debounce fallback)'));
+    chip('c-dvh', supDvh ? 'ok' : 'fail', 'CSS.supports dvh: ' + !!supDvh);
+    var sl = CSS.supports('height', '1svh') && CSS.supports('height', '1lvh');
+    chip('c-svhlvh', sl ? 'ok' : 'warn', 'svh+lvh: ' + sl);
+    var vk = navigator.virtualKeyboard;
+    chip('c-vk-present', vk ? 'ok' : 'warn', "'virtualKeyboard' in navigator: " + !!vk + (vk ? ' (Chromium)' : ' (FF/SF ✗ — documented)'));
+    if (vk) {
+      /* LIVE FINDING (Chrome/150): vk.boundingRect is a readonly DOMRect ATTRIBUTE —
+         MDN/BCD document a boundingRect() METHOD. Docs-vs-engine drift, encoded honestly. */
+      var isAttr = typeof vk.boundingRect !== 'function';
+      var need = ['show', 'hide', 'overlaysContent', 'ongeometrychange'];
+      var missing = need.filter(function (k) { return !(k in vk); });
+      chip('c-vk-surface', missing.length ? 'warn' : 'ok', 'vk surface: ' + need.join(', ') + ' + boundingRect-as-' + (isAttr ? 'attribute' : 'method') + (missing.length ? ' missing ' + missing.join() : ''));
+      try {
+        var r0 = vkRect(vk);
+        var shapeOk = ['x', 'y', 'width', 'height'].every(function (k) { return k in r0; });
+        chip('c-vk-rect', shapeOk ? 'ok' : 'fail', 'boundingRect {' + r0.x + ',' + r0.y + ',' + r0.width + ',' + r0.height + '} as ' + (isAttr ? 'ATTRIBUTE — MDN says method()' : 'method()'));
+        vk.overlaysContent = true;
+        var rt = vk.overlaysContent === true;
+        vk.overlaysContent = false;
+        chip('c-vk-overlay', rt ? 'ok' : 'fail', 'overlaysContent round-trip: ' + rt);
+      } catch (err) { chip('c-vk-rect', 'fail', 'boundingRect threw ' + err.name); chip('c-vk-overlay', 'fail', 'overlay set threw ' + err.name); }
+      var geoOk = true;
+      try { vk.addEventListener('geometrychange', function () {}); } catch (err) { geoOk = false; }
+      chip('c-vk-geo', geoOk ? 'ok' : 'fail', 'geometrychange addEventListener + ongeometrychange: ' + geoOk);
+    } else {
+      ['c-vk-surface', 'c-vk-rect', 'c-vk-overlay', 'c-vk-geo'].forEach(function (id) { chip(id, 'warn', 'VirtualKeyboard absent (FF/SF)'); });
+    }
+  }
+
+  /* ---------- chips: scroll probes ---------- */
+  function waitEv(target, name, ms) {
+    return new Promise(function (res) {
+      var done = false;
+      function h() { if (done) return; done = true; target.removeEventListener(name, h); res(true); }
+      target.addEventListener(name, h);
+      setTimeout(function () { if (!done) { done = true; target.removeEventListener(name, h); res(false); } }, ms || 1400);
+    });
+  }
+  async function scrollProbes() {
+    var before = R.counters.vvScroll + R.counters.winScroll;
+    var endP = supSend ? waitEv(vv, 'scrollend', 1600) : Promise.resolve(false);
+    window.scrollTo(0, 380);
+    await new Promise(function (r) { setTimeout(r, 260); });
+    var dY = Math.abs(vv.pageTop - scrollY);
+    chip('c-pagey', dY <= 1 ? 'ok' : 'fail', 'pageTop ' + fmt(vv.pageTop) + ' ≡ scrollY ' + fmt(scrollY) + ' (Δ' + fmt(dY) + ')');
+    var ident = Math.abs(vv.pageTop - (scrollY + vv.offsetTop)) <= 1 && Math.abs(vv.pageLeft - (scrollX + vv.offsetLeft)) <= 1;
+    chip('c-identity', ident ? 'ok' : 'fail', 'identity page = scroll + offset holds');
+    var gotEnd = await endP;
+    chip('c-scrollend-ev', gotEnd ? 'ok' : 'warn', gotEnd
+      ? 'scrollend fired after scroll'
+      : 'scrollend ×0 on window scroll (desktop Ch/150 — vv events are visual-only)');
+    var moved = R.counters.vvScroll + R.counters.winScroll - before;
+    /* LIVE FINDING (Chrome/150 desktop): window scrolling does NOT fire the
+       visualViewport scroll event — it is a visual-only event (pinch pan / keyboard).
+       pageTop still READS the new scroll position. Encode the measured truth. */
+    chip('c-scroll-ev', R.counters.vvScroll > 0 ? 'ok' : 'warn',
+      R.counters.vvScroll > 0
+        ? 'vv scroll fired on window scroll ×' + R.counters.vvScroll
+        : 'vv scroll ×0 on window scroll — visual-only event (desktop Ch/150); pageTop still tracks: listen to BOTH');
+    chip('c-win-scroll-ev', R.counters.winScroll > 0 ? 'ok' : 'fail', 'window scroll events ×' + R.counters.winScroll);
+    window.scrollTo(0, 0);
+  }
+
+  /* ---------- chips: sim keyboard ---------- */
+  function simChips() {
+    openKb();
+    return new Promise(function (res) {
+      setTimeout(function () {
+        var pr = $('phone').getBoundingClientRect();
+        var pin = $('barPin').getBoundingClientRect(), nat = $('barNat').getBoundingClientRect();
+        var kbTop = PHONE_H - KB_H;
+        var pinOk = (pin.bottom - pr.top) <= kbTop + 1;
+        chip('c-pin', pinOk ? 'ok' : 'fail', 'pinned bottom ' + fmt(pin.bottom - pr.top) + ' ≤ kb top ' + kbTop);
+        var buried = (nat.bottom - pr.top) > kbTop + 1;
+        chip('c-buried', buried ? 'ok' : 'fail', 'native bottom ' + fmt(nat.bottom - pr.top) + ' > kb top ' + kbTop + ' — BURIED (the trap, proven)');
+        var contentH = $('pcontent').clientHeight;
+        chip('c-layout', contentH > PHONE_H - 100 ? 'ok' : 'fail', 'layout (content) height ' + contentH + 'px — keyboard did NOT relayout');
+        res();
+      }, 420);
+    }).then(function () {
+      R.simFiredOnOpen = true;
+      chip('c-simev', R.simFiredOnOpen ? 'ok' : 'fail', 'sim resize event re-pinned the bar');
+    });
+  }
+
+  /* ---------- chips: zoom (self-driving) ---------- */
+  function zoomChips() {
+    $('zoomSlider').value = '2';
+    updZoom();
+    var zh = $('zhud'); var fs = parseFloat(getComputedStyle(zh).fontSize);
+    chip('c-zoomfont', fs <= 7.1 ? 'ok' : 'fail', 'HUD font ' + fs + 'px at scale 2 (13/2 = 6.5)');
+  }
+
+  /* ---------- chips: meta playground (self-driving) ---------- */
+  function metaChips() {
+    var rc = document.querySelector('#iwRadios input[value=resizes-content]');
+    rc.checked = true;
+    rc.dispatchEvent(new Event('change', { bubbles: true }));
+    var applied = document.querySelector('meta[name=viewport]').getAttribute('content').indexOf('interactive-widget=resizes-content') !== -1;
+    var none = document.querySelector('#iwRadios input[value=none]');
+    none.checked = true;
+    none.dispatchEvent(new Event('change', { bubbles: true }));
+    chip('c-meta', applied ? 'ok' : 'fail', applied ? 'meta rewrite live: interactive-widget=resizes-content set + read back + restored' : 'meta rewrite failed');
+  }
+
+  /* ---------- chips: resize phase (harness-driven) ---------- */
+  function resizeChips() {
+    if (!R.resized) {
+      ['c-vvresize', 'c-winresize', 'c-order', 'c-scale-still', 'c-dvh-track'].forEach(function (id) {
+        chip(id, 'skip', 'pending window resize');
+      });
+      return;
+    }
+    chip('c-vvresize', R.counters.vvResize > 0 ? 'ok' : 'fail', 'vv resize ×' + R.counters.vvResize);
+    chip('c-winresize', R.counters.winResize > 0 ? 'ok' : 'fail', 'window resize ×' + R.counters.winResize);
+    /* LIVE FINDING (Chrome/150): window resize fires BEFORE vv resize */
+    if (R.order.length >= 2) {
+      chip('c-order', 'ok', 'firing order: 1) ' + R.order[0] + '  2) ' + R.order[1]);
+    } else if (R.order.length === 1) {
+      chip('c-order', 'warn', 'only ' + R.order[0] + ' observed so far');
+    } else {
+      chip('c-order', 'skip', 'no order captured');
+    }
+    chip('c-scale-still', vv.scale === 1 ? 'ok' : 'fail', 'scale still ' + fmt(vv.scale) + ' after resize (resize ≠ zoom)');
+    var dd = Math.abs((R.dvhNow || 0) - (R.dvh0 || 0));
+    chip('c-dvh-track', dd >= 40 ? 'ok' : 'warn', 'dvh Δ' + fmt(dd) + 'px across resize');
+  }
+
+  /* ---------- render all + boot ---------- */
+  function renderAll() { renderLayout(); renderVisual(); updAnatomy(); renderSb(); renderUnits(); renderVk(); readMeta(); renderBars(); }
+  renderAnatomy();
+  renderAll(); renderCounters(); updHud(); renderSim(); updZoom();
+  staticChips();
+  scrollProbes().then(function () { return simChips(); }).then(function () { zoomChips(); metaChips(); resizeChips(); R.booted = true; });
+
+  /* resize ack — harness flips this via window resize; we detect by window resize event */
+  window.addEventListener('resize', function () { R.resized = true; setTimeout(function () { resizeChips(); }, 120); }, { capture: true });
+
+  /* ---------- verify harness ---------- */
+  window.__verify = async function () {
+    if (!R.booted) await new Promise(function (r) { setTimeout(r, 900); });
+    resizeChips();
+    var out = { done: 0, ok: 0, warn: 0, fail: 0, skip: 0, failList: [], warnList: [], order: R.order, counters: R.counters };
+    document.querySelectorAll('[data-chip]').forEach(function (el) {
+      out.done++;
+      var s = el.className.replace('chip ', '');
+      if (out[s] !== undefined) out[s]++;
+      if (s === 'fail') out.failList.push(el.getAttribute('data-chip'));
+      if (s === 'warn') out.warnList.push(el.getAttribute('data-chip'));
+    });
+    out.hOverflow = document.scrollingElement.scrollWidth > document.documentElement.clientWidth;
+    out.pageTop = vv.pageTop; out.scale = vv.scale;
+    return out;
+  };
+  window.__vvpResize = function () { R.resized = true; };
+})();
+</script>
+</body>
+</html>
