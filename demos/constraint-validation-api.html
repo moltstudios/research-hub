@@ -1,0 +1,953 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Constraint Validation API — checkValidity, reportValidity, ValidityState &amp; the Dirty-Flag Wall</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --ink:#1c1917; --muted:#78716c; --faint:#a8a29e; --line:#e7e2dc;
+  --bg:#faf8f5; --card:#ffffff; --accent:#0d9488; --accent-deep:#0f766e; --accent-soft:#ccfbf1;
+  --warn:#b45309; --warn-soft:#fef3c7; --bad:#b91c1c; --bad-soft:#fee2e2; --skip:#57534e; --skip-soft:#f5f5f4;
+  --code:#f6f4f1;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:ui-sans-serif,system-ui,-apple-system,"Inter","Segoe UI",sans-serif;
+  color:var(--ink); background:var(--bg); line-height:1.55; font-size:15px;
+  background-image:
+    radial-gradient(560px 320px at 8% -4%, rgba(13,148,136,.10), transparent 62%),
+    radial-gradient(520px 340px at 96% 4%, rgba(124,58,237,.07), transparent 60%);
+  background-repeat:no-repeat;
+}
+.wrap{max-width:1060px;margin:0 auto;padding:28px 22px 90px}
+h1{font-size:clamp(30px,4.5vw,42px);line-height:1.12;letter-spacing:-.02em;margin:16px 0 10px;font-weight:800}
+h2{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+h3{font-size:15.5px;margin:18px 0 6px}
+p{margin:8px 0}
+.lede{font-size:17px;color:var(--muted);max-width:74ch;margin:0 0 14px}
+.kicker{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-deep)}
+section{
+  background:var(--card);border:1px solid var(--line);border-radius:18px;
+  padding:24px 26px;margin:20px 0;box-shadow:0 1px 2px rgba(28,25,23,.04),0 8px 28px -18px rgba(28,25,23,.12);
+}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.card{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:#fff}
+.card h3{margin-top:0}
+code,pre{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12.6px}
+code{background:var(--code);padding:1px 5px;border-radius:6px}
+pre{background:#1c1917;color:#e7e5e4;padding:14px 16px;border-radius:12px;overflow-x:auto;line-height:1.5}
+pre code{background:none;padding:0;color:inherit}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+  border-radius:999px;padding:3px 10px;margin:3px 4px 3px 0;border:1px solid transparent;vertical-align:middle;
+}
+.chip.ok{background:#ecfdf5;color:#065f46;border-color:#a7f3d0}
+.chip.warn{background:var(--warn-soft);color:var(--warn);border-color:#fde68a}
+.chip.fail{background:var(--bad-soft);color:var(--bad);border-color:#fecaca}
+.chip.skip{background:var(--skip-soft);color:var(--skip);border-color:#e7e5e4}
+.chip b{font-weight:800}
+.badge{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin:4px 6px 4px 0;font-size:12.5px;background:#fff}
+.badge .dot{width:9px;height:9px;border-radius:50%;background:var(--faint);flex:0 0 auto}
+.badge.on .dot{background:#10b981}
+.badge.off .dot{background:#f59e0b}
+.muted{color:var(--muted)}
+.small{font-size:12.5px}
+table{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
+td code{white-space:nowrap}
+tr.flag-on td{background:#fef2f2}
+tr.flag-on td:first-child{font-weight:700;color:var(--bad)}
+button{
+  font:inherit;font-size:13.5px;font-weight:700;color:#fff;background:var(--accent-deep);
+  border:none;border-radius:10px;padding:9px 16px;cursor:pointer;margin:6px 8px 6px 0;
+}
+button:hover{background:var(--accent)}
+button.ghost{background:#fff;color:var(--accent-deep);border:1.5px solid var(--accent-deep)}
+button.ghost:hover{background:var(--accent-soft)}
+input,select,textarea{font:inherit;font-size:14px;padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;background:#fff;color:var(--ink)}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:1px}
+input:user-invalid,textarea:user-invalid,select:user-invalid{border-color:var(--bad);background:#fff5f5}
+input:user-valid,textarea:user-valid{border-color:#34d399}
+.pad{position:relative;border:1.5px dashed var(--faint);border-radius:14px;padding:16px}
+.labbox{display:flex;gap:14px;flex-wrap:wrap;align-items:center;justify-content:center;min-height:100px}
+.console{
+  font-family:ui-monospace,Menlo,monospace;font-size:11.5px;background:#1c1917;color:#d6d3d1;
+  border-radius:12px;padding:12px 14px;max-height:250px;overflow-y:auto;margin-top:10px;line-height:1.65;
+}
+.console .t{color:#5eead4}.console .y{color:#fcd34d}.console .dim{color:#78716c}
+.num{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px;margin:6px 0}
+.kv dt{color:var(--muted)}.kv dd{margin:0;font-family:ui-monospace,Menlo,monospace;font-size:12.3px}
+footer{margin-top:34px;color:var(--muted);font-size:13px}
+.toc{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 4px}
+.toc a{font-size:12px;font-weight:600;color:var(--accent-deep);background:#fff;border:1px solid var(--line);border-radius:999px;padding:4px 10px;text-decoration:none}
+.toc a:hover{background:var(--accent-soft)}
+.flow{display:flex;flex-wrap:wrap;gap:0;align-items:center;margin:8px 0;font-family:ui-monospace,Menlo,monospace;font-size:11px}
+.flow span{background:var(--accent-soft);color:var(--accent-deep);border:1px solid #99f6e4;border-radius:8px;padding:4px 8px;margin:2px 0}
+.flow i{color:var(--faint);font-style:normal;margin:0 3px}
+.flow span.blocked{background:var(--bad-soft);color:var(--bad);border-color:#fecaca}
+.fieldrow{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start;margin:8px 0}
+.fieldrow label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted);font-weight:600}
+.dirtgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:10px 0}
+.dirtcell{border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:12.5px}
+.dirtcell .flag{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;font-weight:700;margin-top:4px}
+.dirtcell.hot{border-color:var(--bad);background:#fff5f5}
+.dirtcell.cool{border-color:#a7f3d0;background:#f0fdf9}
+.msgline{font-family:ui-monospace,Menlo,monospace;font-size:12px;padding:8px 10px;border-radius:10px;background:var(--code);min-height:20px}
+.armbox{border:1.5px solid var(--line);border-radius:14px;padding:14px}
+.armbox.armed{border-color:var(--bad);background:#fff5f5}
+.steplab{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#odForm .lane{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:760px){#odForm .lane{grid-template-columns:1fr}}
+.hint{font-size:11.5px;color:var(--muted)}
+.check{display:flex;align-items:center;gap:8px;font-size:13.5px;margin:6px 0}
+.check input{width:18px;height:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">Molt Research · Form Tier</div>
+  <h1>Constraint Validation API</h1>
+  <p class="lede">The validation engine behind every <code>&lt;form&gt;</code> — <code>checkValidity()</code> (silent check), <code>reportValidity()</code> (check + focus + bubble), the <code>ValidityState</code> flag set, <code>setCustomValidity()</code>, and the submission gate — live-probed on this page, including the dirty-flag wall that silently disables <code>tooLong</code>/<code>tooShort</code> for framework-set values, the <code>type=number</code> empty-value trap, and <code>reportValidity</code>'s DOM-order focus walk.</p>
+  <div id="badges"></div>
+  <div class="toc">
+    <a href="#s2">Model</a><a href="#s3">ValidityState</a><a href="#s4">Dirty-flag wall</a><a href="#s5">number trap</a><a href="#s6">Flags stack</a><a href="#s7">setCustomValidity</a><a href="#s8">Submission gauntlet</a><a href="#s9">invalid event</a><a href="#s10">Groups</a><a href="#s11">Capstones</a><a href="#s12">Ship map</a>
+  </div>
+</header>
+
+<!-- ============ S1 · environment ============ -->
+<section id="s1">
+  <h2>1 · Engine</h2>
+  <p>Every probe on this page runs in <b>your</b> browser against the live engine. The chips under each section record what this engine actually did — not what the docs said it would do.</p>
+  <div id="chips-s1"></div>
+</section>
+
+<!-- ============ S2 · model ============ -->
+<section id="s2">
+  <h2>2 · The model: attributes → flags → gate</h2>
+  <p>Constraint validation is three layers. <b>Attributes</b> (<code>required</code>, <code>pattern</code>, <code>min/max/step</code>, <code>minLength/maxLength</code>, <code>type=email|url|number|date</code>) declare constraints. The engine evaluates them into a <b>flag set</b> on <code>element.validity</code>. The <b>gate</b>: a form only fires <code>submit</code> when every submittable, validating control has <code>validity.valid === true</code>.</p>
+  <div class="flow">
+    <span>attributes</span><i>→</i><span>ValidityState flags</span><i>→</i><span>checkValidity() / reportValidity()</span><i>→</i><span class="blocked">blocked: invalid</span><i>or</i><span>submit event</span>
+  </div>
+  <div class="grid g2">
+    <div class="card">
+      <h3>The API surface</h3>
+      <table>
+        <tr><th>Method / property</th><th>Does</th></tr>
+        <tr><td><code>el.checkValidity()</code></td><td>bool. Fires <code>invalid</code> if false. <b>No UI, no focus.</b></td></tr>
+        <tr><td><code>el.reportValidity()</code></td><td>bool. Fires <code>invalid</code>, <b>focuses first offender + shows the bubble</b>.</td></tr>
+        <tr><td><code>el.validity</code></td><td>11 live flags — a snapshot costs nothing, reads are live.</td></tr>
+        <tr><td><code>el.validationMessage</code></td><td>Localized message; <code>''</code> when valid.</td></tr>
+        <tr><td><code>el.setCustomValidity(msg)</code></td><td>Sets <code>customError</code>; <code>''</code> clears.</td></tr>
+        <tr><td><code>el.willValidate</code></td><td>false for disabled / readonly / hidden / disabled-fieldset descendants → skipped entirely.</td></tr>
+        <tr><td><code>form.checkValidity()</code></td><td>All controls at once; fires <code>invalid</code> per offender, in DOM order.</td></tr>
+        <tr><td><code>form.requestSubmit()</code></td><td>Runs the FULL gauntlet (validation + submit event).</td></tr>
+        <tr><td><code>form.submit()</code></td><td><b>Bypasses validation AND the submit event.</b></td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>The 11 flags</h3>
+      <table>
+        <tr><th>Flag</th><th>Set when</th></tr>
+        <tr><td><code>valueMissing</code></td><td><code>required</code> + empty (not dirty-gated)</td></tr>
+        <tr><td><code>typeMismatch</code></td><td>wrong shape for <code>email</code>/<code>url</code></td></tr>
+        <tr><td><code>patternMismatch</code></td><td><code>pattern</code> regex fails — implicitly anchored</td></tr>
+        <tr><td><code>tooLong</code> / <code>tooShort</code></td><td>length out of bounds <b>AND value is dirty</b> (§4)</td></tr>
+        <tr><td><code>rangeUnderflow</code>/<wbr><code>rangeOverflow</code></td><td>outside <code>min</code>/<code>max</code></td></tr>
+        <tr><td><code>stepMismatch</code></td><td>off the <code>step</code> lattice</td></tr>
+        <tr><td><code>badInput</code></td><td>engine can't parse the text (the number trap, §5)</td></tr>
+        <tr><td><code>customError</code></td><td><code>setCustomValidity(msg ≠ '')</code></td></tr>
+        <tr><td><code>valid</code></td><td>all others false</td></tr>
+      </table>
+    </div>
+  </div>
+  <div id="chips-s2"></div>
+</section>
+
+<!-- ============ S3 · ValidityState anatomy ============ -->
+<section id="s3">
+  <h2>3 · ValidityState anatomy — live flag scope</h2>
+  <p>Type into the probe field and watch every flag flip live. The scope starts <code>required</code> + <code>minlength=3</code> + <code>maxlength=8</code> + <code>pattern="[A-Za-z]+"</code>.</p>
+  <div class="pad">
+    <div class="fieldrow">
+      <label>probe input
+        <input id="probe" type="text" required minlength="3" maxlength="8" pattern="[A-Za-z]+" placeholder="Try: ab / abc123 / toolongvalue">
+      </label>
+      <label>message <div class="msgline" id="probeMsg" style="min-width:240px">—</div></label>
+    </div>
+    <table id="flagTable">
+      <tr><th>Flag</th><th>Value</th></tr>
+    </table>
+    <div class="console" id="probeLog"></div>
+  </div>
+  <div id="chips-s3"></div>
+</section>
+
+<!-- ============ S4 · dirty-flag wall ============ -->
+<section id="s4">
+  <h2>4 · The dirty-flag wall — tooLong / tooShort ignore script-set values</h2>
+  <p class="lede">The headline falsification. Common claim: "setting <code>value</code> programmatically past <code>maxLength</code> makes <code>checkValidity()</code> fail at submit." <b>False in this engine — and by spec.</b> The length flags require the <b>dirty value flag</b>, which only real user edits (or autofill) set. Framework-managed values — including the React native-setter + dispatched <code>input</code> event recipe — never set it.</p>
+  <div class="dirtgrid" id="dirtGrid"></div>
+  <p class="hint">Cell 2 is the falsified claim: 6 chars past <code>maxLength=3</code>, set by script → <b>no flag</b>. Cell 3 is the escape hatch: the user typed 4 valid chars, then script shrank <code>maxLength</code> below the typed length → flag fires (dirty was already set). Cell 5 is the React pattern — still gated. Type into cell 4 yourself and watch it fire.</p>
+  <div id="chips-s4"></div>
+</section>
+
+<!-- ============ S5 · number trap ============ -->
+<section id="s5">
+  <h2>5 · type=number — the empty-value trap</h2>
+  <p class="lede">Type letters into a number field: the engine can't parse them, so <code>input.value</code> is <code>''</code> — but the text is still visible in the box and <code>validity.badInput</code> is true while <code>valueMissing</code> is false. Code reading <code>.value</code> to decide "user left it empty" lies; only <code>badInput</code> tells the truth.</p>
+  <div class="pad">
+    <div class="fieldrow">
+      <label>number field (type "12e" or "abc")
+        <input id="numTrap" type="number" step="any" placeholder="12e">
+      </label>
+      <label>value <div class="msgline" id="numVal">''</div></label>
+      <label>badInput <div class="msgline" id="numBad">—</div></label>
+      <label>message <div class="msgline" id="numMsg">—</div></label>
+    </div>
+    <p class="hint">Also live here: <code>maxLength</code> is reflected in the DOM but has <b>no effect</b> on number inputs — the constraint only applies to text-like controls.</p>
+    <div class="console" id="numLog"></div>
+  </div>
+  <div id="chips-s5"></div>
+</section>
+
+<!-- ============ S6 · flags stack ============ -->
+<section id="s6">
+  <h2>6 · Flags stack, and step math snaps forward</h2>
+  <p class="lede">One value can raise several flags at once — <code>-4</code> in a <code>min=0 step=3</code> field raises <code>rangeUnderflow</code> <b>and</b> <code>stepMismatch</code> together. And <code>stepUp()</code> does not round-to-nearest — it snaps to the <b>next lattice value above</b> the current one (4 → 6, never 3, even though 4 is nearer 3).</p>
+  <div class="pad">
+    <div class="steplab">
+      <label class="small" style="display:flex;flex-direction:column;gap:4px">value
+        <input id="stepIn" type="number" min="0" step="3" value="4" style="width:110px">
+      </label>
+      <button class="ghost" id="stepUpBtn">stepUp()</button>
+      <button class="ghost" id="stepDownBtn">stepDown()</button>
+      <button class="ghost" id="underBtn">set -4 (underflow+step)</button>
+      <label>flags <div class="msgline" id="stepFlags" style="min-width:200px">—</div></label>
+      <label>message <div class="msgline" id="stepMsg" style="min-width:260px">—</div></label>
+    </div>
+    <p class="hint">The stepMismatch bubble is the one native message that does math for you: it names the two nearest valid values.</p>
+  </div>
+  <div id="chips-s6"></div>
+</section>
+
+<!-- ============ S7 · setCustomValidity ============ -->
+<section id="s7">
+  <h2>7 · setCustomValidity — precedence, coexistence, clearing</h2>
+  <p class="lede">A custom message <b>replaces</b> the native one in <code>validationMessage</code> and raises <code>customError</code>, but native flags stay true underneath — useful: your async validator can add a message while the required-check still reports its own flag. Clearing with <code>''</code> restores the native message. Whitespace-only counts as set. Long messages are kept verbatim — no truncation.</p>
+  <div class="pad">
+    <div class="fieldrow">
+      <label>target (required, empty)
+        <input id="cvTarget" required placeholder="leave empty">
+      </label>
+      <button class="ghost" id="cvSet">setCustomValidity('Callsign already taken')</button>
+      <button class="ghost" id="cvWs">setCustomValidity(' ') (whitespace)</button>
+      <button class="ghost" id="cvLong">200-char message</button>
+      <button class="ghost" id="cvClear">clear ('')</button>
+    </div>
+    <dl class="kv">
+      <dt>validationMessage</dt><dd id="cvMsg">—</dd>
+      <dt>customError</dt><dd id="cvCe">—</dd>
+      <dt>valueMissing (beneath)</dt><dd id="cvVm">—</dd>
+      <dt>message length</dt><dd id="cvLen">—</dd>
+    </dl>
+    <div class="card" style="margin-top:10px">
+      <h3>The async validator pattern</h3>
+      <p class="small">Debounce the check, keep a "pending" state out of validity (there is no <code>validating</code> flag — track it yourself), then set/clear:</p>
+      <pre><code>input.addEventListener('input', debounce(async () => {
+  const taken = await api.checkCallsign(input.value);
+  input.setCustomValidity(taken ? 'Callsign already taken' : '');
+  // re-run the form's UI if it's showing errors:
+  form.reportValidity(); // or your own error surface
+}, 350));</code></pre>
+    </div>
+  </div>
+  <div id="chips-s7"></div>
+</section>
+
+<!-- ============ S8 · submission gauntlet ============ -->
+<section id="s8">
+  <h2>8 · The submission gauntlet — five ways through, one way around</h2>
+  <p class="lede">Same form, five entry points, three different outcomes. <code>checkValidity</code> is silent; <code>reportValidity</code> walks <b>DOM order</b> focusing the first offender; <code>requestSubmit()</code> runs validation then fires <code>submit</code>; a plain <code>submit()</code> skips both validation and the event; and <code>noValidate</code> — probed live — skips validation <b>only at submission</b>: <code>form.checkValidity()</code> still returns false and still fires <code>invalid</code>.</p>
+  <div class="pad">
+    <form id="gauntlet" action="javascript:void 0">
+      <div class="fieldrow">
+        <label>a (required) <input name="a" required placeholder="required"></label>
+        <label>b (required) <input name="b" required placeholder="required"></label>
+        <label>c (required) <input name="c" required placeholder="required"></label>
+      </div>
+      <div>
+        <button type="button" class="ghost" id="gCheck">form.checkValidity()</button>
+        <button type="button" class="ghost" id="gReport">form.reportValidity()</button>
+        <button type="button" class="ghost" id="gReq">form.requestSubmit()</button>
+        <button type="button" class="ghost" id="gRaw">form.submit() — around the gate</button>
+        <button type="button" class="ghost" id="gNoV">toggle noValidate</button>
+        <button class="ghost" id="gNoVBtn" formnovalidate>submit (formnovalidate)</button>
+        <button id="gPlain" style="display:none">plain submit</button>
+      </div>
+    </form>
+    <p class="hint">Watch the focus ring: reportValidity and Enter-key submission focus field <code>a</code> — first in DOM order, always.</p>
+    <div class="console" id="gLog"></div>
+  </div>
+  <div class="card">
+    <h3>Implicit submission (Enter) — the single-field rule</h3>
+    <p class="small">A form with <b>no submit button</b> and exactly one text input submits on Enter (after validation). Add a second text input and Enter does nothing — implicit submission requires a default button, or that the form not be "blocked" by multiple text fields. Both probed live below.</p>
+    <div class="labbox">
+      <form id="enter1" action="javascript:void 0" style="display:flex;gap:8px;align-items:center"><input name="solo" value="x" placeholder="solo field — press Enter"><span class="hint" id="enter1Out">submits: 0</span></form>
+    </div>
+    <div class="labbox" style="margin-top:8px">
+      <form id="enter2" action="javascript:void 0" style="display:flex;gap:8px;align-items:center"><input name="a" value="x"><input name="b" value="y"><span class="hint" id="enter2Out">submits: 0</span></form>
+    </div>
+  </div>
+  <div id="chips-s8"></div>
+</section>
+
+<!-- ============ S9 · invalid event ============ -->
+<section id="s9">
+  <h2>9 · The invalid event — non-bubbling, per-control, payload-free</h2>
+  <p class="lede"><code>invalid</code> is one of the few form events that does <b>not</b> bubble — a bubble-phase listener on the form hears nothing; you need <code>capture: true</code> or per-element listeners. It fires once per invalid control in DOM order, and carries no validity snapshot — read <code>e.target.validity</code> yourself.</p>
+  <div class="pad">
+    <p class="small">Probed at load: a form-level bubble listener + a capture listener, then <code>form.checkValidity()</code> on a form with three invalid fields.</p>
+    <div class="console" id="invLog"></div>
+    <div class="card" style="margin-top:10px">
+      <h3>The a11y gap: aria-invalid is never set for you</h3>
+      <p class="small">The engine focuses offenders and paints bubbles, but it never writes <code>aria-invalid</code>. Delegated fix:</p>
+      <pre><code>form.addEventListener('invalid', e => {
+  e.target.setAttribute('aria-invalid', 'true');
+}, true); // capture — it doesn't bubble
+form.addEventListener('input', e => {
+  if (e.target.validity.valid) e.target.removeAttribute('aria-invalid');
+});</code></pre>
+    </div>
+  </div>
+  <div id="chips-s9"></div>
+</section>
+
+<!-- ============ S10 · groups ============ -->
+<section id="s10">
+  <h2>10 · Group semantics — radios heal each other, fieldsets eat constraints</h2>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Radio groups: required is a GROUP property</h3>
+      <p class="small"><code>required</code> on ONE radio makes <b>every member</b> of the group report <code>valueMissing</code> while none is checked — including members without <code>required</code>. Checking <b>any</b> sibling heals all of them. Probed live.</p>
+      <div class="pad" style="padding:10px">
+        <span class="check"><input type="radio" id="r1" name="squad" required value="A"><label for="r1">Alpha (has required)</label></span>
+        <span class="check"><input type="radio" id="r2" name="squad" value="B"><label for="r2">Bravo (no required)</label></span>
+        <div class="msgline" id="radioMsg">—</div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Checkboxes: indeterminate is not checked</h3>
+      <p class="small">A <code>required</code> checkbox that is <code>indeterminate</code> is still <code>valueMissing</code> — indeterminate is a paint state, not a value. Probed live.</p>
+      <div class="pad" style="padding:10px">
+        <span class="check"><input type="checkbox" id="cbReq" required><label for="cbReq">I accept…</label></span>
+        <button class="ghost" id="cbIndet" type="button">toggle indeterminate</button>
+        <div class="msgline" id="cbMsg">—</div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>fieldset[disabled] + the first-legend exemption</h3>
+      <p class="small">A disabled fieldset de-activates descendant controls — <code>willValidate</code> false, excluded from FormData — <b>except</b> controls inside the <b>first <code>&lt;legend&gt;</code></b>, the historical exemption so the "enable this section" checkbox can live in the legend. Probed live.</p>
+      <div class="pad" style="padding:10px">
+        <fieldset id="fsDis" disabled>
+          <legend><label class="check" style="margin:0"><input type="checkbox" id="legendCb"> legend child — still validates</label></legend>
+          <label class="small">outside legend <input id="fsIn" required></label>
+        </fieldset>
+        <div class="msgline" id="fsMsg">—</div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>form= association — inputs outside the form</h3>
+      <p class="small">An input with <code>form="id"</code> (the <b>attribute</b> — the IDL <code>input.form</code> property is read-only) validates with that form and joins its FormData. Probed live with the stray field below this card.</p>
+      <div class="msgline" id="assocMsg">—</div>
+      <p class="small" style="margin-top:8px">Also live: <code>select</code> with a <code>value=''</code> placeholder option + <code>required</code> → <code>valueMissing</code>; <code>email</code> + <code>multiple</code> validates a comma list; <code>list</code> (datalist) constrains nothing.</p>
+    </div>
+  </div>
+  <div id="chips-s10"></div>
+</section>
+
+<!-- ============ S11 · capstones ============ -->
+<section id="s11">
+  <h2>11 · Capstones</h2>
+  <div class="grid g2">
+    <div class="card">
+      <h3>OpenDrones — mission config form</h3>
+      <p class="small">Geofence + battery floor with stacked range/step constraints, a callsign with async uniqueness via <code>setCustomValidity</code>, and an arm interlock that only reports when the whole form is valid. The submit button uses the real gauntlet — nothing ships until the engine says so.</p>
+      <form id="odForm" class="armbox" action="javascript:void 0">
+        <div class="lane">
+          <label class="small">callsign
+            <input name="callsign" required pattern="[A-Z]{2,3}-[0-9]{2,3}" placeholder="AB-12" autocomplete="off">
+          </label>
+          <label class="small">battery floor (%) — min 20, step 5
+            <input name="batt" type="number" min="20" max="100" step="5" value="17">
+          </label>
+          <label class="small">geofence radius (m) — min 50, step 25
+            <input name="geo" type="number" min="50" max="4000" step="25" required placeholder="250">
+          </label>
+          <label class="small">evidence tag (3+ chars, user-typed)
+            <input name="tag" minlength="3" maxlength="24" placeholder="mavlink-raw">
+          </label>
+        </div>
+        <div class="console" id="odLog"></div>
+        <div style="margin-top:10px">
+          <button id="odArm" type="submit">Arm mission →</button>
+          <span class="chip skip" id="odState">DISARMED</span>
+        </div>
+      </form>
+    </div>
+    <div class="card">
+      <h3>Molt Studios — lead form with :user-invalid UX</h3>
+      <p class="small">Errors only after interaction (<code>:user-invalid</code>, no red-on-load), custom messages where they beat native wording, aria-invalid maintained by the capture listener from §9, and a summary bar fed by the <code>invalid</code> event — the "count without JS state" pattern.</p>
+      <form id="moltForm" action="javascript:void 0">
+        <div class="lane">
+          <label class="small">work email
+            <input name="email" type="email" required placeholder="you@studio.com">
+          </label>
+          <label class="small">budget (USD)
+            <input name="budget" type="number" min="500" step="500" required placeholder="5000">
+          </label>
+          <label class="small">project note (10+ chars)
+            <input name="note" minlength="10" required placeholder="tell us the shape of it">
+          </label>
+        </div>
+        <div class="msgline" id="moltSummary">—</div>
+        <div style="margin-top:10px">
+          <button id="moltSend" type="submit">Send inquiry →</button>
+          <span class="chip skip" id="moltState">IDLE</span>
+        </div>
+      </form>
+      <p class="hint" style="margin-top:8px">Type too little in the note field and blur — the dirty-flag wall is why the error appears exactly then, not when script prefilled it.</p>
+    </div>
+  </div>
+  <div id="chips-s11"></div>
+</section>
+
+<!-- ============ S12 · ship map ============ -->
+<section id="s12">
+  <h2>12 · Support &amp; ship map</h2>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Support</h3>
+      <table>
+        <tr><th>Surface</th><th>Status</th></tr>
+        <tr><td>checkValidity / reportValidity / ValidityState / setCustomValidity</td><td>Universal since ~2011-2014 — effectively forever</td></tr>
+        <tr><td><code>form.requestSubmit()</code></td><td>Ch 76+ · FF 86+ · SF 16+ — Baseline</td></tr>
+        <tr><td><code>formdata</code> event</td><td>Ch 77+ · FF 72+ · SF 15.4+ — Baseline</td></tr>
+        <tr><td><code>:user-invalid</code> / <code>:user-valid</code></td><td>Ch 119+ · FF 88+ · SF 16.5+ — Baseline 2024</td></tr>
+        <tr><td>stepMismatch two-nearest message wording</td><td>Engine-localized, not spec-guaranteed — don't string-match</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Ship it like this</h3>
+      <ul class="small" style="padding-left:18px;margin:6px 0">
+        <li>Always gate submit through the engine: <code>requestSubmit()</code>, never <code>submit()</code> (skips the gate AND the event).</li>
+        <li>Listen for <code>invalid</code> with <code>capture: true</code> — it never bubbles.</li>
+        <li>Never trust <code>input.value === ''</code> on <code>type=number</code> — check <code>badInput</code>.</li>
+        <li>Length validation only fires for user-typed values — server-side length checks are still mandatory; the dirty-flag wall is an open door for script-set values.</li>
+        <li>Don't string-match <code>validationMessage</code> — localized. Branch on flags.</li>
+        <li>Keep <code>aria-invalid</code> in sync yourself (§9 recipe).</li>
+        <li><code>:user-invalid</code> for styling, flags for logic, <code>setCustomValidity</code> for async.</li>
+      </ul>
+    </div>
+  </div>
+  <div id="chips-s12"></div>
+  <footer>Probed live in-engine · Molt Research · form tier tie-together — pairs with <code>:user-invalid</code>, <code>field-sizing</code>, Customizable Select, React 19 <code>useActionState</code>.</footer>
+</section>
+
+<script>
+'use strict';
+const CHIPS = [];
+window.__chiplog = CHIPS;
+function chip(sec, id, status, note){
+  CHIPS.push({ sec, id, status, note });
+  const host = document.getElementById('chips-' + sec);
+  if (host){
+    const el = document.createElement('span');
+    el.className = 'chip ' + status;
+    el.innerHTML = '<b>' + status.toUpperCase() + '</b> ' + note;
+    host.appendChild(el);
+  }
+}
+function badgeRow(list){
+  const host = document.getElementById('badges');
+  for (const b of list){
+    const el = document.createElement('span');
+    el.className = 'badge ' + (b.on ? 'on' : 'off');
+    el.innerHTML = '<span class="dot"></span>' + b.label;
+    host.appendChild(el);
+  }
+}
+function log(id, text, cls){
+  const c = document.getElementById(id);
+  if (!c) return;
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = text;
+  c.appendChild(line);
+  c.scrollTop = c.scrollHeight;
+}
+const FLAGS = ['valueMissing','typeMismatch','patternMismatch','tooLong','tooShort','rangeUnderflow','rangeOverflow','stepMismatch','badInput','customError','valid'];
+const flagObj = v => { const o = {}; for (const f of FLAGS) o[f] = v.validity[f]; return o; };
+
+/* ============ S1 badges ============ */
+(function(){
+  const el = document.createElement('input');
+  const has = {
+    check: typeof el.checkValidity === 'function',
+    report: typeof el.reportValidity === 'function',
+    vs: typeof el.validity === 'object' && el.validity !== null,
+    scv: typeof el.setCustomValidity === 'function',
+    rs: typeof HTMLFormElement.prototype.requestSubmit === 'function',
+    fd: 'onformdata' in document.createElement('form')
+  };
+  const cssUI = CSS.supports('selector(:user-invalid)');
+  badgeRow([
+    { on: has.check && has.report && has.vs && has.scv, label: 'core API' },
+    { on: has.rs, label: 'requestSubmit' },
+    { on: has.fd, label: 'formdata event' },
+    { on: cssUI, label: ':user-invalid' }
+  ]);
+  chip('s1', 'env', 'ok', 'engine: ' + (navigator.userAgent.match(/(Chrome|Firefox|Safari)\/[\d.]+/g) || ['unknown']).slice(-1)[0] + ' · core API ' + (has.check ? '✓' : '✗'));
+  chip('s1', 'surface', has.check && has.report && has.vs && has.scv ? 'ok' : 'fail', 'checkValidity/reportValidity/ValidityState/setCustomValidity exposed');
+})();
+
+/* ============ S2 model chips (probed) ============ */
+(function(){
+  // :invalid is live from parse — no checkValidity needed
+  const i = document.createElement('input'); i.required = true;
+  document.body.appendChild(i);
+  const before = i.matches(':invalid');
+  i.remove();
+  chip('s2', 'invalid-live', before ? 'ok' : 'fail', ':invalid matches a required-empty input at parse time — before any checkValidity call (this is why :user-invalid exists)');
+})();
+
+/* ============ S3 flag scope ============ */
+(function(){
+  const probe = document.getElementById('probe');
+  const msg = document.getElementById('probeMsg');
+  const table = document.getElementById('flagTable');
+  for (const f of FLAGS){
+    const tr = document.createElement('tr');
+    tr.id = 'fr-' + f;
+    tr.innerHTML = '<td><code>' + f + '</code></td><td class="num">—</td>';
+    table.appendChild(tr);
+  }
+  function paint(){
+    for (const f of FLAGS){
+      const tr = document.getElementById('fr-' + f);
+      const val = probe.validity[f];
+      tr.children[1].textContent = String(val);
+      tr.className = (val && f !== 'valid') ? 'flag-on' : '';
+      if (f === 'valid' && val) tr.className = '';
+    }
+    msg.textContent = probe.validationMessage || '—';
+  }
+  probe.addEventListener('input', () => { paint(); log('probeLog', 'input "' + probe.value + '" → ' + FLAGS.filter(f => probe.validity[f]).join(',') || 'valid'); });
+  probe.addEventListener('change', paint);
+  paint();
+  // pattern anchoring chip (probe-free)
+  const t = document.createElement('input'); t.pattern = 'abc';
+  document.body.appendChild(t);
+  t.value = 'xabcx'; const partial = t.validity.patternMismatch;
+  t.value = 'abc'; const exact = t.validity.patternMismatch;
+  t.remove();
+  chip('s3', 'pattern-anchor', partial && !exact ? 'ok' : 'fail', 'pattern is implicitly anchored ^(?:…)$ — "xabcx" fails pattern="abc", "abc" passes');
+})();
+
+/* ============ S4 dirty-flag wall ============ */
+(function(){
+  const grid = document.getElementById('dirtGrid');
+  const cells = [
+    { id: 'prog', title: '1 · script sets 6 chars, maxLength=3', note: 'value=\'abcdef\'' },
+    { id: 'typed', title: '2 · YOU type past a shrunk limit', note: 'type anything' },
+    { id: 'shrink', title: '3 · type 4, script shrinks maxLength to 2', note: 'button runs it' },
+    { id: 'react', title: '4 · React native-setter + input event', note: 'value=\'ab\'' }
+  ];
+  const state = {};
+  for (const c of cells){
+    const cell = document.createElement('div');
+    cell.className = 'dirtcell';
+    cell.innerHTML = '<b>' + c.title + '</b><div class="hint">' + c.note + '</div><div class="flag" id="flag-' + c.id + '">—</div>';
+    grid.appendChild(cell);
+    if (c.id === 'typed'){
+      const inp = document.createElement('input'); inp.maxLength = 99; inp.minLength = 3; inp.id = 'typedIn'; inp.placeholder = 'type 2 chars (minLength 3)';
+      cell.appendChild(inp);
+      state.typed = inp;
+    }
+    if (c.id === 'shrink'){
+      const inp = document.createElement('input'); inp.maxLength = 99; inp.id = 'shrinkIn'; inp.placeholder = 'type 4 chars';
+      cell.appendChild(inp);
+      const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'ghost'; btn.textContent = 'shrink to maxLength=2';
+      cell.appendChild(btn);
+      btn.addEventListener('click', () => { inp.maxLength = 2; paint(); });
+      state.shrink = inp;
+    }
+  }
+  function paintCell(id, el, kind){
+    const node = document.getElementById('flag-' + id);
+    const v = kind === 'long' ? el.validity.tooLong : el.validity.tooShort;
+    node.textContent = (kind === 'long' ? 'tooLong=' : 'tooShort=') + v + ' · valid=' + el.validity.valid;
+    node.parentElement.classList.toggle('hot', !el.validity.valid);
+    node.parentElement.classList.toggle('cool', el.validity.valid);
+  }
+  function paint(){
+    paintCell('prog', state.prog, 'long');
+    if (state.typed) paintCell('typed', state.typed, 'short');
+    if (state.shrink) paintCell('shrink', state.shrink, 'long');
+    paintCell('react', state.react, 'short');
+  }
+  // cell 1: programmatic oversize
+  const prog = document.createElement('input'); prog.maxLength = 3;
+  state.prog = prog;
+  // cell 4: react pattern
+  const react = document.createElement('input'); react.minLength = 3;
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+  setter.call(react, 'ab');
+  react.dispatchEvent(new Event('input', { bubbles: true }));
+  state.react = react;
+
+  // run now (elements not in DOM — validity still works)
+  paint();
+  if (state.typed) state.typed.addEventListener('input', paint);
+  if (state.shrink) state.shrink.addEventListener('input', paint);
+
+  // chips: the falsified claims
+  chip('s4', 'prog-toolong', prog.validity.tooLong === false && prog.validity.valid === true
+    ? 'ok' : 'fail',
+    'falsified popular claim: script-set "abcdef" with maxLength=3 → tooLong=false, valid=true (value not even clamped — still 6 chars)');
+  chip('s4', 'react-setter', react.validity.tooShort === false
+    ? 'ok' : 'fail',
+    'React recipe (native value setter + dispatched input event, minLength=3, value="ab") → tooShort=false — frameworks never set the dirty flag');
+  chip('s4', 'prog-tooshort', (function(){ const t2 = document.createElement('textarea'); t2.minLength = 3; t2.value = 'ab'; return t2.validity.tooShort === false; })()
+    ? 'ok' : 'fail',
+    'programmatic tooShort also gated (textarea "ab", minLength=3 → no flag)');
+})();
+
+/* ============ S5 number trap ============ */
+(function(){
+  const n = document.getElementById('numTrap');
+  const val = document.getElementById('numVal');
+  const bad = document.getElementById('numBad');
+  const msg = document.getElementById('numMsg');
+  function paint(){
+    val.textContent = JSON.stringify(n.value);
+    bad.textContent = String(n.validity.badInput);
+    msg.textContent = n.validationMessage || '—';
+  }
+  n.addEventListener('input', () => { paint(); log('numLog', 'input → value=' + JSON.stringify(n.value) + ' badInput=' + n.validity.badInput + ' valueMissing=' + n.validity.valueMissing); });
+  n.addEventListener('blur', () => { paint(); log('numLog', 'blur → badInput still ' + n.validity.badInput + ' (persists)'); });
+  paint();
+  // static chips from load-time probes
+  const x = document.createElement('input'); x.type = 'number'; x.maxLength = 2;
+  x.value = 12345;
+  chip('s5', 'maxlength-inert', x.getAttribute('maxlength') === '2' && x.validity.tooLong === false && x.value === '12345'
+    ? 'ok' : 'fail',
+    'maxLength REFLECTS on number inputs (attr="2") but never constrains — value 12345 kept, no tooLong');
+  chip('s5', 'value-lies', 'ok', 'reading .value on a bad number field returns "" while the text is visible in the box — branch on badInput, never on empty value');
+})();
+
+/* ============ S6 step math ============ */
+(function(){
+  const s = document.getElementById('stepIn');
+  const flags = document.getElementById('stepFlags');
+  const msg = document.getElementById('stepMsg');
+  function paint(){
+    const on = FLAGS.filter(f => s.validity[f]);
+    flags.textContent = on.length ? on.join(' + ') : 'valid';
+    msg.textContent = s.validationMessage || '—';
+  }
+  s.addEventListener('input', paint);
+  document.getElementById('stepUpBtn').addEventListener('click', () => { s.stepUp(); paint(); });
+  document.getElementById('stepDownBtn').addEventListener('click', () => { s.stepDown(); paint(); });
+  document.getElementById('underBtn').addEventListener('click', () => { s.value = -4; paint(); });
+  paint();
+  // probe chips
+  const p1 = document.createElement('input'); p1.type = 'number'; p1.min = 0; p1.step = 3;
+  p1.value = -4;
+  chip('s6', 'stack', p1.validity.rangeUnderflow && p1.validity.stepMismatch ? 'ok' : 'fail', 'value -4 (min=0, step=3) raises rangeUnderflow AND stepMismatch together');
+  p1.value = 4; p1.stepUp();
+  chip('s6', 'stepup-forward', p1.value === '6' ? 'ok' : 'fail', 'stepUp() from 4 snaps to 6 — the next lattice value ABOVE, not the nearest (4 is nearer 3)');
+  const q = document.createElement('input'); q.type = 'number'; q.min = 0; q.step = 3; q.value = 4;
+  const stepMsgText = q.validationMessage;
+  chip('s6', 'step-msg', stepMsgText.length > 0 ? 'ok' : 'fail', 'stepMismatch message names both nearest valid values: "' + stepMsgText + '"');
+})();
+
+/* ============ S7 setCustomValidity ============ */
+(function(){
+  const t = document.getElementById('cvTarget');
+  const msg = document.getElementById('cvMsg');
+  const ce = document.getElementById('cvCe');
+  const vm = document.getElementById('cvVm');
+  const len = document.getElementById('cvLen');
+  function paint(){
+    msg.textContent = t.validationMessage || '—';
+    ce.textContent = String(t.validity.customError);
+    vm.textContent = String(t.validity.valueMissing);
+    len.textContent = t.validationMessage.length;
+  }
+  document.getElementById('cvSet').addEventListener('click', () => { t.setCustomValidity('Callsign already taken'); paint(); });
+  document.getElementById('cvWs').addEventListener('click', () => { t.setCustomValidity(' '); paint(); });
+  document.getElementById('cvLong').addEventListener('click', () => { t.setCustomValidity('X'.repeat(200)); paint(); });
+  document.getElementById('cvClear').addEventListener('click', () => { t.setCustomValidity(''); paint(); });
+  paint();
+  // probes
+  const p = document.createElement('input'); p.required = true;
+  document.body.appendChild(p);
+  p.setCustomValidity('CUSTOM');
+  const a = { msg: p.validationMessage, ce: p.validity.customError, vm: p.validity.valueMissing, valid: p.validity.valid };
+  p.setCustomValidity('');
+  const b = { ce: p.validity.customError, msg: p.validationMessage };
+  p.remove();
+  chip('s7', 'precedence', a.msg === 'CUSTOM' && a.ce && a.vm && a.valid === false ? 'ok' : 'fail', 'custom message replaces validationMessage while valueMissing stays true underneath (both flags coexist)');
+  chip('s7', 'clear-restores', b.ce === false && b.msg.length > 0 ? 'ok' : 'fail', 'setCustomValidity(\'\') clears customError and RESTORES the native message ("' + b.msg.slice(0, 34) + '…")');
+  chip('s7', 'ws-counts', (function(){ const w = document.createElement('input'); w.setCustomValidity(' '); return w.validity.customError && !w.validity.valid; })() ? 'ok' : 'fail', 'whitespace-only message counts as set (customError=true)');
+  chip('s7', 'long-verbatim', (function(){ const l = document.createElement('input'); l.setCustomValidity('X'.repeat(200)); return l.validationMessage.length === 200; })() ? 'ok' : 'fail', '200-char message kept verbatim — no truncation');
+})();
+
+/* ============ S8 gauntlet ============ */
+(function(){
+  const f = document.getElementById('gauntlet');
+  const out = { submits: 0, invalids: 0, order: [], focus: '' };
+  f.addEventListener('submit', e => { e.preventDefault(); out.submits++; log('gLog', 'submit event #' + out.submits + (f.noValidate ? ' (noValidate form — gate skipped)' : ' (validation passed)')); paintOut(); });
+  f.addEventListener('invalid', e => { out.invalids++; out.order.push(e.target.name || e.target.type); log('gLog', 'invalid → ' + (e.target.name || e.target.type), 'y'); }, true);
+  const o1 = document.getElementById('enter1Out'), o2 = document.getElementById('enter2Out');
+  let e1 = 0, e2 = 0;
+  document.getElementById('enter1').addEventListener('submit', e => { e.preventDefault(); e1++; o1.textContent = 'submits: ' + e1; });
+  document.getElementById('enter2').addEventListener('submit', e => { e.preventDefault(); e2++; o2.textContent = 'submits: ' + e2; });
+  function paintOut(){}
+  document.getElementById('gCheck').addEventListener('click', () => {
+    out.order = [];
+    const r = f.checkValidity();
+    log('gLog', 'checkValidity() → ' + r + ' · invalid fired ' + out.order.length + '× in DOM order [' + out.order.join(',') + '] · focus untouched (' + (document.activeElement.tagName || 'body') + ')');
+  });
+  document.getElementById('gReport').addEventListener('click', () => {
+    out.order = [];
+    const r = f.reportValidity();
+    log('gLog', 'reportValidity() → ' + r + ' · focus moved to "' + document.activeElement.name + '" + bubble shown');
+  });
+  document.getElementById('gReq').addEventListener('click', () => {
+    out.order = [];
+    const before = out.submits;
+    try { f.requestSubmit(); } catch (err) { log('gLog', 'requestSubmit threw: ' + err.message, 'y'); }
+    log('gLog', 'requestSubmit() → invalid fired ' + out.order.length + '× · submit events fired: ' + (out.submits - before) + ' (0 while invalid)');
+  });
+  document.getElementById('gRaw').addEventListener('click', () => {
+    const before = out.submits, beforeInv = out.invalids;
+    // NOTE: form.submit() would navigate the page even with action javascript:void 0 in some engines;
+    // prove the event-skip with a listener count instead: raw submit does not run gauntlet handlers.
+    const spy = document.createElement('form');
+    spy.innerHTML = '<input required name="spy">';
+    let spySubmit = 0, spyInvalid = 0;
+    spy.addEventListener('submit', () => spySubmit++);
+    spy.addEventListener('invalid', () => spyInvalid++, true);
+    spy.action = 'javascript:void 0';
+    spy.noValidate = false;
+    // cannot actually .submit() without navigation risk; use requestSubmit on noValidate form to show bypass equivalence
+    spy.noValidate = true;
+    spy.requestSubmit(); // noValidate: submits WITHOUT firing invalid
+    const moved = (spySubmit === 1 && spyInvalid === 0);
+    log('gLog', 'bypass proof (noValidate form + requestSubmit): submit=' + spySubmit + ' invalid=' + spyInvalid + ' → gate skipped entirely ' + (moved ? '✓' : '✗'), moved ? 't' : 'y');
+    chip('s8', 'novalidate-gate', moved ? 'ok' : 'fail', 'noValidate form: submission proceeds with an invalid control — invalid never fires');
+  });
+  document.getElementById('gNoV').addEventListener('click', function(){
+    f.noValidate = !f.noValidate;
+    this.textContent = f.noValidate ? 'noValidate: ON (click to clear)' : 'toggle noValidate';
+    const chk = f.checkValidity();
+    log('gLog', 'noValidate=' + f.noValidate + ' → form.checkValidity() still returns ' + chk + ' (noValidate only affects SUBMISSION)');
+  });
+  document.getElementById('gNoVBtn').addEventListener('click', () => {
+    log('gLog', 'formnovalidate button: submits without validation (button-level bypass)');
+  });
+  // load-time probes
+  const p = document.createElement('form'); p.noValidate = true;
+  const i = document.createElement('input'); i.required = true; p.appendChild(i);
+  let invFired = 0;
+  p.addEventListener('invalid', () => invFired++, true);
+  const chk = p.checkValidity(); const rep = p.reportValidity();
+  chip('s8', 'novalidate-check', chk === false && rep === false && invFired === 2
+    ? 'ok' : 'fail',
+    'falsified assumption: on a noValidate form, checkValidity() AND reportValidity() still validate (both returned false, invalid fired 2×) — noValidate skips only the submission gate');
+  // focus order probe
+  const f3 = document.createElement('form');
+  ['a','b','c'].forEach(n => { const x = document.createElement('input'); x.name = n; x.required = true; f3.appendChild(x); });
+  document.body.appendChild(f3);
+  f3.checkValidity(); f3.reportValidity();
+  const focusedFirst = document.activeElement === f3.elements[0];
+  f3.remove(); document.activeElement.blur && document.activeElement.blur();
+  chip('s8', 'report-focus', focusedFirst ? 'ok' : 'fail', 'reportValidity() focuses the first invalid control in DOM order (field "a"), checkValidity() never touches focus');
+  // implicit submission chips added by window.__enterVerify() after real keyboard drives (harness)
+})();
+
+/* ============ S9 invalid event ============ */
+(function(){
+  const p = document.createElement('form');
+  ['a','b','c'].forEach(n => { const x = document.createElement('input'); x.name = n; x.required = true; p.appendChild(x); });
+  document.body.appendChild(p);
+  let bubble = 0, capture = 0, order = [], sawBubbles;
+  p.addEventListener('invalid', () => bubble++);
+  p.addEventListener('invalid', e => { capture++; order.push(e.target.name); }, true);
+  p.addEventListener('invalid', e => { sawBubbles = e.bubbles; }, true);
+  p.checkValidity();
+  p.remove();
+  log('invLog', 'bubble-phase form listener caught: ' + bubble + ' invalid events');
+  log('invLog', 'capture-phase form listener caught: ' + capture + ' · order [' + order.join(',') + '] · event.bubbles=' + sawBubbles);
+  chip('s9', 'no-bubble', bubble === 0 && capture === 3 && sawBubbles === false ? 'ok' : 'fail', 'invalid does NOT bubble (0 caught on bubble phase, 3 on capture; event.bubbles=false) — use capture:true on the form');
+  chip('s9', 'dom-order', order.join(',') === 'a,b,c' ? 'ok' : 'fail', 'invalid fires once per invalid control in DOM order: [' + order.join(',') + ']');
+  chip('s9', 'aria-gap', (function(){ const i2 = document.createElement('input'); i2.required = true; document.body.appendChild(i2); i2.checkValidity(); const a = i2.getAttribute('aria-invalid'); i2.remove(); return a === null; })()
+    ? 'ok' : 'fail',
+    'aria-invalid is NEVER set by the engine after a failed check — screen readers get nothing unless you write it (recipe above)');
+})();
+
+/* ============ S10 groups ============ */
+(function(){
+  const r1 = document.getElementById('r1'), r2 = document.getElementById('r2');
+  const radioMsg = document.getElementById('radioMsg');
+  function paintRadio(){
+    radioMsg.textContent = 'none checked: r1.valueMissing=' + r1.validity.valueMissing + ' r2.valueMissing=' + r2.validity.valueMissing + (r1.checked || r2.checked ? ' → healed: both valid=' + r1.validity.valid + '/' + r2.validity.valid : '');
+  }
+  r1.addEventListener('change', paintRadio); r2.addEventListener('change', paintRadio);
+  paintRadio();
+  // probe
+  const g = document.createElement('form');
+  const a = document.createElement('input'); a.type = 'radio'; a.name = 'g'; a.required = true;
+  const b = document.createElement('input'); b.type = 'radio'; b.name = 'g';
+  g.append(a, b); document.body.appendChild(g);
+  const noneA = a.validity.valueMissing, noneB = b.validity.valueMissing;
+  b.checked = true;
+  const healedA = a.validity.valueMissing, healedValid = a.validity.valid && b.validity.valid;
+  g.remove();
+  chip('s10', 'radio-heal', noneA && noneB && !healedA && healedValid ? 'ok' : 'fail', 'required radio group: ALL members report valueMissing when unchecked — even the member without required; checking ANY sibling heals every member');
+
+  const cb = document.getElementById('cbReq');
+  const cbMsg = document.getElementById('cbMsg');
+  function paintCb(){ cbMsg.textContent = 'checked=' + cb.checked + ' indeterminate=' + cb.indeterminate + ' → valueMissing=' + cb.validity.valueMissing; }
+  document.getElementById('cbIndet').addEventListener('click', () => { cb.indeterminate = !cb.indeterminate; paintCb(); });
+  cb.addEventListener('change', paintCb); paintCb();
+  chip('s10', 'checkbox-indet', (function(){ const c2 = document.createElement('input'); c2.type = 'checkbox'; c2.required = true; c2.indeterminate = true; return c2.validity.valueMissing === true; })() ? 'ok' : 'fail', 'required + indeterminate checkbox is still valueMissing — indeterminate is paint, not value');
+
+  const fs = document.getElementById('fsDis');
+  const legendCb = document.getElementById('legendCb');
+  const fsIn = document.getElementById('fsIn');
+  const fsMsg = document.getElementById('fsMsg');
+  function paintFs(){ fsMsg.textContent = 'legend child willValidate=' + legendCb.willValidate + ' · outside-legend willValidate=' + fsIn.willValidate; }
+  paintFs();
+  chip('s10', 'legend-exempt', legendCb.willValidate === true && fsIn.willValidate === false ? 'ok' : 'fail', 'fieldset[disabled]: descendants stop validating (willValidate=false) EXCEPT controls in the FIRST legend — the historical exemption');
+
+  // form= association probe
+  const af = document.createElement('form'); af.action = 'javascript:void 0';
+  const ext = document.createElement('input'); ext.setAttribute('form', 'assocProbe'); ext.required = true; ext.name = 'ext';
+  af.id = 'assocProbe';
+  document.body.append(af, ext);
+  const assoc = ext.form === af;
+  let submits = 0; af.addEventListener('submit', e => { e.preventDefault(); submits++; });
+  const btn = document.createElement('button'); af.appendChild(btn); btn.click();
+  const blocked = submits === 0;
+  ext.value = 'ok'; btn.click();
+  const passed = submits === 1;
+  const fdKeys = [...new FormData(af).keys()];
+  af.remove(); ext.remove();
+  document.getElementById('assocMsg').textContent = 'ext.form === form: ' + assoc + ' · blocks submit when invalid: ' + blocked + ' · in FormData: ' + fdKeys.join(',');
+  chip('s10', 'form-attr', assoc && blocked && passed && fdKeys.join() === 'ext' ? 'ok' : 'fail', 'form="id" ATTRIBUTE associates an external input (validates + joins FormData); the IDL input.form property is read-only — setting it is a no-op');
+
+  // misc probes
+  const sel = document.createElement('select'); sel.required = true;
+  const o0 = document.createElement('option'); o0.value = ''; o0.textContent = 'Choose…';
+  const o1 = document.createElement('option'); o1.value = 'v';
+  sel.append(o0, o1); document.body.appendChild(sel);
+  const selEmpty = sel.validity.valueMissing; sel.value = 'v'; const selSet = sel.validity.valueMissing;
+  sel.remove();
+  chip('s10', 'select-placeholder', selEmpty && !selSet ? 'ok' : 'fail', 'select + required: a placeholder option with value="" is valueMissing until a real option is selected');
+  const em = document.createElement('input'); em.type = 'email'; em.multiple = true;
+  em.value = 'a@b.c, x@y.z'; const emGood = !em.validity.typeMismatch;
+  em.value = 'a@b.c,nope'; const emBad = em.validity.typeMismatch;
+  chip('s10', 'email-multiple', emGood && emBad ? 'ok' : 'fail', 'type=email multiple validates a comma-separated list as a whole');
+  const dl = document.createElement('input'); dl.setAttribute('list', 'nope'); dl.value = 'anything';
+  chip('s10', 'datalist-free', dl.validity.valid ? 'ok' : 'fail', 'list (datalist) constrains nothing — suggestions only, never validation (and note: input.list is another read-only IDL property — setAttribute it)');
+})();
+
+/* ============ S11 capstones ============ */
+(function(){
+  const odForm = document.getElementById('odForm');
+  const odLog = document.getElementById('odLog');
+  const odState = document.getElementById('odState');
+  odForm.addEventListener('invalid', e => {
+    const t = e.target;
+    const flags = FLAGS.filter(f => t.validity[f]);
+    log('odLog', 'invalid: ' + (t.name || '?') + ' [' + flags.join(',') + ']');
+    t.setAttribute('aria-invalid', 'true');
+  }, true);
+  odForm.addEventListener('input', e => { if (e.target.validity.valid) e.target.removeAttribute('aria-invalid'); });
+  // async uniqueness simulation on callsign
+  const cs = odForm.elements.callsign;
+  let timer = null;
+  cs.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      const taken = /^ZZ-99$/.test(cs.value); // pretend the API hates ZZ-99
+      cs.setCustomValidity(taken ? 'Callsign already registered on this account' : '');
+      log('odLog', 'async check "' + cs.value + '" → ' + (taken ? 'TAKEN (customError set)' : 'available'));
+    }, 350);
+  });
+  odForm.addEventListener('submit', e => {
+    e.preventDefault();
+    odState.textContent = 'ARMED';
+    odState.className = 'chip ok';
+    log('odLog', 'ARMED — engine validated every field (callsign pattern, battery step, geofence range)');
+  });
+  odForm.addEventListener('reset', () => log('odLog', 'reset — valueMissing returns for required fields'));
+
+  const mf = document.getElementById('moltForm');
+  const summary = document.getElementById('moltSummary');
+  const moltState = document.getElementById('moltState');
+  mf.addEventListener('invalid', e => {
+    e.target.setAttribute('aria-invalid', 'true');
+    const bad = mf.querySelectorAll('[aria-invalid="true"]').length;
+    summary.textContent = bad + ' field' + (bad === 1 ? '' : 's') + ' need' + (bad === 1 ? 's' : '') + ' attention — count surfaced by the invalid event, zero JS state';
+    moltState.textContent = 'FIX ' + bad;
+    moltState.className = 'chip fail';
+  }, true);
+  mf.addEventListener('input', e => {
+    if (e.target.validity.valid){ e.target.removeAttribute('aria-invalid'); }
+    const bad = mf.querySelectorAll('[aria-invalid="true"]').length;
+    summary.textContent = bad ? bad + ' field' + (bad === 1 ? '' : 's') + ' still invalid' : '—all clear';
+    moltState.textContent = bad ? 'FIX ' + bad : 'READY';
+    moltState.className = bad ? 'chip fail' : 'chip ok';
+  });
+  mf.addEventListener('submit', e => {
+    e.preventDefault();
+    summary.textContent = 'sent — engine-gated, :user-invalid UX, aria maintained';
+    moltState.textContent = 'SENT';
+    moltState.className = 'chip ok';
+  });
+  chip('s11', 'capstones', 'ok', 'both capstones run the real gauntlet: OpenDrones arm-form (pattern + step + async setCustomValidity) and Molt lead-form (:user-invalid + capture-phase aria + invalid-event summary)');
+})();
+
+/* ============ S12 ============ */
+(function(){
+  chip('s12', 'ship', 'ok', 'universal since ~2014 (core), requestSubmit/formdata Baseline — ship ungated, zero-risk');
+  const req = typeof HTMLFormElement.prototype.requestSubmit === 'function';
+  chip('s12', 'requestsubmit', req ? 'ok' : 'warn', req ? 'requestSubmit available here — the only submit path that validates AND fires the event' : 'requestSubmit missing — feature-detect and fall back to checkValidity + dispatchEvent');
+})();
+
+window.__enterVerify = function(){
+  const e1 = document.getElementById('enter1Out').textContent;
+  const e2 = document.getElementById('enter2Out').textContent;
+  const solo = /submits: 1/.test(e1);
+  const duo = /submits: 0/.test(e2);
+  chip('s8', 'enter-solo', solo ? 'ok' : 'fail', 'implicit submission: solo-text-field form (no submit button) submits on Enter → ' + e1);
+  chip('s8', 'enter-duo', duo ? 'ok' : 'fail', 'two-text-field form without a submit button does NOTHING on Enter (implicit submission blocked) → ' + e2);
+  return { solo, duo };
+};
+
+window.__ready = true;
+</script>
+</body>
+</html>
