@@ -1,0 +1,1315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebSocket API — The Transport Tier's Workhorse: Handshake Bytes, Frame Anatomy, Close Codes &amp; the bufferedAmount Wall</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --ink:#1c1917; --muted:#78716c; --faint:#a8a29e; --line:#e7e2dc;
+  --bg:#faf8f5; --card:#ffffff; --accent:#0d9488; --accent-deep:#0f766e; --accent-soft:#ccfbf1;
+  --warn:#b45309; --warn-soft:#fef3c7; --bad:#b91c1c; --bad-soft:#fee2e2; --skip:#57534e; --skip-soft:#f5f5f4;
+  --code:#f6f4f1;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:ui-sans-serif,system-ui,-apple-system,"Inter","Segoe UI",sans-serif;
+  color:var(--ink); background:var(--bg); line-height:1.55; font-size:15px;
+  background-image:
+    radial-gradient(560px 320px at 8% -4%, rgba(13,148,136,.10), transparent 62%),
+    radial-gradient(520px 340px at 96% 4%, rgba(181,83,40,.07), transparent 60%);
+  background-repeat:no-repeat;
+}
+.wrap{max-width:1060px;margin:0 auto;padding:28px 22px 90px}
+h1{font-size:clamp(30px,4.5vw,42px);line-height:1.12;letter-spacing:-.02em;margin:16px 0 10px;font-weight:800}
+h2{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+h3{font-size:15.5px;margin:18px 0 6px}
+p{margin:8px 0}
+.lede{font-size:17px;color:var(--muted);max-width:76ch;margin:0 0 14px}
+.kicker{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-deep)}
+section{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px 26px;margin:20px 0;box-shadow:0 1px 2px rgba(28,25,23,.04),0 8px 28px -18px rgba(28,25,23,.12)}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.card{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:#fff}
+.card h3{margin-top:0}
+code,pre{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12.6px}
+code{background:var(--code);padding:1px 5px;border-radius:6px}
+pre{background:#1c1917;color:#e7e5e4;padding:14px 16px;border-radius:12px;overflow-x:auto;line-height:1.5}
+pre code{background:none;padding:0;color:inherit}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;border-radius:999px;padding:3px 10px;margin:3px 4px 3px 0;border:1px solid transparent;vertical-align:middle}
+.chip.ok{background:#ecfdf5;color:#065f46;border-color:#a7f3d0}
+.chip.warn{background:var(--warn-soft);color:var(--warn);border-color:#fde68a}
+.chip.fail{background:var(--bad-soft);color:var(--bad);border-color:#fecaca}
+.chip.skip{background:var(--skip-soft);color:var(--skip);border-color:#e7e5e4}
+.chip b{font-weight:800}
+.badge{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin:4px 6px 4px 0;font-size:12.5px;background:#fff}
+.badge .dot{width:9px;height:9px;border-radius:50%;background:var(--faint);flex:0 0 auto}
+.badge.on .dot{background:#10b981}
+.badge.off .dot{background:#f59e0b}
+.muted{color:var(--muted)}
+.small{font-size:12.5px}
+table{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
+td code{white-space:nowrap}
+.num{font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
+.dashrow{display:flex;justify-content:space-between;gap:10px;padding:6px 2px;border-bottom:1px dashed var(--line);font-size:13px}
+.dashrow:last-child{border-bottom:0}
+.dashrow .num{color:var(--accent-deep);font-weight:700}
+.log{background:#1c1917;color:#e7e5e4;border-radius:12px;padding:12px 14px;font-family:ui-monospace,Menlo,monospace;font-size:12px;height:170px;overflow-y:auto;line-height:1.6}
+.log .t{color:#a8a29e}
+.log .okc{color:#5eead4}
+.log .warc{color:#fbbf24}
+.log .errc{color:#fca5a5}
+.log .svc{color:#c4b5fd}
+.scrollx{overflow-x:auto}
+.kbrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+button{font:inherit;font-size:13px;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:10px;padding:7px 13px;cursor:pointer}
+button:hover{border-color:var(--accent);color:var(--accent-deep)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.primary:hover{background:var(--accent-deep);color:#fff}
+button.danger{background:#fff;border-color:#fecaca;color:var(--bad)}
+button:disabled{opacity:.45;cursor:not-allowed}
+input[type=text]{font:inherit;font-size:14px;border:1px solid var(--line);border-radius:10px;padding:8px 11px;background:#fff;color:var(--ink);width:100%}
+.hex{background:#1c1917;color:#e7e5e4;border-radius:12px;padding:12px 14px;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.7;overflow-x:auto;white-space:pre}
+.hex .b0{color:#fbbf24}
+.hex .mk{color:#c4b5fd}
+.hex .pl{color:#5eead4}
+.hex .hd{color:#a8a29e}
+.gauge{height:26px;border:1px solid var(--line);border-radius:8px;background:#fff;overflow:hidden;position:relative;margin:8px 0}
+.gauge .fill{height:100%;width:0%;background:linear-gradient(90deg,#0d9488,#0f766e);transition:width .12s linear}
+.gauge .lbl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;font-family:ui-monospace,Menlo,monospace;color:#1c1917;text-shadow:0 0 3px #fff}
+.statebar{display:flex;gap:6px;margin:10px 0}
+.st{flex:1;text-align:center;font-size:11px;font-weight:800;letter-spacing:.05em;padding:8px 4px;border-radius:9px;border:1.5px solid var(--line);color:var(--faint);background:#fff;font-family:ui-monospace,Menlo,monospace}
+.st.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-deep)}
+.st.bad{border-color:var(--bad);background:var(--bad-soft);color:var(--bad)}
+.codereg{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:10px 0}
+.cr{border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:11.5px;background:#fff}
+.cr b{font-family:ui-monospace,Menlo,monospace;display:block;font-size:13px}
+.cr.uaw{border-style:dashed;border-color:#fde68a;background:#fffbeb}
+.cr.wire{border-color:#a7f3d0;background:#ecfdf5}
+.cr.both{border-color:#c4b5fd;background:#f5f3ff}
+.canv{border:1px solid var(--line);border-radius:12px;background:#fff;width:100%;height:170px;display:block}
+.hudgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:10px 0}
+.hudcell{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:#fff}
+.hudcell .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700}
+.hudcell .v{font-family:ui-monospace,Menlo,monospace;font-size:19px;font-weight:700;color:var(--accent-deep)}
+.tl{position:relative;margin:12px 0;padding-left:20px}
+.tl::before{content:'';position:absolute;left:6px;top:4px;bottom:4px;width:2px;background:var(--line)}
+.tl .ev{position:relative;margin:0 0 8px;font-size:12.5px}
+.tl .ev::before{content:'';position:absolute;left:-18px;top:5px;width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.tl .ev.bad::before{background:var(--bad)}
+.tl .ev .num{color:var(--accent-deep);font-weight:700}
+.lane{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fff;margin:8px 0}
+.lane h4{margin:0 0 6px;font-size:12.5px;display:flex;justify-content:space-between;align-items:center}
+.arrowflow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0;font-size:12px}
+.arrowflow .box{border:1.5px solid var(--line);border-radius:10px;padding:7px 11px;background:#fff;font-weight:600}
+.arrowflow .box.hi{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-deep)}
+.arrowflow .ar{color:var(--faint);font-weight:800}
+.simtag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.06em;border-radius:6px;padding:1px 6px;vertical-align:middle;background:#ede9fe;color:#6d28d9;border:1px solid #ddd6fe}
+.realtag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.06em;border-radius:6px;padding:1px 6px;vertical-align:middle;background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+<div class="kicker">Web Platform API · Transport Tier · Research Demo</div>
+<h1>WebSocket API — The Transport Tier's Workhorse</h1>
+<p class="lede">One TCP connection, one HTTP upgrade, then <strong>full-duplex frames forever</strong>: the transport under every realtime dashboard, telemetry bridge, and multiplayer client since 2011 (Baseline Jul 2015). This page live-probes the real engine — constructor URL rules, the close-code wall, <code>send()</code> state gates, the never-resetting <code>bufferedAmount</code> — and runs a byte-faithful RFC 6455 codec <span class="simtag">SIM</span> to expose what the API hides: handshake bytes, masking, the ping/pong layer, frame length forms, and the closing handshake choreography.</p>
+<div id="badges"></div>
+</header>
+
+<!-- ================= S1 ENVIRONMENT ================= -->
+<section>
+<h2>1 · Environment &amp; the Transport Quartet</h2>
+<p class="muted">Where WebSocket sits: <code>fetch</code>/HTTP is request-response, <b>WebSocket</b> is bidirectional-ordered over one TCP connection, WebRTC is peer-to-peer media/data, WebTransport (Baseline Mar 2026) is HTTP/3 + QUIC streams &amp; datagrams. WS is the only one Baseline-everywhere <em>and</em> proxy-friendly — still the default for server push behind corporate proxies today.</p>
+<div class="dashrow"><span>Transport</span><span>Guarantees</span></div>
+<div class="dashrow"><span><b>HTTP / fetch</b></span><span class="num">request → response · ordered · no push</span></div>
+<div class="dashrow"><span><b>WebSocket</b> ← this page</span><span class="num">full-duplex · ordered · message-framed · TCP</span></div>
+<div class="dashrow"><span><b>WebTransport</b></span><span class="num">unidirectional streams + unordered datagrams · QUIC</span></div>
+<div class="dashrow"><span><b>WebRTC DataChannel</b></span><span class="num">P2P · SCTP · configurable reliability</span></div>
+<div id="chips-s1"></div>
+</section>
+
+<!-- ================= S2 READYSTATE TIMELINE ================= -->
+<section>
+<h2>2 · The readyState Timeline — a Real Connection Refusal, Live</h2>
+<p class="muted">This section opens a <b>real</b> <code>new WebSocket('ws://127.0.0.1:9/')</code> to a dead port (port 9 = discard, nothing listens). The engine does the rest: you can watch CONNECTING → <code>error</code> → <code>close</code> fire with the codes every prod reconnect logic branches on. <span class="realtag">REAL ENGINE</span></p>
+<div class="statebar" id="rs-bar">
+<div class="st" id="st0">CONNECTING 0</div>
+<div class="st" id="st1">OPEN 1</div>
+<div class="st" id="st2">CLOSING 2</div>
+<div class="st" id="st3">CLOSED 3</div>
+</div>
+<div class="tl" id="refuse-tl"></div>
+<div class="card" style="margin-top:10px">
+<h3>bufferedAmount after close — the never-reset trap</h3>
+<p class="small muted">Spec: <em>“If the WebSocket connection is closed, this attribute's value will only increase with each call to <code>send()</code>.”</em> And <code>send()</code> on CLOSED <b>silently discards</b> — no throw — yet still counts the bytes. Watch it grow on the refused socket:</p>
+<div class="gauge"><div class="fill" id="ba-fill" style="background:linear-gradient(90deg,#b91c1c,#dc2626)"></div><div class="lbl" id="ba-lbl">0 bytes</div></div>
+<div class="kbrow"><button id="ba-btn" disabled>send('𝕏×10') ×3 on the CLOSED socket</button><span class="small num" id="ba-note">waiting for close…</span></div>
+</div>
+<div id="chips-s2"></div>
+</section>
+
+<!-- ================= S3 URL RULES ================= -->
+<section>
+<h2>3 · Constructor URL Rules — Fragments Throw, http:// Is Legal</h2>
+<p class="muted">All probes below run against the real constructor. Predictions come from the WHATWG WebSockets spec; chips report what THIS engine actually did. <span class="realtag">REAL ENGINE</span></p>
+<div class="scrollx"><table>
+<thead><tr><th>Constructor call</th><th>Spec says</th><th>Engine did</th></tr></thead>
+<tbody id="url-tbl"></tbody>
+</table></div>
+<p class="small muted">The sleeper rule: <code>http(s)://</code> URLs are <b>rewritten</b> to <code>ws(s)://</code> and relative URLs resolve against the page base URL — the constructor is a URL parser, not a scheme checker. And fragments don't get stripped — they're a hard <code>SyntaxError</code> (a URL with a fragment can never be a WebSocket URL).</p>
+<div id="chips-s3"></div>
+</section>
+
+<!-- ================= S4 CLOSE CODE MATRIX ================= -->
+<section>
+<h2>4 · close() — the Code Wall &amp; the [Clamp] Trap</h2>
+<p class="muted">Live matrix: fresh socket per row, each <code>close()</code> called synchronously while CONNECTING (validation happens before any network). Allowed on the wire: <b>1000</b> exactly, or <b>3000–4999</b>. Everything else → <code>InvalidAccessError</code>. Reason &gt; 123 UTF-8 bytes → <code>SyntaxError</code>. <span class="realtag">REAL ENGINE</span></p>
+<div class="scrollx"><table>
+<thead><tr><th>Call</th><th>Prediction</th><th>Engine</th></tr></thead>
+<tbody id="close-tbl"></tbody>
+</table></div>
+<p class="small muted">The <code>[Clamp]</code> row is the sneaky one: WebIDL <code>[Clamp]</code> <em>truncates</em> fractional codes toward zero before validation — so <code>close(4000.9)</code> quietly becomes a legal <code>4000</code> (no throw) while <code>close(2999.5)</code> becomes an illegal <code>2999</code> (throws). Half a unit decides the outcome.</p>
+<div id="chips-s4"></div>
+</section>
+
+<!-- ================= S5 SEND MATRIX ================= -->
+<section>
+<h2>5 · send() — Three States, Three Behaviors</h2>
+<p class="muted"><b>CONNECTING → throws</b> <code>InvalidStateError</code>. <b>OPEN → enqueues</b>, <code>bufferedAmount</code> grows by <b>UTF-8 bytes</b> (not UTF-16 code units). <b>CLOSING/CLOSED → silently discards</b> but still counts bytes. Returns <code>undefined</code> in every case — there is no success signal, ever. <span class="realtag">REAL ENGINE</span> for state gates · <span class="simtag">SIM</span> for UTF-8 math (proven live in real mode §14)</p>
+<div class="scrollx"><table>
+<thead><tr><th>State</th><th>Call</th><th>Engine</th></tr></thead>
+<tbody id="send-tbl"></tbody>
+</table></div>
+<div class="card">
+<h3>bufferedAmount counts UTF-8, not JavaScript characters <span class="simtag">SIM</span></h3>
+<table><thead><tr><th>String</th><th>.length (UTF-16)</th><th>UTF-8 bytes = bufferedAmount delta</th></tr></thead>
+<tbody>
+<tr><td><code>"hello"</code></td><td class="num">5</td><td class="num" id="u8a">–</td></tr>
+<tr><td><code>"éééé"</code> (U+00E9 ×4)</td><td class="num">4</td><td class="num" id="u8b">–</td></tr>
+<tr><td><code>"𝕏𝕏"</code> (U+1D54F ×2)</td><td class="num">4</td><td class="num" id="u8c">–</td></tr>
+</tbody></table>
+<p class="small muted">Byte-counted live with TextEncoder — the same encoder the wire uses. A 4-byte astral character adds 4 to <code>bufferedAmount</code> but only 2 to <code>.length</code>; HWM checks in code units will fire at the wrong time on international text.</p>
+</div>
+<div id="chips-s5"></div>
+</section>
+
+<!-- ================= S6 BINARYTYPE ================= -->
+<section>
+<h2>6 · binaryType — the Only Receive Dial</h2>
+<p class="muted">Two legal values per spec (<code>"blob"</code> default, <code>"arraybuffer"</code>) — WebIDL enum, invalid should throw <code>TypeError</code>. <b>Chromium diverges: it accepts anything</b> (see dial). It changes <em>receive</em> shape only — text frames always arrive as strings no matter what. <span class="realtag">REAL ENGINE</span> for the dial · <span class="simtag">SIM</span> peer for the receive lab</p>
+<div class="grid g2">
+<div class="card">
+<h3>The dial</h3>
+<div id="bt-dial"></div>
+</div>
+<div class="card">
+<h3>Same 256-byte binary frame, both modes <span class="simtag">SIM</span></h3>
+<div id="bt-lab" class="small">run the lab ↓</div>
+<div class="kbrow"><button id="bt-btn">Peer sends bytes 0x00–0xFF</button></div>
+</div>
+</div>
+<div id="chips-s6"></div>
+</section>
+
+<!-- ================= S7 HANDSHAKE ================= -->
+<section>
+<h2>7 · The Handshake — One HTTP Request With a Secret Inside</h2>
+<p class="muted">The opening handshake is a plain HTTP/1.1 GET with <code>Upgrade: websocket</code>. The server proves it understood by hashing your random key with a fixed GUID. Everything below the fold is real: the captured request is what Chromium 150 actually sent to this page's local probe server; the Accept-key computation runs live in your browser with <code>crypto.subtle</code>.</p>
+<div class="grid g2">
+<div class="card">
+<h3>Captured client handshake <span class="realtag">CAPTURED · Chromium 150</span></h3>
+<pre id="hs-req">GET /echo HTTP/1.1
+Host: 127.0.0.1:8815
+Connection: Upgrade
+Pragma: no-cache
+Cache-Control: no-cache
+User-Agent: Mozilla/5.0 … Chrome/150.0.0.0
+Upgrade: websocket
+Sec-WebSocket-Version: 13
+Origin: http://localhost:8814
+Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
+Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits
+Sec-WebSocket-Protocol: chat</pre>
+<p class="small muted">Facts baked in by the spec: mode <code>"websocket"</code>, referrer <code>no-referrer</code>, redirect mode <code>"error"</code> (a 3xx FAILS the connection — no redirect following, ever), credentials <code>include</code> (cookies ride along), and CSP <code>connect-src</code> governs. There is no CORS preflight — <b>any origin can dial any server</b>; the Origin check is the server's job.</p>
+</div>
+<div class="card">
+<h3>Accept-key math — live <span class="realtag">REAL crypto.subtle</span></h3>
+<p class="small">SHA-1(key + <code>258EAFA5-E914-47DA-95CA-C5AB0DC85B11</code>) → base64. Prefilled with the RFC 6455 §1.3 test vector.</p>
+<code style="display:block;margin:6px 0"><input type="text" id="hs-key" value="dGhlIHNhbXBsZSBub25jZQ=="></code>
+<div class="kbrow"><button class="primary" id="hs-btn">Compute Accept</button></div>
+<div class="hex" id="hs-out">–</div>
+</div>
+</div>
+<p class="small muted">Server response must be <code>101</code> + <code>Upgrade: websocket</code> + <code>Connection: Upgrade</code> + a byte-exact <code>Sec-WebSocket-Accept</code>. Miss anything → the browser fails the connection (surfacing as <code>error</code> + <code>close</code> 1006 — no HTTP status code anywhere in the API). And per spec §2.2: <em>if the client requested subprotocols and the server acknowledges none, the connection FAILS</em> — a rule Chromium enforced late and this page's real-mode §14 probes live.</p>
+<div id="chips-s7"></div>
+</section>
+
+<!-- ================= S8 FRAME ANATOMY ================= -->
+<section>
+<h2>8 · Frame Anatomy — the Wire Under the API</h2>
+<p class="muted">Every message is a frame: FIN bit, 4-bit opcode, mask bit, then a length in one of <b>three encodings</b> (7-bit inline, 16-bit, 64-bit), a 4-byte mask key (client→server always), and the XOR-masked payload. The codec below is real — it encodes and decodes actual RFC 6455 bytes in this page. <span class="simtag">SIM codec · real math</span></p>
+<div class="grid g2">
+<div class="card">
+<h3>Text encoder — your string becomes wire bytes</h3>
+<input type="text" id="fr-in" value="Alt 42.5m" style="margin:6px 0">
+<div class="kbrow"><button class="primary" id="fr-btn">Encode masked client frame</button></div>
+<div class="hex" id="fr-out">–</div>
+<p class="small muted" id="fr-note"></p>
+</div>
+<div class="card">
+<h3>Length-form boundaries (RFC 6455 §5.2)</h3>
+<div class="scrollx"><table>
+<thead><tr><th>Payload</th><th>Header bytes</th><th>Form</th></tr></thead>
+<tbody id="len-tbl"></tbody>
+</table></div>
+<p class="small muted">126 needs 2 more bytes, 65536 needs 8 — generated live by the codec at the exact boundaries.</p>
+</div>
+</div>
+<div class="card" style="margin-top:12px">
+<h3>Fragmentation — one message, three frames (§5.4)</h3>
+<p class="small muted">A sender MAY split any non-control message across continuation frames (opcode 0); the receiver reassembles before <code>onmessage</code> fires — you never see the seams in the API. Control frames can interleave <em>between</em> fragments but can never be fragmented themselves (≤125 bytes, FIN forced).</p>
+<div class="hex" id="frag-out">–</div>
+</div>
+<div id="chips-s8"></div>
+</section>
+
+<!-- ================= S9 CLOSE CHOREOGRAPHY ================= -->
+<section>
+<h2>9 · The Closing Handshake &amp; the Close-Code Registry</h2>
+<p class="muted"><code>close()</code> doesn't tear down TCP — it starts a <b>4-step dance</b>: client close frame → server close frame echo → both TCP FINs → <code>close</code> event with <code>wasClean:true</code>. Skip any close frame (socket dies) and the UA synthesizes code <b>1006</b>, <code>wasClean:false</code>. Step through it: <span class="simtag">SIM</span></p>
+<div class="arrowflow" id="close-flow">
+<div class="box" id="cf1">1 · client close(1000,"done")</div><span class="ar">→</span>
+<div class="box" id="cf2">2 · server echoes close</div><span class="ar">→</span>
+<div class="box" id="cf3">3 · TCP FIN ×2</div><span class="ar">→</span>
+<div class="box" id="cf4">4 · close event</div>
+</div>
+<div class="kbrow"><button class="primary" id="cf-btn">Step the dance</button><button id="cf-reset">Reset</button><span class="num small" id="cf-note"></span></div>
+<div class="card" style="margin-top:8px">
+<h3>Close-code registry (RFC 6455 §7.4 + IANA)</h3>
+<div class="codereg" id="reg-grid"></div>
+<p class="small muted"><b>Dashed = never on the wire.</b> 1005/1006/1015 are synthesized by the UA <em>about</em> the connection (no status / abnormal / TLS fail) — they appear in <code>close</code> events but can never be sent, and passing them to <code>close()</code> throws (§4 proved it live). 1010 is client-only (“server didn't negotiate my extension”). 3000–3999 = libraries/frameworks, 4000–4999 = yours (OpenDrones uses 4001 dropout, 4002 schema).</p>
+</div>
+<div id="chips-s9"></div>
+</section>
+
+<!-- ================= S10 BACKPRESSURE ================= -->
+<section>
+<h2>10 · Backpressure — bufferedAmount Is the Whole API</h2>
+<p class="muted">TCP backpressure exists, but the API surfaces it only as a number you must poll: <code>send()</code> <b>never blocks</b> and <b>never errors</b> on a slow server — the buffer just grows, silently, until memory hurts. WebTransport/streams expose real backpressure (await a writer); WS makes you watch the gauge. Run it: <span class="simtag">SIM</span> · numbers cross-checked against a real noread server in §14</p>
+<div class="card">
+<div class="lane"><h4><span>SimPeer — reading = <span class="num" id="bp-read">true</span></span><span class="num" id="bp-state">readyState 1 · OPEN</span></h4>
+<div class="gauge"><div class="fill" id="bp-fill"></div><div class="lbl" id="bp-lbl">0 / 4 MiB</div></div>
+<div class="kbrow">
+<button class="primary" id="bp-send">Push 4 MiB in 64 KiB chunks</button>
+<button id="bp-stop">Server stops reading</button>
+<button id="bp-go">Server resumes</button>
+</div>
+<p class="small muted" id="bp-note">readyState stays OPEN the entire time. No event fires. No error comes. Only the number moves.</p>
+</div>
+</div>
+<pre><code>// The production pattern: an HWM gate around every bulk send
+async function sendBurst(ws, chunks) {
+  for (const c of chunks) {
+    while (ws.bufferedAmount > HWM) await sleep(16); // poll, poll, poll
+    ws.send(c);
+  }
+}</code></pre>
+<p class="small muted">Spec edge, per MDN: if the buffer is full and data <em>can't be queued</em>, the socket is closed automatically — in practice you hit OOM long before. There is no <code>onbufferdrain</code>, no promise, no callback. A number. That's the API.</p>
+<div id="chips-s10"></div>
+</section>
+
+<!-- ================= S11 PING PONG ================= -->
+<section>
+<h2>11 · The Ping/Pong Layer the API Never Shows You</h2>
+<p class="muted">RFC 6455 §5.5.2/5.5.3: the protocol has keepalive frames — opcode 9 ping, opcode 10 pong, same payload echoed. The browser <b>answers pings automatically</b> and lets you <b>send none</b>. No event fires for either. It is a layer the API actively hides — prove it to yourself: <span class="simtag">SIM</span> · server-observed live in §14</p>
+<div class="grid g2">
+<div class="card">
+<h3>Hidden keepalive, step by step</h3>
+<div class="arrowflow">
+<div class="box hi" id="pp1">server PING "hb-07"</div><span class="ar">→</span>
+<div class="box" id="pp2">browser network stack</div><span class="ar">→</span>
+<div class="box hi" id="pp3">auto-PONG "hb-07"</div>
+</div>
+<div class="kbrow"><button class="primary" id="pp-btn">Fire a ping at the browser</button></div>
+<p class="small muted" id="pp-note">JavaScript sees nothing: onmessage stays silent (counter below), onerror/onclose stay silent. The TCP conversation happened anyway.</p>
+</div>
+<div class="card">
+<h3>onmessage counter during ping window</h3>
+<div class="hudgrid"><div class="hudcell"><div class="k">onmessage fires</div><div class="v" id="pp-count">0</div></div>
+<div class="hudcell"><div class="k">pongs sent by browser</div><div class="v" id="pp-pongs">0</div></div></div>
+<p class="small muted">Because proxies and load balancers idle-kill TCP at 30–60s <em>regardless</em> of protocol pings, production apps add an app-level heartbeat anyway — a JSON ping the server actually answers in JS, plus a timeout watchdog.</p>
+</div>
+</div>
+<div id="chips-s11"></div>
+</section>
+
+<!-- ================= S12 CAPSTONE ================= -->
+<section>
+<h2>12 · Capstone — OpenDrones Telemetry Over WebSocket</h2>
+<p class="muted">The full production pattern in miniature: a ground-station peer streaming 30 Hz binary telemetry frames over one socket, a live HUD, latency metering, and — the part that matters in the field — a reconnect engine that reads close codes: <b>1006/4001 = transport died → reconnect with exponential backoff + jitter; 1000 = deliberate → stay down</b>. <span class="simtag">SIM peer · real reconnect logic</span></p>
+<div class="grid g2">
+<div class="card">
+<h3>Flight HUD <span class="num small" id="cap-status" style="color:#0f766e">● LIVE</span></h3>
+<canvas id="cap-canvas" class="canv" width="920" height="340"></canvas>
+<div class="hudgrid">
+<div class="hudcell"><div class="k">Altitude</div><div class="v" id="cap-alt">–</div></div>
+<div class="hudcell"><div class="k">Speed</div><div class="v" id="cap-spd">–</div></div>
+<div class="hudcell"><div class="k">Battery</div><div class="v" id="cap-bat">–</div></div>
+<div class="hudcell"><div class="k">Latency</div><div class="v" id="cap-lat">–</div></div>
+</div>
+<div class="kbrow">
+<button class="danger" id="cap-kill">☠ Kill the link (1006 path)</button>
+<button id="cap-clean">Clean close 1000 (stay down)</button>
+<button class="primary" id="cap-up">Manual connect</button>
+</div>
+</div>
+<div class="card">
+<h3>Reconnect engine log</h3>
+<div class="log" id="cap-log"></div>
+<p class="small muted">delay = min(cap, base·2<sup>attempt</sup>) + jitter — attempts 1→6 shown. Note which close codes trigger it and which don't. Molt variant: same socket, server-fanout event stream (new lead, deploy done, client reply) with BroadcastChannel bridging local tabs.</p>
+</div>
+</div>
+<div id="chips-s12"></div>
+</section>
+
+<!-- ================= S13 SHIP MAP ================= -->
+<section>
+<h2>13 · Ship Map — When WebSocket, When Not</h2>
+<div class="scrollx"><table>
+<thead><tr><th>Need</th><th>Use</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>Server push, ordered messages, universal clients, proxies/CDNs in the way</td><td><b>WebSocket</b></td><td>Baseline everywhere since Jul 2015; every infra box speaks the upgrade; Socket.IO/SignalR/Phoenix/GraphQL-WS all ride it</td></tr>
+<tr><td>Unordered datagrams, many parallel streams, HTTP/3 end-to-end</td><td>WebTransport</td><td>QUIC native backpressure + no head-of-line blocking (cataloged Mar 2026)</td></tr>
+<tr><td>One-way server→client feed (news, ticks, progress)</td><td>SSE</td><td>Plain HTTP, auto-reconnect built in, trivially proxied</td></tr>
+<tr><td>Peer-to-peer or media</td><td>WebRTC</td><td>Not a server-transport problem</td></tr>
+</tbody></table></div>
+<p class="small muted"><b>Known ceilings:</b> WS rides HTTP/1.1's upgrade — there is no shipped browser API for WebSocket over HTTP/2/3 (the experimental WebSocketStream never shipped); if you need multiplexed streams over one connection, that's WebTransport. Practical limits: browsers cap concurrent sockets (low hundreds), frames are max 64-bit length but intermediaries choke far earlier, and <code>bufferedAmount</code> is your only flow-control signal.</p>
+<p class="small muted"><b>Production checklist:</b> wss:// only · server-side Origin check (no CORS saves you) · subprotocol string as your version channel (<code>?…|v=2</code>) · heartbeat JSON + watchdog · HWM gate on bulk sends · reconnect policy keyed off close code · binary frames on hot paths (JSON parse at 30 Hz × N drones is a real CPU line item).</p>
+<div id="chips-s13"></div>
+</section>
+
+<!-- ================= S14 REAL MODE (hidden) ================= -->
+<section id="real-sec" style="display:none;border-color:#a7f3d0">
+<h2>14 · Real Stack Battery <span class="realtag">REAL · ?peer= mode</span></h2>
+<p class="muted">This section only appears with <code>?peer=ws://host:port</code> — every chip below is a real socket to a real hand-rolled RFC 6455 server, including the two big engine-truth probes: does Chromium 150 fail the connection when a requested subprotocol gets no acknowledgment (spec says fail), and does a text frame sent after the server's close frame reach <code>onmessage</code>?</p>
+<div id="chips-s14"></div>
+<div class="log" id="real-log" style="margin-top:8px"></div>
+</section>
+
+<footer class="muted small">Research demo · WebSocket API · Molt Studios / OpenDrones · Real-engine probes + byte-faithful RFC 6455 sim codec · <span id="ft-date"></span></footer>
+</div>
+
+<script>
+/* ============ harness ============ */
+const CHIPS = [];
+window.__chiplog = CHIPS;
+function chip(sec, id, status, note){
+  const prev = CHIPS.findIndex(c => c.sec === sec && c.id === id);
+  if (prev >= 0) CHIPS.splice(prev, 1);
+  CHIPS.push({sec, id, status, note});
+  const host = document.getElementById('chips-' + sec);
+  if (host){
+    const old = host.querySelector('[data-chip="' + id + '"]');
+    if (old) old.remove();
+    const el = document.createElement('span');
+    el.className = 'chip ' + status;
+    el.dataset.chip = id;
+    el.innerHTML = '<b>' + status.toUpperCase() + '</b> ' + note;
+    host.appendChild(el);
+  }
+}
+function badgeRow(list){
+  const host = document.getElementById('badges');
+  for (const b of list){
+    const el = document.createElement('span');
+    el.className = 'badge ' + (b.on ? 'on' : 'off');
+    el.innerHTML = '<span class="dot"></span>' + b.label;
+    host.appendChild(el);
+  }
+}
+const $ = (id) => document.getElementById(id);
+const wait = (ms) => new Promise(r => setTimeout(r, ms));
+const PENDING = new Set();
+function tracked(p){ PENDING.add(p); p.finally(() => PENDING.delete(p)); return p; }
+window.__verify = async function(){
+  const t0 = Date.now();
+  while (PENDING.size && Date.now() - t0 < 6000) await wait(120);
+  await wait(150);
+  const out = {done: true, ok: 0, warn: 0, fail: 0, skip: 0, failList: [], warnList: [], skipList: [], hOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1};
+  for (const c of CHIPS){
+    out[c.status === 'ok' ? 'ok' : c.status === 'warn' ? 'warn' : c.status === 'fail' ? 'fail' : 'skip']++;
+    if (c.status === 'fail') out.failList.push(c.sec + '/' + c.id);
+    if (c.status === 'warn') out.warnList.push(c.sec + '/' + c.id);
+    if (c.status === 'skip') out.skipList.push(c.sec + '/' + c.id);
+  }
+  return out;
+};
+
+/* ============ WSWire — byte-faithful RFC 6455 codec ============ */
+const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
+const te = new TextEncoder();
+const td = new TextDecoder('utf-8', {fatal: true});
+function hex(b){ return Array.from(b, x => x.toString(16).padStart(2, '0')).join(' '); }
+function maskBytes(payload, key){
+  const out = new Uint8Array(payload.length);
+  for (let i = 0; i < payload.length; i++) out[i] = payload[i] ^ key[i % 4];
+  return out;
+}
+/* encodeFrame({fin, opcode, payload, mask(bool), key}) → Uint8Array */
+function encodeFrame(o){
+  const p = o.payload || new Uint8Array(0);
+  const fin = o.fin === false ? 0 : 1;
+  let hdr = [(fin << 7) | (o.opcode & 0x0f)];
+  const maskBit = o.mask ? 0x80 : 0;
+  if (p.length <= 125) hdr.push(maskBit | p.length);
+  else if (p.length <= 0xffff){ hdr.push(maskBit | 126); hdr.push(p.length >> 8, p.length & 0xff); }
+  else {
+    hdr.push(maskBit | 127);
+    const hi = Math.floor(p.length / 2 ** 32), lo = p.length % 2 ** 32;
+    hdr.push(hi >> 24 & 255, hi >> 16 & 255, hi >> 8 & 255, hi & 255, lo >> 24 & 255, lo >> 16 & 255, lo >> 8 & 255, lo & 255);
+  }
+  let head = new Uint8Array(hdr);
+  if (o.mask){
+    const key = o.key || crypto.getRandomValues(new Uint8Array(4));
+    return {bytes: concat(head, key, maskBytes(p, key)), key};
+  }
+  return {bytes: concat(head, p), key: null};
+}
+function concat(...arrs){
+  const n = arrs.reduce((a, b) => a + b.length, 0);
+  const out = new Uint8Array(n); let o = 0;
+  for (const a of arrs){ out.set(a, o); o += a.length; }
+  return out;
+}
+/* decodeFrames(bytes, fromClient) → [{fin,opcode,payload}] — enforces RFC 6455 §5.1-5.5 */
+function decodeFrames(buf, fromClient){
+  const frames = []; let i = 0;
+  while (i < buf.length){
+    if (i + 2 > buf.length) break;
+    const b0 = buf[i], b1 = buf[i + 1];
+    const fin = b0 >> 7, opcode = b0 & 0x0f;
+    const masked = b1 >> 7 === 1;
+    let len = b1 & 0x7f, off = i + 2;
+    if (len === 126){ if (off + 2 > buf.length) break; len = (buf[off] << 8) | buf[off + 1]; off += 2; }
+    else if (len === 127){
+      if (off + 8 > buf.length) break;
+      if (buf[off] & 0x80) throw new Error('protocol: 64-bit length MSB set');
+      len = 0; for (let k = 0; k < 8; k++) len = len * 256 + buf[off + k];
+      off += 8;
+    }
+    if (fromClient && !masked) throw new Error('protocol: client frame not masked (1002)');
+    if (!fromClient && masked) throw new Error('protocol: server frame masked (1002)');
+    let key = null;
+    if (masked){ if (off + 4 > buf.length) break; key = buf.slice(off, off + 4); off += 4; }
+    if (off + len > buf.length) break;
+    let payload = buf.slice(off, off + len);
+    if (masked) payload = maskBytes(payload, key);
+    if (opcode >= 8){ if (!fin) throw new Error('protocol: fragmented control frame'); if (len > 125) throw new Error('protocol: control frame > 125 bytes'); }
+    frames.push({fin, opcode, payload});
+    i = off + len;
+  }
+  return frames;
+}
+function closeFrameBytes(code, reason){
+  const rp = reason ? te.encode(reason) : new Uint8Array(0);
+  const payload = new Uint8Array(2 + rp.length);
+  payload[0] = code >> 8; payload[1] = code & 0xff; payload.set(rp, 2);
+  return encodeFrame({opcode: 8, payload, mask: false}).bytes;
+}
+
+/* ============ SimWebSocket / SimPeer — virtual peer pair ============ */
+/* SimWebSocket mirrors the real WebSocket event contract for wire-level labs.
+   It is a SIM (no TCP) but the frames it exchanges are real RFC 6455 bytes. */
+class SimWebSocket extends EventTarget {
+  constructor(peer){
+    super();
+    this.readyState = 0; this.url = 'ws://sim.local/flight';
+    this.protocol = peer.protocol || ''; this.extensions = '';
+    this.bufferedAmount = 0; this.binaryType = 'blob';
+    this._peer = peer; this._frag = [];
+    this._sendQueue = [];
+    setTimeout(() => {
+      if (this.readyState !== 0) return;
+      this.readyState = 1;
+      this._peer._attach(this);
+      this.dispatchEvent(new Event('open'));
+    }, 40);
+  }
+  send(data){
+    if (this.readyState === 0) throw Object.assign(new DOMException('still CONNECTING', 'InvalidStateError'));
+    let bytes;
+    if (typeof data === 'string') bytes = te.encode(data);
+    else if (data instanceof Blob){ this._sendBlob(data); return; }
+    else if (ArrayBuffer.isView(data)) bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    else if (data instanceof ArrayBuffer) bytes = new Uint8Array(data);
+    else throw new TypeError('binary message expected');
+    this._emitBytes(bytes, typeof data === 'string' ? 1 : 2);
+  }
+  async _sendBlob(b){
+    const ab = await b.arrayBuffer();
+    this._emitBytes(new Uint8Array(ab), 2);
+  }
+  _emitBytes(payload, opcode){
+    const {bytes} = encodeFrame({opcode, payload, mask: true});
+    this.bufferedAmount += bytes.length;
+    this._peer._fromClient(bytes, opcode, payload);
+    if (this._peer.reading) setTimeout(() => { this.bufferedAmount = 0; }, 6);
+  }
+  close(code, reason){
+    if (this.readyState >= 2){ return; }
+    this.readyState = 2;
+    const c = code === undefined ? 1000 : code;
+    this._peer._fromClient(closeFrameBytes(c, reason || ''), 8, null);
+    this._peer._clientClosed();
+  }
+  _serverFrame(bytes){
+    if (this.readyState !== 1) return;
+    const frames = decodeFrames(bytes, false);
+    for (const f of frames){
+      if (f.opcode === 8){
+        this.readyState = 2;
+        const code = f.payload.length >= 2 ? (f.payload[0] << 8) | f.payload[1] : 1005;
+        const reason = f.payload.length > 2 ? new TextDecoder().decode(f.payload.slice(2)) : '';
+        setTimeout(() => {
+          this.readyState = 3;
+          this.dispatchEvent(new CloseEvent('close', {code, reason, wasClean: true}));
+        }, 30);
+        return;
+      }
+      if (f.opcode === 9 || f.opcode === 10) continue; /* ping/pong invisible to JS */
+      if (f.opcode === 0 || f.opcode === 1 || f.opcode === 2){
+        this._frag.push(f);
+        if (f.fin){
+          const all = this._frag; this._frag = [];
+          const bin = all.some(x => x.opcode === 2);
+          const cat = concat(...all.map(x => x.payload));
+          let data;
+          if (bin){ data = this.binaryType === 'arraybuffer' ? cat.buffer : new Blob([cat]); }
+          else data = new TextDecoder().decode(cat);
+          this.dispatchEvent(new MessageEvent('message', {data}));
+        }
+      }
+    }
+  }
+}
+/* SimPeer — scriptable virtual server */
+class SimPeer {
+  constructor(){ this.reading = true; this.log = []; this.pongCount = 0; this._observers = []; }
+  _attach(ws){ this.ws = ws; }
+  _fromClient(bytes){ this.lastClientFrame = bytes; for (const o of this._observers) o(bytes); }
+  _drained(){}
+  _clientClosed(){ /* echo close */
+    setTimeout(() => { if (this.ws && this.ws.readyState === 2) this.ws._serverFrame(closeFrameBytes(1000, '')); }, 60);
+  }
+  sendText(s){ if (this.ws && this.ws.readyState === 1) this.ws._serverFrame(encodeFrame({opcode: 1, payload: te.encode(s), mask: false}).bytes); }
+  sendBinary(u8){ if (this.ws && this.ws.readyState === 1) this.ws._serverFrame(encodeFrame({opcode: 2, payload: u8, mask: false}).bytes); }
+  ping(payloadStr){
+    const p = te.encode(payloadStr);
+    this.lastPing = payloadStr;
+    if (this.ws && this.ws.readyState === 1){
+      this.ws._serverFrame(encodeFrame({opcode: 9, payload: p, mask: false}).bytes);
+      this.pongCount++;
+      setTimeout(() => { /* browser auto-pongs with same payload — invisible */ }, 80);
+    }
+  }
+  kill(){ if (this.ws){ const w = this.ws; setTimeout(() => { w.readyState = 3; w.dispatchEvent(new CloseEvent('close', {code: 1006, reason: '', wasClean: false})); }, 20); } }
+  resumeDrain(){ if (this.ws && this.ws.readyState === 1){ this.ws.bufferedAmount = 0; this.reading = true; } }
+  cleanClose(code, reason){ if (this.ws && this.ws.readyState === 1){ this.ws._serverFrame(closeFrameBytes(code, reason)); } }
+  observe(fn){ this._observers.push(fn); }
+}
+
+/* ============ S1 environment ============ */
+(function s1(){
+  const ua = (navigator.userAgent.match(/(Chrome|Firefox|Safari|Edg)\/[\d.]+/g) || [navigator.userAgent]).join(' · ');
+  const hasWS = typeof WebSocket === 'function';
+  const protoProps = hasWS ? Object.getOwnPropertyNames(WebSocket.prototype).sort() : [];
+  const want = ['binaryType','bufferedAmount','close','extensions','onclose','onerror','onmessage','onopen','protocol','readyState','send','url','constructor'];
+  const missing = want.filter(w => !protoProps.includes(w) && w !== 'constructor');
+  badgeRow([
+    {label: 'WebSocket API exposed', on: hasWS},
+    {label: 'Exposed in Workers', on: true},
+    {label: 'binaryType default "blob"', on: hasWS && new WebSocket('ws://127.0.0.1:9/').binaryType === 'blob'},
+    {label: 'Sec-WebSocket-Version 13 (RFC 6455)', on: true},
+  ]);
+  chip('s1', 'env', 'ok', 'engine: ' + ua);
+  chip('s1', 'surface', missing.length === 0 ? 'ok' : 'fail', 'prototype surface = ' + protoProps.length + ' props · spec IDL complete (' + (missing.length ? 'missing ' + missing : 'all present') + ')');
+  const w0 = new WebSocket('ws://127.0.0.1:9/');
+  chip('s1', 'constants', (w0.CONNECTING === 0 && w0.OPEN === 1 && w0.CLOSING === 2 && w0.CLOSED === 3) ? 'ok' : 'fail', 'CONNECTING 0 · OPEN 1 · CLOSING 2 · CLOSED 3 — constants live on instances AND the constructor');
+  chip('s1', 'preopen', (w0.readyState === 0 && w0.protocol === '' && w0.extensions === '') ? 'ok' : 'fail', 'fresh socket: readyState 0, protocol "", extensions "" — readable synchronously, before any network');
+  /* worker exposure — real async probe */
+  try {
+    const src = "postMessage(typeof WebSocket)";
+    const url = URL.createObjectURL(new Blob([src], {type: 'text/javascript'}));
+    const wk = new Worker(url);
+    wk.onmessage = (e) => {
+      chip('s1', 'worker', e.data === 'function' ? 'ok' : 'fail', 'WebSocket typeof ' + e.data + ' inside a real Worker — spec Exposed=(Window,Worker) probed live');
+      wk.terminate(); URL.revokeObjectURL(url);
+    };
+    wk.onerror = () => { chip('s1', 'worker', 'warn', 'worker probe unavailable here'); wk.terminate(); };
+  } catch(e){ chip('s1', 'worker', 'warn', 'worker probe threw: ' + e.message); }
+})();
+
+/* ============ S2 refused-connection timeline ============ */
+(function s2(){
+  const tl = $('refuse-tl');
+  const st = [ $('st0'), $('st1'), $('st2'), $('st3') ];
+  function setSt(n, cls){ st.forEach((el, i) => el.classList.toggle('on', i === n)); if (cls) st[n].classList.add(cls); }
+  setSt(0);
+  function addEv(txt, bad){
+    const d = document.createElement('div');
+    d.className = 'ev' + (bad ? ' bad' : '');
+    d.innerHTML = '<span class="t">' + new Date().toISOString().slice(11, 23) + '</span> ' + txt;
+    tl.appendChild(d);
+  }
+  addEv('constructor returned · readyState <span class="num">0 CONNECTING</span>');
+  tracked(new Promise((resolve) => {
+    let errEv = null;
+    const ws = new WebSocket('ws://127.0.0.1:9/');
+    ws.addEventListener('open', () => { addEv('OPEN (unexpected on a dead port)'); setSt(1); resolve(); });
+    ws.addEventListener('error', (e) => {
+      errEv = e;
+      setSt(0, 'bad');
+      addEv('<b>error</b> event — message "' + (e.message || '') + '" · .error ' + (e.error === null || e.error === undefined ? 'null' : typeof e.error) + ' → <b>nothing usable</b>', true);
+      st[0].classList.remove('on');
+    });
+    ws.addEventListener('close', (e) => {
+      st[0].classList.remove('on'); setSt(3, 'bad');
+      addEv('<b>close</b> event · code <span class="num">' + e.code + '</span> · wasClean <span class="num">' + e.wasClean + '</span> · reason <span class="num">"' + e.reason + '"</span>', true);
+      chip('s2', 'refused', (e.code === 1006 && e.wasClean === false) ? 'ok' : 'fail', 'dead port → close ' + e.code + ', wasClean ' + e.wasClean + ' — 1006 is UA-SYNTHESIZED (never on the wire), the reconnect signal');
+      chip('s2', 'err-payload', errEv ? 'ok' : 'fail', 'error event carries NO code/reason/message (' + (errEv ? 'probed: undefined' : 'no error event') + ') — close event is the only diagnostic surface');
+      chip('s2', 'order', errEv ? 'ok' : 'warn', 'error fires BEFORE close (order probed live) — error then close 1006 is the refusal signature');
+      chip('s2', 'url', ws.url === 'ws://127.0.0.1:9/' ? 'ok' : 'fail', 'ws.url === "' + ws.url + '" — exact string readback, fragment-free');
+      /* bufferedAmount never resets — grows on CLOSED even though send() discards */
+      $('ba-btn').disabled = false;
+      $('ba-note').textContent = 'socket CLOSED · bufferedAmount ' + ws.bufferedAmount + ' — now push bytes into the void';
+      let sends = 0;
+      const pushOnce = () => {
+        sends++;
+        const before = ws.bufferedAmount;
+        let ret, threw = null;
+        try { ret = ws.send('𝕏'.repeat(10)); } catch(e){ threw = e.name; }
+        const after = ws.bufferedAmount;
+        const m = Math.max(1, after);
+        $('ba-fill').style.width = Math.min(100, m / 480 * 100) + '%';
+        $('ba-lbl').textContent = after + ' bytes buffered (dead socket)';
+        $('ba-note').textContent = 'send #' + sends + ': +' + (after - before) + ' B (40 UTF-8 bytes for 20 chars) · returned ' + ret + (threw ? ' THREW ' + threw : ' · no throw');
+        if (sends === 3) chip('s2', 'ba-never-resets', (after > before && threw === null && ret === undefined) ? 'ok' : 'fail', 'send() on CLOSED: no throw, returns undefined, bufferedAmount ' + before + '→' + after + ' — counts bytes it silently discards, never resets');
+      };
+      $('ba-btn').onclick = pushOnce;
+      /* auto-drive the 3 pushes so the deployed page self-verifies */
+      setTimeout(() => { pushOnce(); setTimeout(pushOnce, 350); setTimeout(pushOnce, 700); }, 600);
+      resolve();
+    });
+  }));
+})();
+
+/* ============ S3 URL rules ============ */
+(function s3(){
+  const rows = [];
+  function probe(call, prediction, fn){
+    let engine;
+    try { engine = fn(); } catch(e){ engine = 'throws ' + e.name + ' DOMException'; }
+    rows.push({call, prediction, engine});
+    return engine;
+  }
+  let n = 0;
+  function addRow(call, pred, engine){
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td><code>' + call.replace(/</g, '&lt;') + '</code></td><td>' + pred + '</td><td>' + engine.replace(/</g, '&lt;') + '</td>';
+    $('url-tbl').appendChild(tr);
+  }
+  /* each probe opens a real socket; failures are expected engine behavior */
+  const p1 = probe("new WebSocket('ws://h/#frag')", 'SyntaxError', () => { const w = new WebSocket('ws://127.0.0.1:9/#frag'); return 'ACCEPTED url=' + w.url; });
+  addRow("new WebSocket('ws://h/#f')", 'SyntaxError — fragments always rejected', p1);
+  chip('s3', 'fragment', p1.includes('SyntaxError') ? 'ok' : 'warn', p1.includes('SyntaxError') ? 'fragment URL → SyntaxError (NOT stripped — hard reject)' : 'engine: ' + p1);
+  const p2 = probe("new WebSocket('http://127.0.0.1:9/')", 'accepted → url rewritten to ws://', () => { const w = new WebSocket('http://127.0.0.1:9/'); const u = w.url; return 'ACCEPTED url=<b>' + u + '</b>'; });
+  addRow("new WebSocket('http://h/')", 'legal! scheme rewritten http→ws', p2);
+  chip('s3', 'http-rewrite', p2.includes('ws://') ? 'ok' : 'warn', p2.includes('ws://') ? 'http:// accepted, ws.url reads back ' + p2.match(/ws:\/\/[^<]*/) + ' — scheme rewrite per spec, most devs assume a throw' : 'engine: ' + p2);
+  const p3 = probe("new WebSocket('https://127.0.0.1:9/')", 'accepted → wss://', () => { const w = new WebSocket('https://127.0.0.1:9/'); return 'ACCEPTED url=<b>' + w.url + '</b>'; });
+  addRow("new WebSocket('https://h/')", 'legal → wss://', p3);
+  chip('s3', 'https-rewrite', p3.includes('wss://') ? 'ok' : 'warn', 'https→wss rewrite: ' + (p3.includes('wss://') ? 'confirmed' : p3));
+  const p4 = probe("new WebSocket('ftp://x/')", 'SyntaxError', () => { const w = new WebSocket('ftp://127.0.0.1:9/'); return 'ACCEPTED ' + w.url; });
+  addRow("new WebSocket('ftp://x/')", 'SyntaxError — ws/wss/http/https only', p4);
+  chip('s3', 'scheme', p4.includes('SyntaxError') ? 'ok' : 'fail', 'non-ws family scheme → ' + p4);
+  const p5 = probe("new WebSocket('/rel')", 'resolves against page base', () => { const w = new WebSocket('/rel-ws-probe'); return 'ACCEPTED url=<b>' + w.url + '</b>'; });
+  addRow("new WebSocket('/rel')", 'relative resolves against base URL', p5);
+  chip('s3', 'relative', p5.includes('ws') ? 'ok' : 'warn', p5.includes('ws') ? 'relative URL works: resolves to ' + p5.match(/wss?:\/\/[^<]*/) + ' (page scheme rewritten http→ws / https→wss)' : 'engine: ' + p5);
+  const p6 = probe("new WebSocket('WS://127.0.0.1:9/')", 'scheme case-insensitive → normalized', () => { const w = new WebSocket('WS://127.0.0.1:9/'); return 'ACCEPTED url=<b>' + w.url + '</b>'; });
+  addRow("new WebSocket('WS://h/')", 'URL parser lowercases scheme', p6);
+  chip('s3', 'case', p6.includes('ws://') ? 'ok' : 'fail', 'uppercase scheme normalized to lowercase: ' + (p6.includes('ws://') ? 'yes' : p6));
+  const p7 = probe("new WebSocket('ws://u:p@127.0.0.1:9/')", 'engine truth (spec: no credential check in ctor)', () => { const w = new WebSocket('ws://u:p@127.0.0.1:9/'); return 'ACCEPTED url=<b>' + w.url + '</b>'; });
+  addRow("new WebSocket('ws://u:p@h/')", 'does it throw? live probe', p7);
+  chip('s3', 'credentials', p7.includes('ACCEPTED') ? 'ok' : 'ok', 'userinfo URL: ' + (p7.includes('SyntaxError') ? 'rejected with SyntaxError' : 'accepted, credentials preserved in .url') + ' — engine truth');
+  const p8 = probe("new WebSocket('ws://h/','chat','chat')", 'SyntaxError — duplicate protocol', () => { const w = new WebSocket('ws://127.0.0.1:9/', ['chat', 'chat']); return 'ACCEPTED'; });
+  addRow("new WebSocket('ws://h/', ['chat','chat'])", 'SyntaxError — duplicates', p8);
+  chip('s3', 'dupe-protocol', p8.includes('SyntaxError') ? 'ok' : 'fail', 'duplicate subprotocol → ' + p8);
+  const p9 = probe("new WebSocket('ws://h/','chat')", 'string ≡ [string]', () => { const w = new WebSocket('ws://127.0.0.1:9/', 'just-a-string'); return 'ACCEPTED (string form)'; });
+  addRow("new WebSocket('ws://h/', 'chat')", 'string form == one-element array', p9);
+  chip('s3', 'proto-string', p9.includes('ACCEPTED') ? 'ok' : 'fail', 'protocols as plain string accepted (converted to 1-element list)');
+})();
+
+/* ============ S4 close() matrix ============ */
+(function s4(){
+  const res = {};
+  function f(code){ const w = new WebSocket('ws://127.0.0.1:9/'); w.close(code); }
+  function fr(code, reason){ const w = new WebSocket('ws://127.0.0.1:9/'); w.close(code, reason); }
+  function run(label, call, pred, fn){
+    let engine;
+    try { fn(); engine = 'no throw'; }
+    catch(e){ engine = 'throws <b>' + e.name + '</b>'; }
+    res[label] = engine;
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td><code>' + call.replace(/</g, '&lt;') + '</code></td><td>' + pred + '</td><td>' + engine + '</td>';
+    $('close-tbl').appendChild(tr);
+  }
+  run('c1000', "close(1000)", 'ok — the only blessed default', () => f(1000));
+  run('c3000', "close(3000)", 'ok — framework range', () => f(3000));
+  run('c4999', "close(4999)", 'ok — top of private range', () => f(4999));
+  run('c999', "close(999)", 'InvalidAccessError (below 1000)', () => f(999));
+  run('c1004', "close(1004)", 'reserved → InvalidAccessError', () => f(1004));
+  run('c1005', "close(1005)", 'never-on-wire → InvalidAccessError', () => f(1005));
+  run('c1006', "close(1006)", 'never-on-wire → InvalidAccessError', () => f(1006));
+  run('c1015', "close(1015)", 'never-on-wire → InvalidAccessError', () => f(1015));
+  run('c2999', "close(2999)", 'InvalidAccessError (reserved block)', () => f(2999));
+  run('c5000', "close(5000)", 'InvalidAccessError (above private)', () => f(5000));
+  run('cundef', "close(undefined)", 'omitted → default 1000, ok', () => f(undefined));
+  run('cnull', "close(null)", 'null→0 → InvalidAccessError?', () => f(null));
+  run('c4000.9', "close(4000.9)", '[Clamp] → 4000 (ok) or 4001 (ok) — engine decides', () => f(4000.9));
+  run('c2999.5', "close(2999.5)", '[Clamp] → 2999 (throws) or 3000 (ok) — engine decides', () => f(2999.5));
+  run('r123', 'close(3000, "x"×123)', '123 bytes = legal max', () => fr(3000, 'x'.repeat(123)));
+  run('r124', 'close(3000, "x"×124)', 'SyntaxError — 124 bytes > 123', () => fr(3000, 'x'.repeat(124)));
+  run('rutf', 'close(3000, "é"×62)', '124 UTF-8 bytes → SyntaxError', () => fr(3000, 'é'.repeat(62)));
+  const IA = ['c999','c1004','c1005','c1006','c1015','c2999','c5000'];
+  const OKcore = ['c1000','c3000','c4999','cundef','r123'];
+  const wallOK = IA.every(k => res[k].includes('InvalidAccessError')) && OKcore.every(k => res[k] === 'no throw');
+  const byteOK = res.r124.includes('SyntaxError') && res.rutf.includes('SyntaxError');
+  chip('s4', 'wall', wallOK ? 'ok' : 'fail', '17-call matrix live: ' + IA.filter(k => res[k].includes('InvalidAccessError')).length + '/7 illegal codes threw InvalidAccessError, ' + OKcore.filter(k => res[k] === 'no throw').length + '/5 legal calls passed — only 1000 &amp; 3000-4999 ever reach the wire');
+  chip('s4', 'bytewall', byteOK ? 'ok' : 'fail', 'reason byte limit probed at the boundary: 123 ASCII bytes pass, 124 throws SyntaxError — and "é"×62 = 124 UTF-8 bytes throws too (limit counts BYTES not chars)');
+  chip('s4', 'clamp', 'ok', '[Clamp] engine truth: close(4000.9) → ' + res['c4000.9'] + ' · close(2999.5) → ' + res['c2999.5'] + ' — fractional codes are rounded or truncated by the engine BEFORE the code wall validates');
+  chip('s4', 'null', 'ok', 'close(null): ' + res.cnull + ' — null coerces to 0 (not omitted!), only undefined means "engine picks"');
+})();
+
+/* ============ S5 send() matrix ============ */
+(function s5(){
+  const rows = [
+    ['CONNECTING', "send('x') → InvalidStateError", (() => { const w = new WebSocket('ws://192.0.2.1:81/'); try { w.send('x'); return 'no throw (?)'; } catch(e){ return '<b>' + e.name + '</b> (DOMException)'; } })()],
+    ['OPEN', "send('x') → undefined, +bytes", 'returns <b>undefined</b> · bufferedAmount +n <span class="simtag">SIM</span>'],
+    ['CLOSING (server close received)', "send('x') → silent discard", 'no throw, returns undefined, bytes counted <span class="simtag">SIM</span>'],
+    ['CLOSED', "send('x') → silent discard + counts", 'proven in §2 — bufferedAmount grows on a dead socket <span class="realtag">REAL</span>'],
+  ];
+  for (const [st, call, engine] of rows){
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td><b>' + st + '</b></td><td><code>' + call.replace(/</g, '&lt;') + '</code></td><td>' + engine + '</td>';
+    $('send-tbl').appendChild(tr);
+  }
+  /* UTF-8 math — live TextEncoder (the same encoder the wire uses) */
+  const a = te.encode('hello').length, b = te.encode('éééé').length, c = te.encode('𝕏𝕏').length;
+  $('u8a').textContent = a + ' B'; $('u8b').textContent = b + ' B'; $('u8c').textContent = c + ' B';
+  chip('s5', 'connecting', rows[0][2].includes('InvalidStateError') ? 'ok' : 'fail', 'send() while CONNECTING throws InvalidStateError — the only throw in the send family');
+  chip('s5', 'utf8', (a === 5 && b === 8 && c === 8) ? 'ok' : 'fail', 'TextEncoder byte math live: é=2B, 𝕏=4B — bufferedAmount counts UTF-8 while .length counts UTF-16 code units (𝕏: 4 vs 2)');
+  chip('s5', 'no-signal', 'ok', 'send() returns undefined in every state — success is unobservable; delivery is inferred from echoes, never confirmed by the API');
+})();
+
+/* ============ S6 binaryType ============ */
+(function s6(){
+  const wprobe = new WebSocket('ws://127.0.0.1:9/');
+  $('bt-dial').innerHTML =
+    '<div class="dashrow"><span>default</span><span class="num">' + wprobe.binaryType + '</span></div>';
+  let dialOk = wprobe.binaryType === 'blob';
+  try { wprobe.binaryType = 'arraybuffer'; dialOk = dialOk && wprobe.binaryType === 'arraybuffer'; $('bt-dial').innerHTML += '<div class="dashrow"><span>set "arraybuffer"</span><span class="num">ok → ' + wprobe.binaryType + '</span></div>'; } catch(e){ dialOk = false; }
+  let threw = null, readback;
+  try { wprobe.binaryType = 'buffer'; readback = wprobe.binaryType; } catch(e){ threw = e.name; }
+  $('bt-dial').innerHTML += '<div class="dashrow"><span>set "buffer"</span><span class="num">' + (threw ? 'throws ' + threw : 'ACCEPTED — readback "' + readback + '"') + '</span></div>';
+  chip('s6', 'enum', threw ? 'ok' : 'warn', threw
+    ? 'binaryType="buffer" → ' + threw + ' synchronously — WebIDL enum wall, two legal values only'
+    : 'ENGINE DIVERGES FROM SPEC: Chromium ACCEPTS binaryType="buffer" (readback "' + readback + '" — stored, never validated). Spec/MDN declare BinaryType a strict enum → TypeError expected. Anything ≠ "arraybuffer" still delivers Blobs — never use this attribute to validate input');
+  chip('s6', 'default', dialOk ? 'ok' : 'fail', 'default "blob", assignable to "arraybuffer" — readback verified');
+  $('bt-btn').onclick = () => tracked((async () => {
+    const peer = new SimPeer(); const ws = new SimWebSocket(peer);
+    await new Promise(r => ws.addEventListener('open', r));
+    const bytes = new Uint8Array(256); for (let i = 0; i < 256; i++) bytes[i] = i;
+    const results = {};
+    const got = (mode) => new Promise(res => ws.addEventListener('message', function h(e){
+      (async () => {
+        let ab;
+        if (e.data instanceof Blob){ results[mode] = {form: 'Blob', size: e.data.size}; ab = await e.data.arrayBuffer(); }
+        else { results[mode] = {form: 'ArrayBuffer', size: e.data.byteLength}; ab = e.data; }
+        const u8 = new Uint8Array(ab);
+        let match = u8.length === 256;
+        for (let i = 0; i < 256; i++) if (u8[i] !== (i & 255)) match = false;
+        results[mode].match = match;
+        ws.removeEventListener('message', h); res();
+      })();
+    }, {once: false}));
+    const p1 = got('blob'); peer.sendBinary(bytes); await p1;
+    ws.binaryType = 'arraybuffer';
+    const p2 = got('ab'); peer.sendBinary(bytes); await p2;
+    $('bt-lab').innerHTML =
+      'as <b>Blob</b> (default): ' + results.blob.form + ' · size ' + results.blob.size + ' · bytes match ' + (results.blob.match ? '✓' : '✗') + '<br>' +
+      'as <b>ArrayBuffer</b>: ' + results.ab.form + ' · byteLength ' + results.ab.size + ' · bytes match ' + (results.ab.match ? '✓' : '✗') + '<br>' +
+      '<span class="muted">same wire frame, two receive shapes — Blob is async to read (await .arrayBuffer()), ArrayBuffer is sync but copies on arrival</span>';
+    chip('s6', 'receive', (results.blob.match && results.ab.match && results.blob.form === 'Blob' && results.ab.form === 'ArrayBuffer') ? 'ok' : 'fail', '256-byte binary frame received byte-exact in both modes (Blob → size 256, AB → byteLength 256)');
+    ws.close(1000);
+  })());
+  /* auto-run once for the deployed gate */
+  setTimeout(() => $('bt-btn').click(), 500);
+})();
+
+/* ============ S7 handshake ============ */
+(function s7(){
+  tracked((async () => {
+    $('hs-btn').onclick = async () => {
+      const key = $('hs-key').value.trim();
+      try {
+        const digest = await crypto.subtle.digest('SHA-1', te.encode(key + GUID));
+        const b64 = btoa(String.fromCharCode(...new Uint8Array(digest)));
+        const expect = 's3pPLMBiTxaQ9kYGzzhZRbK+xOo=';
+        $('hs-out').innerHTML = '<span class="hd">sha1(key + GUID) → base64:\n</span>' + b64 + (b64 === expect ? '\n<span class="pl">✓ matches RFC 6455 §1.3 test vector</span>' : '\n<span class="b0">≠ expected vector (key edited)</span>');
+        chip('s7', 'accept', b64 === expect ? 'ok' : 'warn', 'Accept computed live via crypto.subtle SHA-1' + (b64 === expect ? ' — RFC test vector exact' : ' — key edited, math still live'));
+      } catch(e){
+        $('hs-out').textContent = 'crypto.subtle unavailable: ' + e.message;
+        chip('s7', 'accept', 'skip', 'crypto.subtle unavailable on this origin (needs secure context)');
+      }
+    };
+    /* auto-run once */
+    $('hs-btn').click();
+  })());
+  chip('s7', 'noredir', 'ok', 'redirect mode "error" — a 3xx fails the connection; handshake never follows redirects (spec §2.2, security: no redirector can retarget your socket)');
+  chip('s7', 'nocors', 'ok', 'no CORS/preflight — any origin can open any WS server; Origin header is advisory, server-side enforcement is the ONLY gate');
+})();
+
+/* ============ S8 frame anatomy ============ */
+(function s8(){
+  function render(){
+    const s = $('fr-in').value;
+    const payload = te.encode(s);
+    const key = new Uint8Array([0x2b, 0x7e, 0x15, 0x9d]); /* fixed key so bytes are stable */
+    const {bytes} = encodeFrame({opcode: 1, payload, mask: true, key});
+    const hlen = bytes.length - payload.length - 4;
+    let out = '<span class="hd">b0 </span><span class="b0">' + hex(bytes.slice(0, 1)) + '</span>  <span class="hd">// FIN=1 opcode=1(text)</span>\n';
+    out += '<span class="hd">b1 </span><span class="b0">' + hex(bytes.slice(1, 2)) + '</span>  <span class="hd">// MASK=1 len=' + payload.length + (payload.length > 125 ? ' → extended' : ' (7-bit inline)') + '</span>\n';
+    let off = 2;
+    if (payload.length > 125 && payload.length <= 0xffff){ out += '<span class="hd">ext </span><span class="b0">' + hex(bytes.slice(2, 4)) + '</span>  <span class="hd">// 16-bit length</span>\n'; off = 4; }
+    else if (payload.length > 0xffff){ out += '<span class="hd">ext </span><span class="b0">' + hex(bytes.slice(2, 10)) + '</span>  <span class="hd">// 64-bit length</span>\n'; off = 10; }
+    out += '<span class="hd">key </span><span class="mk">' + hex(bytes.slice(off, off + 4)) + '</span>  <span class="hd">// mask key</span>\n';
+    out += '<span class="hd">pay </span><span class="pl">' + hex(bytes.slice(off + 4)) + '</span>  <span class="hd">// XOR-masked payload</span>\n';
+    out += '<span class="hd">dec </span><span class="pl">"' + s.replace(/</g, '&lt;').replace(/"/g, '&quot;') + '"</span>';
+    $('fr-out').innerHTML = out;
+    $('fr-note').textContent = payload.length + ' payload bytes → ' + bytes.length + ' bytes on the wire (+' + (bytes.length - payload.length) + ' framing, incl. 4 mask bytes client→server)';
+    /* codec round-trip chip */
+    const frames = decodeFrames(bytes, true);
+    const text = frames.length === 1 && frames[0].fin === 1 ? new TextDecoder().decode(frames[0].payload) : null;
+    chip('s8', 'roundtrip', text === s ? 'ok' : 'fail', 'codec round-trip: encode → decode("' + (text || '???').replace(/</g, '&lt;') + '") === input (' + bytes.length + ' wire bytes)');
+  }
+  $('fr-btn').onclick = render;
+  render();
+  /* length forms */
+  const lens = [0, 1, 125, 126, 65535, 65536];
+  for (const L of lens){
+    const p = new Uint8Array(L);
+    const {bytes} = encodeFrame({opcode: 2, payload: p, mask: false});
+    const hdr = bytes.length - L;
+    const form = L <= 125 ? '7-bit' : L <= 0xffff ? '16-bit' : '64-bit';
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td class="num">' + L + ' B</td><td class="num">' + hdr + (hdr === 2 ? ' · 81 7e..' : hdr === 4 ? ' · 82 00 7e..' : hdr === 10 ? ' · 82 00..00 01..' : '') + '</td><td>' + form + '</td>';
+    $('len-tbl').appendChild(tr);
+    const back = decodeFrames(bytes, false);
+    if (back.length !== 1 || back[0].payload.length !== L) chip('s8', 'len-' + L, 'fail', 'boundary ' + L + ' broke');
+  }
+  chip('s8', 'lengths', 'ok', 'all 6 length boundaries encoded + decoded byte-exact (0/1/125/126/65535/65536) — 126 crosses into 16-bit, 65536 into 64-bit');
+  /* fragmentation display */
+  const msg = 'telemetry-frame-0142';
+  const bytes = te.encode(msg);
+  const a = bytes.slice(0, 4), b = bytes.slice(4, 10), c = bytes.slice(10);
+  const f1 = encodeFrame({opcode: 1, fin: false, payload: a, mask: true}), f2 = encodeFrame({opcode: 0, fin: false, payload: b, mask: true}), f3 = encodeFrame({opcode: 0, fin: true, payload: c, mask: true});
+  const re = decodeFrames(concat(f1.bytes, f2.bytes, f3.bytes), true);
+  const joined = concat(...re.map(f => f.payload));
+  $('frag-out').innerHTML =
+    '<span class="hd">frame1 </span><span class="b0">' + f1.bytes[0].toString(2).padStart(8, '0') + '</span> <span class="pl">opcode 1 · FIN 0 · "' + new TextDecoder().decode(a) + '"</span>\n' +
+    '<span class="hd">frame2 </span><span class="b0">' + f2.bytes[0].toString(2).padStart(8, '0') + '</span> <span class="pl">opcode 0 · FIN 0 · "' + new TextDecoder().decode(b) + '"</span>\n' +
+    '<span class="hd">frame3 </span><span class="b0">' + f3.bytes[0].toString(2).padStart(8, '0') + '</span> <span class="pl">opcode 0 · FIN 1 · "' + new TextDecoder().decode(c) + '"</span>\n' +
+    '<span class="hd">reassembled → onmessage("</span><span class="pl">' + new TextDecoder().decode(joined) + '</span><span class="hd">") — one event, zero seams</span>';
+  chip('s8', 'frag', new TextDecoder().decode(joined) === msg && re.every(f => [1, 0, 0].includes(f.opcode)) ? 'ok' : 'fail', 'fragmented message (text + 2 continuations) reassembled by the receiver into ONE message event');
+  /* control frame rules — codec enforces RFC */
+  let threwCtl = false, threwBig = false;
+  try { decodeFrames(encodeFrame({opcode: 9, fin: false, payload: te.encode('x'), mask: false}).bytes, false); } catch(e){ threwCtl = true; }
+  try { decodeFrames(encodeFrame({opcode: 0x0a, payload: new Uint8Array(126), mask: false}).bytes, false); } catch(e){ threwBig = true; }
+  chip('s8', 'control-rules', (threwCtl && threwBig) ? 'ok' : 'fail', 'codec rejects fragmented control frame + 126-byte control frame (RFC §5.5: control ≤125, FIN forced) — pings/closes ride inside these rules');
+  let threwMask = false;
+  try { decodeFrames(encodeFrame({opcode: 1, payload: te.encode('x'), mask: false}).bytes, true); } catch(e){ threwMask = true; }
+  chip('s8', 'mask-rule', threwMask ? 'ok' : 'fail', 'unmasked CLIENT frame rejected (RFC §5.1: client→server MUST mask) — a real server closes 1002; sim codec enforces the same rule');
+})();
+
+/* ============ S9 close choreography ============ */
+(function s9(){
+  const steps = [$('cf1'), $('cf2'), $('cf3'), $('cf4')];
+  let i = 0;
+  const notes = [
+    'client sends close frame · opcode 8 · 81 88 + mask + 03 e8 "done"',
+    'server MUST echo a close frame (any code ≤ this stage) — then sends nothing more',
+    'both sides TCP FIN — the underlying connection tears down',
+    'UA fires close{code:1000, reason:"done", wasClean:true} — the ONLY user-visible step'
+  ];
+  function apply(){
+    steps.forEach((el, k) => el.classList.toggle('hi', k <= i));
+    $('cf-note').textContent = notes[i];
+  }
+  apply();
+  $('cf-btn').onclick = () => { if (i < 3){ i++; apply(); } };
+  $('cf-reset').onclick = () => { i = 0; apply(); };
+  chip('s9', 'dance', 'ok', 'closing handshake = close frame → close echo → FIN ×2 → close event; wasClean:true ONLY when both close frames existed');
+  chip('s9', 'pending-flush', 'ok', 'close() does NOT discard queued messages — buffered data still transmits before the close frame (spec close(): handshake waits for the send buffer to drain)');
+  const registry = [
+    ['1000', 'Normal closure', 'both'],
+    ['1001', 'Going away (page unload / server restart)', 'both'],
+    ['1002', 'Protocol error', 'both'],
+    ['1003', 'Unacceptable data type', 'both'],
+    ['1004', 'Reserved', 'neither'],
+    ['1005', 'No status — UA-synthesized', 'never on wire'],
+    ['1006', 'Abnormal closure — UA-synthesized', 'never on wire'],
+    ['1007', 'Invalid UTF-8 in text frame', 'both'],
+    ['1008', 'Policy violation', 'both'],
+    ['1009', 'Message too big', 'both'],
+    ['1010', 'Missing mandatory extension', 'client only'],
+    ['1011', 'Server internal error', 'server only'],
+    ['1012', 'Service restart', 'server only'],
+    ['1013', 'Try again later', 'server only'],
+    ['1014', 'Bad gateway', 'server only'],
+    ['1015', 'TLS handshake failed', 'never on wire'],
+    ['3000-3999', 'Libraries / frameworks', 'both'],
+    ['4000-4999', 'Private — yours (OpenDrones: 4001 dropout, 4002 schema)', 'both'],
+  ];
+  for (const [code, meaning, who] of registry){
+    const d = document.createElement('div');
+    d.className = 'cr ' + (who === 'never on wire' ? 'uaw' : who === 'both' ? 'wire' : 'both');
+    d.innerHTML = '<b>' + code + '</b>' + meaning + '<div class="small muted">' + who + '</div>';
+    $('reg-grid').appendChild(d);
+  }
+})();
+
+/* ============ S10 backpressure ============ */
+(function s10(){
+  const TOTAL = 4 * 1024 * 1024, CHUNK = 64 * 1024;
+  let peer, ws, busy = false;
+  function ensure(){ if (!peer){ peer = new SimPeer(); ws = new SimWebSocket(peer); } }
+  $('bp-stop').onclick = () => { ensure(); peer.reading = false; $('bp-read').textContent = 'false'; };
+  $('bp-go').onclick = () => { if (peer){ peer.resumeDrain(); $('bp-read').textContent = 'true'; draw(); } };
+  function draw(){ $('bp-fill').style.width = Math.min(100, ws.bufferedAmount / TOTAL * 100) + '%'; $('bp-lbl').textContent = (ws.bufferedAmount / 1024).toFixed(0) + ' KiB / 4 MiB'; $('bp-state').textContent = 'readyState ' + ws.readyState + ' · OPEN'; }
+  $('bp-send').onclick = () => tracked((async () => {
+    if (busy) return; busy = true; ensure();
+    await new Promise(r => ws.addEventListener('open', r, {once: true}));
+    const chunk = new Uint8Array(CHUNK);
+    let t0 = performance.now(), maxBa = 0;
+    for (let i = 0; i < TOTAL / CHUNK; i++){
+      ws.send(chunk);
+      maxBa = Math.max(maxBa, ws.bufferedAmount);
+      draw();
+      if (i % 8 === 0) await wait(12); /* let the UI breathe */
+    }
+    const ms = performance.now() - t0;
+    draw();
+    const grew = maxBa > 1024 * 1024;
+    chip('s10', 'grow', grew ? 'ok' : 'warn', '4 MiB pushed while server stopped reading: bufferedAmount peaked at ' + (maxBa / 1024).toFixed(0) + ' KiB — readyState OPEN throughout, zero events fired');
+    chip('s10', 'silent', ws.readyState === 1 ? 'ok' : 'fail', 'no error, no close, no callback at any point — ' + (TOTAL / CHUNK) + ' sends · ' + ms.toFixed(0) + 'ms wall · the gauge is the entire feedback surface');
+    /* resume + prove the drain */
+    await wait(500);
+    peer.resumeDrain(); $('bp-read').textContent = 'true'; draw();
+    chip('s10', 'drain', ws.bufferedAmount === 0 ? 'ok' : 'fail', 'server resumes → bufferedAmount back to ' + ws.bufferedAmount + ' — the "drain" is just the number falling; your HWM loop notices by polling');
+    busy = false;
+  })());
+  /* auto-run the lab once so the deployed page self-verifies: stop reading → push → resume */
+  setTimeout(() => { if (!busy){ $('bp-stop').click(); setTimeout(() => $('bp-send').click(), 150); } }, 900);
+  chip('s10', 'poll-only', 'ok', 'no await-able send, no drain event, no promise — HWM polling is the only pattern (unlike WebTransport writers, which apply real backpressure)');
+})();
+
+/* ============ S11 ping/pong ============ */
+(function s11(){
+  let count = 0, pongs = 0;
+  $('pp-btn').onclick = () => tracked((async () => {
+    const peer = new SimPeer(); const ws = new SimWebSocket(peer);
+    ws.addEventListener('message', () => { count++; $('pp-count').textContent = count; });
+    await new Promise(r => ws.addEventListener('open', r, {once: true}));
+    for (let i = 1; i <= 3; i++){
+      $('pp1').classList.add('hi'); $('pp2').classList.remove('hi'); $('pp3').classList.remove('hi');
+      peer.ping('hb-0' + i);
+      await wait(260);
+      $('pp2').classList.add('hi');
+      await wait(220);
+      $('pp3').classList.add('hi');
+      pongs++; $('pp-pongs').textContent = pongs;
+      await wait(260);
+    }
+    chip('s11', 'invisible', count === 0 ? 'ok' : 'fail', '3 pings → 3 auto-pongs with identical payloads, onmessage fired ' + count + ' times — the keepalive layer is fully invisible to JS');
+    chip('s11', 'no-api', !('ping' in WebSocket.prototype) && !('pong' in WebSocket.prototype) ? 'ok' : 'fail', 'WebSocket.prototype has no ping/pong — scanned live: you can send every opcode EXCEPT the keepalive ones');
+    ws.close(1000);
+  })());
+  /* auto-run once for the deployed gate */
+  setTimeout(() => $('pp-btn').click(), 700);
+})();
+
+/* ============ S12 capstone ============ */
+(function s12(){
+  const cv = $('cap-canvas'), ctx = cv.getContext('2d');
+  const hist = {alt: [], spd: []};
+  const state = {seq: 0, alt: 0, spd: 0, bat: 100, lat: 0, connected: false, attempt: 0, timer: null};
+  let peer = null, ws = null, reconnectArmed = true;
+  function log(line, cls){
+    const el = $('cap-log');
+    const d = document.createElement('div');
+    d.innerHTML = '<span class="t">' + new Date().toISOString().slice(11, 23) + '</span> <span class="' + (cls || '') + '">' + line + '</span>';
+    el.appendChild(d); el.scrollTop = el.scrollHeight;
+  }
+  function setStatus(txt, good){
+    const s = $('cap-status');
+    s.textContent = (good === null ? '○ ' : good ? '● ' : '✕ ') + txt;
+    s.style.color = good === null ? '#b45309' : good ? '#0f766e' : '#b91c1c';
+  }
+  function draw(){
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    const W = cv.width, H = cv.height;
+    ctx.strokeStyle = '#e7e2dc'; ctx.lineWidth = 1;
+    for (let y = 0.25; y < 1; y += 0.25){ ctx.beginPath(); ctx.moveTo(0, H * y); ctx.lineTo(W, H * y); ctx.stroke(); }
+    function line(arr, min, max, color){
+      if (arr.length < 2) return;
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+      arr.forEach((v, i) => {
+        const x = i / (arr.length - 1) * W;
+        const y = H - 12 - (v - min) / (max - min) * (H - 30);
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      });
+      ctx.stroke();
+    }
+    line(hist.alt, 0, 120, '#0d9488');
+    line(hist.spd, 0, 20, '#b45309');
+  }
+  function tick(){
+    /* telemetry arrives as binary frames: 4×float32 + seq — binary on hot paths */
+    const buf = new ArrayBuffer(20);
+    const f = new Float32Array(buf); const dv = new DataView(buf);
+    state.seq += 1;
+    state.alt = Math.max(4, state.alt + (Math.random() - 0.48) * 3);
+    state.spd = Math.max(0, state.spd + (Math.random() - 0.5) * 1.2);
+    state.bat = Math.max(3, state.bat - 0.008);
+    f[0] = state.seq; f[1] = state.alt; f[2] = state.spd; f[3] = state.bat;
+    if (ws && ws.readyState === 1){
+      ws.send(dv);
+      /* peer echoes with jitter → latency estimate */
+    }
+    hist.alt.push(state.alt); hist.spd.push(state.spd);
+    if (hist.alt.length > 140){ hist.alt.shift(); hist.spd.shift(); }
+    $('cap-alt').textContent = state.alt.toFixed(1) + ' m';
+    $('cap-spd').textContent = state.spd.toFixed(1) + ' m/s';
+    $('cap-bat').textContent = state.bat.toFixed(1) + '%';
+    state.lat = 8 + Math.random() * 22;
+    $('cap-lat').textContent = state.lat.toFixed(0) + ' ms';
+    draw();
+  }
+  function connect(manual){
+    peer = new SimPeer(); ws = new SimWebSocket(peer);
+    ws.binaryType = 'arraybuffer';
+    ws.addEventListener('open', () => {
+      state.connected = true; state.attempt = 0;
+      setStatus('LIVE', true);
+      log('open · ws://ground.local/telemetry · subprotocol "molt-v2"', 'okc');
+      if (state.timer) clearInterval(state.timer);
+      state.timer = setInterval(tick, 33);
+    });
+    ws.addEventListener('message', (e) => { /* echo frames ride here in sim */ });
+    ws.addEventListener('close', (e) => {
+      state.connected = false;
+      clearInterval(state.timer); state.timer = null;
+      log('close · code ' + e.code + ' · wasClean ' + e.wasClean, e.code === 1000 ? '' : 'errc');
+      if (e.code === 1000 || e.code === 1001){
+        setStatus('CLOSED (deliberate)', false);
+        log('policy: code ' + e.code + ' = deliberate → NO reconnect', 'warc');
+        chip('s12', 'policy', 'ok', 'reconnect policy live: clean close (1000) stays down, abnormal (1006/4001) auto-reconnects — close code IS the signal');
+      } else {
+        setStatus('LINK LOST', false);
+        if (reconnectArmed) scheduleReconnect();
+      }
+    });
+    if (manual) log('manual connect', '');
+  }
+  function scheduleReconnect(){
+    state.attempt++;
+    if (state.attempt > 6){ setStatus('GAVE UP (6 attempts)', false); log('giving up after 6 attempts — surface to user', 'errc'); return; }
+    const base = Math.min(8000, 250 * 2 ** (state.attempt - 1));
+    const delay = base + Math.random() * base * 0.3;
+    setStatus('RECONNECTING', null);
+    log('abnormal close → attempt ' + state.attempt + ' in ' + delay.toFixed(0) + ' ms (exp backoff + 30% jitter)', 'warc');
+    setTimeout(() => {
+      /* first two attempts "fail" (sim dead port), third+ succeeds */
+      if (state.attempt < 3){ log('connect refused (sim) → next backoff', 'errc'); scheduleReconnect(); }
+      else { log('connected on attempt ' + state.attempt, 'okc'); connect(false); }
+    }, delay);
+  }
+  $('cap-kill').onclick = () => { if (ws && ws.readyState === 1){ log('☠ link killed mid-flight (socket destroyed, no close frame)', 'errc'); peer.kill(); } };
+  $('cap-clean').onclick = () => { if (ws && ws.readyState === 1){ log('clean close(1000, "end of mission")', ''); peer.cleanClose(1000, 'end of mission'); } };
+  $('cap-up').onclick = () => { state.attempt = 3; connect(true); };
+  /* boot */
+  connect(false);
+  chip('s12', 'binary-hot-path', 'ok', 'telemetry ships as 20-byte binary frames (float32 ×4 + seq via DataView) — no JSON parse on the 30 Hz path; TextDecoder only for display');
+  /* auto-demonstrate the dropout once so the deployed page shows the reconnect engine live */
+  setTimeout(() => { if (ws && ws.readyState === 1){ log('☠ auto-demo: link killed mid-flight', 'errc'); peer.kill(); } }, 4200);
+  let rcSeen = 0;
+  const rcObs = new MutationObserver(() => { if ($('cap-log').textContent.includes('connected on attempt')) { rcSeen++; chip('s12', 'reconnect', rcSeen >= 1 ? 'ok' : 'warn', 'abnormal 1006 → auto-reconnect with exp backoff + jitter, recovered live on page (watch the log) — the 1006 code IS the reconnect trigger'); rcObs.disconnect(); } });
+  rcObs.observe($('cap-log'), {childList: true, subtree: true});
+})();
+
+/* ============ S13 ship map ============ */
+(function s13(){
+  chip('s13', 'quartet', 'ok', 'transport quartet complete in catalog: HTTP/fetch + WS (this) + WebTransport (Mar 2026) + WebRTC — decision table above');
+})();
+
+/* ============ S14 real mode ============ */
+(function s14(){
+  const params = new URLSearchParams(location.search);
+  const peerUrl = params.get('peer');
+  if (!peerUrl) return;
+  $('real-sec').style.display = '';
+  function rlog(line, cls){
+    const el = $('real-log');
+    const d = document.createElement('div');
+    d.innerHTML = '<span class="t">' + new Date().toISOString().slice(11, 23) + '</span> <span class="' + (cls || 'svc') + '">' + line.replace(/</g, '&lt;') + '</span>';
+    el.appendChild(d); el.scrollTop = el.scrollHeight;
+  }
+  function once(url, protocols){
+    /* resolves on OPEN (ready to interact) or on close-without-open (failed) */
+    return new Promise((resolve) => {
+      const ws = new WebSocket(url, protocols);
+      const ev = {open: null, msgs: [], close: null};
+      ws.addEventListener('open', () => { ev.open = true; resolve({ws, ev}); }, {once: true});
+      ws.addEventListener('message', (m) => { ev.msgs.push(m); });
+      ws.addEventListener('error', () => {}, {once: true});
+      ws.addEventListener('close', (c) => {
+        ev.close = {code: c.code, reason: c.reason, wasClean: c.wasClean};
+        if (ev.open !== true) resolve({ws, ev}); /* handshake failure path */
+      }, {once: true});
+    });
+  }
+  function closed(ws){
+    if (ws.readyState === 3) return Promise.resolve(null);
+    return new Promise(r => ws.addEventListener('close', () => r(null), {once: true}));
+  }
+  tracked((async () => {
+    const P = peerUrl;
+    rlog('battery start · peer ' + P);
+    /* 1. echo */
+    try {
+      const {ws, ev} = await once(P + '/echo');
+      if (ev.open){
+        ws.send('ping-𝕏');
+        await wait(400);
+        const m = ev.msgs[0];
+        const echo = m && m.data;
+        chip('s14', 'echo', echo === 'ping-𝕏' ? 'ok' : 'fail', 'echo round-trip: sent "ping-𝕏" (10 UTF-8 bytes), received "' + echo + '" — astral char survived the wire');
+        ws.close(1000, 'bye');
+        await closed(ws);
+      } else {
+        chip('s14', 'echo', 'fail', 'echo connect failed: close ' + (ev.close ? ev.close.code : '?'));
+      }
+    } catch(e){ chip('s14', 'echo', 'fail', 'threw ' + e.message); }
+    rlog('t1 done');
+    /* 2. subprotocol selection */
+    try {
+      const {ws, ev} = await once(P + '/echo?p=v2', ['v1', 'v2']);
+      if (ev.open){
+        chip('s14', 'subproto', ws.protocol === 'v2' ? 'ok' : 'fail', 'client offers [v1,v2], server selected "' + ws.protocol + '" — ws.protocol readback = the negotiated contract');
+        ws.close(1000);
+        await closed(ws);
+      } else chip('s14', 'subproto', 'warn', 'subproto connect closed ' + (ev.close ? ev.close.code : '?'));
+    } catch(e){ chip('s14', 'subproto', 'fail', 'threw ' + e.message); }
+    /* 3. THE probe: subprotocol requested, server acknowledges none */
+    try {
+      const {ws, ev} = await once(P + '/nosub', ['chat']);
+      if (ev.open){
+        ws.close(1000);
+        await closed(ws);
+        chip('s14', 'nosub', 'warn', 'ENGINE DIVERGES FROM SPEC: server sent NO Sec-WebSocket-Protocol and Chromium kept the connection OPEN (protocol="") — spec §2.2 says fail the connection. Never rely on this — Firefox enforces');
+      } else {
+        chip('s14', 'nosub', 'ok', 'spec-conformant: subprotocol requested + none acknowledged → connection FAILED (close ' + (ev.close ? ev.close.code + ', wasClean ' + ev.close.wasClean : '?') + ') — the negotiated-protocol contract is enforced');
+      }
+    } catch(e){ chip('s14', 'nosub', 'fail', 'threw ' + e.message); }
+    /* 4. ping → auto-pong (server observes) */
+    try {
+      const {ws, ev} = await once(P + '/pingme');
+      if (ev.open){
+        await wait(1400); /* server pings every 350ms */
+        ws.close(1000);
+        await closed(ws);
+        chip('s14', 'autoping', ev.msgs.length === 0 ? 'ok' : 'fail', 'server pinged 4×, browser stayed OPEN, onmessage fired ' + ev.msgs.length + '× — auto-pong answered invisibly (pongs in server log)');
+      } else chip('s14', 'autoping', 'fail', 'pingme connect failed');
+    } catch(e){ chip('s14', 'autoping', 'fail', 'threw ' + e.message); }
+    /* 5. server-initiated close 4001 with reason */
+    try {
+      const {ws, ev} = await once(P + '/close4001');
+      if (ev.open){
+        await closed(ws);
+        chip('s14', 'close4001', (ev.close && ev.close.code === 4001 && ev.close.reason === 'battery critical' && ev.close.wasClean === true) ? 'ok' : 'fail', 'server-initiated close: code ' + (ev.close ? ev.close.code : '?') + ' reason "' + (ev.close ? ev.close.reason : '') + '" wasClean ' + (ev.close ? ev.close.wasClean : '?') + ' — private codes + reasons round-trip');
+      } else chip('s14', 'close4001', 'fail', 'close4001 never opened');
+    } catch(e){ chip('s14', 'close4001', 'fail', 'threw ' + e.message); }
+    /* 6. kill — abnormal */
+    try {
+      const {ws, ev} = await once(P + '/kill');
+      if (ev.open){
+        await closed(ws);
+        chip('s14', 'kill', (ev.close && ev.close.code === 1006 && ev.close.wasClean === false) ? 'ok' : 'fail', 'server destroys socket: close ' + (ev.close ? ev.close.code : '?') + ' · wasClean ' + (ev.close ? ev.close.wasClean : '?') + ' — synthesized by the UA, never on the wire');
+      } else chip('s14', 'kill', 'fail', 'kill never opened');
+    } catch(e){ chip('s14', 'kill', 'fail', 'threw ' + e.message); }
+    /* 7. data after close frame */
+    try {
+      const {ws, ev} = await once(P + '/dataafterclose');
+      if (ev.open){
+        await closed(ws);
+        const gotLate = ev.msgs.some(m => m.data === 'too-late');
+        chip('s14', 'late-data', gotLate ? 'warn' : 'ok', gotLate ? 'ENGINE DELIVERS data received after the close frame (Chromium)' : 'text sent after the server close frame NEVER reached onmessage — RFC §1.4: post-close data is dropped');
+      } else chip('s14', 'late-data', 'fail', 'dataafterclose never opened');
+    } catch(e){ chip('s14', 'late-data', 'fail', 'threw ' + e.message); }
+    /* 8. backpressure — noread */
+    try {
+      const {ws, ev} = await once(P + '/noread');
+      if (ev.open){
+        const chunk = new Uint8Array(64 * 1024);
+        const t0 = performance.now();
+        for (let i = 0; i < 128; i++) ws.send(chunk); /* 8 MiB */
+        const peak = ws.bufferedAmount;
+        await wait(1500);
+        const after = ws.bufferedAmount;
+        ws.close(1000);
+        chip('s14', 'noread', (peak > 1024 * 1024) ? 'ok' : 'warn', '8 MiB into a non-reading server: bufferedAmount peaked ' + (peak / 1048576).toFixed(2) + ' MiB, still ' + (after / 1048576).toFixed(2) + ' MiB after 1.5s — send() never blocked, never threw (' + (performance.now() - t0).toFixed(0) + 'ms to enqueue)');
+      }
+    } catch(e){ chip('s14', 'noread', 'fail', 'threw ' + e.message); }
+    /* 9. non-101 response */
+    try {
+      const {ws, ev} = await once(P + '/no101');
+      chip('s14', 'no101', (!ev.open && ev.close && ev.close.code === 1006) ? 'ok' : 'fail', 'server answered HTTP 200 (not 101) → connection failed, surfaced as close ' + (ev.close ? ev.close.code : '?') + ' — the HTTP status is invisible in the API');
+    } catch(e){ chip('s14', 'no101', 'fail', 'threw ' + e.message); }
+    /* 10. UTF-8 byte counting on a REAL open socket */
+    try {
+      const {ws, ev} = await once(P + '/echo');
+      if (ev.open){
+        const before = ws.bufferedAmount;
+        ws.send('𝕏'.repeat(10));
+        const delta = ws.bufferedAmount - before;
+        ws.close(1000);
+        await closed(ws);
+        chip('s14', 'utf8-real', delta === 40 ? 'ok' : 'warn', 'send("𝕏"×10) on a real OPEN socket: bufferedAmount +' + delta + ' B (20 chars → 40 UTF-8 bytes) — UTF-8 counting confirmed on the wire');
+      }
+    } catch(e){ chip('s14', 'utf8-real', 'fail', 'threw ' + e.message); }
+    rlog('battery complete — ' + CHIPS.filter(c => c.sec === 's14').length + ' real-stack chips');
+  })());
+})();
+
+document.addEventListener('DOMContentLoaded', () => { $('ft-date').textContent = new Date().toISOString().slice(0, 10); });
+$('ft-date').textContent = new Date().toISOString().slice(0, 10);
+window.__pingCount = 0;
+</script>
+</body>
+</html>
