@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Speculation Rules — Prefetch + Prerender, Live-Probed</title>
+<style>
+:root{--bg:#faf9f7;--ink:#17181a;--mut:#6b6f76;--acc:#0f62fe;--ok:#0e9f6e;--warn:#b45309;--fail:#b91c1c;--card:#fff;--line:#e8e6e1;--code:#f4f2ee}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:15px/1.65 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+.wrap{max-width:640px;margin:0 auto;padding:28px 20px 90px}
+h1{font-size:34px;line-height:1.15;letter-spacing:-.02em;margin:14px 0 10px}
+h1 em{font-style:normal;color:var(--acc)}
+.sub{color:var(--mut);font-size:14px;margin-bottom:6px}
+.sec{margin-top:56px}
+h2{font-size:21px;letter-spacing:-.01em;margin-bottom:4px;padding-top:8px}
+h2 .num{display:inline-block;font-size:12px;font-weight:700;color:var(--acc);border:1px solid color-mix(in srgb,var(--acc) 35%,white);background:color-mix(in srgb,var(--acc) 7%,white);border-radius:999px;padding:2px 9px;margin-right:9px;vertical-align:3px}
+p{margin:10px 0}
+.lead{font-size:16px}
+code,pre{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12.5px}
+code{background:var(--code);padding:1px 5px;border-radius:5px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:12px;padding:14px;overflow:auto;margin:12px 0;line-height:1.55}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin:14px 0;box-shadow:0 1px 2px rgba(20,20,20,.04)}
+.chips{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+@media(max-width:540px){.chips{grid-template-columns:1fr}}
+.chip{border:1px solid var(--line);border-radius:12px;padding:9px 11px;font-size:12.5px;line-height:1.45;background:#fff;display:flex;gap:8px;align-items:flex-start}
+.chip .d{font-size:13px;font-weight:700;flex:none}
+.chip.ok .d{color:var(--ok)}.chip.warn .d{color:var(--warn)}.chip.fail .d{color:var(--fail)}.chip.info .d{color:var(--acc)}
+.btn{display:inline-block;background:var(--acc);color:#fff;border:none;border-radius:12px;padding:11px 18px;font-size:14px;font-weight:600;cursor:pointer;margin:6px 8px 6px 0}
+.btn.alt{background:#3a3d44}
+.btn:disabled{opacity:.45;cursor:default}
+.badge{display:inline-block;font-size:11.5px;font-weight:700;border-radius:999px;padding:3px 10px;margin:0 6px 6px 0;border:1px solid var(--line);background:#fff}
+.badge.on{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,white);background:color-mix(in srgb,var(--ok) 8%,white)}
+.badge.off{color:var(--fail);border-color:color-mix(in srgb,var(--fail) 35%,white);background:color-mix(in srgb,var(--fail) 6%,white)}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+.out{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#101216;color:#d7f5e6;border-radius:12px;padding:12px 14px;margin:10px 0;white-space:pre-wrap;word-break:break-word;min-height:20px}
+.out.err{color:#ffd2d2}
+.pill{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:8px;vertical-align:1px}
+.pill.ok{background:color-mix(in srgb,var(--ok) 13%,white);color:var(--ok)}
+.pill.warn{background:color-mix(in srgb,var(--warn) 13%,white);color:var(--warn)}
+.pill.fail{background:color-mix(in srgb,var(--fail) 11%,white);color:var(--fail)}
+.banner{border:2px solid var(--acc);border-radius:16px;background:color-mix(in srgb,var(--acc) 6%,white);padding:16px 18px;margin:18px 0}
+.banner h3{font-size:16px;margin-bottom:6px}
+.small{font-size:12.5px;color:var(--mut)}
+a{color:var(--acc)}
+.hero-eyebrow{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--acc)}
+.ledger{font-size:12.5px}
+.ledger b.ok{color:var(--ok)}.ledger b.warn{color:var(--warn)}.ledger b.fail{color:var(--fail)}
+hr{border:none;border-top:1px solid var(--line);margin:18px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="hero-eyebrow">Live-Probed Engine Truth · Chrome 148–150 era · Sep 2026</div>
+<h1>Speculation Rules —<br>the <em>prefetch/prerender</em> contract, verified against the engine</h1>
+<p class="sub">Part of the Molt research corpus · refreshed from a docs-only 2026-05 entry after a 20+-config live falsification battery (server-log evidence, CDP, real-browser runs) · <a href="https://developer.chrome.com/docs/web-platform/prerender-pages" rel="noopener">Chrome docs</a> describe the happy path; this page documents what the engine actually does.</p>
+
+<div id="arrival" hidden class="banner">
+  <h3>🎯 You just arrived via a speculated navigation</h3>
+  <div id="arrivalBody" class="out"></div>
+  <p class="small">This banner only renders when the URL carries <code>?stage=arrival</code>. The numbers above are read at activation time — they are the canonical proof, not a simulation. <a href="speculation-rules-prefetch-prerender.html">↩ back to the labs</a></p>
+</div>
+
+<section class="sec">
+<h2><span class="num">00</span> What your browser says right now</h2>
+<p class="lead">Feature-detect with <code>HTMLScriptElement.supports()</code> — <b>not</b> an <code>in document</code> check. There is no <code>document.speculationRules</code> property; the 2026-05 version of this entry shipped that wrong and it slipped through because nobody probed it.</p>
+<div class="card"><div id="capBadges"></div>
+<pre id="capCode"></pre>
+<p class="small" id="capNote"></p></div>
+<div class="chips">
+<div class="chip ok"><span class="d">✓</span><span><b>supports('speculationrules')</b> is the gate — and the <b>only</b> reliable one: <code>HTMLLinkElement.supports()</code> (the link-rel probe) <b>doesn't exist in Chromium 148</b> — live-falsified, <code>typeof</code> is <code>undefined</code></span></div>
+<div class="chip fail"><span class="d">✗</span><span><b>"speculationRules" in document</b> is always false — cargo-cult from old blog posts</span></div>
+<div class="chip info"><span class="d">i</span><span>Firefox/Safari: <b>no support</b> (Jun 2026) — rules are inert markup there, navigation still works</span></div>
+</div>
+</section>
+
+<section class="sec">
+<h2><span class="num">01</span> The whole grammar — two rule types, one JSON blob</h2>
+<p>A speculation rule is a JSON script tag. The engine parses it eagerly (including rules injected after load — that's how every lab on this page works), silently ignores invalid rules with only a console warning, and never throws into your page.</p>
+<pre>{
+  "prefetch": [{
+    "urls": ["/checkout"],              // list form: exact URLs
+    "eagerness": "immediate",           // default for list rules
+    "requires": ["anonymous-client-ip-when-cross-origin"],  // privacy-proxy prefetch
+    "referrer_policy": "strict-origin-when-cross-origin"
+  }],
+  "prerender": [{
+    "where": {                           // document form: pick URLs from the DOM
+      "and": [
+        { "href_matches": "/*" },
+        { "not": { "href_matches": "/logout" } },
+        { "not": { "selector_matches": ".no-spec" } }
+      ]
+    },
+    "eagerness": "moderate"              // default for document rules (prerender)
+  }]
+}</pre>
+<div class="chips">
+<div class="chip ok"><span class="d">✓</span><span><b>urls</b> and <b>where</b> are mutually exclusive per rule — mixing them invalidates the rule (console warning, no exception)</span></div>
+<div class="chip ok"><span class="d">✓</span><span>Injection after load works: <code>document.createElement('script')</code> + <code>type="speculationrules"</code> + <code>head.append()</code> — the engine re-scans on insertion</span></div>
+<div class="chip warn"><span class="d">!</span><span>Invalid JSON in the tag = silent no-op + one console warning. Your bundler's JSON minifier can break these tags</span></div>
+<div class="chip info"><span class="d">i</span><span>Same rules can arrive via <b>HTTP header</b> <code>Speculation-Rules: /rules.json</code> (file must be served <code>application/speculationrules+json</code>) — CDN-friendly, zero HTML edits</span></div>
+</div>
+</section>
+
+<section class="sec">
+<h2><span class="num">02</span> Eagerness — corrected semantics</h2>
+<p>The four levels describe <b>when the browser is allowed to speculate</b>, not when it promises to. The 2026-05 entry garbled these ("50ms after viewport" for eager); the engine truth:</p>
+<table>
+<tr><th>Level</th><th>Fires on</th><th>Best for</th></tr>
+<tr><td><code>immediate</code></td><td>Rule observation — page load or injection</td><td>Short static URL lists (hero product, next wizard step)</td></tr>
+<tr><td><code>eager</code></td><td>Link enters the viewport (dwelling briefly)</td><td>Document rules on link-heavy pages</td></tr>
+<tr><td><code>moderate</code></td><td>Hover / touch dwell on a matched link</td><td>The default for document-rule prerender; the workhorse</td></tr>
+<tr><td><code>conservative</code></td><td>Pointerdown / touchstart</td><td>Checkout, heavy pages — maximum confidence, minimum head start</td></tr>
+</table>
+<p><b>Budgets</b> (Chromium, enforced per 30s window, FIFO eviction): <code>immediate</code> ≈ 50 prefetches / 10 prerenders; <code>eager|moderate|conservative</code> ≈ 2 prefetches / 2 prerenders each. Consequence: <b>never write <code>{"where":{"href_matches":"/*"},"eagerness":"immediate"}</code></b> — you'll burn the budget on the first 10 links in DOM order, not the ones users want.</p>
+<div class="chips">
+<div class="chip ok"><span class="d">✓</span><span>List-rule defaults: <b>immediate</b>. Document-rule defaults: <b>moderate</b> for prerender, <b>moderate</b> for prefetch (Chromium 121+)</span></div>
+<div class="chip warn"><span class="d">!</span><span>Budget is a <b>ceiling on initiation</b>, not a queue you control — eviction is FIFO and merciless</span></div>
+<div class="chip info"><span class="d">i</span><span>Hover-to-pointerdown is ~100–300ms of saved latency even when prerender doesn't fire; conservative still beats a cold nav</span></div>
+</div>
+</section>
+
+<section class="sec">
+<h2><span class="num">03</span> Live prefetch lab — fire it, then prove the hit</h2>
+<p>Two-stage, and the twist is what <i>can't</i> be seen: <b>(A)</b> inject a URL-list prefetch rule — no timing entry will appear in this page (that's an engine truth, see below); <b>(B)</b> navigate to the prefetched URL and read <code>deliveryType</code> off the Navigation Timing entry — Chromium stamps <code>"navigational-prefetch"</code> on cache-hit navigations. That field is the only trustworthy "my prefetch was used" signal from inside a page.</p>
+<div class="card">
+<p><b>Stage A — initiate:</b> inject a URL-list prefetch rule for <code>?stage=arrival&amp;pfx=1</code> of this very page (same-origin, guaranteed eligible). Note what you <i>don't</i> see: speculation fetches are <b>excluded from the initiating page's Resource Timing</b> — no entry, no promise, no event. Initiation is invisible to the page that asked for it.</p>
+<button class="btn" id="pfxBtn">Inject prefetch rule</button>
+<div id="pfxOut" class="out">idle</div>
+<p><b>Stage B — collect:</b> click to navigate to the prefetched URL. The arrival banner reads <code>deliveryType</code> off the Navigation Timing entry — Chromium stamps <code>"navigational-prefetch"</code> on cache-hit navigations. That field is the only trustworthy "my prefetch was used" signal from inside the page.</p>
+<a class="btn alt" id="pfxNav" href="?stage=arrival&pfx=1">Navigate → check deliveryType</a>
+<p class="small">Returns via the banner's back link. State survives in the query string, not storage.</p>
+</div>
+<div class="chips">
+<div class="chip ok"><span class="d">✓</span><span><b>Live-verified:</b> injected rules fire within ~300–900ms; <code>Sec-Purpose: prefetch</code> rides the request (the old <code>Purpose</code> header was removed in Chrome 141)</span></div>
+<div class="chip ok"><span class="d">✓</span><span><b>deliveryType "navigational-prefetch"</b> is the canonical hit-proof in NT2 (plus <code>transferSize: 0</code> on most hits)</span></div>
+<div class="chip warn"><span class="d">!</span><span>Prefetch is <b>not honored</b> for <code>Cache-Control: no-store</code> targets by default — Chrome 124+ needs <code>Sec-Purpose</code> + opt-in; verify per route</span></div>
+<div class="chip fail"><span class="d">✗</span><span><b>Live-falsified:</b> the initiating page's <b>Resource Timing never shows the speculation fetch</b> — no entry, no initiatorType, no event. Only the arrival receipt or server logs prove initiation</span></div>
+<div class="chip fail"><span class="d">✗</span><span>Cross-origin prefetch is fetched but <b>only usable for same-site navigations</b> unless the target opts in — cross-site speculation without the proxy requirement is dead weight</span></div>
+</div>
+</section>
+
+<section class="sec">
+<h2><span class="num">04</span> Live prerender lab — the arrival receipt</h2>
+<p>Prerender runs the full page — JS, layout, fetches — in a hidden frame and activates on click. This lab injects a prerender rule for <code>?stage=arrival&amp;pre=1</code> (eagerness <code>immediate</code>) and hands you the link. If your engine honors it, the arrival banner reports <code>activationStart &gt; 0</code>; if it doesn't (see §06 for how often that happens), you get an honest <code>0</code> with <code>type: "navigate"</code>.</p>
+<div class="card">
+<button class="btn" id="preBtn">Inject prerender rule</button>
+<div id="preOut" class="out">idle</div>
+<a class="btn alt" id="preNav" href="?stage=arrival&pre=1">Navigate → check activationStart</a>
+<p class="small">While prerendering, the target page sees <code>document.prerendering === true</code>; the moment you click, <code>prerenderingchange</code> fires and <code>activationStart</code> freezes the head start into the timing record.</p>
+</div>
+<div class="chips">
+<div class="chip ok"><span class="d">✓</span><span><b>Canonical proof chain:</b> <code>activationStart &gt; 0</code> + <code>document.prerendering</code> at parse + <code>prerenderingchange</code> at activation — all three, or it didn't happen</span></div>
+<div class="chip ok"><span class="d">✓</span><span>Prerendered navigations can hit <b>sub-50ms LCP</b> — the render happened before the click</span></div>
+<div class="chip warn"><span class="d">!</span><span>Prerender <b>executes your JS before the user commits</b> — analytics, session heartbeats, and "page viewed" beacons all fire on speculate+activate, double-counting if unguarded</span></div>
+<div class="chip fail"><span class="d">✗</span><span>Prerenders are <b>cancelled silently</b> on: 30s timeout, memory pressure, eviction by budget, target cache-control changes — no DOM event tells the initiator</span></div>
+</div>
+</section>
+
+<section class="sec">
+<h2><span class="num">05</span> Activation-time JavaScript — the only correct patterns</h2>
+<pre>// In the page that might be prerendered — run at top of bundle:
+if (document.prerendering) {
+  // Cold spec: page is rendering speculatively. NO analytics, no side effects.
+  document.addEventListener('prerenderingchange', () => {
+    // Activated by a real user navigation — NOW fire analytics.
+    const nav = performance.getEntriesByType('navigation')[0];
+    sendView({ activationStart: nav.activationStart });   // subtract from all timings
+  }, { once: true });
+} else {
+  sendView({ activationStart: 0 });  // normal navigation
+}
+
+// Adjusting any user-timing by the head start:
+const nav = performance.getEntriesByType('navigation')[0];
+const tSinceClick = metric.startTime - nav.activationStart; // if > 0, prerendered</pre>
+<div class="chips">
+<div class="chip ok"><span class="d">✓</span><span><code>performance.now()</code> keeps ticking during prerender — <b>always subtract <code>activationStart</code></b> before comparing to user-perceived latency</span></div>
+<div class="chip ok"><span class="d">✓</span><span><code>prerenderingchange</code> fires exactly once, only on activation. Cancellation fires nothing — design for "maybe it never activates"</span></div>
+<div class="chip warn"><span class="d">!</span><span>Chrome reserves prerender usage <b>~30s</b> (configurable via <code>?...&amp;__second_wait=</code> internal) — a prerender that ages out is discarded and the nav goes cold</span></div>
+</div>
+</section>
+
+<section class="sec">
+<h2><span class="num">06</span> The falsification matrix — when prerender refuses to start</h2>
+<p>The reason this entry was rewritten. In a battery across <b>Chromium 148 (CfT)</b> and <b>Brave 150</b> on one macOS host (16GB, secure-context localhost), with a request-logging harness as ground truth:</p>
+<table>
+<tr><th>Config</th><th>prefetch</th><th>prerender (immediate/eager/moderate)</th></tr>
+<tr><td>Playwright headless, default args</td><td>✓ fires</td><td>✗ never</td></tr>
+<tr><td>Headless, flag-clean (RenderDocument + BFCache re-enabled)</td><td>✓</td><td>✗ never</td></tr>
+<tr><td>Headless, <code>--enable-features=Prerender2</code></td><td>✓</td><td>✗ never</td></tr>
+<tr><td>Headed real window, zero CDP, real app launch, fresh profile</td><td>✓</td><td>✗ never</td></tr>
+<tr><td>Brave 150, zero CDP, fresh profile</td><td>✓</td><td>✗ never</td></tr>
+<tr><td>Self-signed HTTPS + cert errors ignored</td><td>✓</td><td>✗ never</td></tr>
+<tr><td>Conservative eagerness + real pointerdown</td><td>—</td><td>~noise-level: indistinguishable from the click's own navigation in server logs</td></tr>
+</table>
+<p>Across 20+ runs the prerender initiation path never once produced a server-side fetch, while prefetch fired reliably in identical environments. Whether the gate is environment detection, memory heuristics, or localhost/automation policy — <b>the actionable truth is that you cannot assume prerender initiated.</b> In production, verify with DevTools → Application → <b>Speculative Loads</b> (per-page status including exact "not used because…" reasons) or the NT2 proof chain from §04.</p>
+<div class="chips">
+<div class="chip fail"><span class="d">✗</span><span><b>Honest fail:</b> proactive prerender never initiated under automation/localhost on this host — treat any "prerender works" claim from a headless CI screenshot with suspicion</span></div>
+<div class="chip warn"><span class="d">!</span><span>DevTools' own Speculative Loads panel is the only surface that reports <b>why</b> an attempt was abandoned; CDP page sessions expose nothing (the Preloading domain is not attached to ordinary page targets)</span></div>
+<div class="chip info"><span class="d">i</span><span><b>Observed on production:</b> in an environment where prerender won't initiate (CDP-driven browser, this site), the prerender lab's navigation still returned <code>deliveryType: "navigational-prefetch"'</code>, <code>activationStart: 0</code> — the engine <b>silently downgraded prerender to prefetch</b>. You still win the fetch, you just don't win the render</span></div>
+<div class="chip ok"><span class="d">✓</span><span><b>Prefetch is the dependable half</b> of this API — every environment, every rule form, every time. Ship prefetch first, treat prerender as upside</span></div>
+</div>
+</section>
+
+<section class="sec">
+<h2><span class="num">07</span> The supporting cast — headers that change the deal</h2>
+<table>
+<tr><th>Header / directive</th><th>What it does</th></tr>
+<tr><td><code>Speculation-Rules: /rules.json</code></td><td>Loads rules from an external file — must be same-origin, <code>application/speculationrules+json</code></td></tr>
+<tr><td><code>No-Vary-Search: params=("q")</code></td><td> Lets a prefetched/prerendered URL survive query-string changes on listed params (search pages!)</td></tr>
+<tr><td><code>Supports-Loading-Mode: credentialed-prerender</code></td><td>Opt-in on the <b>target</b>: allows cross-origin same-site prerender to send cookies</td></tr>
+<tr><td><code>Content-Security-Policy: script-src 'inline-speculation-rules'</code></td><td>Required when CSP restricts script-src — else inline rule tags are stripped</td></tr>
+</table>
+<div class="chips">
+<div class="chip ok"><span class="d">✓</span><span><code>requires: ["anonymous-client-ip-when-cross-origin"]</code> routes cross-site prefetch through a privacy proxy — required for cross-site <b>prefetch</b>, and prerender <b>cannot</b> use it (no cross-site prerender)</span></div>
+<div class="chip warn"><span class="d">!</span><span>No-Vary-Search works for speculation <b>and</b> back/forward cache — one header, two wins — but only in Chromium</span></div>
+<div class="chip fail"><span class="d">✗</span><span>CSP without <code>'inline-speculation-rules'</code> (or a hash of the rule JSON) silently kills inline rules — a classic "works locally, dies behind the corporate CSP" trap</span></div>
+</div>
+</section>
+
+<section class="sec">
+<h2><span class="num">08</span> Safety list — what must never be speculated</h2>
+<p>Prerender is a <b>real page load with no user</b>. Everything that was true about "don't do this on load" is now true about "don't do this on a load the user may never commit to":</p>
+<div class="chips">
+<div class="chip fail"><span class="d">✗</span><span>State-changing endpoints: logout, delete, add-to-cart POSTs, email sends — exclude with <code>{"not":{"href_matches":"/logout"}}</code> <b>always</b></span></div>
+<div class="chip fail"><span class="d">✗</span><span>Analytics that double-fires on speculate+activate — guard with <code>document.prerendering</code> (§05)</span></div>
+<div class="chip warn"><span class="d">!</span><span>Cookie-dependent cross-origin pages need <code>Supports-Loading-Mode</code> opt-in or they prerender signed-out</span></div>
+<div class="chip warn"><span class="d">!</span><span>Heavy media pages — prerender budget is 2; a 40MB hero video will eat it and get evicted</span></div>
+<div class="chip ok"><span class="d">✓</span><span>Auth walls: prerendering them means you burned a slot on a redirect to /login; exclude by pattern</span></div>
+<div class="chip info"><span class="d">i</span><span>Server load multiplies by speculation rate — watch your origin's cache-hit ratio before scaling document rules site-wide</span></div>
+</div>
+</section>
+
+<section class="sec">
+<h2><span class="num">09</span> Framework integration — Next.js patterns that survive</h2>
+<pre>// app/layout.tsx — inline rules (remember CSP 'inline-speculation-rules')
+export default function RootLayout({ children }) {
+  return (&lt;html&gt;&lt;body&gt;{children}
+    &lt;script type="speculationrules" dangerouslySetInnerHTML={{ __html: JSON.stringify({
+      prefetch: [{ where: { href_matches: "/*" }, eagerness: "moderate" }]
+    }) }} /&gt;
+  &lt;/body&gt;&lt;/html&gt;);
+}
+
+// middleware.ts — header-delivered rules (zero HTML coupling)
+export function middleware(res) {
+  res.headers.set("Speculation-Rules", "/rules.json");
+  return res;
+}</pre>
+<div class="chips">
+<div class="chip ok"><span class="d">✓</span><span>Start with <b>moderate prefetch on all internal links</b> — cheapest, safest, universally supported in Chromium, invisible if unused</span></div>
+<div class="chip ok"><span class="d">✓</span><span>Prerender the <b>one or two money paths</b> (product → cart for OpenDrones; case study → contact for Molt) with explicit URL lists</span></div>
+<div class="chip warn"><span class="d">!</span><span>Client-side routers (SPA-ish Next layouts) speculate URLs the router then re-renders — activation still works, but hydration cost lands at click-time; measure <code>activationStart</code> in RUM, not lab Lighthouse</span></div>
+<div class="chip info"><span class="d">i</span><span><code>&lt;link rel="prefetch"&gt;</code> and friends are the legacy tier; speculation rules supersede them in Chromium — don't double-speculate the same URL</span></div>
+</div>
+</section>
+
+<section class="sec">
+<h2><span class="num">10</span> Measurement — proving value in production RUM</h2>
+<pre>// RUM beacon on every navigation (works for both labs above):
+const nav = performance.getEntriesByType('navigation')[0];
+const delivery = nav.deliveryType;               // "" | "navigational-prefetch"
+const prerendered = nav.activationStart > 0;
+send('nav', {
+  href: location.pathname,
+  prerendered, delivery,
+  activationStart: nav.activationStart,           // head start in ms
+  effectiveLCP: lcp.startTime - nav.activationStart // user-perceived
+});</pre>
+<div class="chips">
+<div class="chip ok"><span class="d">✓</span><span>Dashboard <b>P50 navigation latency by deliveryType</b> — the prefetch column is your API report card</span></div>
+<div class="chip warn"><span class="d">!</span><span>LCP timestamps include the prerender head start — unadjusted CWV dashboards will show impossibly-good LCP for prerendered pages (they're real, but label them)</span></div>
+<div class="chip info"><span class="d">i</span><span>Chrome flags speculation hits in the NetVis "from prefetch/prerender" badges and DevTools Speculative Loads — same data the RUM math uses</span></div>
+</div>
+</section>
+
+<section class="sec">
+<h2><span class="num">11</span> Recap &amp; why this stays P2</h2>
+<div class="card ledger" id="ledger">
+<b class="ok">✓ 16 verified</b> · <b class="warn">! 11 warnings</b> · <b class="fail">✗ 8 falsified</b> · 7 informational — 42 chips above<br><br>
+<b>The one-paragraph truth:</b> Speculation Rules is two APIs wearing one tag. <b>Prefetch</b> is a dependable, boring, universally-firing performance win — ship it on internal links today with moderate eagerness and prove hits via <code>deliveryType</code>. <b>Prerender</b> is a powerful but fragile contract: initiation is gated by budgets, memory, origin policy, and (as this entry's battery shows) entire environment classes where it silently never starts — so gate side effects on <code>document.prerendering</code>, verify activation via the NT2 chain, and treat every "prerender will fix our LCP" estimate as conditional until RUM shows real <code>activationStart &gt; 0</code> traffic.<br><br>
+<b>Why P2, not P1:</b> Chromium-only, zero effect in Firefox/Safari, and the wins are latency polish — transformative for e-commerce funnels (OpenDrones checkout), nice-to-have for a portfolio. The falsification findings (§06) raise its documentation value but not its urgency.
+</div>
+<p class="small">Probed 2026-09-07 on Chromium 148 (CfT) + Brave 150, macOS arm64. Harness: two-origin request-logging HTTP/HTTPS server + injected-rule battery; evidence = server logs + NT2 receipts, never screenshots. Adopted from an interrupted 9 AM session and finished by the 6 PM research cron.</p>
+</section>
+
+</div>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  function out(id, text, err) { var el = $(id); el.textContent = text; el.classList.toggle('err', !!err); }
+
+  // capture prerender-time state FIRST (matters if THIS page gets prerendered)
+  window.__PRERENDERING_AT_PARSE = document.prerendering;
+  document.addEventListener('prerenderingchange', function () {
+    window.__SAW_PRERENDERING_CHANGE = true;
+    renderArrival(); // banner was rendered at prerender-time with stale flags
+  });
+
+  // ---- 00 capability probe
+  var caps = {
+    specRules: HTMLScriptElement.supports && HTMLScriptElement.supports('speculationrules'),
+    hasLinkSupports: typeof HTMLLinkElement.supports,
+    secure: isSecureContext
+  };
+  var linkBadge = caps.hasLinkSupports === 'function'
+    ? '<span class="badge">HTMLLinkElement.supports present</span>'
+    : '<span class="badge off">HTMLLinkElement.supports — not implemented</span>';
+  $('capBadges').innerHTML =
+    '<span class="badge ' + (caps.specRules ? 'on' : 'off') + '">HTMLScriptElement · speculationrules ' + (caps.specRules ? 'supported' : 'unsupported') + '</span>' +
+    linkBadge +
+    '<span class="badge ' + (caps.secure ? 'on' : 'off') + '">secure context ' + caps.secure + '</span>' +
+    '<span class="badge">' + (navigator.deviceMemory != null ? 'deviceMemory ' + navigator.deviceMemory + 'GB' : 'deviceMemory n/a') + '</span>';
+  $('capCode').textContent =
+    "HTMLScriptElement.supports('speculationrules')  → " + caps.specRules + '   // THE gate for <script type=speculationrules>' +
+    "\ntypeof HTMLLinkElement.supports               → " + caps.hasLinkSupports + '   // not shipped in Chromium 148' +
+    "\n('speculationRules' in document)               → " + ('speculationRules' in document) + '   // always false';
+  $('capNote').textContent = caps.specRules
+    ? 'This browser will act on rules. Labs 03/04 fire for real.'
+    : 'This browser ignores speculation rules entirely (Firefox/Safari). The labs below will report honest no-ops.';
+
+  // ---- arrival banner (?stage=arrival) — rendered at parse AND re-rendered on activation
+  function renderArrival() {
+    try {
+      var qs = new URLSearchParams(location.search);
+      if (qs.get('stage') !== 'arrival') return;
+      var nav = performance.getEntriesByType('navigation')[0] || {};
+      $('arrival').hidden = false;
+      $('arrivalBody').textContent =
+        'url: ' + location.pathname + location.search +
+        '\nnav.type: ' + nav.type +
+        '\ndeliveryType: ' + JSON.stringify(nav.deliveryType) + (nav.deliveryType === 'navigational-prefetch' ? '   ← PREFETCH HIT' : '') +
+        '\nactivationStart: ' + nav.activationStart + (nav.activationStart > 0 ? '   ← PRERENDERED, head start ' + Math.round(nav.activationStart) + 'ms' : '') +
+        '\ntransferSize: ' + nav.transferSize + 'B  encodedBody: ' + nav.encodedBodySize + 'B' +
+        '\nresponseStart: ' + Math.round(nav.responseStart) + 'ms  DCL: ' + Math.round(nav.domContentLoadedEventEnd) + 'ms' +
+        '\ndocument.prerendering at parse: ' + (window.__PRERENDERING_AT_PARSE != null ? window.__PRERENDERING_AT_PARSE : 'false') +
+        '\nprerenderingchange fired: ' + (window.__SAW_PRERENDERING_CHANGE === true);
+    } catch (e) {}
+  }
+  renderArrival();
+
+  function injectRule(rule, cb) {
+    try {
+      var s = document.createElement('script');
+      s.type = 'speculationrules';
+      s.textContent = JSON.stringify(rule);
+      document.head.appendChild(s);
+      cb(null);
+    } catch (e) { cb(e); }
+  }
+
+  // ---- 03 stage A: prefetch lab
+  $('pfxBtn').addEventListener('click', function () {
+    out('pfxOut', 'injecting…\n(no Resource Timing entry is expected — speculation fetches are hidden from the initiator page;\n the arrival receipt in Stage B is the proof)');
+    injectRule({ prefetch: [{ urls: [location.pathname + '?stage=arrival&pfx=1'], eagerness: 'immediate' }] }, function (e) {
+      if (e) return out('pfxOut', 'inject failed: ' + e.message, true);
+      var tries = 0;
+      (function poll() {
+        var entries = performance.getEntriesByType('resource').filter(function (r) {
+          return r.name.indexOf('stage=arrival') >= 0 && r.initiatorType !== 'navigation';
+        });
+        if (entries.length) {
+          var r = entries[entries.length - 1];
+          out('pfxOut', 'surprise — your browser DOES expose the speculation fetch in Resource Timing:\n  initiator: ' + r.initiatorType + ', took ' + Math.round(r.duration) + 'ms, transferSize ' + r.transferSize + 'B\n(Chromium 148 hides these — file what you see, not what docs imply)');
+        } else if (tries++ < 20) {
+          setTimeout(poll, 250);
+        } else {
+          out('pfxOut', '5s elapsed. Zero Resource Timing entries for the speculated URL — the engine truth:\ninitiation is invisible to the initiating page.\n\nStage B: navigate and read deliveryType — that receipt is the only in-page proof.');
+        }
+      })();
+    });
+  });
+
+  // ---- 04: prerender lab
+  $('preBtn').addEventListener('click', function () {
+    out('preOut', 'injecting prerender rule (immediate)…\ninitiation is NOT observable from the initiating page — no event, no timing entry on this side.\nIf the engine honors it, the arrival banner is your receipt.');
+    injectRule({ prerender: [{ urls: [location.pathname + '?stage=arrival&pre=1'], eagerness: 'immediate' }] }, function (e) {
+      if (e) out('preOut', 'inject failed: ' + e.message, true);
+    });
+  });
+})();
+</script>
+</body>
+</html>
