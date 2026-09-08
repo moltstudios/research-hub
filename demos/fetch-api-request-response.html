@@ -555,13 +555,16 @@ async function s06(){
     setTxt('d-up1', firstArrival !== null ? '~' + firstArrival + ' ms' : '—');
     setTxt('d-upend', produceDone + ' ms');
     setTxt('d-upn', info.bytes + ' B / ' + info.chunkCount + ' chunks');
-    const h2 = String(info.http).startsWith('2');
-    chip('c-h2', h2 ? 'ok' : 'warn', 'upload over HTTP/' + info.http + (h2 ? ' ✓ (h2+ required — h1 would need Content-Length buffering)' : ' — h1: engine had to buffer or refuse'));
+    // the fetch RESOLVING is itself the h2+ proof: over h1 the engine rejects stream bodies outright (see fallback below)
+    chip('c-h2', 'ok', 'streaming upload ACCEPTED — the client connection is h2+ (over h1 the engine rejects stream bodies outright, proven in the fallback chip below); server reports HTTP/' + info.http + ' — that is the PLATFORM\'s internal hop to the function, NOT what your page spoke');
     const progressive = firstArrival !== null && produceDone !== null && firstArrival < produceDone - 100 && info.chunkCount >= 4;
+    const edgeBuffered = !progressive && firstArrival !== null && firstArrival <= 5 && produceDone > 300;
     chip('c-uprog', progressive ? 'ok' : 'warn',
       progressive
         ? 'server saw chunk 1 at ' + firstArrival + 'ms while generator finished at ' + produceDone + 'ms — GENUINELY progressive (and no upload progress event exists: the generator IS your progress)'
-        : 'arrival(' + firstArrival + 'ms) ≈ completion(' + produceDone + 'ms) — buffered somewhere (engine or proxy); retry to confirm');
+        : (edgeBuffered
+          ? 'server saw chunk 1 at ' + firstArrival + 'ms ≈ invocation — the CLIENT streamed but the PLATFORM buffered the whole body before invoking the function (serverless edge behavior): genuinely progressive delivery needs a streaming backend'
+          : 'arrival(' + firstArrival + 'ms) ≈ completion(' + produceDone + 'ms) — buffered somewhere (engine or proxy); retry to confirm'));
   } catch(e){
     // engine truth: streaming upload bodies REQUIRE an HTTP/2+ connection —
     // on a plain-h1.1 origin Chromium tries to negotiate h2, fails, and rejects (TypeError)
@@ -629,7 +632,7 @@ async function s08(){
   try {
     const gh = await fetch(CROSS_NOCORS, {mode:'cors', cache:'no-store'});
     const acao = gh.headers.get('access-control-allow-origin');
-    chip('c-ghacao','warn', 'GitHub Pages sends <b>Access-Control-Allow-Origin: ' + acao + '</b> on every response — a cors-mode fetch of that static site RESOLVES (static ≠ private; probe before assuming a rejection lab)');
+    chip('c-ghacao', gh.ok ? 'warn' : 'warn', 'cors-mode fetch of that static GitHub Pages site <b>RESOLVED</b> — the grant is real (GH Pages sends ACAO:*), but headers.get(\'access-control-allow-origin\') reads <b>' + acao + '</b>: CORS grant headers are consumed by the check and filtered from scripts — you observe the grant by the fetch resolving, you can never read it');
   } catch(e){ chip('c-ghacao','warn','gh-pages probe: ' + e.name); }
   try {
     await fetch(NO_ACAO, {mode:'cors', cache:'no-store'});
@@ -757,10 +760,12 @@ async function s11(){
   }
   const flTag = 'fl-' + Math.random().toString(36).slice(2,8);
   let result = null, quota = 'n/a';
+  let activatedFired = false, activatedStatus = null;
   try {
     result = fetchLater('/api/echo?tag=' + flTag, {method:'POST', body:'deferred-beacon', activateAfter: 2500});
     setTxt('d-fl', 'queued · activated=' + result.activated);
     quota = 'no throw';
+    if (result.activated && result.activated.then) result.activated.then(r => { activatedFired = true; activatedStatus = r ? r.status : null; }).catch(()=>{});
   } catch(e){
     quota = e.name;
     setTxt('d-fl','threw ' + e.name);
@@ -768,15 +773,17 @@ async function s11(){
   let flReceipt = null;
   for(let i=0;i<12;i++){
     await sleep(500);
-    const lg = await fetch('/api/log?tag=' + flTag, {cache:'no-store'}).then(r=>r.json());
-    if(lg.receipts && lg.receipts.length){ flReceipt = lg.receipts[0]; break; }
+    if(!flReceipt){
+      try { const lg = await fetch('/api/log?tag=' + flTag, {cache:'no-store'}).then(r=>r.json()); if(lg.receipts && lg.receipts.length){ flReceipt = lg.receipts[0]; } } catch(e){}
+    }
+    if(flReceipt || activatedFired) break;
   }
-  chip('c-fl', flReceipt ? 'ok' : 'warn',
-    flReceipt
-      ? 'fetchLater fired ~2.5s after queueing with ZERO user action — the browser sends it even if the page is gone (activated=' + result.activated + ')'
-      : 'no receipt observed within 6s — activateAfter=2.5s should have landed (in-memory log caveat; retry)');
+  chip('c-fl', (flReceipt || activatedFired) ? 'ok' : 'warn',
+    (flReceipt || activatedFired)
+      ? 'fetchLater fired ~2.5s after queueing with ZERO user action' + (activatedFired ? ' — client-side proof: the activated promise RESOLVED' + (activatedStatus !== null ? ' (status ' + activatedStatus + ')' : '') : '') + (flReceipt ? ' + server receipt ' + flReceipt.bytes + 'B' : ' (serverless log readback is per-instance — the activated promise is the portable proof)')
+      : 'no receipt and no activated resolution within 6s — activateAfter=2.5s; on serverless the log readback is per-instance, and the activated promise is the client-side truth (retry)');
   chip('c-flq', quota === 'no throw' ? 'ok' : 'warn', 'deferred-fetch quota: ' + quota + (quota === 'no throw' ? ' (be defensive — third-party scripts can exhaust it: QuotaExceededError)' : ' — QuotaExceededError is a real, catchable budget'));
-  setTxt('d-flr', flReceipt ? 'YES — ' + flReceipt.bytes + 'B arrived' : 'none seen');
+  setTxt('d-flr', flReceipt ? 'YES — ' + flReceipt.bytes + 'B arrived' : (activatedFired ? 'activated promise resolved (log is per-instance)' : 'none seen'));
 }
 
 // ---------- §12 capstones ----------
