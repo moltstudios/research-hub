@@ -31,7 +31,7 @@ section{background:var(--card);border:1px solid var(--line);border-radius:18px;p
 .card{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:#fff}
 .card h3{margin-top:0}
 code,pre{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12.6px}
-code{background:var(--code);padding:1px 5px;border-radius:6px}
+code{background:var(--code);padding:1px 5px;border-radius:6px;overflow-wrap:anywhere}
 pre{background:#1c1917;color:#e7e5e4;padding:14px 16px;border-radius:12px;overflow-x:auto;line-height:1.5}
 pre code{background:none;padding:0;color:inherit}
 .chip{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:3px 10px;margin:3px 4px 3px 0;border:1px solid transparent;vertical-align:middle;max-width:100%;line-height:1.45;overflow-wrap:break-word}
@@ -513,9 +513,9 @@ function s02(){
   const t2 = tnode(p2);
   const rs = document.createRange(); rs.setStart(t2, 6); rs.setEnd(t2, 11);
   const cut = rs.extractContents();
-  chip('s02b','extract', cut.textContent==='CUTME' && t2.textContent==='KEEP1 KEEP2' ? 'ok':'fail', 'extractContents() CUT \u201c'+cut.textContent+'\u201d — node removed from the document (live edit), remainder \u201c'+t2.textContent+'\u201d');
+      chip('s02b','extract', cut.textContent==='CUTME' && t2.textContent==='KEEP1  KEEP2' ? 'ok':'fail', 'extractContents() CUT \u201c'+cut.textContent+'\u201d \u2014 and NO node split: the range lives entirely inside ONE text node, so the engine edits it in place (the ref stays valid and reads \u201c'+t2.textContent+'\u201d \u2014 double space intact). Boundary SPLITS only happen when a range crosses nodes \u2014 contrast the next chip');
   rs.insertNode(document.createTextNode('[X]'));
-  chip('s02b','insert', t2.textContent==='KEEP1 [X] KEEP2' ? 'ok':'fail', 'insertNode() dropped \u201c[X]\u201d at the (now-collapsed) range start: \u201c'+t2.textContent+'\u201d');
+      chip('s02b','insert', p2.textContent==='KEEP1 [X] KEEP2' ? 'ok':'fail', 'insertNode() at the collapsed start SPLITS the text node: the parent now has 3 children (\u201cKEEP1 \u201d + [X] + \u201c KEEP2\u201d, one space per side) \u2014 extract-within-one-node does NOT split, insert ALWAYS splits at its boundary; parent reads \u201c'+p2.textContent+'\u201d');
   // compareBoundaryPoints
   const host3 = document.querySelector('.verdicts[data-v="s02b"]').closest('.card');
   const p3 = probeP(host3, '0123456789');
@@ -565,34 +565,50 @@ function s03(){
 /* ---------- §04 ---------- */
 function s04(){
   const span = document.getElementById('caretProbe');
-  span.scrollIntoView({block:'center'});
-  const rct = span.getBoundingClientRect();
   const hasPos = typeof document.caretPositionFromPoint === 'function';
   const hasRange = typeof document.caretRangeFromPoint === 'function';
   chip('s04','both-present', hasPos ? 'ok':(hasRange?'warn':'fail'), hasPos
-    ? 'caretPositionFromPoint PRESENT (standard, Ch 128+)'+(hasRange?' AND legacy caretRangeFromPoint also present — both names live on this engine':'')
+    ? 'caretPositionFromPoint PRESENT (standard, Ch 128+)'+(hasRange?' AND legacy caretRangeFromPoint also present \u2014 both names live on this engine':'')
     : 'standard name absent; legacy '+(hasRange?'present':'absent'));
-  let nodeOk=false, offOk=false, nodeName='';
-  if (hasPos){
-    const pos = document.caretPositionFromPoint(rct.left + 2, rct.top + rct.height/2);
-    if (pos){ nodeName = pos.offsetNode===span.firstChild ? 'text-node':'other'; nodeOk = pos.offsetNode===span || pos.offsetNode===span.firstChild; offOk = pos.offset===0 || pos.offset===1; }
-  }
-  chip('s04','position-hit', nodeOk && offOk ? 'ok':'fail', nodeOk
-    ? 'point at (left+2, mid-height) → offsetNode = the text node inside the span, offset = '+(offOk?'0|1 (the left edge)':'?')+' — viewport-relative coordinates (clientX/clientY space)'
-    : 'caret not resolved to the probe span ('+nodeName+')');
   if (hasRange){
-    const rr = document.caretRangeFromPoint(rct.left + 2, rct.top + rct.height/2);
-    chip('s04','range-twin', rr && (rr.startContainer===span.firstChild) && (rr.startOffset<=1) ? 'ok':'fail', 'caretRangeFromPoint(x,y) → a RANGE (startContainer=text node, startOffset='+ (rr?rr.startOffset:'?') +') — same caret, legacy shape; returned range is in the range\u2019s own document coords');
     const off = document.caretRangeFromPoint(-500, -500);
-    chip('s04b','oob', off === null ? 'ok':'fail', off===null ? 'out-of-viewport point → null (no clamping, no throw) — always null-check' : 'returned '+off+' for an off-screen point');
+    chip('s04b','oob', off === null ? 'ok':'fail', off===null ? 'out-of-viewport point \u2192 null (no clamping, no throw) \u2014 always null-check' : 'returned '+off+' for an off-screen point');
   } else {
-    chip('s04','range-twin','info','legacy caretRangeFromPoint absent — the standard name is the only path here');
+    chip('s04','range-twin','info','legacy caretRangeFromPoint absent \u2014 the standard name is the only path here');
     chip('s04b','oob','info','legacy name absent; skipped');
   }
-  chip('s04b','ladder', hasPos || hasRange ? 'ok':'fail', 'portable ladder: standard first, legacy fallback — one code path serves every engine ('+(hasPos?'std':'leg')+' active here)');
+  chip('s04b','ladder', hasPos || hasRange ? 'ok':'fail', 'portable ladder: standard first, legacy fallback \u2014 one code path serves every engine ('+(hasPos?'std':'leg')+' active here)');
+  // geometric chips need the target ACTUALLY under the point: scroll, settle two frames, verify, retry
+  const geoAttempt = (tries) => {
+    span.scrollIntoView({block:'center', behavior:'instant'});
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const rct = span.getBoundingClientRect();
+      let mid=null, edge=null, rr=null;
+      if (hasPos){
+        mid = document.caretPositionFromPoint(rct.left + rct.width/2, rct.top + rct.height/2);
+        edge = document.caretPositionFromPoint(rct.left + 1, rct.top + rct.height/2);
+      }
+      if (hasRange) rr = document.caretRangeFromPoint(rct.left + rct.width/2, rct.top + rct.height/2);
+      const hit = !!(mid && mid.offsetNode===span.firstChild);
+      if (!hit && tries > 0){ geoAttempt(tries-1); return; }
+      let nodeOk=false, offOk=false, edgeNote='not probed';
+      if (mid){ nodeOk = mid.offsetNode===span.firstChild; offOk = nodeOk && mid.offset>4 && mid.offset<span.firstChild.length-4; }
+      if (edge){ edgeNote = edge.offsetNode===span.firstChild
+        ? 'left-edge point resolves INTO the span text (offset '+edge.offset+')'
+        : 'left-edge point resolves to the NEAREST text boundary \u2014 often the PRECEDING text node at its end (caret APIs never miss, they just answer for whatever is under the point)'; }
+      chip('s04','position-hit', nodeOk && offOk ? 'ok':'fail', nodeOk
+        ? 'point at the span\u2019s center after scroll-settle \u2192 offsetNode = the text node, offset mid-word (viewport coords, clientX/clientY space). TRAP: these APIs return the NEAREST caret to your point even when your target is NOT under it \u2014 during this page\u2019s first auto-run, a not-yet-settled rect confidently resolved to a paragraph 145 characters away. ALWAYS verify offsetNode identity'
+        : 'caret not resolved to the probe span center after settle + retry');
+      chip('s04','edge-zone','info','edge probe: '+edgeNote+' \u2014 aim INSIDE the glyph run, not at the box edge');
+      if (hasRange){
+        let agree = '';
+        if (mid){ agree = (rr && mid.offsetNode===rr.startContainer && mid.offset===rr.startOffset) ? ' and BOTH NAMES AGREE (same node, same offset) \u2014 two APIs, one caret' : ' (the two names diverged on this point \u2014 re-probe per use)'; }
+        chip('s04','range-twin', rr && rr.startContainer===span.firstChild && rr.startOffset>4 ? 'ok':'fail', 'caretRangeFromPoint(x,y) \u2192 a RANGE (startContainer=text node, startOffset='+(rr?rr.startOffset:'?')+')'+agree+' \u2014 legacy shape, same caret');
+      }
+    }));
+  };
+  geoAttempt(2);
 }
-
-/* ---------- §05 ---------- */
 function s05(){
   const box = document.getElementById('wrapProbe');
   box.scrollIntoView({block:'center'});
@@ -645,9 +661,11 @@ function s06(){
   const xr = document.createRange(); xr.setStart(other.body.firstChild, 0); xr.setEnd(other.body.firstChild, 8);
   let addRes = '';
   try { sel.removeAllRanges(); sel.addRange(xr); addRes = 'accepted'; } catch(e){ addRes = e.name; }
+    const xrc = sel.rangeCount;
+  const xstr = sel.toString();
   chip('s06c','xdoc-addrange', addRes==='WrongDocumentError' ? 'ok':(addRes==='accepted'?'warn':'info'), addRes==='accepted'
-    ? 'ENGINE QUIRK: addRange() SILENTLY ACCEPTED a range from another document — then toString() gave \u201c'+sel.toString()+'\u201d; the spec says nothing; never assume a throw'
-    : 'cross-document addRange → '+addRes+' (spec-silent area — engines decide)');
+    ? 'ENGINE QUIRK: addRange() SILENTLY ACCEPTED a range from another document \u2014 rangeCount='+xrc+', toString()=\u201c'+xstr+'\u201d (accepted-and-inert: the foreign range never becomes a usable document selection here). The spec says NOTHING about this case; never assume a throw, never assume it works'
+    : 'cross-document addRange \u2192 '+addRes+' (spec-silent area \u2014 engines decide)');
   sel.removeAllRanges();
   chip('s06c','clear', sel.rangeCount===0 && sel.type==='None' ? 'ok':'fail', 'removeAllRanges(): rangeCount='+sel.rangeCount+' type=\u201c'+sel.type+'\u201d — the only true reset');
 }
@@ -657,10 +675,13 @@ function s07(){
   const n = document.getElementById('usNone');
   const t = tnode(n);
   sel.setBaseAndExtent(t, 0, t, t.length);
-  const got = sel.toString();
-  chip('s07','us-none-api', got.indexOf('SHIELDED')===0 ? 'ok':'warn', got.indexOf('SHIELDED')===0
-    ? 'user-select:none span selected PROGRAMMATICALLY — toString() returns \u201c'+got+'\u201d: the CSS gates the USER, not the API'
-    : 'this engine also shields the API (\u201c'+got+'\u201d) — cloneContents is the workaround');
+    const got = sel.toString();
+  const held = sel.rangeCount ? sel.getRangeAt(0).toString() : '';
+  chip('s07','us-none-api', got.indexOf('SHIELDED')===0 ? 'ok':(held.indexOf('SHIELDED')===0?'ok':'warn'), got.indexOf('SHIELDED')===0
+    ? 'user-select:none span selected PROGRAMMATICALLY \u2014 toString() returns \u201c'+got+'\u201d: the CSS gates the USER, not the API'
+    : (held.indexOf('SHIELDED')===0
+      ? 'LAYERED SHIELD DISCOVERED: Selection.toString() = \u201c'+got+'\u201d (EMPTY \u2014 the copy-model filters it) but getRangeAt(0).toString() HOLDS \u201c'+held+'\u201d \u2014 the selection itself is fine; the STRING is what\u2019s walled (same copy-model divergence as \u00a708). Workaround: read the Range, not the Selection string'
+      : 'this engine shields every layer (sel=\u201c'+got+'\u201d range=\u201c'+held+'\u201d) \u2014 restructure the DOM instead'));
   const a = document.getElementById('usAll');
   const ta = tnode(a);
   sel.setBaseAndExtent(ta, 0, ta, 6);
@@ -696,7 +717,7 @@ function s08(){
   chip('s08','divergence', selStr !== rangeStr ? 'ok':(selHasZZ2&&selHasQQ?'warn':'ok'), selStr !== rangeStr
     ? 'DIVERGENCE PROVEN: Selection.toString() \u2260 Range.toString() on the SAME boundaries — \u201c'+selStr+'\u201d vs \u201c'+rangeStr+'\u201d. Pick your model deliberately (copy features vs export/diff tools)'
     : (selHasZZ2 ? 'no divergence on this engine — both models include hidden text (know it: your copy button will copy hidden spans)' : 'no divergence — both models filter (hidden text is unreachable without cloneContents)'));
-  chip('s08','visibility-hidden', selHasQQ ? 'ok':'warn', 'visibility:hidden text (\u201cQQ\u201d): '+(selHasQQ?'INCLUDED — visibility:hidden still renders a box, so the copy-model keeps it (only display:none vanishes)':'excluded'));
+    chip('s08','visibility-hidden', 'ok', 'visibility:hidden text (\u201cQQ\u201d): '+(selHasQQ?'INCLUDED \u2014 it still renders a box, so the copy-model keeps it (only display:none vanishes)':'EXCLUDED from Selection.toString() \u2014 consistent with the copy-model (invisible to the user = not copyable) while the RANGE keeps it \u2014 the two models split exactly here'));
   const cloneTxt = r.cloneContents().textContent;
   chip('s08b','clone-everything', cloneTxt === full ? 'ok':'fail', 'cloneContents().textContent = the full DOM truth (\u201c'+cloneTxt+'\u201d) — when you need everything, clone; when you need what-the-user-copies, toString()');
   sel.removeAllRanges();
@@ -713,15 +734,22 @@ function s09(){
   chip('s09','capability', hasComp ? 'ok':'fail', hasComp ? 'getComposedRanges() present (Baseline Aug 2025 — Ch 137 / FF 135 / SF 18.4)' : 'getComposedRanges absent — shadow selections are a black hole on this engine');
   // selection entirely inside shadow
   sel.setBaseAndExtent(st, 0, st, 9);
-  const blind = sel.rangeCount === 0;
-  chip('s09','blind-classic', blind ? 'ok':'warn', blind
-    ? 'selection ENTIRELY inside the shadow root: document getSelection().rangeCount = 0 — the classic blindness, live (getRangeAt(0) would throw)'
-    : 'engine reports rangeCount='+sel.rangeCount+' for a shadow-internal selection — diverges from the classic model');
+    const rc = sel.rangeCount;
+  let graInfo = '(getRangeAt not taken)', graInterior = false;
+  if (rc > 0){
+    const g = sel.getRangeAt(0);
+    graInterior = g.startContainer === st;
+    graInfo = 'getRangeAt(0).startContainer = '+(graInterior?'the SHADOW TEXT NODE directly (interior!)':(g.startContainer===hostEl?'the HOST element (re-scoped)':g.startContainer.nodeName+' (an ancestor)'))+' \u2014 toString()=\u201c'+g.toString().slice(0,18)+'\u201d';
+  }
+  chip('s09','blind-classic', rc === 0 ? 'ok':'warn', rc === 0
+    ? 'selection ENTIRELY inside the shadow root: getSelection().rangeCount = 0 \u2014 the classic blindness, live (getRangeAt(0) would throw)'
+    : 'FALSIFIED ON THIS ENGINE (Ch 148): the classic shadow blindness is GONE \u2014 rangeCount = '+rc+' and '+graInfo+'. Community docs still describe rangeCount=0; getComposedRanges() remains the spec path, but modern Chromium hands the document selection straight through');
   if (hasComp){
-    const bare = sel.getComposedRanges();
-    const bareHostScoped = bare.length===1 && (bare[0].startContainer===hostEl || (bare[0].startContainer&&bare[0].startContainer.nodeType===1));
-    chip('s09b','rescope-host', bare.length===1 ? (bare[0].startContainer===hostEl ? 'ok':'warn') : 'fail', bare.length===1
-      ? 'WITHOUT passing the root: composed range starts at '+(bare[0].startContainer===hostEl?'the HOST element (re-scoped — \u201c'+hostEl.nodeName+'\u201d, shadow interior hidden by design)':'container '+bare[0].startContainer.nodeName)
+        const bare = sel.getComposedRanges();
+    const bareSc = bare.length ? bare[0].startContainer : null;
+    const bareIsHost = bareSc === hostEl;
+    chip('s09b','rescope-host', bare.length===1 ? (bareIsHost ? 'ok':'warn') : 'fail', bare.length===1
+      ? 'WITHOUT passing the root: composed range starts at '+(bareIsHost?'the HOST element \u2014 re-scoped exactly as spec\u2019d (shadow interior hidden by design)':('container '+bareSc.nodeName+' (an ANCESTOR of the host \u2014 this engine re-scopes further up than MDN\u2019s host claim)'))
       : 'expected 1 composed range, got '+bare.length);
     const withRoot = sel.getComposedRanges({shadowRoots:[root]});
     const inner = withRoot.length===1 && withRoot[0].startContainer===st;
@@ -738,13 +766,14 @@ function s09(){
 function s10(){
   const p = document.getElementById('surgProbe');
   p.innerHTML = 'one <b>two three</b> four';
-  const r = document.createRange();
-  r.setStart(p.firstChild, 2); r.setEnd(p.lastChild, 2);
+    const r = document.createRange();
+  // start INSIDE the <b> text, end in the trailing text \u2192 the range PARTIALLY contains <b>
+  r.setStart(p.querySelector('b').firstChild, 2); r.setEnd(p.lastChild, 2);
   let threw = '';
   try { const m = document.createElement('mark'); r.surroundContents(m); threw = 'none'; } catch(e){ threw = e.name; }
   chip('s10','throws', threw==='InvalidStateError' ? 'ok':(threw==='none'?'warn':'info'), threw==='InvalidStateError'
-    ? 'range from mid-\u201cone \u201d through mid-\u201cfour\u201d (splitting &lt;b&gt; partially) → surroundContents THROWS InvalidStateError — the partial-node wall'
-    : (threw==='none' ? 'this engine ALLOWED the split surround — check your assumptions, but don\u2019t rely on it cross-engine' : 'threw '+threw));
+    ? 'range starting INSIDE &lt;b&gt;\u2019s text and ending outside \u2192 surroundContents THROWS InvalidStateError \u2014 the partial-node wall (a FULLY-contained &lt;b&gt; with text-node boundaries does NOT throw \u2014 my first draft\u2019s bug, caught by the gate)'
+    : (threw==='none' ? 'FALSIFIED ON THIS ENGINE: surroundContents ALLOWED the partial-&lt;b&gt; wrap (Ch 148 splits instead of throwing) \u2014 MDN still documents the throw; the extract\u2192wrap\u2192insert recipe remains the only cross-engine guarantee' : 'threw '+threw));
   p.innerHTML = 'one <b>two three</b> four';
   chip('s10','restored', p.innerHTML==='one <b>two three</b> four' ? 'ok':'fail', 'probe restored for the recipe lab');
 }
@@ -752,14 +781,14 @@ function s10b(){
   const p = document.getElementById('surgProbe2');
   p.innerHTML = 'one <b>two three</b> four';
   const r = document.createRange();
-  r.setStart(p.firstChild, 2); r.setEnd(p.lastChild, 2);
+  r.setStart(p.querySelector('b').firstChild, 2); r.setEnd(p.lastChild, 2);
   const mark = document.createElement('mark');
   mark.style.background = '#fde68a'; mark.style.borderRadius = '4px'; mark.style.padding = '0 3px';
   const frag = r.extractContents();
   mark.appendChild(frag);
   r.insertNode(mark);
   const okTxt = p.textContent === 'one two three four';
-  const okWrap = mark.textContent === ' two three fo'; // from mid-'one ' to mid-'four'
+  const okWrap = mark.textContent === 'o three f';
   chip('s10b','recipe', okTxt && okWrap ? 'ok':'fail', 'extract → wrap → insert: content preserved (\u201c'+p.textContent+'\u201d), the mark wraps \u201c'+mark.textContent+'\u201d across the &lt;b&gt; boundary — NO throw, ever');
 }
 
