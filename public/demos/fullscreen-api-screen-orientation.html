@@ -339,6 +339,8 @@ function fslog(line){
 const t0 = performance.now();
 const rel = () => Math.round(performance.now()-t0) + 'ms';
 let changeCount = 0, errorCount = 0, lastChangeTargets = [];
+// bounded wait for fullscreenchange to land — slow compositors/headless deliver it after promise resolution
+const waitForChange = async (n, ms) => { const t0 = performance.now(); while (changeCount < n && performance.now() - t0 < ms) await new Promise(r => setTimeout(r, 25)); };
 document.addEventListener('fullscreenchange', e => {
   changeCount++;
   lastChangeTargets.push({target: e.target.id || e.target.nodeName, bubbles: e.bubbles, cancelable: e.cancelable});
@@ -372,7 +374,7 @@ function badges(){
 }
 
 /* ============ §01 auto ============ */
-async function run01(){
+async function run01(fromGesture){
   chip('s01-rest', 'pending', '…');
   const fe0 = document.fullscreenElement, fen0 = document.fullscreenEnabled;
   chip('s01-rest', (fe0===null && fen0===true) ? 'ok' : 'fail',
@@ -380,7 +382,12 @@ async function run01(){
 
   try {
     await $('#fsP').requestFullscreen();
-    chip('s01-nogesture', 'fail', '<b>no-gesture call RESOLVED</b> — activation wall down?!');
+    // re-run inside a click gesture: transient activation legalizes the call — that IS the engine truth
+    chip('s01-nogesture', fromGesture ? 'ok' : 'fail',
+      fromGesture
+        ? '<b>re-run inside click activation</b> → RESOLVED — the wall is gesture-scoped: load-time (no activation) it throws, inside transient activation it is legal'
+        : '<b>no-gesture call RESOLVED</b> — activation wall down?!');
+    await document.exitFullscreen().catch(()=>{});
   } catch(e){
     chip('s01-nogesture', e.name==='TypeError' ? 'ok' : 'warn',
       `<b>no-gesture request</b> → ${e.name}: “${String(e.message).slice(0,60)}”`);
@@ -423,6 +430,7 @@ async function lab02(){
     const pr = P.requestFullscreen();
     s02seq.push('request returned');
     await pr.then(() => s02seq.push('promise resolved'));
+    await waitForChange(1, 700);
     const orderNote = s02seq.indexOf('fullscreenchange') === -1 ? 'event not yet' : (s02seq.indexOf('fullscreenchange') < s02seq.indexOf('promise resolved') ? 'event FIRST' : 'promise FIRST');
     $('#s02-seq').textContent = 'sequence: ' + s02seq.join(' → ') + ' (' + orderNote + ')';
     chip('s02-order', s02seq.indexOf('fullscreenchange') !== -1 ? 'ok' : 'warn',
@@ -499,6 +507,7 @@ async function lab04(){
   changeCount = 0;
   try {
     await A.requestFullscreen();
+    await waitForChange(1, 700);
     const changesAfterEnter = changeCount;
     await new Promise(r => setTimeout(r, 250));
     await B.requestFullscreen();
@@ -554,7 +563,8 @@ const childReports = {};
 window.addEventListener('message', ev => {
   const d = ev.data;
   if (!d || !d.__fschild) return;
-  childReports[d.nonce] = d;
+  // merge per-nonce: click reports (clicked/result/fe) must not clobber the load report (enabled/href)
+  childReports[d.nonce] = Object.assign(childReports[d.nonce] || {}, d);
   fslog(`child report nonce=${d.nonce.slice(0,6)} ${JSON.stringify(d).slice(0,150)}`);
   render06();
 });
@@ -752,7 +762,7 @@ $('#odWall').addEventListener('click', lab10);
 $('#moltArt').addEventListener('click', lab11);
 $('#goCap').addEventListener('click', () => $('#s10').scrollIntoView({behavior:'smooth'}));
 $('#runAll').addEventListener('click', async () => {
-  await run01(); run09(); run06(); run08();
+  await run01(true); run09(); run06(); run08();
 });
 run01(); run09(); run06(); run08();
 tally();
