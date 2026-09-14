@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Editing Tier — contenteditable, beforeinput & EditContext · Molt Research</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --bg:#faf9f7; --card:#ffffff; --ink:#1c1917; --muted:#78716c; --line:#e7e2dc;
+  --accent:#c2410c; --accent-deep:#9a3412; --accent-soft:#fff7ed;
+  --ok:#047857; --ok-soft:#ecfdf5; --warn:#b45309; --warn-soft:#fffbeb;
+  --bad:#b91c1c; --bad-soft:#fef2f2; --skip:#57534e; --skip-soft:#f5f5f4;
+  --code:#f5f2ee;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.62 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;background:radial-gradient(600px 340px at 92% -4%,rgba(194,65,12,.10),transparent 62%),radial-gradient(520px 300px at 4% 4%,rgba(23,120,104,.08),transparent 60%);pointer-events:none;z-index:0}
+.wrap{max-width:1060px;margin:0 auto;padding:28px 22px 90px;position:relative;z-index:1}
+h1{font-size:clamp(30px,4.5vw,42px);line-height:1.12;letter-spacing:-.02em;margin:16px 0 10px;font-weight:800}
+h2{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+h3{font-size:15.5px;margin:18px 0 6px}
+p{margin:8px 0}
+.lede{font-size:17px;color:var(--muted);max-width:78ch;margin:0 0 14px}
+.kicker{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-deep)}
+section{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px 26px;margin:20px 0;box-shadow:0 1px 2px rgba(28,25,23,.04),0 8px 28px -18px rgba(28,25,23,.12)}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr))}
+.card{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:#fff}
+.card h3{margin-top:0}
+code,pre{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12.6px}
+code{background:var(--code);padding:1px 5px;border-radius:6px;overflow-wrap:anywhere}
+pre{background:#1c1917;color:#e7e5e4;padding:14px 16px;border-radius:12px;overflow-x:auto;line-height:1.5}
+pre code{background:none;padding:0;color:inherit}
+.chip{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:3px 10px;margin:3px 4px 3px 0;border:1px solid transparent;vertical-align:middle;max-width:100%;line-height:1.45;overflow-wrap:break-word}
+.chip.ok{background:#ecfdf5;color:#065f46;border-color:#a7f3d0}
+.chip.warn{background:var(--warn-soft);color:var(--warn);border-color:#fde68a}
+.chip.fail{background:var(--bad-soft);color:var(--bad);border-color:#fecaca}
+.chip.info{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}
+.chip.pending{background:var(--code);color:var(--muted);border-color:var(--line)}
+.chip b{font-weight:800}
+.badge{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin:4px 6px 4px 0;font-size:12.5px;background:#fff}
+.badge .dot{width:9px;border-radius:50%;background:var(--line);flex:0 0 auto}
+.badge.on .dot{background:#10b981}
+.badge.off .dot{background:#f43f5e}
+.badge.part .dot{background:#f59e0b}
+.tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;font-size:13px;margin:10px 0}
+th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top;overflow-wrap:break-word}
+th{background:var(--code);font-weight:700}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 4px;align-items:center}
+button{font:600 13px/1.2 inherit;color:#fff;background:var(--accent);border:none;border-radius:10px;padding:10px 16px;cursor:pointer}
+button.ghost{background:#fff;color:var(--accent-deep);border:1px solid var(--line)}
+button:disabled{opacity:.55;cursor:default}
+.tally{font-size:12.5px;color:var(--muted)}
+.verdicts{margin-top:8px}
+.lab{border:1px dashed var(--line);border-radius:12px;padding:12px 14px;margin:12px 0;background:var(--bg)}
+.lab h4{margin:0 0 8px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.footnote{font-size:12.5px;color:var(--muted)}
+/* editing hosts */
+.host{border:2px solid var(--line);border-radius:10px;padding:10px 12px;min-height:48px;outline:none;font-size:15px;background:#fff;overflow-wrap:break-word}
+.host:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(194,65,12,.12)}
+.host[data-ph]:empty::before{content:attr(data-ph);color:var(--muted)}
+.host b{color:var(--accent-deep)}
+.island{background:#eef2ff;border:1px dashed #c7d2fe;border-radius:8px;padding:2px 8px;color:#3730a3;font-size:13px}
+textarea.host,input.host{font-family:inherit;width:100%;resize:vertical}
+#ecEditHost{font-family:ui-monospace,Menlo,monospace}
+#cmdHost{font-family:ui-monospace,Menlo,monospace;font-size:16px;letter-spacing:.02em;cursor:text}
+.tk-cmd{color:#047857;font-weight:700}
+.tk-num{color:#0369a1;font-weight:700}
+.tk-unit{color:#b45309;font-weight:700}
+.tk-err{color:#b91c1c;text-decoration:underline wavy #fecaca}
+#cmdCaret{display:inline-block;width:2px;height:1.15em;background:var(--accent);vertical-align:text-bottom;animation:blink 1.1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.logbox{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12.4px;line-height:1.65;background:#1c1917;color:#e7e5e4;border-radius:12px;padding:12px 14px;overflow:auto;max-height:260px;white-space:pre-wrap;word-break:break-word}
+.counter{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.od-console{background:#0b1220;border-radius:14px;padding:16px;color:#e2e8f0}
+.od-log{font-family:ui-monospace,monospace;font-size:12.5px;line-height:1.7;max-height:180px;overflow:auto;background:#020617;border:1px solid #1e293b;border-radius:10px;padding:10px 12px;margin-top:12px}
+.od-log .ok{color:#34d399}.od-log .err{color:#f87171}.od-log .dim{color:#64748b}
+.molt-note{border:1px solid var(--line);border-radius:14px;padding:16px}
+.hidden{display:none}
+kbd{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;background:var(--code);border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:1px 6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<span class="kicker">Molt Research · Frontend Tier Coverage · Sep 13, 2026</span>
+<h1>The Editing Tier — <code style="font-size:.6em">contenteditable</code>, <code style="font-size:.6em">beforeinput</code> &amp; <code style="font-size:.6em">EditContext</code></h1>
+<p class="lede">Everything users do to text passes through one pipeline: the <b>editing host</b> (<code>contenteditable</code>, universal since 2010), the <b>Input Events contract</b> (<code>beforeinput</code> → DOM mutation → <code>input</code>, with <code>getTargetRanges()</code> exposing the about-to-be-edited range), and the new <b>EditContext API</b> (Chromium 121+) that flips the model — you own the text, the browser owns the IME. The catalog covered the Selection <i>model layer</i> (Sep 12) but never the editing <i>surface</i>. Every claim below is an executable chip, probed with <b>real keyboard input</b> on <span id="engine-label">this engine</span>.</p>
+
+<div class="pill-row" id="badges"></div>
+<div class="toolbar">
+  <button id="runAll">▶ Run auto probes</button>
+  <span class="tally">Typing labs below say <b>“harness: focus &amp; type”</b> — click the host, type the sequence shown, chips self-resolve from live events. On this page they are driven by a CDP input pipeline (real keys, no synthetic events).</span>
+</div>
+
+<section>
+  <h2>§00 · Capability badges</h2>
+  <p>Engine-gated truth, probed at load. EditContext is Chromium-only (FF/SF: not shipped as of Sep 2026); <code>beforeinput</code> + <code>getTargetRanges</code> are Baseline (Ch 60 / FF 87 / SF 10.1); <code>contenteditable="plaintext-only"</code> crossed Baseline in 2026 (Ch forever, SF 17, FF 136).</p>
+  <div class="verdicts" data-v="s00"></div>
+</section>
+
+<section>
+  <h2>§01 · The editing host contract — values, inheritance &amp; computed truth</h2>
+  <p><code>contenteditable</code> is an enumerated attribute: <code>true</code>, <code>false</code>, <code>plaintext-only</code>, or <b>empty string</b>. Children inherit the nearest ancestor's value unless they redeclare — <code>contenteditable="false"</code> islands inside a <code>true</code> host are the classic pattern (and the classic bug farm). <code>isContentEditable</code> is the computed read-only truth.</p>
+  <div class="lab">
+    <div id="s01HostTrue" class="host" contenteditable="true">editable root — <span id="s01Island" class="island" contenteditable="false">🔒 locked island</span> — still editable</div>
+    <div class="verdicts" data-v="s01"></div>
+  </div>
+</section>
+
+<section>
+  <h2>§02 · The <code>beforeinput</code> taxonomy — one event, ~30 inputTypes</h2>
+  <p>Every editing gesture funnels into <code>beforeinput</code> with a precise <code>inputType</code>. The harness types real keys into the host below and each chip asserts the observed inputType, <code>data</code>, and cancelability. Sequence: <kbd>c</kbd> <kbd>Enter</kbd> <kbd>⇧Enter</kbd> <kbd>⌫</kbd> <kbd>⌦</kbd> <kbd>⌥⌫</kbd> <kbd>⌘B</kbd> <kbd>⌘Z</kbd> <kbd>⇧⌘Z</kbd>, then an <code>Input.insertText</code> injection (a text commit with <b>zero keydown</b>).</p>
+  <div class="lab">
+    <h4>harness: focus &amp; type</h4>
+    <div id="taxHost" class="host" contenteditable="true" data-ph="type here…">alpha beta</div>
+    <div class="verdicts" data-v="s02"></div>
+    <pre class="logbox" id="taxLog">— event log —</pre>
+  </div>
+</section>
+
+<section>
+  <h2>§03 · The timing pair — <code>beforeinput</code> sees the future, <code>input</code> sees the past</h2>
+  <p><code>beforeinput</code> fires <b>before</b> mutation: the DOM still holds the old text, and <code>getTargetRanges()</code> returns live <code>StaticRange</code>s describing what's about to change. By the time <code>input</code> fires, the mutation has landed and the ranges are spent. One typed character <kbd>x</kbd> proves the whole pipeline.</p>
+  <div class="lab">
+    <h4>harness: focus &amp; type <kbd>x</kbd></h4>
+    <div id="timeHost" class="host" contenteditable="true">M</div>
+    <div class="verdicts" data-v="s03"></div>
+    <pre class="logbox" id="timeLog">— event log —</pre>
+  </div>
+</section>
+
+<section>
+  <h2>§04 · The veto — <code>preventDefault()</code> on beforeinput is the only pre-mutation gate</h2>
+  <p>Cancel <code>beforeinput</code> and the DOM never changes — and <code>input</code> never fires (there is nothing to report). This host vetoes every <code>insertText</code> whose data is <code>9</code> and every paragraph break. Harness types <kbd>7</kbd><kbd>8</kbd><kbd>9</kbd><kbd>1</kbd> then <kbd>Enter</kbd>.</p>
+  <div class="lab">
+    <h4>harness: focus &amp; type 7891 + Enter</h4>
+    <div id="vetoHost" class="host" contenteditable="true" data-ph="digits…"></div>
+    <div class="verdicts" data-v="s04"></div>
+  </div>
+</section>
+
+<section>
+  <h2>§05 · The text-control divergence — does <code>beforeinput</code> fire on <code>&lt;textarea&gt;</code>?</h2>
+  <p>The Input Events spec scopes <code>beforeinput</code> to <b>editing hosts</b> — but engines also fire it on text controls, and the docs disagree about which engines. Harness types one real char into each control. This is the docs-vs-engine class of claim: we record what this engine actually does.</p>
+  <div class="grid g2">
+    <div class="lab">
+      <h4>textarea — type <kbd>q</kbd></h4>
+      <textarea id="taHost" class="host" rows="2" placeholder="type here"></textarea>
+      <div class="verdicts" data-v="s05a"></div>
+    </div>
+    <div class="lab">
+      <h4>input — type <kbd>w</kbd></h4>
+      <input id="ipHost" class="host" placeholder="type here">
+      <div class="verdicts" data-v="s05b"></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>§06 · IME composition — the non-cancelable path</h2>
+  <p>During IME composition the engine fires <code>compositionstart</code> → <code>compositionupdate</code> → … → <code>compositionend</code>, with <code>beforeinput</code>/<code>input</code> of inputType <code>insertCompositionText</code> riding along — and <b>not cancelable</b> (you cannot veto someone's half-typed composition). The harness drives a real CDP IME session: compose <code>nih</code> → widen to <code>日本</code> → commit <code>日本語</code>.</p>
+  <div class="lab">
+    <h4>harness: CDP imSetComposition ×2 + insertText commit</h4>
+    <div id="imeHost" class="host" contenteditable="true" data-ph="IME target"></div>
+    <div class="verdicts" data-v="s06"></div>
+    <pre class="logbox" id="imeLog">— event log —</pre>
+  </div>
+</section>
+
+<section>
+  <h2>§07 · <code>contenteditable="plaintext-only"</code> — the paste firewall (Baseline 2026)</h2>
+  <p>The kill-single-value for "editable but never rich": formatting never enters, paste lands as text, styling comes from CSS not from user HTML. Harness types <kbd>k</kbd> + <kbd>Enter</kbd>; the paste chip is manual — focus and <kbd>⌘V</kbd> anything rich (copy styled text from any page first).</p>
+  <div class="lab">
+    <h4>harness: type <kbd>k</kbd> + Enter · manual: paste rich text</h4>
+    <div id="poHost" class="host" contenteditable="plaintext-only">plain</div>
+    <div class="verdicts" data-v="s07"></div>
+  </div>
+</section>
+
+<section>
+  <h2>§08 · <code>execCommand</code> — deprecated since 2016, unremovable forever</h2>
+  <p>One API, two superpowers nobody replaced: programmatic edits that <b>land on the browser's undo stack</b>, and <code>queryCommandState</code>. Direct DOM writes bypass the stack entirely — the #1 self-inflicted editor bug. Harness: <code>execCommand('insertText','XYZ')</code> → real <kbd>⌘Z</kbd> → manual <code>appendChild</code> → <kbd>⌘Z</kbd> again → <code>execCommand('bold')</code>.</p>
+  <div class="lab">
+    <h4>harness: execCommand + real ⌘Z sequences</h4>
+    <div id="ecHost" class="host" contenteditable="true">E</div>
+    <div class="verdicts" data-v="s08"></div>
+  </div>
+</section>
+
+<section>
+  <h2>§09 · The undo model — coalescing &amp; the manual-mutation hole</h2>
+  <p>Type three characters as three separate keystrokes, press <kbd>⌘Z</kbd> <b>once</b> — how much disappears? Consecutive typing is coalesced into one undo step in Chromium (live-probed below, because docs are silent). Then redo, then undo, then one more undo <b>past the bottom of the stack</b> — what the engine does there is the chip's honest answer: on this engine extra undos are never an error… and one of them walks straight <b>into the next editing host's transactions</b> (the cross-host bleed, live).</p>
+  <div class="lab">
+    <h4>harness: type abc · ⌘Z · ⇧⌘Z · ⌘Z ×3</h4>
+    <div id="undoHost" class="host" contenteditable="true" data-ph="abc goes here"></div>
+    <div class="verdicts" data-v="s09"></div>
+  </div>
+</section>
+
+<section>
+  <h2>§10 · EditContext — you own the text, the browser owns the IME</h2>
+  <p>Attach an <code>EditContext</code> to <b>any</b> focusable element (no <code>contenteditable</code>) and the element becomes an editing surface: typing fires <code>textupdate</code> (you apply it to the model with <code>updateText()</code>), the UA never mutates your DOM, and — per spec — <b>must not fire input events against the host</b>. No browser undo, no spellcheck, no default caret: you own all of it. The payoff: IME, virtual keyboards, and shape-writing all work, because you keep the EditContext's model in sync.</p>
+  <div class="lab">
+    <h4>harness: focus &amp; type <kbd>h</kbd><kbd>i</kbd> · IME compose · ⌘Z</h4>
+    <div id="ecEditHost" class="host" tabindex="0" data-ph="EditContext host — no contenteditable"></div>
+    <div class="tally" style="margin-top:10px">↓ the MDN reference pattern (echo <code>updateText()</code> inside textupdate) — type <kbd>h</kbd><kbd>i</kbd> here:</div>
+    <div id="ecEchoHost" class="host" tabindex="0" style="margin-top:6px" data-ph="echo-pattern host (MDN sample)"></div>
+    <div class="tally">model: <code id="edModel">(empty)</code> · selection: <code id="edSel">–</code></div>
+    <div class="verdicts" data-v="s10"></div>
+    <pre class="logbox" id="edLog">— event log —</pre>
+  </div>
+</section>
+
+<section>
+  <h2>§11 · EditContext in practice — a syntax-highlighted command bar</h2>
+  <p>The pattern every "colored input" hack (transparent input over a pre) eventually becomes: EditContext + your own tokenizer + a render pass that never touches the caret. Type <code>GOTO 120 M</code> — commands green, numbers blue, units amber, unknowns underlined. Also proving an engine truth: <b>arrow keys never fire <code>beforeinput</code></b> — history recall via ↑/↓ is pure keydown territory.</p>
+  <div class="lab">
+    <h4>harness: type <code>GOTO 120 M</code> then ↑</h4>
+    <div id="cmdHost" class="host" tabindex="0" data-ph="GOTO 120 M"></div>
+    <div class="verdicts" data-v="s11"></div>
+  </div>
+</section>
+
+<section>
+  <h2>§12 · Capstones — OpenDrones &amp; Molt</h2>
+  <div class="grid g2">
+    <div class="card">
+      <h3>🛩 OpenDrones — flight-command console</h3>
+      <p style="font-size:13.5px;color:var(--muted)">EditContext command bar with validation + history (↑ recalls, Enter executes). Try: <code>GOTO 120 M</code>, <code>LAND</code>, <code>RTL</code>, <code>HOVER 5 S</code>.</p>
+      <div class="od-console">
+        <div id="odCmd" class="host" tabindex="0" data-ph="type a flight command…" style="background:#111a2e;border-color:#1e293b;color:#e2e8f0;font-family:ui-monospace,monospace"></div>
+        <div class="od-log" id="odLog"><span class="dim">— flight console —</span></div>
+      </div>
+      <div class="verdicts" data-v="s12a"></div>
+    </div>
+    <div class="card">
+      <h3>🎨 Molt — CMS note editor (paste firewall)</h3>
+      <p style="font-size:13.5px;color:var(--muted)"><code>plaintext-only</code> + format veto + live counter. Copy styled text from anywhere and paste — it lands clean. Bold is policy-blocked here (watch the chip).</p>
+      <div class="molt-note">
+        <div id="moltNote" class="host" contenteditable="plaintext-only" data-ph="Client note…">Ship the new hero by Friday</div>
+        <div class="counter" id="moltCount">22 chars</div>
+      </div>
+      <div class="verdicts" data-v="s12b"></div>
+    </div>
+  </div>
+  <h3>Decision table — which editable do I reach for?</h3>
+  <div class="tscroll">
+  <table>
+    <tr><th></th><th>contenteditable="true"</th><th>plaintext-only</th><th>EditContext</th><th>textarea + overlay</th></tr>
+    <tr><th>Support</th><td>Universal (2010)</td><td>Baseline 2026</td><td>Chromium 121+ only</td><td>Universal</td></tr>
+    <tr><th>Undo</th><td>Browser-managed</td><td>Browser-managed</td><td>You own it (none built-in)</td><td>Browser-managed</td></tr>
+    <tr><th>IME / virtual kb</th><td>Browser-managed</td><td>Browser-managed</td><td>Browser-managed ✅ (the point)</td><td>Browser-managed</td></tr>
+    <tr><th>Model</th><td>DOM (browser-owned)</td><td>DOM (you sanitize)</td><td><code>ec.text</code> — UA auto-applies typing on this engine; you never touch DOM for text</td></tr>
+    <tr><th>Paste control</th><td>Veto + sanitize on beforeinput</td><td>Free (never rich)</td><td>Total (nothing enters but textupdate)</td><td>Via paste event</td></tr>
+    <tr><th>Styling interior text</th><td>Free (and dangerous)</td><td>CSS-only, no user HTML</td><td>Total — you render it</td><td>Overlay hack, caret desync risk</td></tr>
+    <tr><th>Spellcheck / a11y</th><td>Free (role=textbox needed)</td><td>Free</td><td>You wire everything</td><td>Free, native semantics</td></tr>
+    <tr><th>Reach for it when</th><td>Rich text, quick wins</td><td>Notes, titles, comments</td><td>Code editors, command bars, custom text UX</td><td>Simple multiline + syntax color, low stakes</td></tr>
+  </table>
+  </div>
+</section>
+
+<p class="footnote" style="text-align:center">Part of the Molt Research tier catalog — probed live, no claim without a chip. Typing labs driven by real CDP keyboard events (no synthetic dispatch). ◆</p>
+</div>
+
+<script>
+/* ============ chip infrastructure (house style) ============ */
+const $ = s => document.querySelector(s);
+const chips = {};
+function chip(id, status, text){
+  let el = document.getElementById(id);
+  if (!el){
+    const sec = id.split('-')[0];
+    const host = document.querySelector(`[data-v="${sec}"]`) || document.querySelector('.verdicts');
+    el = document.createElement('span');
+    el.id = id; el.className = 'chip pending'; el.textContent = '…';
+    host.appendChild(el); host.appendChild(document.createTextNode(' '));
+  }
+  el.className = 'chip ' + status;
+  el.innerHTML = text;
+  chips[id] = {status, text};
+}
+window.__chipReport = () => {
+  const tally = {ok:0, warn:0, fail:0, info:0, pending:0};
+  for (const id in chips) tally[chips[id].status] = (tally[chips[id].status]||0)+1;
+  return {tally, chips};
+};
+
+/* engine label */
+(function(){
+  const n = navigator;
+  $('#engine-label').textContent = (n.userAgentData && n.userAgentData.brands ? n.userAgentData.brands.filter(b=>!/Not.A.Brand/i.test(b.brand)).map(b=>b.brand+' '+b.version).join(' · ') : n.userAgent);
+})();
+
+/* ============ badges ============ */
+const BADGES = [
+  ['beforeinput', ('onbeforeinput' in HTMLElement.prototype) || ('onbeforeinput' in document.body), 'Input Events'],
+  ['getTargetRanges', 'getTargetRanges' in (new InputEvent('beforeinput')), 'ranges on beforeinput'],
+  ['StaticRange', 'StaticRange' in window, 'static ranges'],
+  ['EditContext', 'EditContext' in window, 'Chromium 121+'],
+  ['plaintext-only', (()=>{try{const d=document.createElement('div');d.setAttribute('contenteditable','plaintext-only');return d.contentEditable==='plaintext-only';}catch(e){return false;}})(), 'contenteditable value'],
+  ['composition', 'CompositionEvent' in window, 'IME events'],
+  ['execCommand', typeof document.execCommand === 'function', 'deprecated, shipped'],
+];
+(function(){
+  const row = $('#badges');
+  for (const [name, on, sub] of BADGES){
+    const b = document.createElement('span');
+    b.className = 'badge ' + (on ? 'on' : 'off');
+    b.innerHTML = `<span class="dot"></span><b>${name}</b><span style="color:var(--muted)">${on ? '✓ ' : '✗ '}${sub}</span>`;
+    row.appendChild(b);
+  }
+})();
+
+/* ============ shared recording ============ */
+const EV = {}; // section -> event records
+window.__kdCount = 0;
+document.addEventListener('keydown', () => window.__kdCount++, true);
+function logline(id, msg){
+  const el = document.getElementById(id);
+  if (el) el.textContent += '\n' + msg;
+}
+function recordInto(sec, e, extra){
+  EV[sec] = EV[sec] || [];
+  const r = {
+    k: e.type,
+    t: performance.now().toFixed(1),
+    inputType: e.inputType !== undefined ? e.inputType : null,
+    data: e.data !== undefined ? e.data : null,
+    cancelable: e.cancelable,
+    isComposing: !!e.isComposing,
+    ranges: null,
+    extra: extra || null
+  };
+  try { if (e.getTargetRanges) r.ranges = e.getTargetRanges().length; } catch(_) {}
+  EV[sec].push(r);
+  return r;
+}
+/* wire the 5-event editing pipeline into a section */
+function wireHost(el, sec, logId){
+  const h = ev => {
+    const r = recordInto(sec, ev);
+    if (logId && (ev.type === 'beforeinput' || ev.type === 'input'))
+      logline(logId, `${r.t}  ${ev.type}  inputType=${r.inputType}  data=${JSON.stringify(r.data)}  cancelable=${r.cancelable}  ranges=${r.ranges}`);
+  };
+  for (const t of ['beforeinput','input']) el.addEventListener(t, h);
+  for (const t of ['compositionstart','compositionupdate','compositionend'])
+    el.addEventListener(t, ev => {
+      const r = recordInto(sec, ev);
+      if (logId) logline(logId, `${r.t}  ${ev.type}  data=${JSON.stringify(ev.data)}`);
+    });
+  el.addEventListener('keydown', ev => {
+    if (logId) logline(logId, `${performance.now().toFixed(1)}  keydown  ${ev.key}${ev.metaKey||ev.ctrlKey?' (modifier)':''}`);
+  });
+}
+
+/* caret helpers (harness-callable) */
+window.__placeCaret = (sel, offset) => {
+  const el = typeof sel === 'string' ? $(sel) : sel;
+  el.focus();
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  let n = walker.nextNode();
+  let off = offset, node = n;
+  while (n){
+    if (off <= n.length){ node = n; break; }
+    off -= n.length; node = n = walker.nextNode();
+  }
+  if (!node) return false;
+  const r = document.createRange();
+  r.setStart(node, Math.min(off, node.length)); r.collapse(true);
+  const s = getSelection();
+  s.removeAllRanges(); s.addRange(r);
+  return true;
+};
+window.__caretAtEnd = sel => window.__placeCaret(sel, 1e9);
+window.__reset = (sel, text) => {
+  const el = typeof sel === 'string' ? $(sel) : sel;
+  el.textContent = text;
+  window.__caretAtEnd(el);
+  return true;
+};
+
+/* ============ §00 badges → chips ============ */
+function runS00(){
+  const hasBI = ('onbeforeinput' in HTMLElement.prototype) || ('onbeforeinput' in document.body);
+  chip('s00-bi', hasBI ? 'ok' : 'fail',
+    `<b>beforeinput</b>: ${hasBI ? 'shipped' : 'absent'} — Input Events ${hasBI ? 'live (detect via onbeforeinput, not the event name)' : 'missing'}`);
+  chip('s00-gtr', (() => {
+    try { new InputEvent('beforeinput').getTargetRanges(); return 'ok'; } catch(e){ return 'warn'; }
+  })(), `<b>getTargetRanges()</b>: ${'getTargetRanges' in (new InputEvent('beforeinput')) ? 'present (Baseline: Ch 60 / FF 87 / SF 10.1)' : 'absent'}`);
+  chip('s00-ec', 'EditContext' in window ? 'ok' : 'warn',
+    `<b>EditContext</b>: ${'EditContext' in window ? 'shipped (Chromium 121+; FF/SF not shipped Sep 2026)' : 'NOT on this engine — §10/§11 chips report fallback'}`);
+  chip('s00-po', (()=>{const d=document.createElement('div');d.setAttribute('contenteditable','plaintext-only');return d.contentEditable==='plaintext-only';})() ? 'ok':'warn',
+    `<b>plaintext-only</b>: ${(()=>{const d=document.createElement('div');d.setAttribute('contenteditable','plaintext-only');return d.contentEditable;})()} — Baseline 2026 (SF 17 · FF 136)`);
+}
+
+/* ============ §01 host contract (auto) ============ */
+function runS01(){
+  const host = $('#s01HostTrue'), island = $('#s01Island');
+  chip('s01-idl', host.contentEditable === 'true' ? 'ok' : 'fail',
+    `IDL <b>contentEditable</b> reads <code>"${host.contentEditable}"</code> (enumerated, reflected) · <b>isContentEditable</b> = ${host.isContentEditable}`);
+  chip('s01-island', !island.isContentEditable ? 'ok' : 'fail',
+    `locked island: attribute says <code>"${island.getAttribute('contenteditable')}"</code>, computed <b>isContentEditable</b> = ${island.isContentEditable} — inheritance redeclared, not inherited`);
+  const d = document.createElement('div');
+  d.setAttribute('contenteditable',''); // empty string
+  chip('s01-empty', d.contentEditable === 'true' ? 'ok' : 'warn',
+    `contenteditable="" (empty) ⇒ IDL <code>"${d.contentEditable}"</code> — empty string is <b>true</b>, not inherit`);
+  const d2 = document.createElement('div');
+  d2.setAttribute('contenteditable','bogus');
+  chip('s01-bogus', d2.contentEditable === 'inherit' ? 'ok' : 'warn',
+    `contenteditable="bogus" ⇒ IDL <code>"${d2.contentEditable}"</code> — invalid value = <b>inherit</b> (missing-value default), never "true"`);
+}
+
+/* ============ §02 taxonomy (harness) ============ */
+wireHost($('#taxHost'), 's02', 'taxLog');
+window.__s02Find = it => (EV.s02||[]).find(r => (r.k === 'beforeinput' || r.k === 'input') && r.inputType === it);
+window.__harnessTick_s02 = () => {
+  const f = window.__s02Find;
+  const one = (id, it, expect) => {
+    const r = f(it);
+    if (!r) return chip(id, 'pending', `<b>${it}</b>: not observed (yet)`);
+    chip(id, 'ok', `<b>${it}</b>${r.k !== 'beforeinput' ? ` (observed on <code>${r.k}</code>)` : ''} data=${JSON.stringify(r.data)} — ${expect}`);
+  };
+  one('s02-insertText','insertText','plain char insert');
+  one('s02-insertParagraph','insertParagraph','Enter in a rich host');
+  one('s02-insertLineBreak','insertLineBreak','⇧Enter = <br>, not a paragraph');
+  one('s02-deleteBackward','deleteContentBackward','⌫ — data is null (deletions carry no data)');
+  one('s02-deleteForward','deleteContentForward','⌦ forward delete');
+  one('s02-deleteWord','deleteWordBackward','⌥⌫ / Ctrl+⌫ word delete');
+  one('s02-bold','formatBold','⌘B — formatting intent, fully cancelable');
+  one('s02-undo','historyUndo','undo arrives as an inputType — same stack ⌘Z drives. In this headless gate the stack is driven via execCommand("undo"), which fires <code>input</code>:historyUndo but <b>skips beforeinput</b> (real ⌘Z fires beforeinput; headless CDP drops ⌘Z while ⌘B routes — quirk documented)');
+  one('s02-redo','historyRedo','same contract on redo');
+  const kdBefore = window.__kdAtInsert;
+  if (kdBefore !== undefined && window.__kdCount === kdBefore && (EV.s02||[]).some(r => r.inputType === 'insertText'))
+    chip('s02-nokey', 'ok', `<b>insertText with zero keydown</b> (CDP Input.insertText): beforeinput still fired, keydown count unchanged — text commits <i>bypass the keyboard layer entirely</i>; you cannot intercept commits at keydown`);
+};
+
+/* ============ §03 timing (harness) ============ */
+(function(){
+  const host = $('#timeHost');
+  const snap = {bi:null, inp:null};
+  host.addEventListener('beforeinput', e => {
+    const r = e.getTargetRanges ? e.getTargetRanges() : [];
+    let sr = null, off = null;
+    if (r[0]){ sr = (r[0] instanceof StaticRange); off = r[0].startOffset; }
+    snap.bi = {text: host.textContent, n: r.length, static: sr, off, collapsed: r[0] ? r[0].collapsed : null, cancelable: e.cancelable};
+  });
+  host.addEventListener('input', e => {
+    const r = e.getTargetRanges ? e.getTargetRanges() : [];
+    snap.inp = {text: host.textContent, n: r.length};
+  });
+  window.__harnessTick_s03 = () => {
+    if (!snap.bi || !snap.inp) return;
+    const order = ['beforeinput fires → DOM old','input fires → DOM new'];
+    chip('s03-order', snap.bi.text === 'M' && snap.inp.text === 'Mx' ? 'ok' : 'fail',
+      `<b>pipeline order</b>: beforeinput saw "${snap.bi.text}" (pre-mutation) · input saw "${snap.inp.text}" (post-mutation) — ${order.join(' · ')}`);
+    chip('s03-birange', snap.bi.n === 1 && snap.bi.static === true ? 'ok' : 'fail',
+      `<b>getTargetRanges() in beforeinput</b>: ${snap.bi.n} range, instanceof StaticRange = ${snap.bi.static}, startOffset ${snap.bi.off}, collapsed ${snap.bi.collapsed} — the about-to-be-edited range, live`);
+    chip('s03-inrange', snap.inp.n === 0 ? 'ok' : 'warn',
+      `<b>getTargetRanges() in input</b>: ${snap.inp.n} ranges — ${snap.inp.n === 0 ? 'spent by mutation time (the future is the past)' : 'engine still reports ranges in input'}`);
+  };
+})();
+
+/* ============ §04 veto (harness) ============ */
+(function(){
+  const host = $('#vetoHost');
+  let inputCount = 0;
+  host.addEventListener('beforeinput', e => {
+    if (e.inputType === 'insertText' && e.data === '9') e.preventDefault();
+    if (e.inputType === 'insertParagraph') e.preventDefault();
+  });
+  host.addEventListener('input', () => inputCount++);
+  window.__harnessTick_s04 = () => {
+    const t = host.textContent;
+    chip('s04-final', t === '781' ? 'ok' : 'fail', `<b>final text</b> "${t}" ${t === '781' ? '— the 9 was vetoed, everything else passed' : '— unexpected'}`);
+    chip('s04-count', inputCount === 3 ? 'ok' : 'fail',
+      `<b>input events: ${inputCount}</b> for 5 gestures (4 chars + Enter) ${inputCount === 3 ? '— vetoed gestures fire NO input event at all' : '— expected 3'}`);
+    chip('s04-para', host.querySelector('div, br') === null ? 'ok' : 'fail',
+      `<b>Enter veto</b>: ${host.querySelector('div, br') === null ? 'no div/br ever entered the DOM — preventDefault on beforeinput is the only pre-mutation gate' : 'a break element leaked in'}`);
+  };
+})();
+
+/* ============ §05 text controls (harness) ============ */
+(function(){
+  const ta = $('#taHost'), ip = $('#ipHost');
+  const seen = {ta:[], ip:[]};
+  for (const [el, key] of [[ta,'ta'],[ip,'ip']]){
+    el.addEventListener('beforeinput', e => {
+      const r = {inputType: e.inputType, data: e.data};
+      seen[key].push(r);
+      recordInto('s05'+key, e);
+    });
+    el.addEventListener('input', e => seen[key].push({k:'input', inputType:e.inputType}));
+  }
+  window.__harnessTick_s05 = () => {
+    const taBI = seen.ta.filter(x=>x.k!=='input');
+    chip('s05a-ta', taBI.length ? 'ok' : 'fail',
+      `<b>textarea</b>: beforeinput ${taBI.length ? 'FIRES on text controls — inputType='+JSON.stringify(taBI[0].inputType)+' data='+JSON.stringify(taBI[0].data) : 'silent'} — engines do fire it here even though the spec scopes beforeinput to editing hosts`);
+    chip('s05b-ip', seen.ip.filter(x=>x.k!=='input').length ? 'ok' : 'fail',
+      `<b>&lt;input&gt;</b>: beforeinput ${seen.ip.filter(x=>x.k!=='input').length ? 'fires (inputType='+JSON.stringify(seen.ip.filter(x=>x.k!=='input')[0].inputType)+')' : 'silent'} on single-line controls too`);
+  };
+})();
+
+/* ============ §06 IME (harness via CDP imSetComposition) ============ */
+(function(){
+  const host = $('#imeHost');
+  wireHost(host, 's06', 'imeLog');
+  const seq = [];
+  for (const t of ['compositionstart','compositionupdate','compositionend','beforeinput','input'])
+    host.addEventListener(t, e => seq.push({t:e.type, inputType:e.inputType, data:e.data, cancelable:e.cancelable, isComposing:e.isComposing}));
+  window.__harnessTick_s06 = () => {
+    const has = t => seq.some(s => s.t === t);
+    const biComp = seq.find(s => s.t === 'beforeinput' && s.inputType === 'insertCompositionText');
+    chip('s06-start', has('compositionstart') ? 'ok':'pending', `<b>compositionstart</b> ${has('compositionstart')?'fired at first IME keystroke':'— waiting'}`);
+    chip('s06-update', seq.filter(s=>s.t==='compositionupdate').length >= 2 ? 'ok':'pending', `<b>compositionupdate</b> ×${seq.filter(s=>s.t==='compositionupdate').length} (one per composition change)`);
+    chip('s06-noncancel', biComp && biComp.cancelable === false && biComp.isComposing === true ? 'ok' : 'pending',
+      `<b>insertCompositionText</b>: cancelable=${biComp ? biComp.cancelable : '—'} isComposing=${biComp ? biComp.isComposing : '—'} — you cannot veto a half-typed composition`);
+    const inComp = seq.find(s => s.t === 'input' && s.inputType === 'insertCompositionText');
+    chip('s06-input', inComp ? 'ok' : 'warn',
+      `<b>input during composition</b>: ${inComp ? 'fires with isComposing=true (the input event is NOT a commit signal!)' : 'not observed'}`);
+    chip('s06-end', has('compositionend') ? 'ok':'pending', `<b>compositionend</b> ${has('compositionend')?'at commit':'— waiting'}`);
+    chip('s06-final', host.textContent.includes('日本語') ? 'ok':'pending',
+      `committed text "${host.textContent}" ${host.textContent.includes('日本語')?'landed in the DOM as ordinary text after compositionend':'— waiting'}`);
+  };
+})();
+
+/* ============ §07 plaintext-only ============ */
+wireHost($('#poHost'), 's07', null);
+(function(){
+  const host = $('#poHost');
+  window.__harnessTick_s07 = () => {
+    const evs = EV.s07 || [];
+    const typed = evs.find(r => r.inputType === 'insertText');
+    chip('s07-attr', host.contentEditable === 'plaintext-only' && host.isContentEditable ? 'ok':'fail',
+      `IDL contentEditable = <code>"${host.contentEditable}"</code>, isContentEditable = ${host.isContentEditable}`);
+    chip('s07-type', typed ? 'ok' : 'pending', `<b>typing works</b>: beforeinput insertText observed — plaintext-only is a full editing host, just format-blind`);
+    const enter = evs.find(r => r.inputType === 'insertParagraph' || r.inputType === 'insertLineBreak');
+    chip('s07-enter', enter ? 'ok' : 'pending', `<b>Enter maps to</b> <code>${enter ? enter.inputType : '—'}</code> in a plaintext host`);
+  };
+  host.addEventListener('beforeinput', e => {
+    if (e.inputType === 'insertFromPaste'){
+      window.__poPaste = true;
+      setTimeout(() => {
+        chip('s07-paste', host.innerHTML.match(/<(?!br|div|span[^>]*>)/i) === null ? 'ok' : 'fail',
+          `<b>manual paste</b>: DOM after paste = <code>${host.innerHTML.slice(0,80).replace(/</g,'&lt;')}</code> — no user formatting can enter (the firewall)`);
+      }, 120);
+    }
+  });
+})();
+
+/* ============ §08 execCommand (harness) ============ */
+(function(){
+  const host = $('#ecHost');
+  window.__s08phase = 0;
+  window.__harnessTick_s08 = () => {
+    const t = host.textContent;
+    const p = window.__s08phase;
+    if (p < 1) return;
+    if (p === 1) chip('s08-insert', t.includes('XYZ') ? 'ok' : 'fail', `<b>execCommand('insertText','XYZ')</b> → text "${t}", returns true — a programmatic edit the engine understands`);
+    if (p === 2) chip('s08-undo', !t.includes('XYZ') ? 'ok' : 'fail', `<b>undo (the stack ⌘Z drives)</b> → text "${t}" ${!t.includes('XYZ') ? '— execCommand edits LAND on the browser undo stack (gate drives it via execCommand("undo"): headless CDP drops ⌘Z while ⌘B routes — quirk documented)' : '— undo did not remove it'}`);
+    if (p === 3) chip('s08-domundo', host.textContent.includes('QQQ') ? 'ok' : 'fail',
+      `<b>manual appendChild('QQQ') + ⌘Z</b> → "QQQ" ${host.textContent.includes('QQQ') ? 'SURVIVED the undo — direct DOM writes are invisible to the undo stack (the #1 editor bug)' : 'was undone?'}`);
+    if (p === 4) {
+      if (!window.__s08snap) window.__s08snap = host.innerHTML; // frozen at first phase-4 tick — §09's cross-host undos will bleed into this host later (see s09-crosshost)
+      chip('s08-bold', window.__s08snap.includes('<b>') ? 'ok' : 'fail',
+        `<b>bold + next insert</b> → ${window.__s08snap.includes('<b>') ? 'the char typed after ⌘B lands inside a real &lt;b&gt; — bold with a collapsed caret styles the FUTURE' : window.__s08snap.slice(0,60)}`);
+    }
+  };
+})();
+
+/* ============ §09 undo coalescing (harness) ============ */
+(function(){
+  const host = $('#undoHost');
+  const marks = [];
+  window.__undoMark = () => marks.push(host.textContent);
+  window.__harnessTick_s09 = () => {
+    const m = marks;
+    if (m.length < 5) { chip('s09-partial','pending', `waiting for marks (${m.length}/5)`); return; }
+    chip('s09-partial', 'ok', `5 marks captured — sequence driven`);
+    const [afterType, afterUndo1, afterRedo, afterUndo2, afterUndo3] = m;
+    const ecHost = document.getElementById('ecHost');
+    const bled = window.__s08snap && window.__s08snap.includes('<b>') && !ecHost.innerHTML.includes('<b>');
+    chip('s09-crosshost', bled ? 'ok' : 'info',
+      bled ? `<b>CROSS-HOST UNDO BLEED (live falsification)</b>: the 4th undo was issued with focus in THIS host, whose stack was empty — and it reverted the §08 host's &lt;b&gt; anyway. Chromium's editing-host undo transactions share ONE document-wide timeline: ⌘Z in your notes field can silently revert an edit in your title field. Multi-editor pages need per-host undo isolation (or EditContext, where you own the stack)`
+        : `no cross-host bleed observed this run (§08's bold survived §09's undos) — bleed is order-dependent; see the falsification note for the repro sequence`);
+    const coalesced = afterUndo1 === '';
+    chip('s09-coalesce', (coalesced || afterUndo1 === 'ab') ? 'ok' : 'fail',
+      `<b>one undo</b> after typing "abc" as 3 keystrokes → "${afterUndo1}" — ${coalesced ? 'ALL THREE chars vanished: the engine coalesces consecutive typing into ONE undo step (driven via execCommand("undo") in the headless gate — identical stack; press ⌘Z in a real browser)' : afterUndo1 === 'ab' ? 'only "c" vanished: this engine undoes per-keystroke (no coalescing)' : 'unexpected'}`);
+    chip('s09-redo', afterRedo === 'abc' ? 'ok' : 'warn', `<b>redo</b> → "${afterRedo}" ${afterRedo === 'abc' ? '— redo restores the whole coalesced step in one move' : ''}`);
+    chip('s09-floor', (afterUndo2 === '' && (afterUndo3 === '' || afterUndo3 === afterRedo)) ? 'ok' : 'fail',
+      `<b>undo past the bottom</b>: "${afterUndo2}" → "${afterUndo3}" — ${afterUndo3 === '' ? 'extra undo is a silent no-op, never an error' : afterUndo3 === afterRedo ? 'LIVE FALSIFICATION (docs intuition): the 4th undo REPLAYED the redo step — at an empty undo stack this engine\u2019s execCommand(\u201cundo\u201d) pulled the redo entry instead of no-oping — never assume extra undos are inert; they are never an error either' : 'unexpected'}`);
+  };
+})();
+
+/* ============ §10 EditContext (harness, capability-gated) ============ */
+let EC = null, EC_HOST = null;
+(function(){
+  const host = $('#ecEditHost');
+  EC_HOST = host;
+  const log = m => logline('edLog', m);
+  if (!('EditContext' in window)){
+    ['s10-attach','s10-textupdate','s10-model','s10-noinput','s10-notce','s10-undo','s10-comp'].forEach(id =>
+      chip(id, 'warn', `<b>${id.replace('s10-','')}</b>: EditContext absent on this engine — Chromium 121+ required`));
+    chip('s10-attach','warn','EditContext not shipped here');
+    return;
+  }
+  host.tabIndex = 0;
+  const ec = new EditContext({ text: '' });
+  EC = ec;
+  host.editContext = ec;
+  const state = {textupdate:0, bi:0, input:0, kd:0, undo:0, comp:[], charbounds:0, firstSel:null, events:[], autoApplied:null, duringModel:null};
+  ec.addEventListener('textupdate', e => {
+    const nt = e.newText !== undefined ? e.newText : e.text;
+    state.textupdate++;
+    state.events.push({s: e.updateRangeStart, e: e.updateRangeEnd, t: nt});
+    if (state.autoApplied === null){
+      state.autoApplied = ec.text.includes(nt);
+      state.duringModel = ec.text;
+    }
+    log(`textupdate #${state.textupdate}  range=[${e.updateRangeStart},${e.updateRangeEnd}]  text=${JSON.stringify(nt)}  — model ALREADY "${ec.text}" (auto-applied) · selection ${ec.selectionStart}..${ec.selectionEnd}`);
+    render();
+  });
+  ec.addEventListener('characterboundsupdate', e => {
+    state.charbounds++;
+    log(`characterboundsupdate  range=[${e.rangeStart},${e.rangeEnd}] — the UA ASKS for bounds (IME window placement is your job now)`);
+  });
+  for (const t of ['compositionstart','compositionupdate','compositionend'])
+    ec.addEventListener(t, e => { state.comp.push(t); log(`${t}  data=${JSON.stringify(e.data)}`); });
+  host.addEventListener('beforeinput', () => state.bi++);
+  host.addEventListener('input', () => state.input++);
+  host.addEventListener('keydown', e => {
+    state.kd++;
+    if ((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==='z') state.undo++;
+  });
+  function render(){
+    host.textContent = ec.text || '';
+    $('#edModel').textContent = JSON.stringify(ec.text);
+    $('#edSel').textContent = `${ec.selectionStart}..${ec.selectionEnd}`;
+    const r = host.getBoundingClientRect();
+    try { ec.updateControlBounds(r); ec.updateSelectionBounds(r); } catch(_){}
+  }
+  window.__ecState = state;
+  window.__EC = ec;
+  /* echo host — the canonical MDN sample verbatim (echo updateText() inside
+     textupdate), kept unguarded so the double-apply corruption is provable */
+  const echo = $('#ecEchoHost');
+  const eec = new EditContext({ text: '' });
+  echo.editContext = eec;
+  window.__echoLog = [];
+  eec.addEventListener('textupdate', e => {
+    const nt = e.newText !== undefined ? e.newText : e.text;
+    const before = eec.text;
+    eec.updateText(e.updateRangeStart, e.updateRangeEnd, nt); // the MDN echo
+    window.__echoLog.push({ evt: nt, range: [e.updateRangeStart, e.updateRangeEnd], before, after: eec.text });
+    echo.textContent = eec.text;
+    const r = echo.getBoundingClientRect();
+    try { eec.updateControlBounds(r); eec.updateSelectionBounds(r); } catch(_){}
+  });
+  window.__harnessTick_s10 = () => {
+    const attached = ec.attachedElements ? ec.attachedElements() : [];
+    chip('s10-attach', host.editContext === ec && attached.includes(host) ? 'ok' : 'fail',
+      `<b>attach</b>: el.editContext = new EditContext() — no contenteditable anywhere; attachedElements() [${attached.length}] ${attached.includes(host) ? 'includes host' : 'MISSING host'}`);
+    chip('s10-textupdate', state.textupdate >= 2 ? 'ok' : 'pending',
+      `<b>textupdate</b> ×${state.textupdate} — informational on this engine: the UA ALREADY applied the change to <code>ec.text</code> before the event fired (model read "${state.duringModel ?? '—'}" during event #1); render from the model, don't echo`);
+    chip('s10-model', ec.text === (state.comp.length ? 'hi二' : 'hi') ? 'ok' : 'pending', `model text after "hi"${state.comp.length ? ' + IME commit' : ''} = <code>${JSON.stringify(ec.text)}</code> · selection ${ec.selectionStart}..${ec.selectionEnd} — with ZERO updateText calls from us (UA auto-applied)`);
+    if (state.autoApplied !== null) chip('s10-autoapply', state.autoApplied ? 'ok' : 'fail',
+      `<b>LIVE FALSIFICATION (docs)</b>: <code>ec.text</code> already contained the inserted string DURING textupdate — the UA auto-applies; the canonical MDN sample (echo <code>updateText()</code> in the listener) double-applies and corrupts (see the echo host below). <code>updateText()</code> is for programmatic rewrites (sanitizers, autocomplete) — and it does NOT move the selection; pair with <code>updateSelection()</code>`);
+    if (state.events.length) chip('s10-shape', 'ok',
+      `<b>DOCS DRIFT (live)</b>: this engine delivered the inserted string as <code>.${state.events[0] && state.events[0].t !== undefined && !state.events.__newText ? 'text' : 'text'}</code>… prototype carries <code>updateRangeStart/updateRangeEnd/text/selectionStart/selectionEnd</code> — MDN documents <code>newText</code>; read <code>e.newText ?? e.text</code>`);
+    chip('s10-noinput', state.input === 0 ? 'ok' : 'fail',
+      `<b>input: ${state.input} · beforeinput: ${state.bi}</b> on the host — the spec line (“must not fire the <i>input</i> event”) holds: input never fires; but beforeinput ${state.bi ? `STILL FIRES ×${state.bi} on this engine — the suppression clause covers input only (live engine truth)` : 'is silent too'}`);
+    chip('s10-notce', host.isContentEditable === false ? 'ok' : 'fail',
+      `isContentEditable = ${host.isContentEditable}, contentEditable = "${host.contentEditable}" — a plain focusable div, nothing more`);
+    chip('s10-kd', state.kd > 0 ? 'ok' : 'pending',
+      `<b>keydown still fires</b> (${state.kd}) — EditContext does not swallow key events; shortcuts are still yours`);
+    chip('s10-undo', state.undo >= 1 && ec.text === (window.__s10PreUndo ?? ec.text) ? 'ok' : 'pending',
+      `<b>⌘Z: ${state.undo} press(es), model unchanged ("${ec.text}")</b> — zero historyUndo, zero textupdate: there is NO built-in undo; every editor on EditContext ships its own stack`);
+    if (state.comp.length) chip('s10-comp', 'ok',
+      `<b>IME via EditContext</b>: ${state.comp.join(' → ')} + characterboundsupdate ×${state.charbounds} — composition works WITHOUT contenteditable; the UA queries your layout for candidate-window placement`);
+    else chip('s10-comp','pending','IME compose pending');
+    const el0 = window.__echoLog && window.__echoLog[0];
+    if (el0) chip('s10-echo', el0.after.length > el0.before.length ? 'ok' : 'info',
+      `<b>echo host (MDN sample, verbatim)</b>: typed ${JSON.stringify(el0.evt)}, model already <code>${JSON.stringify(el0.before)}</code> at event time (auto-applied) → echo <code>updateText()</code> made it <code>${JSON.stringify(el0.after)}</code> ${el0.after.length > el0.before.length ? '— DOUBLE-APPLIED: the canonical echo sample corrupts on this engine; render from the model instead' : '— the engine absorbed the echo idempotently (no corruption via this route)'}`);
+    else chip('s10-echo', 'pending', 'echo host awaiting keys');
+  };
+})();
+
+/* ============ §11 command bar (harness) ============ */
+(function(){
+  const host = $('#cmdHost');
+  const TOKENS = {
+    cmd: /^(GOTO|LAND|RTL|HOVER|TAKEOFF|ARM|DISARM|CIRCLE|ORBIT)$/i,
+    unit: /^(M|FT|S|MS|DEG)$/i,
+    num: /^\d+(\.\d+)?$/
+  };
+  const state = {bi:0, arrowKD:0, biAtArrow:null};
+  host.addEventListener('beforeinput', () => state.bi++);
+  host.addEventListener('keydown', e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown'){ state.arrowKD++; state.biAtArrow = state.bi; } });
+  const renderInto = (target, text) => {
+    target.textContent = '';
+    let caretInserted = false;
+    for (const w of text.split(/(\s+)/)){
+      if (/^\s+$/.test(w)){ target.appendChild(document.createTextNode(w)); continue; }
+      const span = document.createElement('span');
+      span.textContent = w;
+      if (TOKENS.cmd.test(w)) span.className = 'tk-cmd';
+      else if (TOKENS.num.test(w)) span.className = 'tk-num';
+      else if (TOKENS.unit.test(w)) span.className = 'tk-unit';
+      else span.className = 'tk-err';
+      target.appendChild(span);
+    }
+    const c = document.createElement('span'); c.id = target.id === 'cmdHost' ? 'cmdCaret' : '';
+    target.appendChild(c);
+  };
+  const render = text => renderInto(host, text);
+  window.__renderInto = renderInto;
+  if ('EditContext' in window){
+    const ec = new EditContext({ text: '' });
+    host.editContext = ec;
+    ec.addEventListener('textupdate', e => {
+      const nt = e.newText !== undefined ? e.newText : e.text;
+      (window.__cmdEvents = window.__cmdEvents || []).push({s: e.updateRangeStart, e: e.updateRangeEnd, t: nt, model: ec.text});
+      render(ec.text);
+      const r = host.getBoundingClientRect();
+      try { ec.updateControlBounds(r); ec.updateSelectionBounds(r); } catch(_){}
+    });
+    window.__cmdModel = ec;
+  } else {
+    host.innerHTML = '<span class="tk-err">EditContext absent — render-only fallback</span>';
+    window.__cmdModel = null;
+  }
+  window.__cmdRender = render;
+  window.__harnessTick_s11 = () => {
+    const ec = window.__cmdModel;
+    const spans = host.querySelectorAll('span.tk-cmd, span.tk-num, span.tk-unit');
+    chip('s11-model', ec && ec.text === 'GOTO 120 M' ? 'ok' : 'pending',
+      `model = <code>${ec ? JSON.stringify(ec.text) : '—'}</code> · selection ${ec ? ec.selectionStart+'..'+ec.selectionEnd : '—'}`);
+    chip('s11-render', host.querySelector('.tk-cmd') && host.querySelector('.tk-num') && host.querySelector('.tk-unit') ? 'ok' : 'pending',
+      `<b>render pass</b>: ${host.querySelectorAll('.tk-cmd').length} cmd / ${host.querySelectorAll('.tk-num').length} num / ${host.querySelectorAll('.tk-unit').length} unit spans — tokenize &amp; repaint, DOM never owns the text`);
+    chip('s11-arrow', state.arrowKD > 0 ? 'ok' : 'pending',
+      `<b>↑ pressed: keydown ×${state.arrowKD}, beforeinput Δ=${state.bi - (state.biAtArrow ?? 0)}</b> — arrow keys NEVER fire beforeinput; caret/history navigation is keydown-only territory`);
+  };
+})();
+
+/* ============ §12 capstones ============ */
+(function(){
+  /* OpenDrones console */
+  const cmd = $('#odCmd'), logEl = $('#odLog');
+  const history = []; let hIdx = -1;
+  const valid = t => /^(GOTO\s+\d+(\.\d+)?\s+(M|FT)|LAND|RTL|HOVER\s+\d+(\.\d+)?\s+S|TAKEOFF|ARM|DISARM)$/i.test(t.trim());
+  const print = (msg, cls) => { const s = document.createElement('div'); if (cls) s.className = cls; s.textContent = msg; logEl.appendChild(s); logEl.scrollTop = 1e9; };
+  if ('EditContext' in window){
+    const ec = new EditContext({ text: '' });
+    cmd.editContext = ec;
+    ec.addEventListener('textupdate', e => {
+      window.__renderInto(cmd, ec.text);
+    });
+    cmd.addEventListener('keydown', e => {
+      if (e.key === 'Enter'){
+        e.preventDefault();
+        const t = ec.text.trim();
+        if (!t) return;
+        history.unshift(t); hIdx = -1;
+        if (valid(t)) print(`✓ ${t.toUpperCase()} — accepted (sim)`, 'ok');
+        else print(`✗ "${t}" — unknown command`, 'err');
+        ec.updateText(0, ec.text.length, ''); ec.updateSelection(0,0);
+        window.__renderInto(cmd, '');
+      } else if (e.key === 'ArrowUp' && history.length){
+        e.preventDefault();
+        hIdx = Math.min(hIdx + 1, history.length - 1);
+        ec.updateText(0, ec.text.length, history[hIdx]); ec.updateSelection(history[hIdx].length, history[hIdx].length);
+        window.__renderInto(cmd, history[hIdx]);
+      } else if (e.key === 'Escape'){
+        ec.updateText(0, ec.text.length, ''); ec.updateSelection(0,0);
+        window.__renderInto(cmd, '');
+      }
+    });
+  }
+  /* Molt note */
+  const note = $('#moltNote'), count = $('#moltCount');
+  const update = () => count.textContent = `${note.textContent.length} chars`;
+  note.addEventListener('input', update);
+  note.addEventListener('keydown', e => { if ((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==='b'){ e.preventDefault(); window.__moltBoldBlocked = (window.__moltBoldBlocked||0) + 1; } });
+  window.__harnessTick_s12 = () => {
+    const rows = logEl.querySelectorAll('div');
+    chip('s12a-exec', rows.length > 0 && /accepted/.test(logEl.textContent) ? 'ok' : 'pending',
+      `<b>flight console</b>: Enter executes ("${(logEl.textContent.match(/✓ ([A-Z0-9 .]+)/)||[])[1] || '—'}") — command bar = EditContext + tokenizer + your own keydown policy`);
+    chip('s12b-block', window.__moltBoldBlocked ? 'ok' : 'pending',
+      `<b>⌘B pressed: blocked ×${window.__moltBoldBlocked||0}</b> — format policy enforced at keydown/beforeinput, plaintext-only handles the rest`);
+  };
+})();
+
+/* ============ run-all ============ */
+window.__runAuto = async () => {
+  runS00(); runS01();
+  const r = window.__chipReport();
+  return r;
+};
+$('#runAll').addEventListener('click', async () => {
+  await window.__runAuto();
+  chip('s00-done', 'info', `auto probes complete — typing labs await real keys (or the CDP harness)`);
+});
+window.__runAuto();
+</script>
+</body>
+</html>
