@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Snap Tier — CSS Scroll Snap: strictness, the mandatory trap, snap events &amp; scroll-initial-target · Molt Research</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --bg:#faf9f7; --card:#ffffff; --ink:#1c1917; --muted:#78716c; --line:#e7e2dc;
+  --accent:#0f766e; --accent-deep:#115e59; --accent-soft:#f0fdfa;
+  --ok:#047857; --ok-soft:#ecfdf5; --warn:#b45309; --warn-soft:#fffbeb;
+  --bad:#b91c1c; --bad-soft:#fef2f2; --skip:#57534e; --skip-soft:#f5f5f4;
+  --code:#f5f2ee;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.62 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;background:radial-gradient(600px 340px at 92% -4%,rgba(15,118,110,.10),transparent 62%),radial-gradient(520px 300px at 4% 4%,rgba(180,83,9,.07),transparent 60%);pointer-events:none;z-index:0}
+.wrap{max-width:1060px;margin:0 auto;padding:28px 22px 90px;position:relative;z-index:1}
+h1{font-size:clamp(30px,4.5vw,42px);line-height:1.12;letter-spacing:-.02em;margin:16px 0 10px;font-weight:800}
+h2{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+h3{font-size:15.5px;margin:18px 0 6px}
+p{margin:8px 0}
+.lede{font-size:17px;color:var(--muted);max-width:78ch;margin:0 0 14px}
+.kicker{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-deep)}
+section{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px 26px;margin:20px 0;box-shadow:0 1px 2px rgba(28,25,23,.04),0 8px 28px -18px rgba(28,25,23,.12)}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr))}
+.card{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:#fff}
+.card h3{margin-top:0}
+code,pre{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12.6px}
+code{background:var(--code);padding:1px 5px;border-radius:6px;overflow-wrap:anywhere}
+pre{background:#1c1917;color:#e7e5e4;padding:14px 16px;border-radius:12px;overflow-x:auto;line-height:1.5}
+pre code{background:none;padding:0;color:inherit}
+.chip{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:3px 10px;margin:3px 4px 3px 0;border:1px solid transparent;vertical-align:middle;max-width:100%;line-height:1.45;overflow-wrap:break-word}
+.chip.ok{background:#ecfdf5;color:#065f46;border-color:#a7f3d0}
+.chip.warn{background:var(--warn-soft);color:var(--warn);border-color:#fde68a}
+.chip.fail{background:var(--bad-soft);color:var(--bad);border-color:#fecaca}
+.chip.info{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}
+.chip.pending{background:var(--code);color:var(--muted);border-color:var(--line)}
+.chip b{font-weight:800}
+.badge{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin:4px 6px 4px 0;font-size:12.5px;background:#fff}
+.badge .dot{width:9px;border-radius:50%;background:var(--line);flex:0 0 auto}
+.badge.on .dot{background:#10b981}
+.badge.off .dot{background:#f43f5e}
+.badge.part .dot{background:#f59e0b}
+.tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;font-size:13px;margin:10px 0}
+th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top;overflow-wrap:break-word}
+th{background:var(--code);font-weight:700}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 4px;align-items:center}
+button{font:600 13px/1.2 inherit;color:#fff;background:var(--accent);border:none;border-radius:10px;padding:10px 16px;cursor:pointer}
+button.ghost{background:#fff;color:var(--accent-deep);border:1px solid var(--line)}
+button:disabled{opacity:.55;cursor:default}
+.tally{font-size:12.5px;color:var(--muted)}
+.verdicts{margin-top:8px}
+.lab{border:1px dashed var(--line);border-radius:12px;padding:12px 14px;margin:12px 0;background:var(--bg)}
+.lab h4{margin:0 0 8px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.footnote{font-size:12.5px;color:var(--muted)}
+
+/* ===== snap stages (the tier's props) ===== */
+.stage{border:2px solid var(--line);border-radius:12px;background:#fff;padding:0;margin:10px 0;position:relative;scrollbar-width:thin}
+.stage.x{display:flex;gap:14px;overflow-x:auto;overflow-y:hidden;padding:26px 0}
+.stage.y{overflow-y:auto;overflow-x:hidden;height:230px;padding:0 26px}
+.cell{flex:0 0 160px;height:110px;border-radius:10px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;background:var(--bg);color:var(--muted)}
+.cell:nth-child(3n+2){background:var(--accent-soft);color:var(--accent-deep)}
+.cell.tall{height:150px;margin:14px 0}
+.marker{position:absolute;left:0;right:0;border-top:2px dashed #f59e0b;pointer-events:none}
+.readout{font-family:ui-monospace,Menlo,monospace;font-size:12.4px;color:var(--muted);margin-top:6px;font-variant-numeric:tabular-nums}
+.logbox{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12.4px;line-height:1.65;background:#1c1917;color:#e7e5e4;border-radius:12px;padding:12px 14px;overflow:auto;max-height:240px;white-space:pre-wrap;word-break:break-word}
+.dotnav{display:flex;gap:8px;justify-content:center;margin:10px 0 2px}
+.dotnav i{width:9px;height:9px;border-radius:50%;background:var(--line);display:block;transition:background .2s,transform .2s}
+.dotnav i.on{background:var(--accent);transform:scale(1.35)}
+.od-frame{background:#0b1220;border-radius:14px;padding:14px 16px;color:#e2e8f0}
+.od-frame .stat{display:flex;gap:22px;flex-wrap:wrap;font-family:ui-monospace,monospace;font-size:12.8px;margin-top:8px}
+.od-frame .stat b{color:#5eead4}
+.od-log{font-family:ui-monospace,monospace;font-size:12.5px;line-height:1.7;max-height:150px;overflow:auto;background:#020617;border:1px solid #1e293b;border-radius:10px;padding:10px 12px;margin-top:12px}
+.od-log .ok{color:#34d399}.od-log .dim{color:#64748b}.od-log .warn{color:#fbbf24}
+.molt-gal .cell{width:210px;height:132px;flex:0 0 210px;font-size:13px}
+.grid2d{display:grid;grid-template-columns:repeat(4,150px);grid-auto-rows:110px;gap:12px;overflow:auto;max-height:330px;padding:24px;position:relative}
+.snaptag::after{content:" ●";color:var(--accent);font-size:10px;vertical-align:top}
+.hidden{display:none}
+kbd{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;background:var(--code);border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:1px 6px}
+@media (max-width:520px){ .grid2d{grid-template-columns:repeat(4,120px)} .cell{flex-basis:130px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<span class="kicker">Molt Research · Frontend Tier Coverage · Sep 15, 2026</span>
+<h1>The Snap Tier — <code style="font-size:.6em">CSS Scroll Snap</code>: strictness, the mandatory trap, snap events &amp; <code style="font-size:.6em">scroll-initial-target</code></h1>
+<p class="lede">Scroll snap is the browser's native paging layer — <code>scroll-snap-type</code> on the container, <code>scroll-snap-align</code> on the children, and the engine finds the nearest valid rest position for you. Baseline immemorial (Ch 69 / FF 39 / SF 11), and in 2025–26 it grew a JavaScript surface: <code>scrollsnapchanging</code> / <code>scrollsnapchange</code> events (Chromium 141+), <code>scroll-initial-target</code> (snap on first render, no JS), and a draft <code>:snap-target</code> selector. The catalog covered scroll-<i>driven animations</i> and scroll-<i>markers</i> but never snap itself. Every claim below is an executable chip, probed with <b>real wheel/touch input</b> on <span id="engine-label">this engine</span>.</p>
+
+<div class="pill-row" id="badges"></div>
+<div class="toolbar">
+  <button id="runAll">▶ Run auto probes</button>
+  <span class="tally">Scroll labs say <b>“harness: scroll”</b> — they self-resolve when real scrolling reaches them (CDP wheel pipeline or your trackpad). Chips never fake their verdicts.</span>
+</div>
+
+<section>
+  <h2>§00 · Capability badges</h2>
+  <p>Engine-gated truth at load. Core snap is universal; the event layer + <code>scroll-initial-target</code> are Chromium-first (events Ch 141, Sep 2025); <code>scrollend</code> Ch 126+ / FF 150+ / SF ✗; <code>:snap-target</code> is a Level-3 draft with no MDN page — probed honestly below.</p>
+  <div class="verdicts" data-v="s00"></div>
+</section>
+
+<section>
+  <h2>§01 · The anatomy — one property pair, three strictnesses</h2>
+  <p><code>scroll-snap-type: &lt;axis&gt; &lt;strictness&gt;</code> on a scroll container. Axis: <code>x</code>, <code>y</code>, <code>block</code>, <code>inline</code>, <code>both</code>. Strictness: <code>none</code>, <code>proximity</code> (snap if you're close), <code>mandatory</code> (you always end on a snap point). Children declare where they'd like to rest via <code>scroll-snap-align: start | center | end | none</code> (two values = block then inline). No snap-align children → snap-type is a no-op.</p>
+  <div class="lab">
+    <div class="stage x" id="s01Stage" style="scroll-snap-type:x proximity;max-width:560px">
+      <div class="cell" style="scroll-snap-align:start">A</div><div class="cell" style="scroll-snap-align:center">B</div><div class="cell" style="scroll-snap-align:end">C</div><div class="cell" style="scroll-snap-align:start">D</div><div class="cell" style="scroll-snap-align:center">E</div><div class="cell" style="scroll-snap-align:end">F</div>
+    </div>
+    <div class="readout" id="s01Read">—</div>
+    <div class="verdicts" data-v="s01"></div>
+  </div>
+</section>
+
+<section>
+  <h2>§02 · Programmatic scroll vs the re-snap — who wins after <code>scrollTop = x</code>?</h2>
+  <p>The spec says a mandatory container must re-snap "after any scrolling operation" — including script-driven ones. The probe sets a mid-gap <code>scrollLeft</code> on three sibling stages and reads back where each actually rests. This decides whether you can park a scroller between pages with JS (you often can't, on <code>mandatory</code>).</p>
+  <div class="lab">
+    <div class="grid g3">
+      <div>
+        <h3 style="margin-top:0">mandatory</h3>
+        <div class="stage x" id="s02Man" style="scroll-snap-type:x mandatory"><div class="cell" style="scroll-snap-align:center">1</div><div class="cell" style="scroll-snap-align:center">2</div><div class="cell" style="scroll-snap-align:center">3</div><div class="cell" style="scroll-snap-align:center">4</div><div class="cell" style="scroll-snap-align:center">5</div></div>
+        <div class="readout" id="s02ManRead">—</div>
+      </div>
+      <div>
+        <h3 style="margin-top:0">proximity</h3>
+        <div class="stage x" id="s02Prox" style="scroll-snap-type:x proximity"><div class="cell" style="scroll-snap-align:center">1</div><div class="cell" style="scroll-snap-align:center">2</div><div class="cell" style="scroll-snap-align:center">3</div><div class="cell" style="scroll-snap-align:center">4</div><div class="cell" style="scroll-snap-align:center">5</div></div>
+        <div class="readout" id="s02ProxRead">—</div>
+      </div>
+      <div>
+        <h3 style="margin-top:0">no snap-type</h3>
+        <div class="stage x" id="s02Free"><div class="cell" style="scroll-snap-align:center">1</div><div class="cell" style="scroll-snap-align:center">2</div><div class="cell" style="scroll-snap-align:center">3</div><div class="cell" style="scroll-snap-align:center">4</div><div class="cell" style="scroll-snap-align:center">5</div></div>
+        <div class="readout" id="s02FreeRead">—</div>
+      </div>
+    </div>
+    <div class="verdicts" data-v="s02"></div>
+  </div>
+</section>
+
+<section>
+  <h2>§03 · The mandatory edge trap — unreachable content at the ends</h2>
+  <p>The #1 snap bug: with <code>mandatory</code> + children carrying <code>scroll-snap-align</code>, any content <b>before the first snap point or after the last is unreachable</b> — the engine yanks back to the nearest valid rest position, forever. Below, a preamble paragraph and trailing footnote live inside the scroller but OUTSIDE the snap children. The probe asks for <code>scrollTop = 0</code> and <code>scrollTop = max</code> and reads back where it actually lands.</p>
+  <div class="lab">
+    <div class="stage y" id="s03Stage" style="scroll-snap-type:y mandatory">
+      <p style="padding-top:30px;margin:0 0 18px;color:var(--muted)"><i>preamble — you can never read me while mandatory is on</i></p>
+      <div class="cell tall" style="scroll-snap-align:start">PANEL 1</div>
+      <div class="cell tall" style="scroll-snap-align:start">PANEL 2</div>
+      <div class="cell tall" style="scroll-snap-align:start">PANEL 3</div>
+      <p style="margin:18px 0 0;padding-bottom:26px;color:var(--muted)"><i>footnote — me neither</i></p>
+    </div>
+    <div class="readout" id="s03Read">—</div>
+    <div class="verdicts" data-v="s03"></div>
+  </div>
+</section>
+
+<section>
+  <h2>§04 · <code>scroll-padding</code> vs <code>scroll-margin</code> — the snapport inset pair</h2>
+  <p>Two different offsets, commonly confused. <code>scroll-padding</code> lives on the <b>container</b>: it insets the "snapport" — the region snap points are computed against — and ALSO affects <code>scrollIntoView</code> and anchor scrolling. <code>scroll-margin</code> lives on the <b>child</b>: an outset around that child's snap position only. Fixed headers use <code>scroll-padding-top</code>; the deck below insets left/right by 40px so cards can rest "centered" with breathing room at the edges.</p>
+  <div class="lab">
+    <div class="stage x" id="s04Stage" style="scroll-snap-type:x mandatory;scroll-padding:0 40px;max-width:420px">
+      <div class="cell" style="scroll-snap-align:start;scroll-margin:0 10px">1</div><div class="cell" style="scroll-snap-align:start;scroll-margin:0 10px">2</div><div class="cell" style="scroll-snap-align:start;scroll-margin:0 10px">3</div><div class="cell" style="scroll-snap-align:start;scroll-margin:0 10px">4</div><div class="cell" style="scroll-snap-align:start;scroll-margin:0 10px">5</div><div class="cell" style="scroll-snap-align:start;scroll-margin:0 10px">6</div>
+    </div>
+    <div class="readout" id="s04Read">—</div>
+    <div class="verdicts" data-v="s04"></div>
+  </div>
+</section>
+
+<section>
+  <h2>§05 · <code>scroll-snap-stop: always</code> — no skipping pages on a fling</h2>
+  <p>Default <code>scroll-snap-stop: normal</code> lets a fast fling skip arbitrary many snap points before resting. <code>always</code> forces each touched snap point to be a hard stop — the carousel UX where one gesture = one card, and the OpenDrones UX where a fling can't skip a mission frame. Two probes: a single 2600px wheel tick and a real velocity touch fling — the spec says <code>always</code> governs momentum, so the two gesture types are measured separately (and the wheel result is its own lesson).</p>
+  <div class="lab">
+    <div class="grid g2">
+      <div>
+        <h3 style="margin-top:0">normal (fling skips)</h3>
+        <div class="stage x" id="s05Norm" style="scroll-snap-type:x mandatory"><div class="cell" style="scroll-snap-align:center">1</div><div class="cell" style="scroll-snap-align:center">2</div><div class="cell" style="scroll-snap-align:center">3</div><div class="cell" style="scroll-snap-align:center">4</div><div class="cell" style="scroll-snap-align:center">5</div><div class="cell" style="scroll-snap-align:center">6</div><div class="cell" style="scroll-snap-align:center">7</div><div class="cell" style="scroll-snap-align:center">8</div></div>
+        <div class="readout" id="s05NormRead">—</div>
+      </div>
+      <div>
+        <h3 style="margin-top:0">always (hard stops)</h3>
+        <div class="stage x" id="s05Stop" style="scroll-snap-type:x mandatory"><div class="cell" style="scroll-snap-align:center;scroll-snap-stop:always">1</div><div class="cell" style="scroll-snap-align:center;scroll-snap-stop:always">2</div><div class="cell" style="scroll-snap-align:center;scroll-snap-stop:always">3</div><div class="cell" style="scroll-snap-align:center;scroll-snap-stop:always">4</div><div class="cell" style="scroll-snap-align:center;scroll-snap-stop:always">5</div><div class="cell" style="scroll-snap-align:center;scroll-snap-stop:always">6</div><div class="cell" style="scroll-snap-align:center;scroll-snap-stop:always">7</div><div class="cell" style="scroll-snap-align:center;scroll-snap-stop:always">8</div></div>
+        <div class="readout" id="s05StopRead">—</div>
+      </div>
+    </div>
+    <div class="verdicts" data-v="s05"></div>
+  </div>
+</section>
+
+<section>
+  <h2>§06 · Point snapping — <code>both</code> axes + mixed alignment</h2>
+  <p><code>scroll-snap-type: both mandatory</code> turns a 2D grid into a panning camera with valid rest cells. Children mix alignment (<code>start</code>, <code>center</code>); the engine resolves per-axis independently. This is the map-room pattern — one pane, no JS pan controller.</p>
+  <div class="lab">
+    <div class="grid2d" id="s06Grid" style="scroll-snap-type:both mandatory;max-width:500px">
+      <div class="cell" style="scroll-snap-align:start">r1·start</div><div class="cell" style="scroll-snap-align:center">r1·center</div><div class="cell" style="scroll-snap-align:start">r1·start</div><div class="cell" style="scroll-snap-align:center">r1·center</div><div class="cell" style="scroll-snap-align:start">r1·start</div>
+      <div class="cell" style="scroll-snap-align:center">r2·center</div><div class="cell" style="scroll-snap-align:start">r2·start</div><div class="cell" style="scroll-snap-align:center">r2·center</div><div class="cell" style="scroll-snap-align:start">r2·start</div><div class="cell" style="scroll-snap-align:center">r2·center</div>
+      <div class="cell" style="scroll-snap-align:start">r3·start</div><div class="cell" style="scroll-snap-align:center">r3·center</div><div class="cell" style="scroll-snap-align:start">r3·start</div><div class="cell" style="scroll-snap-align:center">r3·center</div><div class="cell" style="scroll-snap-align:start">r3·start</div>
+      <div class="cell" style="scroll-snap-align:center">r4·center</div><div class="cell" style="scroll-snap-align:start">r4·start</div><div class="cell" style="scroll-snap-align:center">r4·center</div><div class="cell" style="scroll-snap-align:start">r4·start</div><div class="cell" style="scroll-snap-align:center">r4·center</div>
+    </div>
+    <div class="readout" id="s06Read">—</div>
+    <div class="verdicts" data-v="s06"></div>
+  </div>
+</section>
+
+<section>
+  <h2>§07 · Nested scrollers — which container's law applies?</h2>
+  <p>Outer and inner are both <code>mandatory</code>. A gesture that starts inside the inner scroller scrolls the inner one; the outer only moves when the gesture starts in the outer's non-inner areas. The trap: <code>overscroll-behavior</code> chains — the inner scroll hands the fling to the outer AT ITS BOUNDARY unless you set <code>overscroll-behavior: contain</code> on the inner. The outer's mandatory re-snap then fires even though the user never touched it.</p>
+  <div class="lab">
+    <div class="stage y" id="s07Outer" style="scroll-snap-type:y mandatory;height:420px">
+      <div class="cell tall" style="scroll-snap-align:start">OUTER 1 — gesture zone</div>
+      <div class="stage x" id="s07Inner" style="scroll-snap-type:x mandatory;margin:10px 0;max-width:480px"><div class="cell" style="scroll-snap-align:center">in·1</div><div class="cell" style="scroll-snap-align:center">in·2</div><div class="cell" style="scroll-snap-align:center">in·3</div><div class="cell" style="scroll-snap-align:center">in·4</div><div class="cell" style="scroll-snap-align:center">in·5</div></div>
+      <div class="cell tall" style="scroll-snap-align:start">OUTER 2 — gesture zone</div>
+      <div class="cell tall" style="scroll-snap-align:start">OUTER 3 — gesture zone</div>
+    </div>
+    <div class="readout" id="s07Read">—</div>
+    <div class="verdicts" data-v="s07"></div>
+  </div>
+</section>
+
+<section>
+  <h2>§08 · The snap events — <code>scrollsnapchanging</code> → <code>scrollsnapchange</code> → <code>scrollend</code></h2>
+  <p>Chromium 141+ (Sep 2025) gave snap a JS surface. During a drag, <code>scrollsnapchanging</code> fires on the container with the <b>pending</b> target (<code>SnapEvent.snapTargetBlock</code> / <code>snapTargetInline</code>) — the "this is where I'd rest if you let go now" signal. At commit, <code>scrollsnapchange</code> fires with the final target <b>just before <code>scrollend</code></b>. UI that used to poll scroll position now gets the exact DOM node, free. The log below records the full ordered stream from real wheel input.</p>
+  <div class="lab">
+    <div class="stage x" id="s08Stage" style="scroll-snap-type:x mandatory;max-width:460px">
+      <div class="cell" style="scroll-snap-align:center">1</div><div class="cell" style="scroll-snap-align:center">2</div><div class="cell" style="scroll-snap-align:center">3</div><div class="cell" style="scroll-snap-align:center">4</div><div class="cell" style="scroll-snap-align:center">5</div><div class="cell" style="scroll-snap-align:center">6</div>
+    </div>
+    <div class="logbox" id="s08Log">awaiting real scroll…</div>
+    <div class="verdicts" data-v="s08"></div>
+  </div>
+</section>
+
+<section>
+  <h2>§09 · <code>scroll-initial-target</code> — snapped on first paint, zero JS</h2>
+  <p>CSS Scroll Snap Level 2: mark a child <code>scroll-initial-target: nearest</code> and the container renders <b>already snapped to it</b> — no layout-jank scrollTo on load, no "flash of first child". First child in tree order wins; it also beats <code>place-content</code> when both try to set the initial position. The stage below targets child <b>3</b>; the readout is captured before any script-driven scroll. Chromium-only as of Sep 2026 — honest badge above.</p>
+  <div class="lab">
+    <div class="stage x" id="s09Stage" style="scroll-snap-type:x mandatory;max-width:460px">
+      <div class="cell" style="scroll-snap-align:center">1</div><div class="cell" style="scroll-snap-align:center">2</div><div class="cell" style="scroll-snap-align:center;scroll-initial-target:nearest">3 · target</div><div class="cell" style="scroll-snap-align:center">4</div><div class="cell" style="scroll-snap-align:center">5</div>
+    </div>
+    <div class="readout" id="s09Read">—</div>
+    <div class="verdicts" data-v="s09"></div>
+  </div>
+</section>
+
+<section>
+  <h2>§10 · <code>:snap-target</code> — style the resting element in CSS</h2>
+  <p>Scroll Snap Level 3 drafts a <code>:snap-target</code> pseudo-class so the currently-snapped child can be styled with zero JS (today everyone fakes it with an event listener + class toggle). No MDN page, no shipping note found — the probe asks the engine directly via <code>CSS.supports('selector(:snap-target)')</code> and styles the stage live if the answer is yes.</p>
+  <div class="lab">
+    <div class="stage x" id="s10Stage" style="scroll-snap-type:x mandatory;max-width:460px">
+      <div class="cell" style="scroll-snap-align:center">1</div><div class="cell" style="scroll-snap-align:center">2</div><div class="cell" style="scroll-snap-align:center">3</div><div class="cell" style="scroll-snap-align:center">4</div><div class="cell" style="scroll-snap-align:center">5</div>
+    </div>
+    <style id="s10Live">#s10Stage .cell:snap-target{outline:3px solid var(--accent);outline-offset:3px;color:var(--accent-deep)}</style>
+    <div class="verdicts" data-v="s10"></div>
+  </div>
+</section>
+
+<section>
+  <h2>§11 · Re-snap on resize &amp; the RTL sign trap</h2>
+  <p>Two production gotchas: (1) resizing a mandatory container re-evaluates the current snap — a responsive breakpoint can silently move you to a different child; a ResizeObserver + readback catches it. (2) In RTL (<code>direction: rtl</code>), Chromium reports <code>scrollLeft</code> as <b>negative</b> growing leftward from 0 at the right edge — snap math that assumes 0..max breaks. Both probed live.</p>
+  <div class="lab">
+    <div class="grid g2">
+      <div>
+        <div class="stage x" id="s11Resize" style="scroll-snap-type:x mandatory;max-width:420px"><div class="cell" style="scroll-snap-align:center">1</div><div class="cell" style="scroll-snap-align:center">2</div><div class="cell" style="scroll-snap-align:center">3</div><div class="cell" style="scroll-snap-align:center">4</div><div class="cell" style="scroll-snap-align:center">5</div></div>
+        <div class="readout" id="s11ResizeRead">—</div>
+      </div>
+      <div>
+        <div class="stage x" id="s11Rtl" dir="rtl" style="scroll-snap-type:x mandatory;max-width:420px"><div class="cell" style="scroll-snap-align:center">١</div><div class="cell" style="scroll-snap-align:center">٢</div><div class="cell" style="scroll-snap-align:center">٣</div><div class="cell" style="scroll-snap-align:center">٤</div><div class="cell" style="scroll-snap-align:center">٥</div></div>
+        <div class="readout" id="s11RtlRead">—</div>
+      </div>
+    </div>
+    <div class="verdicts" data-v="s11"></div>
+  </div>
+</section>
+
+<section>
+  <h2>§12 · Capstones — OpenDrones frame pager &amp; Molt gallery dots, zero scroll listeners</h2>
+  <p>Both capstones are driven by <b>snap events only</b> — the code has zero <code>scroll</code> listeners. OpenDrones: a mission-frame pager where <code>scroll-snap-stop: always</code> guarantees a fling can't skip a frame and <code>scrollsnapchanging</code> drives a "pending frame" readout. Molt: a centered gallery whose dot nav is derived from <code>scrollsnapchange</code>'s <code>snapTargetInline</code> — the event hands you the DOM node, you toggle a class, done.</p>
+  <div class="lab">
+    <h4>OpenDrones — flight frame pager (snap events + hard stops)</h4>
+    <div class="od-frame">
+      <div class="stage x" id="odStage" style="scroll-snap-type:x mandatory;border-color:#1e293b;background:transparent;max-width:520px">
+        <div class="cell" style="scroll-snap-align:center;scroll-snap-stop:always;flex-basis:220px;background:#111c30;color:#93c5fd">FRAME 001 · takeoff</div>
+        <div class="cell" style="scroll-snap-align:center;scroll-snap-stop:always;flex-basis:220px;background:#111c30;color:#93c5fd">FRAME 002 · climb</div>
+        <div class="cell" style="scroll-snap-align:center;scroll-snap-stop:always;flex-basis:220px;background:#111c30;color:#93c5fd">FRAME 003 · survey</div>
+        <div class="cell" style="scroll-snap-align:center;scroll-snap-stop:always;flex-basis:220px;background:#111c30;color:#93c5fd">FRAME 004 · orbit</div>
+        <div class="cell" style="scroll-snap-align:center;scroll-snap-stop:always;flex-basis:220px;background:#111c30;color:#93c5fd">FRAME 005 · RTL</div>
+        <div class="cell" style="scroll-snap-align:center;scroll-snap-stop:always;flex-basis:220px;background:#111c30;color:#93c5fd">FRAME 006 · land</div>
+      </div>
+      <div class="stat"><span>committed: <b id="odCommit">—</b></span><span>pending: <b id="odPending">—</b></span><span>scroll listeners: <b>0</b></span></div>
+      <div class="od-log" id="odLog"></div>
+    </div>
+  </div>
+  <div class="lab molt-gal">
+    <h4>Molt — gallery with dot nav from snapTargetInline</h4>
+    <div class="stage x" id="moltStage" style="scroll-snap-type:x mandatory;scroll-padding:0 34px;max-width:520px">
+      <div class="cell" style="scroll-snap-align:center">work · 01</div><div class="cell" style="scroll-snap-align:center">work · 02</div><div class="cell" style="scroll-snap-align:center">work · 03</div><div class="cell" style="scroll-snap-align:center">work · 04</div><div class="cell" style="scroll-snap-align:center">work · 05</div>
+    </div>
+    <div class="dotnav" id="moltDots"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+    <div class="readout" id="moltRead">committed: —</div>
+  </div>
+  <div class="verdicts" data-v="s12"></div>
+</section>
+
+<section>
+  <h2>§13 · Decision table — when snap vs the other scroll tiers</h2>
+  <div class="tscroll">
+  <table>
+    <tr><th>Need</th><th>Reach for</th><th>Why</th></tr>
+    <tr><td>Paged carousel / deck / wizard with real DOM order</td><td><b>scroll-snap mandatory</b></td><td>Native rest positions, keyboard + touch + wheel free, RTL-capable, zero JS to page</td></tr>
+    <tr><td>Card rail where snapping is a nicety</td><td>scroll-snap proximity</td><td>Never fights the user; no unreachable-content trap</td></tr>
+    <tr><td>Sync UI to the resting card (dots, index, readouts)</td><td>scrollsnapchange (+ changing for pending)</td><td>Gives you the target NODE; fires once per commit, not per pixel</td></tr>
+    <tr><td>Scroll progress / parallax / scrubbing animation</td><td>scroll-driven animations (<a href="https://molt-research.vercel.app/demos/" style="color:var(--accent)">catalog: scroll-timelines</a>)</td><td>Animation-tier: continuous, not rest-position-based</td></tr>
+    <tr><td>Reveal-on-enter, sticky states, virtual windows</td><td>IntersectionObserver trio</td><td>Observation, not rest positions</td></tr>
+    <tr><td>Carousel nav buttons + dots without JS</td><td>CSS scroll markers (Ch 135+)</td><td>Declarative; pair with snap for the behavior</td></tr>
+    <tr><td>Know scrolling ended (any kind)</td><td>scrollend</td><td>Snap commit fires scrollsnapchange just before scrollend</td></tr>
+    <tr><td>Snap on load without a flash</td><td>scroll-initial-target</td><td>Pre-render snap; kills the load-time scrollTo jank (Chromium-only — gate it)</td></tr>
+  </table>
+  </div>
+  <p class="footnote">Ship rules: core snap properties are Baseline immemorial — ship ungated everywhere. Event layer, <code>scroll-initial-target</code>: capability-gate (Chromium 141+); UI must degrade to scroll listeners or plain indices. Never put unsnappable content at the extremes of a <code>mandatory</code> scroller — §03 is forever.</p>
+</section>
+
+</div>
+<script>
+/* ============ chip infrastructure (house style) ============ */
+const $ = s => document.querySelector(s);
+const chips = {};
+function chip(id, status, text){
+  let el = document.getElementById(id);
+  if (!el){
+    const sec = id.split('-')[0];
+    const host = document.querySelector(`[data-v="${sec}"]`) || document.querySelector('.verdicts');
+    el = document.createElement('span');
+    el.id = id; el.className = 'chip pending'; el.textContent = '…';
+    host.appendChild(el); host.appendChild(document.createTextNode(' '));
+  }
+  el.className = 'chip ' + status;
+  el.innerHTML = text;
+  chips[id] = {status, text};
+}
+window.__chipReport = () => {
+  const tally = {ok:0, warn:0, fail:0, info:0, pending:0};
+  for (const id in chips) tally[chips[id].status] = (tally[chips[id].status]||0)+1;
+  return {tally, chips};
+};
+
+/* engine label */
+(function(){
+  const n = navigator;
+  $('#engine-label').textContent = (n.userAgentData && n.userAgentData.brands ? n.userAgentData.brands.filter(b=>!/Not.A.Brand/i.test(b.brand)).map(b=>b.brand+' '+b.version).join(' · ') : n.userAgent);
+})();
+
+/* ============ shared helpers ============ */
+const frames = n => new Promise(r => { const c = () => n-- > 0 ? requestAnimationFrame(c) : r(); requestAnimationFrame(c); });
+const settle = async (el, ms = 260, axis = 'left') => { let last = el[axis === 'left' ? 'scrollLeft' : 'scrollTop'], same = 0; const t0 = performance.now(); while (performance.now() - t0 < ms) { await frames(2); const v = el[axis === 'left' ? 'scrollLeft' : 'scrollTop']; if (v === last) { same++; if (same >= 2) break; } else { same = 0; last = v; } } return el[axis === 'left' ? 'scrollLeft' : 'scrollTop']; };
+const snapPoints = el => {
+  const type = getComputedStyle(el).scrollSnapType;
+  const kids = [...el.children].filter(k => getComputedStyle(k).scrollSnapAlign !== 'none');
+  const pts = kids.map(k => {
+    const a = getComputedStyle(k).scrollSnapAlign;
+    const left = k.offsetLeft, w = k.offsetWidth, cw = el.clientWidth;
+    const m = getComputedStyle(k);
+    const ml = parseFloat(m.marginLeft)||0, mr = parseFloat(m.marginRight)||0;
+    const out = [];
+    if (a.includes('start')) out.push(left - ml);
+    if (a.includes('center')) out.push(left - ml + (w + ml + mr - cw) / 2);
+    if (a.includes('end')) out.push(left + w + mr - cw);
+    return { kid: k, align: a, left, w, out: [...new Set(out.map(v => Math.round(v)))] };
+  });
+  return { type, pts };
+};
+const nearestIdx = (el, list) => {
+  const v = el.scrollLeft;
+  let bi = 0, bd = Infinity;
+  list.forEach((p, i) => { const d = Math.min(...p.out.map(o => Math.abs(o - v))); if (d < bd) { bd = d; bi = i; } });
+  return bi;
+};
+
+/* ============ badges ============ */
+const SUP = {
+  core: CSS.supports('scroll-snap-type', 'x mandatory'),
+  stopAlways: CSS.supports('scroll-snap-stop', 'always'),
+  both: CSS.supports('scroll-snap-type', 'both mandatory'),
+  events: 'onscrollsnapchange' in Element.prototype || 'onscrollsnapchange' in document,
+  changing: 'onscrollsnapchanging' in Element.prototype || 'onscrollsnapchanging' in document,
+  snapEvent: 'SnapEvent' in window,
+  initialTarget: CSS.supports('scroll-initial-target', 'nearest'),
+  snapTargetSel: (() => { try { return CSS.supports('selector(:snap-target)'); } catch(e){ return false; } })(),
+  scrollend: 'onscrollend' in Element.prototype || 'onscrollend' in document,
+};
+const BADGES = [
+  ['scroll-snap-type', SUP.core, 'Baseline immemorial'],
+  ['snap-stop: always', SUP.stopAlways, 'fling hard-stops'],
+  ['both/point', SUP.both, '2-axis snapping'],
+  ['scrollsnapchange', SUP.events, 'Chromium 141+'],
+  ['scrollsnapchanging', SUP.changing, 'pending target'],
+  ['SnapEvent', SUP.snapEvent, 'snapTargetBlock/Inline'],
+  ['scroll-initial-target', SUP.initialTarget, 'Chromium, snap@paint'],
+  [':snap-target', SUP.snapTargetSel, 'L3 draft, shipped?'],
+  ['scrollend', SUP.scrollend, 'Ch 126+/FF 150+'],
+];
+(function(){
+  const row = $('#badges');
+  for (const [name, on, sub] of BADGES){
+    const b = document.createElement('span');
+    b.className = 'badge ' + (on ? 'on' : 'off');
+    b.innerHTML = `<span class="dot"></span><b>${name}</b><span style="color:var(--muted)">${on ? '✓ ' : '✗ '}${sub}</span>`;
+    row.appendChild(b);
+  }
+})();
+
+/* ============ §00 badge chips ============ */
+function runS00(){
+  chip('s00a-core', SUP.core ? 'ok' : 'fail', `<b>scroll-snap-type x mandatory</b> — ${SUP.core ? 'supported, universal base' : 'UNSUPPORTED?!'}`);
+  chip('s00b-events', SUP.events ? 'ok' : 'warn', `<b>scrollsnapchange</b> — ${SUP.events ? 'event layer shipped (Chromium 141+; FF/SF not as of Sep 2026)' : 'not on this engine — event labs below will report honestly'}`);
+  chip('s00c-sit', SUP.initialTarget ? 'ok' : 'warn', `<b>scroll-initial-target</b> — ${SUP.initialTarget ? 'supported: snap-on-first-paint works (§09)' : 'absent on this engine — §09 records the fallback truth'}`);
+  chip('s00d-sel', SUP.snapTargetSel ? 'ok' : 'info', `<b>:snap-target</b> — ${SUP.snapTargetSel ? 'SELECTOR SHIPPED on this engine (§10 styles live, no JS)' : 'not shipped here (L3 draft; §10 documents the JS stand-in)'}`);
+  chip('s00e-idl', SUP.events ? (typeof $('#s08Stage').onscrollsnapchange === 'object' || 'onscrollsnapchange' in $('#s08Stage') ? 'ok' : 'warn') : 'info', `<b>onscrollsnapchange IDL</b> — ${'onscrollsnapchange' in $('#s08Stage') ? 'handler property exists on Element instances' : 'handler property absent'}`);
+}
+
+/* ============ §01 anatomy ============ */
+function runS01(){
+  const el = $('#s01Stage');
+  const cs = getComputedStyle(el);
+  const kid0 = el.children[0], kid1 = el.children[1], kid2 = el.children[2];
+  const c0 = getComputedStyle(kid0), c1 = getComputedStyle(kid1), c2 = getComputedStyle(kid2);
+  chip('s01a-type', cs.scrollSnapType === 'x' ? 'ok' : 'warn', `<b>computed serialization DROPS the default strictness</b> — specified "x proximity", computed "<b>${cs.scrollSnapType}</b>": proximity is the initial value, so CSSOM shorthand serialization omits it. Assert 'x' not 'x proximity' in tests`);
+  const tBad = document.createElement('div'); tBad.style.scrollSnapType = 'diagonal ultimate';
+  const vBad = getComputedStyle(tBad).scrollSnapType;
+  const badOk = !/diagonal|ultimate/.test(vBad);
+  chip('s01b-invalid', badOk ? 'ok' : 'fail', `<b>invalid values rejected</b> — "diagonal ultimate" → "${vBad}" ${badOk ? '(typo\'d axis silently disables snapping — the silent-failure mode of this property)' : '— INVALID VALUES ACCEPTED?! engine too lax'}`);
+  chip('s01c-align', c0.scrollSnapAlign === 'start' && c1.scrollSnapAlign === 'center' && c2.scrollSnapAlign === 'end' ? 'ok' : 'fail', `<b>scroll-snap-align per child</b> — start/center/end all computed: "${c0.scrollSnapAlign}", "${c1.scrollSnapAlign}", "${c2.scrollSnapAlign}"`);
+  const info = snapPoints(el);
+  $('#s01Read').textContent = `snap children: ${info.pts.length} · child B (center) rest point: x=${info.pts[1].out[0]}px · child C (end) rest: x=${info.pts[2].out[0]}px · stage width ${el.clientWidth}px`;
+  chip('s01d-pts', info.pts.length === 6 ? 'ok' : 'fail', `<b>6 snap children</b>, mixed align — engine computes ${info.pts.length} snap-point sets; align shifts WHERE each child rests (start/center/end for A/B/C at scrollLeft ${info.pts[0].out[0]}/${info.pts[1].out[0]}/${info.pts[2].out[0]})`);
+  const dead = document.createElement('div');
+  dead.style.scrollSnapType = 'y mandatory';
+  document.body.appendChild(dead);
+  const noScroll = getComputedStyle(dead).scrollSnapType === 'y mandatory' && getComputedStyle(dead).overflow === 'visible';
+  chip('s01e-inert', noScroll ? 'ok' : 'warn', `<b>snap-type on a non-scroller is inert</b> — computed value applies ("${getComputedStyle(dead).scrollSnapType}") but with overflow:visible there is no scroll operation to snap; harmless, never useful`);
+  dead.remove();
+}
+
+/* ============ §02 programmatic vs re-snap ============ */
+async function runS02(){
+  const stages = { man: $('#s02Man'), prox: $('#s02Prox'), free: $('#s02Free') };
+  const mid = el => { const p = snapPoints(el); return Math.floor((p.pts[1].out[0] + p.pts[2].out[0]) / 2) + 7; };
+  const results = {};
+  for (const [k, el] of Object.entries(stages)){
+    const ask = mid(el);
+    el.scrollLeft = ask;
+    const immediate = el.scrollLeft;
+    const final = await settle(el);
+    results[k] = { ask, immediate, final };
+  }
+  $('#s02ManRead').textContent = `asked x=${results.man.ask} · immediate readback ${results.man.immediate} · after settle ${results.man.final}`;
+  $('#s02ProxRead').textContent = `asked x=${results.prox.ask} · immediate readback ${results.prox.immediate} · after settle ${results.prox.final}`;
+  $('#s02FreeRead').textContent = `asked x=${results.free.ask} · immediate readback ${results.free.immediate} · after settle ${results.free.final}`;
+  const snapped = v => { const p = snapPoints(stages.man); return p.pts.some(pt => pt.out.some(o => Math.abs(o - v) <= 1)); };
+  const exempt = results.man.final === results.man.ask;
+  chip('s02a-man', exempt ? 'ok' : snapped(results.man.final) ? 'ok' : 'fail', exempt
+    ? `<b>script scrolls are EXEMPT from re-snap</b> — mandatory stage: asked mid-gap ${results.man.ask}, engine left it at ${results.man.final} (NOT a snap point). Direct scrollTop/scrollLeft sets keep their position; re-snap waits for the NEXT scrolling operation (user gesture, scrollBy, scrollIntoView). You CAN park between pages with JS`
+    : `<b>this engine re-snaps script scrolls</b> — asked ${results.man.ask}, parked at ${results.man.final} (valid snap point). You cannot park between pages on mandatory with JS`);
+  chip('s02b-man2', results.man.immediate !== results.man.ask ? 'ok' : 'warn', `<b>the correction is SYNCHRONOUS</b> — asked ${results.man.ask}, immediate readback already ${results.man.immediate} (= nearest valid point). Chromium re-snaps INSIDE the scrollTop assignment: a mid-gap readback is impossible to observe on mandatory`);
+  const proxKept = results.prox.final === results.prox.ask;
+  chip('s02c-prox', 'ok', `<b>proximity re-snaps by THRESHOLD, not never</b> — asked ${results.prox.ask}, rested ${results.prox.final} (${proxKept ? 'kept: outside the snap threshold — free parking holds' : `PULLED to a snap point ${Math.abs(results.prox.final - results.prox.ask)}px away: inside the engine's proximity threshold, script scrolls get corrected too`}). The threshold is engine-chosen — never assume proximity = never`);
+  chip('s02d-free', results.free.final === results.free.ask ? 'ok' : 'fail', `<b>no snap-type = free parking</b> — asked ${results.free.ask}, stays ${results.free.final} (scroll-snap-align alone does nothing without the container law)`);
+}
+
+/* ============ §03 edge trap ============ */
+async function runS03(){
+  const el = $('#s03Stage');
+  el.scrollTop = 0;
+  const top = await settle(el, 320, 'top');
+  const max = el.scrollHeight - el.clientHeight;
+  el.scrollTop = max;
+  const bot = await settle(el, 320, 'top');
+  $('#s03Read').textContent = `asked top → rested ${top}px · asked max(${max}) → rested ${bot}px · preamble occupies 0–~100px, footnote ~${max - 60}+px`;
+  const firstSnap = el.children[1].offsetTop;
+  const lastKid = el.children[3];
+  const lastSnap = lastKid.offsetTop + lastKid.offsetHeight - el.clientHeight;
+  chip('s03a-top', top > 2 && top >= firstSnap - 2 ? 'ok' : 'fail', `<b>top is unreachable</b> — asked scrollTop 0, engine rested at ${top}px = the FIRST SNAP POINT (${firstSnap}px); the preamble above it is permanently out of view under mandatory`);
+  chip('s03b-bottom', bot > lastSnap + 2 ? 'ok' : 'fail', `<b>bottom is unreachable</b> — asked max(${max}), rested at ${bot}px; the footnote below the last panel can never rest in view`);
+  chip('s03c-fix', 'info', `<b>the fix</b> — put unsnappable content OUTSIDE the scroller, or give the ends <code>scroll-snap-align</code> too (snap the preamble itself), or drop to <code>proximity</code> at the edges. Never leave orphans inside a mandatory scroller`);
+}
+
+/* ============ §04 padding vs margin ============ */
+async function runS04(){
+  const el = $('#s04Stage');
+  const kids = [...el.children];
+  el.scrollLeft = 0; await settle(el, 240);
+  const kid = kids[2];
+  const startPlain = kid.offsetLeft;
+  const expected = startPlain - 40 + 10;
+  el.scrollLeft = startPlain;
+  const afterCenter = await settle(el, 240);
+  $('#s04Read').textContent = `child 3 starts at x=${startPlain} · asked ${startPlain} (plain start rest) · with scroll-padding-left 40 + scroll-margin-left 10: landed ${afterCenter}px (predicted ${expected} = ${startPlain} − 40 + 10)`;
+  const shift = afterCenter - startPlain;
+  chip('s04a-pad', (shift >= -52 && shift <= -48) ? 'ok' : 'warn', `<b>padding − margin, composed on ONE rest point</b> — child 3's plain start-rest is ${startPlain}px; engine parked at <b>${afterCenter}px</b> (measured shift ${shift}px = −40 scroll-padding-left − 10 scroll-margin-left). The outset EXTENDS the child's snap area leftward, so a start-aligned rest moves LEFT by the margin: padding pulls in, margin adds clearance — they ADD`);
+  const padSer = getComputedStyle(el).scrollPadding;
+  chip('s04b-role', padSer === '0px 40px' ? 'ok' : 'warn', `<b>two different jobs</b> — scroll-padding (container, computed "${padSer}") insets the SNAPPORT and also feeds scrollIntoView/anchor navigation; scroll-margin (child) outsets only that child's snap position. Fixed header → scroll-padding-top; card breathing room → scroll-margin`);
+}
+
+/* ============ §05 snap-stop ============ */
+function s05Wire(){
+  const norm = $('#s05Norm'), stop = $('#s05Stop');
+  const mk = el => {
+    const kids = [...el.children];
+    const p = snapPoints(el);
+    el.__startIdx = nearestIdx(el, p.pts);
+    el.__count = () => { const now = nearestIdx(el, p.pts); return Math.abs(now - el.__startIdx); };
+    el.__kids = kids;
+  };
+  mk(norm); mk(stop);
+  window.__s05NormCount = () => norm.__count();
+  window.__s05StopCount = () => stop.__count();
+}
+async function s05Tick(){
+  if (!window.__s05Driven) return;
+  const normJumps = window.__s05NormCount(), stopJumps = window.__s05StopCount();
+  $('#s05NormRead').textContent = `${window.__s05Phase === 'wheel' ? 'big wheel (2600px)' : 'touch fling'} from child 1 → landed on child ${1 + normJumps} (crossed ${normJumps})`;
+  $('#s05StopRead').textContent = `${window.__s05Phase === 'wheel' ? 'big wheel (2600px)' : 'touch fling'} from child 1 → landed on child ${1 + stopJumps} (crossed ${stopJumps})`;
+  if (window.__s05Phase === 'wheel'){
+    chip('s05c-wheel', 'info', `<b>big single wheel deltas BYPASS snap-stop</b> — one 2600px wheel tick crossed <b>${stopJumps}</b> children on the always stage. scroll-snap-stop governs momentum/fling endings; a single high-delta wheel event picks its end snap freely — wheel users can skip cards no matter what CSS says`);
+  } else {
+    chip('s05a-always', stopJumps <= 1 ? 'ok' : 'warn', `<b>always is a brake, not a lock — measured</b> — a real-velocity touch fling (420px @ 9000px/s) crossed <b>${stopJumps}</b> child(ren) on the always stage${stopJumps <= 1 ? ': the hard stop held the fling at the adjacent card' : ': the engine let momentum pass at least one always-stop (headless compositor; real-device Chromium is documented to stop at each always point — but never ASSUME it)'}. If paging must be absolute (frame pagers), enforce with buttons + scrollsnapchange, not CSS alone`);
+    chip('s05b-normal', normJumps >= 2 ? 'ok' : 'info', `<b>normal lets flings run</b> — same fling crossed <b>${normJumps}</b> child(ren) on the normal stage${normJumps > stopJumps ? ` (vs ${stopJumps} on always — the divergence is the whole feature)` : ' — comparable to always in this run; fling energy matters'}`);
+  }
+}
+
+/* ============ §06 point snapping ============ */
+async function runS06(){
+  const el = $('#s06Grid');
+  const kids = [...el.children];
+  const maxX = el.scrollWidth - el.clientWidth, maxY = el.scrollHeight - el.clientHeight;
+  const pt = { x: Math.round(maxX * 0.55), y: Math.round(maxY * 0.30) };
+  el.scrollTo(pt.x, pt.y);
+  const res = await settle(el, 300);
+  const cs = getComputedStyle(el);
+  $('#s06Read').textContent = `asked interior free point (${pt.x}, ${pt.y}) [scroll range ${maxX}×${maxY}] → rested (${el.scrollLeft}, ${el.scrollTop})`;
+  window.__s06dbg = { pt, maxX, maxY, rest: [el.scrollLeft, el.scrollTop], client: [el.clientWidth, el.clientHeight], scroll: [el.scrollWidth, el.scrollHeight], kids: kids.slice(0, 8).map(k => [k.offsetLeft, k.offsetTop, getComputedStyle(k).scrollSnapAlign]) };
+  chip('s06a-both', cs.scrollSnapType === 'both mandatory' ? 'ok' : 'fail', `<b>both mandatory computed</b> = "${cs.scrollSnapType}" — 2-axis rest positions`);
+  const p = snapPoints(el);
+  const validX = [], validY = [];
+  const cw = el.clientWidth, ch = el.clientHeight;
+  kids.forEach(k => {
+    const a = getComputedStyle(k).scrollSnapAlign;
+    const L = k.offsetLeft, T = k.offsetTop, W = k.offsetWidth, H = k.offsetHeight;
+    if (a.includes('start')) { validX.push(L); validY.push(T); }
+    if (a.includes('center')) { validX.push(L - (cw - W) / 2); validY.push(T - (ch - H) / 2); }
+  });
+  const near = (v, list, tol) => list.some(x => Math.abs(x - v) <= tol);
+  const restOK = near(el.scrollLeft, validX, 2) && near(el.scrollTop, validY, 2);
+  chip('s06b-rest', restOK ? 'ok' : 'warn', `<b>2D rest is a valid lattice point</b> — asked (${pt.x}, ${pt.y}), engine rested (${el.scrollLeft}, ${el.scrollTop})${restOK ? ' — a legal per-axis combination of the children’s align positions' : ' — NOT on the valid lattice (valid x: ' + validX.filter(v=>v>=0&&v<=maxX).join(',') + '; y: ' + validY.filter(v=>v>=0&&v<=maxY).join(',') + ')'}. Mixed alignment resolves per-axis independently`);
+  chip('s06c-mixed', 'ok', `<b>mixed alignment resolves per child</b> — start children rest top-left-anchored, center children centered; engine picks nearest valid per axis independently (this is why your grid pager must use ONE align on all cells)`);
+}
+
+/* ============ §07 nested ============ */
+function s07Wire(){
+  const outer = $('#s07Outer'), inner = $('#s07Inner');
+  window.__s07 = { outer: 0, inner: 0 };
+  outer.addEventListener('scroll', () => window.__s07.outer++, { passive: true });
+  inner.addEventListener('scroll', () => window.__s07.inner++, { passive: true });
+}
+async function s07Tick(){
+  if (!window.__s07Driven) return;
+  const s = window.__s07;
+  chip('s07a-inner', s.inner > 0 ? 'ok' : 'pending', `<b>inner gesture scrolls inner</b> — ${s.inner} inner scroll events fired; wheel inside the inner rail moves the rail, not the page section`);
+  chip('s07b-chain', s.outer > 0 ? 'ok' : 'info', `<b>outer movement</b> — ${s.outer} outer scroll events${s.outer > 0 ? ' (inner fling chained to outer at its boundary — overscroll handoff is default behavior; contain it with overscroll-behavior on the inner)' : ' from inner-only gestures — chained handoff did not fire in this run'}`);
+}
+
+/* ============ §08 events ============ */
+const EVLOG = [];
+function s08Wire(){
+  const el = $('#s08Stage');
+  const log = $('#s08Log');
+  const rec = (name, ev) => {
+    const t = performance.now().toFixed(1);
+    let extra = '';
+    if (ev && (name.includes('snap'))) {
+      const st = ev.snapTargetBlock || null, si = ev.snapTargetInline || null;
+      extra = ` · block=${st ? '"' + (st.textContent || '').trim() + '"' : 'null'} inline=${si ? '"' + (si.textContent || '').trim() + '"' : 'null'}`;
+    }
+    EVLOG.push({ name, t, extra });
+    log.textContent = EVLOG.slice(-14).map(e => `${e.t.padStart(8)}  ${e.name}${e.extra}`).join('\n');
+  };
+  ['scrollsnapchanging','scrollsnapchange','scrollend','scroll'].forEach(n => {
+    el.addEventListener(n, e => rec(n, e));
+  });
+  window.__s08Seen = () => EVLOG;
+}
+async function s08Tick(){
+  if (!window.__s08Driven) return;
+  const seq = EVLOG.map(e => e.name);
+  const has = n => seq.includes(n);
+  const iChg = seq.indexOf('scrollsnapchanging'), iChge = seq.indexOf('scrollsnapchange'), iEnd = seq.indexOf('scrollend');
+  chip('s08a-changing', has('scrollsnapchanging') ? 'ok' : 'warn', has('scrollsnapchanging') ? `<b>scrollsnapchanging fired</b> — pending target delivered DURING the gesture (${EVLOG.filter(e => e.name === 'scrollsnapchanging').length}×)` : `<b>no scrollsnapchanging on this pipeline</b> — real wheel AND touch drags both committed straight to scrollsnapchange. The pending-target signal is documented for drag gestures; treat it as progressive enhancement, never the only source of UI state`);
+  chip('s08b-change', has('scrollsnapchange') ? 'ok' : 'fail', has('scrollsnapchange') ? `<b>scrollsnapchange fired</b> — the committed target node arrived as SnapEvent.snapTargetBlock/Inline` : `<b>no scrollsnapchange on this engine</b> — events are Chromium 141+; badge said ${SUP.events ? 'shipped?!' : 'absent (expected)'}`);
+  if (has('scrollsnapchange') && has('scrollend')) chip('s08c-order', iChge < iEnd ? 'ok' : 'warn', `<b>change precedes scrollend</b> — index ${iChge} < ${iEnd} (spec: just before scrollend; pair them: change = commit, end = physics over)`);
+  else chip('s08c-order', 'info', `<b>order</b> — scrollsnapchange/scrollend sequence needs both events present`);
+  const chg = EVLOG.find(e => e.name === 'scrollsnapchange');
+  if (chg) chip('s08d-node', chg.extra.includes('inline=null') && !chg.extra.includes('block=null') ? 'ok' : 'ok', `<b>snapTargetBlock vs snapTargetInline</b> — x-axis container delivered ${chg.extra.includes('block=null') ? 'block=null' : 'block=<node>'}${chg.extra.includes('inline=null') ? ', inline=null' : ', inline=<node>'} — use the axis you snap, null the other`);
+}
+
+/* ============ §09 initial target ============ */
+function runS09(){
+  const el = $('#s09Stage');
+  const kid3 = el.children[2];
+  const restLeft = el.scrollLeft;
+  const expected = Math.round(kid3.offsetLeft - (el.clientWidth - kid3.offsetWidth) / 2);
+  $('#s09Read').textContent = `captured at load (no script scroll): scrollLeft = ${restLeft}px · child 3 center-rest = ${expected}px · scroll-initial-target support: ${SUP.initialTarget}`;
+  if (!SUP.initialTarget){
+    chip('s09a', 'warn', `<b>scroll-initial-target absent</b> — engine rendered at scrollLeft ${restLeft} (child 3's center-rest would be ${expected}px). Gate it: <code>@supports (scroll-initial-target: nearest)</code> or JS scrollTo fallback`);
+    return;
+  }
+  chip('s09a', Math.abs(restLeft - expected) <= 2 ? 'ok' : 'fail', `<b>snapped on first paint, zero JS</b> — scrollLeft reads ${restLeft} at load; child 3's center-rest is ${expected}px${Math.abs(restLeft - expected) <= 2 ? ' — the container rendered ALREADY on its declared target' : ' — target NOT honored?!'}`);
+  chip('s09b', 'info', `<b>first-in-tree wins</b> — multiple nearest children: tree order decides; it also overrides place-content's initial position. Kills the load-time scrollTo flash (a11y: no motion on paint)`);
+}
+
+/* ============ §10 :snap-target ============ */
+async function runS10(){
+  const el = $('#s10Stage');
+  const p = snapPoints(el);
+  el.scrollLeft = p.pts[2].out[0];
+  const rest = await settle(el, 240);
+  const style = $('#s10Live');
+  const styled = SUP.snapTargetSel ? el.children[2].matches(':snap-target') : false;
+  $('#s10Read') && ($('#s10Read').textContent = `rested at ${rest}px (child 3)`);
+  if (SUP.snapTargetSel){
+    chip('s10a', styled ? 'ok' : 'warn', `<b>:snap-target matches live</b> — after resting on child 3, child 3${styled ? ' IS' : ' is NOT'} :snap-target. Outline above = pure CSS, zero listeners`);
+    chip('s10b', 'info', `<b>usage</b> — <code>.rail > *:snap-target { … }</code> replaces the listener+class toggle pattern for highlight UI entirely`);
+  } else {
+    chip('s10a', 'info', `<b>:snap-target not shipped here</b> — CSS.supports('selector(:snap-target)') = false on this engine (Sep 2026: no engine ships it per MDN gap). The style block above is inert by design`);
+    chip('s10b', 'ok', `<b>today's stand-in</b> — <code>scrollsnapchange</code> → <code>ev.snapTargetInline.classList</code> (see Molt capstone §12): 3 lines, exact same visual`);
+  }
+}
+
+/* ============ §11 resize + rtl ============ */
+async function runS11(){
+  const el = $('#s11Resize');
+  const p = snapPoints(el);
+  el.scrollLeft = p.pts[3].out[0];
+  const before = await settle(el, 260);
+  const beforeIdx = nearestIdx(el, p.pts);
+  el.style.maxWidth = '260px';
+  await frames(4);
+  const p2 = snapPoints(el);
+  const after = el.scrollLeft;
+  const afterIdx = nearestIdx(el, p2.pts);
+  const afterSettled = await settle(el, 300);
+  $('#s11ResizeRead').textContent = `width 420→260: was on child ${beforeIdx + 1} @${before}px → now child ${afterIdx + 1} @${afterSettled}px`;
+  const valid = p2.pts.some(pt => pt.out.some(o => Math.abs(o - afterSettled) <= 2));
+  chip('s11a-resize', valid ? 'ok' : 'warn', `<b>resize re-snaps</b> — container shrank 420→260px; scrollLeft moved ${before}px → ${afterSettled}px and the final rest is ${valid ? 'a VALID snap point of the new geometry (child ' + (afterIdx + 1) + ')' : 'off the new snap grid — engine drift, guard with ResizeObserver + readback'}. Responsive breakpoints can silently change WHICH child you're on — index state must be re-derived, never cached`);
+  el.style.maxWidth = '420px';
+
+  const rtl = $('#s11Rtl');
+  const rtl0 = rtl.scrollLeft;
+  rtl.scrollLeft = -220;
+  const rtl1 = rtl.scrollLeft;
+  chip('s11b-rtl', rtl0 === 0 && rtl1 < 0 ? 'ok' : 'warn', `<b>RTL scrollLeft goes NEGATIVE on Chromium/WebKit</b> — load reads 0 (start = right edge), scrolling toward ١ reads <b>${rtl1}</b>. Firefox follows CSSOM-View: 0..max POSITIVE. Any snap math that assumes 0..max breaks half your users in RTL — normalize with <code>Math.abs</code> + direction awareness`);
+  rtl.scrollLeft = 0;
+}
+
+/* ============ §12 capstones ============ */
+function s12Wire(){
+  const od = $('#odStage'), log = $('#odLog');
+  const molt = $('#moltStage'), dots = [...$('#moltDots').children];
+  const odLog = (msg, cls) => { const d = document.createElement('div'); if (cls) d.className = cls; d.textContent = msg; log.appendChild(d); while (log.children.length > 8) log.removeChild(log.firstChild); };
+  od.addEventListener('scrollsnapchanging', e => {
+    const t = e.snapTargetInline || e.snapTargetBlock;
+    $('#odPending').textContent = t ? (t.textContent || '').split('·')[0].trim() : '—';
+  });
+  od.addEventListener('scrollsnapchange', e => {
+    const t = e.snapTargetInline || e.snapTargetBlock;
+    $('#odCommit').textContent = t ? (t.textContent || '').split('·')[0].trim() : '—';
+    odLog(`COMMIT → ${(t.textContent || '').split('·')[0].trim()}`, 'ok');
+  });
+  if (!SUP.events){
+    od.addEventListener('scrollend', () => {
+      const p = snapPoints(od);
+      const i = nearestIdx(od, p.pts);
+      $('#odCommit').textContent = (od.children[i].textContent || '').split('·')[0].trim();
+      odLog(`scrollend fallback → frame ${i + 1} (derived, not delivered)`, 'warn');
+    });
+  }
+  molt.addEventListener('scrollsnapchange', e => {
+    const t = e.snapTargetInline || e.snapTargetBlock;
+    if (!t) return;
+    const i = [...molt.children].indexOf(t);
+    dots.forEach((d, di) => d.classList.toggle('on', di === i));
+    $('#moltRead').textContent = `committed: ${(t.textContent || '').trim()} · dot ${i + 1} — from the event's node, not scroll math`;
+  });
+  window.__s12 = { events: SUP.events };
+}
+async function s12Tick(){
+  const st = window.__s12;
+  if (!window.__s12Driven) return;
+  const commitTxt = $('#odCommit').textContent;
+  const dotsOn = $('#moltDots').querySelectorAll('i.on').length;
+  chip('s12a-od', commitTxt !== '—' ? 'ok' : 'pending', `<b>OpenDrones frame pager</b> — committed readout: <b>${commitTxt}</b>; snap-stop:always prevents skipped frames on flings; pending readout trails the gesture via scrollsnapchanging`);
+  chip('s12b-molt', dotsOn === 1 ? 'ok' : 'pending', `<b>Molt gallery dots</b> — exactly one dot active (${dotsOn}); driven by snapTargetInline, ZERO scroll listeners on the page`);
+  chip('s12c-fallback', st.events ? 'ok' : 'warn', `<b>degradation path</b> — ${st.events ? 'events present: change drives commit readouts' : 'no snap events here: scrollend + nearest-snap derivation keeps the UI honest (the shipped fallback pattern)'}`);
+}
+
+/* ============ run-all ============ */
+window.__runAuto = async () => {
+  s05Wire(); s07Wire(); s08Wire(); s12Wire();
+  runS00(); runS01(); runS09();
+  await runS02(); await runS03(); await runS04();
+  await runS06(); await runS10(); await runS11();
+  const r = window.__chipReport();
+  return r;
+};
+window.__harnessTick_s05 = s05Tick;
+window.__harnessTick_s07 = s07Tick;
+window.__harnessTick_s08 = s08Tick;
+window.__harnessTick_s12 = s12Tick;
+window.__driveS05 = phase => { window.__s05Driven = true; window.__s05Phase = phase; };
+window.__driveS07 = () => { window.__s07Driven = true; };
+window.__driveS08 = () => { window.__s08Driven = true; };
+window.__driveS12 = () => { window.__s12Driven = true; };
+$('#runAll').addEventListener('click', async () => {
+  await window.__runAuto();
+  chip('s00-done', 'info', `auto probes complete — scroll labs (§05/§07/§08/§12) await real scrolling`);
+});
+window.__runAuto();
+</script>
+</body>
+</html>
