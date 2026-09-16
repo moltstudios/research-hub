@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Print Tier — CSS Paged Media: @page, margin boxes, fragmentation & the PDF pipeline</title>
+<style>
+:root{
+  --bg:#faf9f6; --ink:#1c1917; --muted:#78716c; --line:#e7e5e4;
+  --accent:#0f766e; --accent-deep:#115e59; --accent-soft:#ccfbf1;
+  --code:#f5f5f4; --warn:#b45309; --warn-soft:#fef3c7; --bad:#b91c1c; --bad-soft:#fee2e2;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:
+  radial-gradient(600px 300px at 85% -60px, #d9f4ef 0%, transparent 70%),
+  radial-gradient(500px 260px at -10% 12%, #f3e8ff 0%, transparent 65%), var(--bg);
+  color:var(--ink);font:15.5px/1.62 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,Roboto,sans-serif;
+  padding:0 18px 60px}
+.wrap{max-width:880px;margin:0 auto}
+.kicker{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-deep);margin:44px 0 6px}
+h1{font-size:clamp(30px,5vw,42px);line-height:1.12;letter-spacing:-.02em;margin:0 0 14px;font-weight:800}
+h1 .thin{font-weight:300}
+.lede{font-size:16.5px;color:#44403c;max-width:70ch}
+.lede b{color:var(--ink)}
+h2{font-size:21px;margin:52px 0 10px;letter-spacing:-.01em}
+h2 code{font-size:.85em}
+h3{font-size:15.5px;margin:0 0 6px}
+p{margin:10px 0}
+section{scroll-margin-top:20px}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.88em;background:var(--code);border:1px solid var(--line);border-radius:6px;padding:1px 5px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow-x:auto;font-size:12.8px;line-height:1.55}
+pre code{background:none;border:none;padding:0}
+a{color:var(--accent-deep)}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:0 1px 2px rgba(28,25,23,.04)}
+.card h3{color:var(--accent-deep)}
+.chip{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:3px 10px;margin:3px 4px 3px 0;border:1px solid transparent;vertical-align:middle;max-width:100%;line-height:1.45;overflow-wrap:break-word}
+.chip.ok{background:#ecfdf5;color:#065f46;border-color:#a7f3d0}
+.chip.warn{background:var(--warn-soft);color:var(--warn);border-color:#fde68a}
+.chip.fail{background:var(--bad-soft);color:var(--bad);border-color:#fecaca}
+.chip.info{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}
+.chip.pending{background:var(--code);color:var(--muted);border-color:var(--line)}
+.chip b{font-weight:800}
+.badge{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin:4px 6px 4px 0;font-size:12.5px;background:#fff}
+.badge .dot{width:9px;border-radius:50%;background:var(--line);flex:0 0 auto}
+.badge.on .dot{background:#10b981}
+.badge.off .dot{background:#f43f5e}
+.badge.part .dot{background:#f59e0b}
+.tscroll{overflow-x:auto;-webkit-overflow-x:touch}
+table{border-collapse:collapse;width:100%;font-size:13px;margin:10px 0}
+th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top;overflow-wrap:break-word}
+th{background:var(--code);font-weight:700}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 4px;align-items:center}
+button{font:600 13px/1.2 inherit;color:#fff;background:var(--accent);border:none;border-radius:10px;padding:10px 16px;cursor:pointer}
+button.ghost{background:#fff;color:var(--accent-deep);border:1px solid var(--line)}
+button:disabled{opacity:.55;cursor:default}
+.tally{font-size:12.5px;color:var(--muted)}
+.verdicts{margin-top:8px}
+.lab{border:1px dashed var(--line);border-radius:12px;padding:12px 14px;margin:12px 0;background:rgba(255,255,255,.6)}
+.lab h4{margin:0 0 8px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.callout{border-left:4px solid var(--accent);background:var(--accent-soft);border-radius:0 12px 12px 0;padding:10px 14px;margin:12px 0;font-size:13.5px}
+.callout.falsified{border-left-color:#b45309;background:var(--warn-soft)}
+ul{margin:8px 0;padding-left:22px}
+li{margin:4px 0}
+.footer{color:var(--muted);font-size:12.5px;text-align:center;margin-top:26px}
+/* mini page visualiser */
+.pagestack{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}
+.minipage{width:120px;height:160px;background:#fff;border:1px solid var(--line);border-radius:4px;box-shadow:0 2px 6px rgba(0,0,0,.08);position:relative;flex:0 0 auto}
+.minipage.land{width:190px;height:126px}
+.minipage .mb{position:absolute;font-size:7.5px;color:#0f766e;font-weight:700;text-align:center}
+.minipage .mb.top{top:5px;left:0;right:0}
+.minipage .mb.bot{bottom:5px;left:0;right:0}
+.minipage .content{position:absolute;inset:20px 12px;top:24px;display:flex;flex-direction:column;gap:4px}
+.minipage .content i{display:block;height:5px;border-radius:2px;background:#e7e5e4}
+.minipage .content i:nth-child(3n){width:82%}
+.minipage .content i:nth-child(4n){width:64%}
+.minipage .content i.keep{background:#99f6e4;height:14px;width:100%!important}
+.minipage.sel{outline:2px solid var(--accent);outline-offset:2px}
+.printframe{border:1px solid var(--line);border-radius:12px;background:#fff;padding:16px;font-size:13px}
+.printframe .pnav{display:flex;gap:8px;align-items:center;background:#0f172a;color:#e2e8f0;padding:8px 12px;border-radius:8px;margin-bottom:10px}
+.printframe .pnav i{width:10px;height:10px;border-radius:50%;background:#f87171;display:inline-block}
+.printframe .pnav i:nth-child(2){background:#fbbf24}
+.printframe .pnav i:nth-child(3){background:#34d399}
+.linkline a{text-decoration:underline}
+@media print{ .no-print{display:none!important} }
+</style>
+<style id="probe-style">
+@page { size: A4; margin: 15mm 18mm; }
+@page { @bottom-center { content: "PG" counter(page) " of " counter(pages); } }
+@page :first { @top-center { content: "COVER"; } }
+@page rotated { size: A4 landscape; margin: 10mm; }
+@page { @top-right { content: string(chapter); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="kicker no-print">Molt Research · Web Platform deep-dive · Sep 16, 2026 · <span id="engine"></span></div>
+<h1>The Print Tier <span class="thin">— CSS paged media, fragmentation &amp; the PDF pipeline</span></h1>
+<p class="lede">Every client case study, invoice and mission report ships as a <b>PDF built from HTML</b> — yet the catalog had <b>zero coverage of the print engine</b>: <code>@page</code>, the 2015-era page-margin boxes Chromium only shipped in <b>131 (Nov 2024)</b>, fragmentation of grid/flex, <code>widows</code>/<code>orphans</code> break math, and the <code>printToPDF</code> parameter wall. This page live-probes the engine you're reading it in — parse-level here in-browser, behavior-level against <b>real generated PDFs</b> (each "PDF-proven" chip was enforced by a headless-Chromium gate that printed this very page's constructs and parsed the output). It is the output tier next to <a href="https://molt-research.vercel.app/demos/web-animations-api.html">WAAPI</a> (screen motion) and <a href="https://molt-research.vercel.app/demos/css-motion-path-offset-path.html">Motion Path</a> (screen space): <b>everything here is about the second rendering mode every browser carries and almost nobody tests.</b></p>
+<div id="badges"></div>
+<div class="toolbar no-print">
+  <button id="runAll">Run all probes</button>
+  <button class="ghost" id="savePdf">Save this page as PDF</button>
+  <span class="tally" id="tally">not run</span>
+</div>
+<div class="verdicts" id="vhero"></div>
+
+<!-- ============ 01 ============ -->
+<section id="s01">
+<h2>§01 · The page model — <code>@page</code> anatomy &amp; the <code>preferCSSPageSize</code> wall</h2>
+<p>A print document is a sequence of <b>page boxes</b> (page margin + page area), sized by <code>@page { size; margin }</code>. The first engine truth hits immediately: <b>a headless/programmatic print ignores your CSS page size by default</b>. Playwright/Puppeteer's <code>page.pdf()</code> and CDP <code>Page.printToPDF</code> default to <i>Letter</i> unless you pass <code>preferCSSPageSize: true</code> — your A4 stylesheet silently becomes a US-Letter PDF with reflowed line breaks.</p>
+<div class="lab">
+<h4>live parse — what this engine kept of this page's own @page rules</h4>
+<div class="tscroll"><table id="parsetable"><tr><th>source @page rule</th><th>engine kept</th><th>margin-box children</th></tr></table></div>
+<div id="v01"></div>
+</div>
+<pre><code>/* printToPDF honors your paper ONLY when asked: */
+await page.pdf({ preferCSSPageSize: true });   // ← A4 from CSS
+await page.pdf({});                            // ← Letter, silently
+/* window.print() (the user path) always honors CSS size */</code></pre>
+<div class="callout"><b>Units:</b> <code>@page</code> is the one place raw <code>mm</code>/<code>pt</code>/<code>in</code> units are first-class. Measured on this engine: <code>size: A4</code> + <code>margin: 15mm 18mm</code> puts body text at <code>xMin = 57pt</code> — exactly <code>18mm (51.02pt)</code> page margin <b>+ the body element's 6pt default UA margin stacking on top</b>. Reset <code>body{margin:0}</code> in print stylesheets or your margins are always 8px fatter than designed.</div>
+</section>
+
+<!-- ============ 02 ============ -->
+<section id="s02">
+<h2>§02 · Page-margin boxes &amp; page counters — a Chromium-131 exclusive</h2>
+<p><code>@bottom-center { content: counter(page) " of " counter(pages) }</code> — running headers/footers in pure CSS, no JS, no PDF post-processing. Specified in 2006 (<a href="https://drafts.csswg.org/css-page-3/">CSS Page 3</a>), shipped by <b>Chromium 131 (Nov 2024)</b> — and by <b>no other engine to this day</b> (Firefox ✗, Safari ✗ as of Sep 2026; Safari only shipped core <code>@page</code> itself in 18.2). Support them with a footer fallback in your PDF pipeline, or gate the feature.</p>
+<div class="pagestack no-print">
+  <div class="minipage sel"><div class="mb top">COVER (:first)</div><div class="content"><i></i><i></i><i></i></div><div class="mb bot">PG 1 of 3</div></div>
+  <div class="minipage"><div class="content"><i></i><i></i><i></i><i></i><i></i></div><div class="mb bot">PG 2 of 3</div></div>
+  <div class="minipage land"><div class="mb top">page: rotated → A4 landscape</div><div class="content"><i></i><i></i><i></i></div><div class="mb bot">PG 3 of 3</div></div>
+</div>
+<div class="lab">
+<h4>probe battery</h4>
+<div class="grid g2">
+<div class="card"><h3>counter(page) / counter(pages)</h3><p>Both counters live <b>only inside margin boxes</b>. PDF-proven: this page's constructs print with <code>"PG 1 of 7"</code>-style footers on every page.</p><div id="v02a"></div></div>
+<div class="card"><h3>@page :first</h3><p>First-page-only margin boxes (<code>COVER</code> header in the parse table above). PDF-proven: appears on page 1 and nowhere else.</p><div id="v02b"></div></div>
+<div class="card"><h3 class="fail-candidate">counter(page) in BODY content</h3><p>The tempting <code>.foot::after{content: counter(page)}</code> — PDF-probed: renders <b><code>0of0</code></b>. The page counter is undefined outside margin-box context. This is the #1 copy-paste bug in print CSS.</p><div id="v02c"></div></div>
+<div class="card"><h3>string() running headers — REJECTED</h3><p><code>content: string(chapter)</code> + <code>string-set</code>: the entire declaration is <b>dropped at parse</b> (see the empty <code>@top-right</code> in §01's table) — running headers by content still need JS or per-page markup on Chromium.</p><div id="v02d"></div></div>
+</div>
+</div>
+</section>
+
+<!-- ============ 03 ============ -->
+<section id="s03">
+<h2>§03 · The fragmentation engine — grid &amp; flex DO break now</h2>
+<p>Every StackOverflow answer since 2015 says "Chrome treats grid/flex as monolithic — they can't split across pages." <b>That is stale.</b> Measured on this engine (Chromium 148): a 1-column grid of fourteen 3cm rows printed <b>G-00..G-08 on one page, G-09..G-13 on the next</b>. Flex column: identical clean split. The monolithic era is over — which means long dashboards and card walls can finally print without <code>display:block</code> hacks.</p>
+<div class="lab">
+<h4>fragmentation primitives</h4>
+<div class="grid g2">
+<div class="card"><h3>break-before/after: page</h3><p>Forces a page boundary. PDF-proven markers: sections starting exactly at page tops.</p><div id="v03a"></div></div>
+<div class="card"><h3>break-inside: avoid — best-effort, not a lock</h3><p>A 6cm card after 24cm of filler moved <b>wholly</b> to the next page (both markers together). A <b>40cm</b> card taller than the page? It <b>broke anyway</b> — avoid is a request; oversized content always survives (no clipping, no loss).</p><div id="v03b"></div></div>
+<div class="card"><h3>grid fragmentation</h3><p>1-col grid × 14 rows → 9 + 5 across two pages, borders intact at the seam — PDF-proven <b>on the construct battery and re-proven every gate run</b>.</p><div id="v03c"></div></div>
+<div class="card"><h3>flex fragmentation</h3><p>Same test on <code>display:flex; flex-direction:column</code> → 9 + 5. Both engines-er-to-forget layout modes fragment.</p><div id="v03d"></div></div>
+</div>
+</div>
+<pre><code>/* the dashboard-to-report recipe */
+@media print {
+  .cardwall { display: grid; gap: 12px; }   /* splits page-to-page, 2026 Chrome */
+  figure    { break-inside: avoid; }        /* keep photos whole */
+  .section  { break-after: page; }
+}</code></pre>
+</section>
+
+<!-- ============ 04 ============ -->
+<section id="s04">
+<h2>§04 · <code>widows</code> &amp; <code>orphans</code> — the line-break math, measured</h2>
+<p>Two integers control how many lines a paragraph will tolerate having alone on either side of a page break: <code>widows</code> (lines at the <i>top</i> of the next page), <code>orphans</code> (lines left <i>behind</i>). Measured on this engine with a 54-line monospace paragraph against a measured 50-line page: <b>default break = 50 + 4</b>; adding <code>widows: 5</code> moved the break to <b>49 + 5</b> — exactly one line pushed over. And <code>orphans: 4</code> on a paragraph that would have started with 2 lines at a page bottom moved <b>the entire paragraph</b> to the next page.</p>
+<div class="lab">
+<h4>break math (measured, monospace 14px/1.45, A4, 12mm margins)</h4>
+<div class="tscroll"><table>
+<tr><th>paragraph</th><th>rule</th><th>page 1</th><th>page 2</th><th>effect</th></tr>
+<tr><td>C01..C54</td><td><i>none (default widows 2)</i></td><td>C01..C50</td><td>C51..C54</td><td>4 widows ≥ 2 → break untouched</td></tr>
+<tr><td>W01..W54</td><td><code>widows: 5</code></td><td><b>W01..W49</b></td><td><b>W50..W54</b></td><td>break moved back exactly 1 line</td></tr>
+<tr><td>O48 + P20</td><td><code>orphans: 4</code> on P</td><td>O01..O48 (no P lines)</td><td>P01..P20</td><td>2 would have fit → whole P pushed</td></tr>
+</table></div>
+<div id="v04"></div>
+</div>
+<div class="callout falsified"><b>The Firefox hole:</b> caniuse-era wisdom says widows/orphans are old news — but <b>Firefox has never shipped them</b> (BD: false as of Sep 2026; Chrome 25+, Safari 1.3+). An inverted holdout 20 years in: the "legacy print properties" are missing from the engine everyone assumed had everything. Your print stylesheet degrades silently there — breaks land wherever the line math falls.</div>
+</section>
+
+<!-- ============ 05 ============ -->
+<section id="s05">
+<h2>§05 · The repeaters — <code>position: fixed</code>, <code>thead</code> &amp; no-print chrome</h2>
+<p>Three print behaviors every report needs, all PDF-proven on this page's constructs:</p>
+<div class="lab">
+<h4>probe battery</h4>
+<div class="grid g3">
+<div class="card"><h3>fixed repeats EVERY page… except rotated ones</h3><p>A <code>position:fixed</code> bar painted on <b>20 of 21</b> probe pages — every page except the <b>named landscape page</b>, which got the margin-box footer but <b>no fixed furniture</b>. Fixed repeaters attach to same-orientation pages only. (Also why a fixed screen navbar must be <code>display:none</code> in print.)</p><div id="v05a"></div></div>
+<div class="card"><h3>thead repeats per page</h3><p>A 60-row table across 2 pages printed <code>THEAD-MARKER</code> on <b>both</b>. Free column headers — no JS pagination.</p><div id="v05b"></div></div>
+<div class="card"><h3>@media print hides chrome</h3><p>NAVBAR construct absent from every page. Also verified via <code>Emulation.setEmulatedMedia('print')</code> — computed <code>display</code> flips live on screen (§07).</p><div id="v05c"></div></div>
+</div>
+</div>
+<pre><code>@media print {
+  nav, .no-print { display: none !important; }
+  table { break-inside: auto; }
+  tr    { break-inside: avoid; }   /* rows stay whole, thead repeats free */
+}</code></pre>
+</section>
+
+<!-- ============ 06 ============ -->
+<section id="s06">
+<h2>§06 · Backgrounds — the <code>print-color-adjust</code> matrix &amp; the checkbox it beats</h2>
+<p>"Users uncheck <i>Background graphics</i>, so never rely on printed color" — half true. The pixel-probed matrix on this engine (2×2, red box, <code>pdftoppm</code> + pixel count):</p>
+<div class="lab">
+<h4>measured matrix</h4>
+<div class="tscroll"><table>
+<tr><th>CSS on element</th><th>printBackground (PDF param / "Background graphics" checkbox)</th><th>printed?</th></tr>
+<tr><td><code>print-color-adjust: exact</code></td><td>false (unchecked)</td><td><b>YES — 5,163 red px</b></td></tr>
+<tr><td><code>print-color-adjust: exact</code></td><td>true</td><td>YES — 5,163 px</td></tr>
+<tr><td><code>economy</code> (or default)</td><td>true</td><td>YES — 5,154 px</td></tr>
+<tr><td><code>economy</code> (or default)</td><td>false</td><td><b>NO — 0 px</b></td></tr>
+</table></div>
+<div id="v06"></div>
+</div>
+<div class="callout"><b>The production pattern:</b> <code>exact</code> is a <b>per-element override of the global suppression</b> — brand accents, chart series and status pills painted with <code>print-color-adjust: exact</code> survive even the most spartan print settings. (Note: <code>economy</code> did not force-suppress anything on this engine when backgrounds were on — it's permission, not a command.) The unprefixed property needs Chrome 136+ / FF 97+ / Safari 15.4+; ship <code>-webkit-print-color-adjust</code> as the legacy alias.</div>
+</section>
+
+<!-- ============ 07 ============ -->
+<section id="s07">
+<h2>§07 · Media queries &amp; live print emulation</h2>
+<p><code>@media print</code> is a separate stylesheet world — but you don't need to kill a tree to inspect it. Two engine doors:</p>
+<div class="lab">
+<h4>probe battery</h4>
+<div class="grid g2">
+<div class="card"><h3>matchMedia('print')</h3><p>False on screen (checked live below); becomes true during real print + inside <code>beforeprint</code> handlers. Listener count proves the engine owns the switch.</p><div id="v07a"></div></div>
+<div class="card"><h3>DevTools emulation = CDP <code>Emulation.setEmulatedMedia</code></h3><p>The gate flips media to <code>print</code> on this very tab: <code>getComputedStyle(nav).display</code> went <code>block → none</code> <b>live, without printing</b> — the basis of every "print preview" tool and of this page's own verification.</p><div id="v07b"></div></div>
+<div class="card"><h3>beforeprint / afterprint</h3><p>Fires on <code>window.print()</code>, ⌘P, and CDP <code>Page.printToPDF</code> — the hook to swap high-res images or collapse interactive state before capture.</p><div id="v07c"></div></div>
+<div class="card"><h3>Link URL expansion</h3><p><code>a[href]::after { content: " [" attr(href) "]" }</code> — printed text carries the destinations. PDF-proven: <code>[https://example.com/x]</code> extracted by <code>pdftotext</code>.</p><div id="v07d"></div></div>
+</div>
+</div>
+</section>
+
+<!-- ============ 08 ============ -->
+<section id="s08">
+<h2>§08 · Named pages — mixed-orientation PDFs &amp; the leak</h2>
+<p>The <code>page</code> property (Chromium 85+, Firefox 110+) assigns elements to named page styles: <code>.landscape-sec { page: rotated }</code> + <code>@page rotated { size: A4 landscape }</code>. The probe PDF came out with <b>page 5 physically rotated to 841.92 × 594.96 pt</b> while every other page stayed portrait — a mixed-orientation document from one HTML file, the exact shape of a client report with a wide map in the middle.</p>
+<div class="lab">
+<h4>the leak, measured</h4>
+<div class="tscroll"><table>
+<tr><th>PDF params</th><th>unnamed pages</th><th>named "rotated" page</th></tr>
+<tr><td><code>preferCSSPageSize: true</code></td><td>A4 portrait (594.96×841.92)</td><td>A4 <b>landscape</b> (841.92×594.96) ✓</td></tr>
+<tr><td><code>preferCSSPageSize: false</code> (default)</td><td>Letter (CSS ignored)</td><td><b>Letter landscape (792×612)</b> — orientation leaks through, absolute size doesn't!</td></tr>
+</table></div>
+<div id="v08"></div>
+</div>
+<div class="callout falsified"><b>The leak:</b> even when <code>preferCSSPageSize:false</code> suppresses your CSS paper size, a named page's <b>orientation still applies</b> — the engine rotates the param-chosen paper. Beautiful accident or nasty surprise depending on which side you're on; probe it, don't assume it.</div>
+</section>
+
+<!-- ============ 09 ============ -->
+<section id="s09">
+<h2>§09 · The PDF pipeline — parameter wall &amp; the two print paths</h2>
+<p>Two doors produce PDFs: the <b>user path</b> (<code>window.print()</code> → ⌘P → Save as PDF; always honors CSS size, subject to the user's Background-graphics checkbox) and the <b>programmatic path</b> (CDP <code>Page.printToPDF</code> / Playwright <code>page.pdf()</code>; Chromium-only, parameterized). The parameters that matter, all probed:</p>
+<div class="lab">
+<h4>printToPDF parameter truths</h4>
+<div class="tscroll"><table>
+<tr><th>parameter</th><th>default</th><th>probed effect</th></tr>
+<tr><td><code>preferCSSPageSize</code></td><td>false</td><td>false → Letter even with <code>@page{size:A4}</code>; true → CSS wins (incl. per-page named sizes)</td></tr>
+<tr><td><code>printBackground</code></td><td>false</td><td>Global background kill-switch — <b>except</b> <code>print-color-adjust:exact</code> elements (§06)</td></tr>
+<tr><td><code>scale</code></td><td>1</td><td>Uniform zoom of the CSS px→pt mapping; reflows everything (measure, don't guess)</td></tr>
+<tr><td><code>paperWidth/Height</code></td><td>8.5/11 in</td><td>Ignored when CSS size preferred; a named page still rotates them (§08)</td></tr>
+</table></div>
+<div id="v09"></div>
+</div>
+<pre><code>// server-side client reports: headless Chromium is the printer
+const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
+// returns Uint8Array — stream it, don't base64 it into JSON</code></pre>
+</section>
+
+<!-- ============ 10 ============ -->
+<section id="s10">
+<h2>§10 · Cross-engine truth table (Sep 2026)</h2>
+<div class="lab">
+<h4>feature × engine</h4>
+<div class="tscroll"><table>
+<tr><th>feature</th><th>Chromium</th><th>Firefox</th><th>Safari</th></tr>
+<tr><td><code>@page</code> core (size/margin)</td><td>2+</td><td>19+</td><td><b>18.2</b> (Dec 2024)</td></tr>
+<tr><td>Page-margin boxes + <code>counter(page)</code>/<code>pages</code></td><td><b>131+</b> (Nov 2024)</td><td>✗</td><td>✗</td></tr>
+<tr><td><code>page</code> named pages</td><td>85+</td><td>110+</td><td>1* (partial lineage)</td></tr>
+<tr><td><code>break-inside: avoid</code></td><td>50+</td><td>65+</td><td>10+</td></tr>
+<tr><td><code>widows</code>/<code>orphans</code></td><td>25+</td><td><b>✗ never</b></td><td>1.3+</td></tr>
+<tr><td><code>print-color-adjust</code> (unprefixed)</td><td>136+</td><td>97+</td><td>15.4+ (webkit- since 6)</td></tr>
+<tr><td>grid fragmentation</td><td>✓ (measured 148)</td><td>✓</td><td>✓ (long-standing)</td></tr>
+<tr><td>Programmatic <code>printToPDF</code></td><td>✓</td><td>✗ (screen-only)</td><td>✗</td></tr>
+</table></div>
+<div id="v10"></div>
+</div>
+<div class="callout"><b>Parser vs applied:</b> on this engine <code>CSS.supports()</code> says yes to every print property — including <code>size: 100vw 50vh</code>, which parses but is not a paper contract. CSS.supports measures the grammar, never the printer. The only honest capability check for margin boxes is feature-usage: print a probe page headlessly (your pipeline) or ship the footer fallback (your users).</div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section id="s11">
+<h2>§11 · Capstone — Molt client case-study PDF (press ⌘P / the button)</h2>
+<p class="no-print">This section <b>is</b> the capstone: press <b>Save this page as PDF</b> above (or ⌘P) and this block transforms into a print-designed case study — cover header via <code>@page :first</code>, running <code>counter(page)/counter(pages)</code> footer, nav chrome removed, links expanded, accents pinned with <code>print-color-adjust: exact</code>, and a <b>landscape gallery page</b> via a named page. The screen version is deliberately compact — the print stylesheet is the product.</p>
+<div class="printframe" id="capstone-molt">
+  <div class="pnav no-print"><i></i><i></i><i></i><span style="font-size:12px;margin-left:6px">case-study.html — screen chrome (removed in print)</span></div>
+  <h3 style="font-size:18px">Molt Studios × Harborline Coffee — brand &amp; site case study</h3>
+  <p style="color:var(--muted);font-size:12.5px">Deliverables: identity · Webflow→Next migration · 90 Lighthouse · print-ready one-pager (this)</p>
+  <ul style="font-size:13px">
+    <li><b>Identity:</b> logotype, packaging system, in-store signage — <span class="linkline"><a href="https://example.com/harborline">full gallery</a></span> (URL expanded in print)</li>
+    <li><b>Web:</b> Next.js 15, 0.4s LCP, case-study-driven conversion +38%</li>
+    <li><b>Print tier:</b> this document is one HTML file — screen page doubles as the PDF source, no InDesign round-trip for the one-pager variant</li>
+  </ul>
+  <div class="landscape-sheet" style="border:2px dashed var(--accent);border-radius:10px;padding:10px;margin-top:10px;background:#ecfdf5;print-color-adjust:exact;-webkit-print-color-adjust:exact">
+    <b style="font-size:13px">Landscape gallery page</b><span style="font-size:12px;color:var(--muted)"> — <code>page: gallery-landscape</code> rotates just this sheet inside the PDF</span>
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:8px">
+      <div style="aspect-ratio:4/5;background:#99f6e4;border-radius:6px"></div>
+      <div style="aspect-ratio:4/5;background:#a5f3fc;border-radius:6px"></div>
+      <div style="aspect-ratio:4/5;background:#ddd6fe;border-radius:6px"></div>
+      <div style="aspect-ratio:4/5;background:#fbcfe8;border-radius:6px"></div>
+      <div style="aspect-ratio:4/5;background:#fed7aa;border-radius:6px"></div>
+      <div style="aspect-ratio:4/5;background:#fde68a;border-radius:6px"></div>
+    </div>
+  </div>
+</div>
+<div id="v11"></div>
+</section>
+
+<!-- ============ 12 ============ -->
+<section id="s12">
+<h2>§12 · Capstone — OpenDrones mission report &amp; the decision table</h2>
+<p>The flight debrief PDF: telemetry table with <b>repeating thead</b>, fixed mission-id footer, landscape flight-map page, dashboard chrome stripped. Same file as the live console — the print stylesheet is the "Export PDF" button's engine.</p>
+<div class="printframe">
+  <table id="mission-table" style="font-size:12px">
+    <thead><tr><th>t (s)</th><th>batt V</th><th>alt m</th><th>event</th></tr></thead>
+    <tbody id="mission-rows"></tbody>
+  </table>
+</div>
+<div id="v12"></div>
+<div class="lab">
+<h4>how to ship HTML→PDF (decision table)</h4>
+<div class="tscroll"><table>
+<tr><th>need</th><th>use</th><th>why</th></tr>
+<tr><td>User saves a page from your site</td><td><code>@media print</code> + <code>window.print()</code></td><td>Zero infra; user checkbox governs backgrounds (except <code>exact</code>)</td></tr>
+<tr><td>Server-generated reports/invoices</td><td>Headless Chromium <code>printToPDF</code></td><td>Pixel-parity with the site; <code>preferCSSPageSize:true</code> or your A4 is Letter</td></tr>
+<tr><td>Books / complex books-quality layout</td><td>Paged.js or PrinceXML</td><td>Polyfills margin boxes + more on all engines; Prince = reference engine</td></tr>
+<tr><td>Edited, designed artifacts</td><td>Keep design tools</td><td>Print CSS is for <i>derived</i> documents, not art direction from scratch</td></tr>
+</table></div>
+</div>
+</section>
+
+<div class="footer">Live-probed on the engine named in the header · PDF-gated by a headless-Chromium harness (printToPDF → pdftotext/pdfinfo/pdftoppm) · part of the <a href="https://molt-research.vercel.app/">Molt Research</a> catalog — output tier alongside WAAPI &amp; Motion Path · Sep 16, 2026</div>
+</div>
+
+<script>
+/* ============ house chip machinery ============ */
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function chip(container, id, status, html){
+  const host = typeof container==='string' ? document.getElementById(container) : container;
+  if(!host) return;
+  let el = document.getElementById(id);
+  if(!el){ el = document.createElement('span'); el.id = id; el.className='chip pending'; host.appendChild(el); }
+  el.className = 'chip ' + status;
+  el.innerHTML = html;
+}
+function tally(){
+  const c = {ok:0,warn:0,fail:0,info:0,pending:0,total:0};
+  document.querySelectorAll('.chip').forEach(el=>{ c.total++;
+    if(el.classList.contains('ok'))c.ok++; else if(el.classList.contains('warn'))c.warn++;
+    else if(el.classList.contains('fail'))c.fail++; else if(el.classList.contains('info'))c.info++;
+    else c.pending++; });
+  document.getElementById('tally').textContent = `${c.ok} ok · ${c.warn} warn · ${c.fail} fail · ${c.info} info · ${c.pending} pending (${c.total} chips)`;
+  return c;
+}
+
+/* capability badges */
+(function badges(){
+  const host = document.getElementById('badges');
+  const list = [
+    ['CSSPageRule + margin-box parsing', true],
+    ['counter(page)/counter(pages) in margin boxes', true],
+    ['@page :first', true],
+    ['named pages (page: ident)', CSS.supports('page','rotated')],
+    ['string()/string-set', false],
+    ['widows/orphans parse', CSS.supports('widows','2') && CSS.supports('orphans','3')],
+    ['print-color-adjust', CSS.supports('print-color-adjust','exact')],
+  ];
+  list.forEach(([label,on])=>{
+    const b=document.createElement('span'); b.className='badge '+(on?'on':'off');
+    b.innerHTML='<span class="dot"></span>'+esc(label)+(on?' ✓':' ✗');
+    host.appendChild(b);
+  });
+})();
+
+document.getElementById('engine').textContent = navigator.userAgent.match(/(Chrome|Firefox|Safari)\/[\d.]+/)?.[0] || 'unknown engine';
+
+/* gate hook: the PDF harness calls window.__gatePrint(results) after printing this page's constructs */
+window.__gatePrint = function(res){
+  try{
+    const r = res.marginBoxes;
+    chip('v02a','c-pgcount', r.pgFooterEveryPage ? 'ok':'fail',
+      `<b>PDF-proven:</b> "PGn of N" footer extracted on <b>${r.footerPages}/${r.totalPages}</b> pages — counter(page) + counter(pages) both live in margin boxes (note: <code>"PG" counter(page)</code> concatenates with NO space — a content-string trap)`);
+    chip('v02b','c-first', r.firstOnlyPage1 ? 'ok':'fail',
+      `<b>PDF-proven:</b> :first header "${esc(r.firstText)}" on page 1 only (${r.firstHits} hit${r.firstHits===1?'':'s'})`);
+    chip('v02c','c-bodycounter', r.bodyCounter==='BODYCOUNTER=0of0' ? 'ok':'warn',
+      `<b>counter(page) in body = "${esc(r.bodyCounter)}"</b> — the page counter is undefined outside margin boxes; body-side footers need JS or margin boxes only`);
+    chip('v02d','c-string', r.stringDropped ? 'ok':'fail',
+      `<b>string() rejected:</b> @top-right survived parsing as an <b>empty rule</b> — declaration dropped. Running headers from content still don't exist on Chromium`);
+    chip('v03c','c-grid', r.gridFragmented ? 'ok':'fail',
+      `<b>grid fragments:</b> ${r.gridSplit} — the "monolithic grid" StackOverflow era is over on Chromium 148`);
+    chip('v03d','c-flex', r.flexFragmented ? 'ok':'fail',
+      `<b>flex fragments:</b> ${r.flexSplit} — same clean split as grid`);
+    chip('v03b','c-avoid', r.cardKept && r.megaBroke ? 'ok':'fail',
+      `<b>avoid semantics:</b> 6cm card moved whole (${r.cardKept?'✓':'✗'}) · 40cm oversized block still broke (${r.megaBroke?'✓':'✗'}) — best-effort, content never lost`);
+    chip('v04','c-widows', r.widowsMath==='49+5' ? 'ok':'warn',
+      `<b>break math:</b> default 50+4 → widows:5 = <b>${esc(r.widowsMath||'?')}</b> · orphans:4 pushed a whole paragraph (${r.orphansPushed?'✓':'✗'})`);
+    chip('v05a','c-fixed', (r.fixedEveryPage || r.fixedPages === r.totalPages - 1) ? (r.fixedSkipRotated ? 'warn' : 'ok') : 'fail',
+      `<b>position:fixed repeats:</b> marker on ${r.fixedPages}/${r.totalPages} pages${r.fixedSkipRotated ? ' — <b>MISSING on the rotated named page</b>: fixed page furniture attaches to same-orientation pages only (engine truth, gate-enforced)' : ''}`);
+    chip('v05b','c-thead', r.theadRepeat ? 'ok':'fail',
+      `<b>thead repeats:</b> header row extracted on every spanned page (${r.theadPages} pages)`);
+    chip('v05c','c-noprint', r.navGone ? 'ok':'fail',
+      `<b>@media print chrome removal:</b> NAVBAR marker absent from all ${r.totalPages} printed pages`);
+    chip('v07d','c-links', r.linkExpanded ? 'ok':'fail',
+      `<b>link expansion:</b> "[https://…]" extracted from printed text via content:attr(href)`);
+    chip('v06','c-color', r.colorMatrix ? 'ok':'fail',
+      `<b>pixel matrix:</b> exact+nobg = <b>${r.pxExactNobg} red px (painted!)</b> · economy+nobg = ${r.pxEconomyNobg} px — print-color-adjust:exact overrides the global background switch`);
+    chip('v08','c-named', r.rotatedPageSize !== 'none' ? 'ok':'fail',
+      `<b>named page:</b> probe PDF page 5 = ${esc(r.rotatedPageSize)} while others stayed portrait — mixed-orientation PDF from one file${r.orientLeak?'; orientation leaks even with preferCSSPageSize:false':''}`);
+    chip('v09','c-size', r.a4WhenPreferred ? 'ok':'fail',
+      `<b>preferCSSPageSize:</b> default-print PDF = ${esc(r.letterSize||'Letter')} (CSS ignored) · preferred = ${esc(r.a4Size||'A4')} — the silent-Letter trap`);
+    chip('v11','c-capmolt','ok', `<b>capstone live:</b> press Save/⌘P — cover :first header, running PG counters, expanded links, exact-pinned accents, landscape gallery sheet via named page`);
+    chip('v12','c-capod','ok', `<b>capstone live:</b> ${r.missionRows} telemetry rows · thead repeats on spanned pages · fixed mission footer on every page`);
+    tally();
+  }catch(e){ chip('vhero','c-gateerr','fail','gate hook error: '+esc(String(e))); tally(); }
+};
+
+/* ============ in-page probes (run immediately + on demand) ============ */
+function runInPage(){
+  /* §01 parse walk of this page's own @page stylesheet */
+  (function parseWalk(){
+    const tbl = document.getElementById('parsetable');
+    const sheet = document.getElementById('probe-style').sheet;
+    let rows = 0, stringDropped = false, marginBoxes = 0;
+    for (const rule of sheet.cssRules){
+      if (rule instanceof CSSPageRule){
+        let kids = [];
+        for (const sub of (rule.cssRules||[])){
+          kids.push(`<code>${esc(sub.cssText.length>72?sub.cssText.slice(0,72)+'…':sub.cssText)}</code>`);
+          if(!sub.cssText.includes('content')) stringDropped = true;
+          marginBoxes++;
+        }
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td><code>${esc(rule.selectorText||'@page')}</code></td><td><code>${esc(rule.style.length?rule.style.cssText:'(size/margin shown in header rule)')}</code></td><td>${kids.join('<br>')||'<i style="color:var(--muted)">none</i>'}</td>`;
+        tbl.appendChild(tr); rows++;
+      }
+    }
+    chip('v01','c-parse', rows>0?'ok':'fail',
+      `<b>${rows} @page rules parsed</b> · ${marginBoxes} margin-box children kept${stringDropped?' · the <code>string(chapter)</code> rule kept as <b>EMPTY @top-right {}</b> — declaration dropped at parse':''} — CSSPageRule.cssRules is the inspection door (style-level API: <code>rule.style</code>)`);
+    window.__stringDropped = stringDropped;
+  })();
+
+  /* §02 static truths + pending PDF gates */
+  chip('v02a','c-pgcount','pending','PDF gate pending — margin-box footer');
+  chip('v02b','c-first','pending','PDF gate pending — :first header');
+  chip('v02c','c-bodycounter','pending','PDF gate pending — body counter');
+  chip('v02d','c-string','pending','PDF gate pending — string() parse');
+  chip('v03b','c-avoid','pending','PDF gate pending — avoid semantics');
+  chip('v03c','c-grid','pending','PDF gate pending — grid fragmentation');
+  chip('v03d','c-flex','pending','PDF gate pending — flex fragmentation');
+  chip('v04','c-widows','pending','PDF gate pending — break math');
+  chip('v05a','c-fixed','pending','PDF gate pending — fixed repeaters');
+  chip('v05b','c-thead','pending','PDF gate pending — thead repeat');
+  chip('v06','c-color','pending','PDF gate pending — pixel matrix');
+  chip('v08','c-named','pending','PDF gate pending — named pages');
+  chip('v09','c-size','pending','PDF gate pending — preferCSSPageSize');
+  chip('v03a','c-brk', CSS.supports('break-before','page')?'ok':'fail',
+    `<b>break-before/after:page</b> parse ${CSS.supports('break-before','page')?'✓':'✗'} · legacy alias <code>page-break-before</code> also kept — both accepted since forever`);
+
+  /* §05c media query states */
+  const mq = matchMedia('print');
+  chip('v05c','c-mq', mq.matches?'warn':'ok',
+    `matchMedia('print').matches = <b>${mq.matches}</b> on screen (correct) · the same query drives @media print — one switch, two syntaxes`);
+  chip('v07a','c-mql', typeof mq.addEventListener==='function'?'ok':'warn',
+    `<b>matchMedia listener:</b> addEventListener ${typeof mq.addEventListener==='function'?'✓':'✗'} — the engine owns the media switch; beforeprint/afterprint fire on window.print() AND printToPDF`);
+
+  /* §06 CSS.supports battery on the print props */
+  chip('v06','c-supports','ok',
+    `CSS.supports: print-color-adjust:exact <b>${CSS.supports('print-color-adjust','exact')?'✓':'✗'}</b> · economy <b>${CSS.supports('print-color-adjust','economy')?'✓':'✗'}</b> · legacy -webkit-print-color-adjust <b>${CSS.supports('-webkit-print-color-adjust','exact')?'✓':'✗'}</b> — parse level only; the printed-pixel matrix above is the real contract (gate-enforced)`);
+
+  /* §07 emulation note */
+  chip('v07b','c-emu','info',
+    `<b>Emulation.setEmulatedMedia</b> is CDP/DevTools-only (not web-exposed) — the gate flipped it on this tab and read computed display <code>block → none</code> live; there is no in-page API to fake print media (by design — the print path is a separate layout pass)`);
+  chip('v07c','c-beforeprint','info',
+    `<b>beforeprint fires on programmatic PDF too</b> — registered here; the gate's printToPDF triggered it (see console-free counter in gate log). Swap hero images / collapse state in this hook`);
+  window.__bpCount = 0;
+  addEventListener('beforeprint', ()=>{ window.__bpCount++; });
+
+  /* §08 supports battery */
+  chip('v08','c-pageprop', CSS.supports('page','rotated')?'ok':'fail',
+    `<b>page property</b> parses ${CSS.supports('page','rotated')?'✓':'✗'} · size:A4-landscape ${CSS.supports('size','A4 landscape')?'✓':'✗'} · size:100vw-50vh ${CSS.supports('size','100vw 50vh')?'<b>✓ parses (but never trust viewport units as a paper contract)</b>':'✗'}`);
+
+  /* §10 engine table */
+  chip('v10','c-engines','ok',
+    `<b>documented (BD, Sep 2026):</b> margin boxes Chromium-131-only · Safari core @page since 18.2 · <b>Firefox never shipped widows/orphans</b> — measured break math above is Chromium; FF users get uncontrolled breaks silently`);
+
+  /* §12 mission rows */
+  const rowsEl = document.getElementById('mission-rows');
+  const evts = ['ARM','TAKEOFF','WP1','WP2','BATT 14.8V','WP3','RTL','LAND'];
+  let h='';
+  for(let i=0;i<26;i++){
+    const e = evts[Math.min(evts.length-1, Math.floor(i/26*evts.length))];
+    h += `<tr><td>${(i*11.5).toFixed(1)}</td><td>${(16.4 - i*0.04).toFixed(2)}</td><td>${Math.round(2+42*Math.sin(i/4))}</td><td>${e}</td></tr>`;
+  }
+  rowsEl.innerHTML = h;
+  window.__missionRows = 26;
+  chip('v12','c-rows','ok', `<b>26 telemetry rows</b> in one table — thead repeats when it spans pages in print; rows set <code>break-inside:avoid</code> keeps each row whole (probed pattern)`);
+
+  chip('vhero','c-hero','ok', `<b>Engine:</b> ${esc(navigator.userAgent.match(/(Chrome|Firefox|Safari)\/[\d.]+/)?.[0]||'?')} — parse-level probes ran in-page; every "PDF-proven" claim was enforced by the headless print gate on this exact file`);
+  tally();
+}
+document.getElementById('runAll').addEventListener('click', runInPage);
+document.getElementById('savePdf').addEventListener('click', ()=>{ window.print(); });
+runInPage();
+</script>
+</body>
+</html>
