@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Child A — CSP-enforced probes</title>
+<style>
+  body { font: 13px/1.5 ui-monospace, Menlo, monospace; padding: 12px 14px; background: #fff; color: #333; }
+  .tag { display: inline-block; font: 700 10px/1 system-ui; padding: 3px 8px; border-radius: 999px; background: #fbe9e7; color: #b3352c; }
+  .r { margin-top: 4px; white-space: pre-wrap; word-break: break-word; color: #555; }
+</style>
+</head>
+<body>
+<div class="tag">require-trusted-types-for 'script' — enforced via response header</div>
+<div class="r" id="out">running…</div>
+<script>
+(() => {
+'use strict';
+/* Build DOM with sink-safe APIs only (textContent/createElement) — the page
+   itself must not violate its own CSP. */
+const out = document.getElementById('out');
+const violations = [];
+document.addEventListener('securitypolicyviolation', e => {
+  violations.push({
+    effectiveDirective: e.effectiveDirective, violatedDirective: e.violatedDirective,
+    disposition: e.disposition, sample: e.sample, originalPolicy: (e.originalPolicy || '').slice(0, 80)
+  });
+});
+const T = s => String(s && s.name ? s.name + ': ' + String(s.message || '').slice(0, 70) : s);
+const R = {};
+let enforced = null;
+const mk = (name, o) => trustedTypes.createPolicy(name, o);
+
+function probeEnforced() {
+  try { const d = document.createElement('div'); d.innerHTML = '<i>x</i>'; return false; }
+  catch (e) { return /Trusted|trusted/i.test(e.message) || e instanceof TypeError; }
+}
+
+function run() {
+  const log = [];
+  enforced = probeEnforced();
+  if (!enforced) {
+    parent.postMessage({ kind: 'tt-child-A', enforced: false, results: { rawInnerHTML: 'no-throw (unenforced host)' }, violations }, '*');
+    out.textContent = 'NOT enforced — this host did not send the CSP header (GitHub Pages mirror behavior). All chips degrade to info.';
+    return;
+  }
+  const p = mk('probeA', { createHTML: s => s, createScript: s => s, createScriptURL: s => s });
+
+  /* raw sinks — expect TypeError */
+  try { const d = document.createElement('div'); d.innerHTML = '<i>x</i>'; R.rawInnerHTML = 'NO THROW (enforcement failed?)'; }
+  catch (e) { R.rawInnerHTML = T(e); }
+  try { eval('6*7'); R.rawEval = 'NO THROW'; } catch (e) { R.rawEval = T(e); }
+  try { Function('return 6*7')(); R.rawFunction = 'NO THROW'; } catch (e) { R.rawFunction = T(e); }
+  try { setTimeout('1', 0); R.rawTimeout = 'NO THROW'; } catch (e) { R.rawTimeout = T(e); }
+  try { const s = document.createElement('script'); s.src = 'data:text/javascript,'; R.rawScriptSrc = 'NO THROW'; }
+  catch (e) { R.rawScriptSrc = T(e); }
+  try { const s = document.createElement('script'); s.text = '1'; R.rawScriptText = 'NO THROW'; }
+  catch (e) { R.rawScriptText = T(e); }
+  try { const f = document.createElement('iframe'); f.srcdoc = '<p>d</p>'; R.rawSrcdoc = 'NO THROW'; }
+  catch (e) { R.rawSrcdoc = T(e); }
+  try { const r = document.createRange(); r.selectNode(document.body); r.createContextualFragment('<b>c</b>'); R.rawFragment = 'NO THROW'; }
+  catch (e) { R.rawFragment = T(e); }
+  /* NOT-a-sink candidates */
+  try { const dp = new DOMParser().parseFromString('<b>p</b>', 'text/html'); R.rawDOMParser = 'no-throw, parsed (NOT a TT sink)'; }
+  catch (e) { R.rawDOMParser = T(e); }
+
+  /* typed values pass */
+  try { const d = document.createElement('div'); d.innerHTML = p.createHTML('<b>t</b>'); R.trustedInnerHTML = d.firstChild ? 'passed ✓' : 'silent empty'; }
+  catch (e) { R.trustedInnerHTML = T(e); }
+  try { R.evalTrusted = eval(p.createScript('6*7')); } catch (e) { R.evalTrusted = T(e); }
+
+  /* Sanitizer interplay (engine-dependent) */
+  if (typeof Sanitizer === 'function') {
+    try {
+      const sn = new Sanitizer();
+      const th = sn.sanitize('<b>s</b><script>1<\/script>');
+      const d = document.createElement('div'); d.innerHTML = th;
+      R.sanitizeCall = 'sanitize() returned ' + (th && th.constructor ? th.constructor.name : typeof th);
+    } catch (e) { R.sanitizeCall = T(e); }
+    try { const d = document.createElement('div'); d.setHTML('<b>x</b><script>1<\/script>', {}); R.setHTMLRaw = d.firstChild ? 'no-throw, sanitized ✓ (not a TT sink)' : 'no-throw, empty'; }
+    catch (e) { R.setHTMLRaw = T(e); }
+    try { const d = document.createElement('div'); d.setHTMLUnsafe('<b>x</b>'); R.setHTMLUnsafeRaw = 'no-throw (NOT gated here)'; }
+    catch (e) { R.setHTMLUnsafeRaw = T(e); }
+  } else {
+    R.sanitizeCall = 'Sanitizer absent on this engine';
+    R.setHTMLRaw = 'Sanitizer absent on this engine';
+    R.setHTMLUnsafeRaw = 'Sanitizer absent on this engine';
+  }
+
+  /* give violation events a beat, then report */
+  setTimeout(() => {
+    parent.postMessage({ kind: 'tt-child-A', enforced: true, results: R, violations }, '*');
+    out.textContent = 'enforced ✓ — ' + Object.keys(R).length + ' probes done, ' + violations.length + ' violation events. Results posted to parent.';
+  }, 250);
+}
+window.addEventListener('load', run);
+})();
+</script>
+</body>
+</html>

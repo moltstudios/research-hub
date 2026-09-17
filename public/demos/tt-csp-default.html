@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Child B — default policy + name allowlist</title>
+<style>
+  body { font: 13px/1.5 ui-monospace, Menlo, monospace; padding: 12px 14px; background: #fff; color: #333; }
+  .tag { display: inline-block; font: 700 10px/1 system-ui; padding: 3px 8px; border-radius: 999px; background: #e9f1f8; color: #2c5f8a; }
+  .r { margin-top: 4px; white-space: pre-wrap; word-break: break-word; color: #555; }
+</style>
+</head>
+<body>
+<div class="tag">require-trusted-types-for 'script'; trusted-types tt-demo default</div>
+<div class="r" id="out">running…</div>
+<script>
+(() => {
+'use strict';
+const out = document.getElementById('out');
+const violations = [];
+document.addEventListener('securitypolicyviolation', e => {
+  violations.push({ effectiveDirective: e.effectiveDirective, disposition: e.disposition, sample: e.sample });
+});
+const T = s => String(s && s.name ? s.name + ': ' + String(s.message || '').slice(0, 70) : s);
+const R = {};
+
+function enforcedNow() {
+  try { const d = document.createElement('div'); d.innerHTML = '<i>x</i>'; return false; }
+  catch (e) { return e instanceof TypeError; }
+}
+
+function run() {
+  if (!enforcedNow()) {
+    parent.postMessage({ kind: 'tt-child-B', enforced: false, results: { rawBeforeDefault: 'no-throw (unenforced host)' }, violations }, '*');
+    out.textContent = 'NOT enforced — host sent no CSP header. Chips degrade to info.';
+    return;
+  }
+  /* 1. raw sink BEFORE any default policy → must throw */
+  try { const d = document.createElement('div'); d.innerHTML = '<b>lead</b>'; R.rawBeforeDefault = 'NO THROW (no default policy yet — should have thrown)'; }
+  catch (e) { R.rawBeforeDefault = T(e); }
+
+  /* 2. define the default policy (name allowed by CSP allowlist) */
+  let intercepted = null;
+  const def = trustedTypes.createPolicy('default', {
+    createHTML: s => { intercepted = s; return s; }
+  });
+  /* 3. raw sink AFTER default policy → engine routes through default.createHTML */
+  try {
+    const d = document.createElement('div');
+    d.innerHTML = '<b>lead</b>';
+    R.interceptedInput = intercepted === '<b>lead</b>' ? intercepted : ('not intercepted (got ' + JSON.stringify(intercepted) + ')');
+  } catch (e) { R.interceptedInput = T(e); }
+
+  /* 4bis. allowlist FIRST: create tt-demo once (in allowlist → must succeed).
+     Its factory REDACTS the secret payload — same policy serves the redaction probe. */
+  let demo = null;
+  try {
+    demo = trustedTypes.createPolicy('tt-demo', { createHTML: s => String(s).includes('secret') ? '' : s });
+    R.allowedName = 'created ✓ (tt-demo in allowlist)';
+  } catch (e) { R.allowedName = T(e); }
+
+  /* 5. redaction: policy factory returning '' silently empties the sink */
+  try {
+    const d2 = document.createElement('div');
+    d2.innerHTML = demo ? demo.createHTML('<b>secret</b>') : '<b>?</b>';
+    R.redactedRender = d2.childNodes.length === 0 ? '' : ('not empty: ' + d2.innerHTML);
+  } catch (e) { R.redactedRender = T(e); }
+
+  /* 6. name allowlist: names NOT in the list must throw */
+  try { trustedTypes.createPolicy('evil', { createHTML: s => s }); R.evilName = 'CREATED (allowlist ignored!)'; }
+  catch (e) { R.evilName = T(e); }
+
+  /* 7. duplicate name UNDER a trusted-types directive (no allow-duplicates):
+     the enforced twin of the main page's §02 duplicate probe — this MUST throw,
+     while unenforced hosts allow same-name policies freely. */
+  try { trustedTypes.createPolicy('tt-demo', { createHTML: s => s }); R.dupName = 'CREATED (duplicates allowed?!)'; }
+  catch (e) { R.dupName = T(e); }
+
+  setTimeout(() => {
+    parent.postMessage({ kind: 'tt-child-B', enforced: true, results: R, violations }, '*');
+    out.textContent = 'default policy + allowlist probes done — ' + violations.length + ' violation events.';
+  }, 250);
+}
+window.addEventListener('load', run);
+})();
+</script>
+</body>
+</html>

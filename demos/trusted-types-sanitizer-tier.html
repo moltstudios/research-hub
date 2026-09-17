@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trusted Types + Sanitizer API — The DOM-XSS Defense Tier</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #faf9f7; --card: #ffffff; --ink: #1a1a1e; --muted: #6b6b76;
+    --accent: #b8425a; --accent-soft: #f7e8eb; --ok: #2e7d4f; --ok-bg: #e8f4ec;
+    --warn: #9a6b0f; --warn-bg: #fbf3e2; --fail: #b3352c; --fail-bg: #fbe9e7;
+    --info: #2c5f8a; --info-bg: #e9f1f8; --line: #e6e4df; --code-bg: #f2f1ed;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; overflow-x: hidden; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 20px 90px; }
+  header.hero { padding: 54px 0 34px; border-bottom: 1px solid var(--line); margin-bottom: 40px; position: relative; overflow: hidden;}
+  .orb { position: absolute; border-radius: 50%; filter: blur(70px); opacity: .35; pointer-events: none; }
+  .orb.a { width: 340px; height: 340px; background: #d98aa0; top: -160px; right: -80px; }
+  .orb.b { width: 260px; height: 260px; background: #8ab6d9; bottom: -180px; left: -60px; }
+  .kicker { font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  h1 { font-size: clamp(28px, 4.6vw, 42px); line-height: 1.12; letter-spacing: -.02em; margin: 10px 0 14px; max-width: 640px; }
+  .sub { color: var(--muted); max-width: 680px; font-size: 15.5px; }
+  .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+  .badge { font-size: 12px; font-weight: 600; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--muted); }
+  .badge.on { border-color: var(--ok); color: var(--ok); background: var(--ok-bg); }
+  .badge.na { border-color: var(--fail); color: var(--fail); background: var(--fail-bg); }
+  section { margin: 52px 0; }
+  .sec-num { font-size: 12px; color: var(--accent); font-weight: 700; letter-spacing: .14em; }
+  h2 { font-size: 24px; letter-spacing: -.01em; margin: 6px 0 10px; }
+  .lede { color: var(--muted); max-width: 730px; margin-bottom: 18px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px; margin: 14px 0; }
+  .card h3 { font-size: 15.5px; margin-bottom: 8px; }
+  pre, code { font-family: var(--mono); font-size: 12.8px; }
+  code { background: var(--code-bg); padding: 2px 6px; border-radius: 5px; }
+  pre { background: var(--code-bg); border-radius: 10px; padding: 14px 16px; overflow-x: auto; line-height: 1.55; margin: 10px 0; max-width: 100%; }
+  pre code { background: none; padding: 0; }
+  .chips { display: grid; gap: 8px; margin-top: 12px; }
+  .chip { font-size: 13px; padding: 9px 13px; border-radius: 9px; border: 1px solid var(--line); background: var(--card); display: flex; gap: 9px; align-items: baseline; overflow-wrap: anywhere; }
+  .chip .dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; background: #c9c7c1; align-self: center; }
+  .chip.pending { opacity: .75; }
+  .chip.ok { background: var(--ok-bg); border-color: #cfe5d8; } .chip.ok .dot { background: var(--ok); }
+  .chip.warn { background: var(--warn-bg); border-color: #eddfbc; } .chip.warn .dot { background: var(--warn); }
+  .chip.fail { background: var(--fail-bg); border-color: #f0cdc8; } .chip.fail .dot { background: var(--fail); }
+  .chip.info { background: var(--info-bg); border-color: #cddeec; } .chip.info .dot { background: var(--info); }
+  .chip .val { font-family: var(--mono); font-size: 11.5px; color: var(--muted); word-break: break-word; }
+  .lab { border: 1px dashed #d8d5cf; border-radius: 12px; padding: 16px 18px; margin-top: 14px; background: #fdfcfa; }
+  .lab-out { margin-top: 12px; font-family: var(--mono); font-size: 12.5px; color: var(--muted); min-height: 18px; white-space: pre-wrap; word-break: break-word; }
+  .target { border: 1px solid var(--line); border-radius: 9px; padding: 10px 13px; margin-top: 10px; background: #fff; min-height: 40px; font-size: 14px; overflow-wrap: anywhere; }
+  .target :where(svg, img, video) { max-width: 100%; height: auto; }
+  button { font: 600 13px/1 -apple-system, system-ui, sans-serif; padding: 9px 15px; border-radius: 9px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; margin: 4px 6px 4px 0; }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { opacity: .88; color: #fff; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; margin-top: 10px; }
+  th, td { border: 1px solid var(--line); padding: 8px 11px; text-align: left; vertical-align: top; }
+  th { background: var(--code-bg); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  td code { font-size: 11.5px; }
+  .tscroll { overflow-x: auto; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+  .pill.ok { background: var(--ok-bg); color: var(--ok); } .pill.no { background: var(--fail-bg); color: var(--fail); } .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  iframe.child { width: 100%; height: 120px; border: 1px solid var(--line); border-radius: 10px; background: #fff; margin-top: 12px; }
+  .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 760px) { .duo { grid-template-columns: 1fr; } }
+  .note { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+  .viollist { font-family: var(--mono); font-size: 11.5px; color: var(--fail); margin-top: 6px; white-space: pre-wrap; max-height: 110px; overflow-y: auto; }
+  footer { margin-top: 70px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hero">
+  <div class="orb a"></div><div class="orb b"></div>
+  <div class="kicker">Security Tier · Live-Probed · Chromium 153</div>
+  <h1>Trusted Types + Sanitizer API — the DOM-XSS defense tier</h1>
+  <p class="sub">Every client app renders strings it doesn't fully trust — CMS copy, lead forms, mission logs. The DOM-XSS layer decides what happens at the sink. Trusted Types gates every injection sink behind typed values + CSP enforcement; the Sanitizer API parses-and-filters in the engine. Both just went cross-engine — this page probes what actually ships (and where the docs have drifted).</p>
+  <div class="badges" id="badges">
+    <span class="badge" data-b="tt">trustedTypes</span>
+    <span class="badge" data-b="ttc">TrustedHTML ctor</span>
+    <span class="badge" data-b="violation">SecurityPolicyViolationEvent</span>
+    <span class="badge" data-b="policynames">getPolicyNames()</span>
+    <span class="badge" data-b="sanitizer">Sanitizer</span>
+    <span class="badge" data-b="sethtml">setHTML()</span>
+  </div>
+</header>
+
+<!-- ============ 01 ============ -->
+<section id="s1">
+  <div class="sec-num">§01</div>
+  <h2>The threat, executed live</h2>
+  <p class="lede">The classic DOM-XSS: an untrusted string reaches <code>innerHTML</code>, the browser parses it, and an <code>onerror</code> handler fires with zero network round-trips. No CSP enforcement is present on this page — advisory mode, exactly like a default deploy.</p>
+  <div class="card">
+    <h3>Payload → sink → execution</h3>
+    <pre><code>const PAYLOAD = '&lt;img src="data:image/png;base64,xx" onerror="window.__xssHit=(window.__xssHit||0)+1"&gt;&lt;b&gt;legit&lt;/b&gt;';
+sink.innerHTML = PAYLOAD;   // parses markup. decode fails → onerror runs.</code></pre>
+    <div class="lab">
+      <button class="primary" id="b01">Inject payload (advisory mode)</button>
+      <div class="target" id="t01">— target element —</div>
+      <div class="lab-out" id="o01"></div>
+    </div>
+    <div class="chips">
+      <div class="chip pending" id="c01"><span class="dot"></span><span>onerror executed</span></div>
+      <div class="chip pending" id="c01b"><span class="dot"></span><span>benign &lt;b&gt; survives alongside</span></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Advisory mode: policies without CSP change nothing</h3>
+    <p class="note">You can create policies all day — without <code>Content-Security-Policy: require-trusted-types-for 'script'</code> every sink still accepts raw strings.</p>
+    <div class="chips">
+      <div class="chip pending" id="c01c"><span class="dot"></span><span>raw <code>innerHTML</code> works with policies defined but no CSP</span></div>
+      <div class="chip pending" id="c01d"><span class="dot"></span><span>raw <code>eval('6*7')</code> = <span class="val" id="v01d"></span> · raw string <code>setTimeout</code> runs</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 02 ============ -->
+<section id="s2">
+  <div class="sec-num">§02</div>
+  <h2>Policy anatomy — the factory global &amp; the three factories</h2>
+  <p class="lede">The #1 copy-paste trap, live: the factory global is <b>lowercase</b> <code>trustedTypes</code> (a TrustedTypePolicyFactory). Capital-T <code>TrustedTypes</code> does not exist — every tutorial that writes it ships broken. Policies are the only door to TrustedHTML / TrustedScript / TrustedScriptURL; the factories are YOUR code.</p>
+  <div class="card">
+    <pre><code>const esc = trustedTypes.createPolicy('demo-esc', {
+  createHTML: s =&gt; String(s).replace(/[&lt;&gt;&amp;"']/g, c =&gt; ({'&amp;':'&amp;amp;','&lt;':'&amp;lt;','&gt;':'&amp;gt;','"':'&amp;quot;',"'":'&#39;'}[c]))
+});
+const th = esc.createHTML('&lt;b&gt;hi&lt;/b&gt;');   // TrustedHTML — opaque object, string inside</code></pre>
+    <div class="chips">
+      <div class="chip pending" id="c02z"><span class="dot"></span><span><code>typeof TrustedTypes</code> = <span class="val" id="v02z"></span> · <code>typeof trustedTypes</code> = <span class="val" id="v02za"></span> — lowercase is the global (classes stay capital)</span></div>
+      <div class="chip pending" id="c02a"><span class="dot"></span><span><code>typeof th</code> = <span class="val" id="v02a"></span> · <code>th instanceof TrustedHTML</code> = <span class="val" id="v02b"></span></span></div>
+      <div class="chip pending" id="c02c"><span class="dot"></span><span><code>String(th)</code> = <span class="val" id="v02c"></span> (coercible) · template <code>`${th}`</code> = <span class="val" id="v02d"></span></span></div>
+      <div class="chip pending" id="c02e"><span class="dot"></span><span><code>JSON.stringify(th)</code> = <span class="val" id="v02e"></span></span></div>
+      <div class="chip pending" id="c02f"><span class="dot"></span><span><code>new TrustedHTML()</code> direct construction = <span class="val" id="v02f"></span> (opaque classes — the factory is the only door)</span></div>
+      <div class="chip pending" id="c02m"><span class="dot"></span><span>factory freebies: <code>emptyHTML</code> instanceof TrustedHTML = <span class="val" id="v02m"></span> · <code>emptyScript</code> = <span class="val" id="v02n"></span> · <code>defaultPolicy</code> (no default defined) = <span class="val" id="v02o"></span></span></div>
+      <div class="chip pending" id="c02g"><span class="dot"></span><span>all three factories: <code>createScript('6*7')</code> → <span class="val" id="v02g"></span> · <code>createScriptURL(...)</code> → <span class="val" id="v02h"></span></span></div>
+      <div class="chip pending" id="c02i"><span class="dot"></span><span>policy exposes only the factories you passed: missing createScript → <span class="val" id="v02i"></span></span></div>
+      <div class="chip pending" id="c02j"><span class="dot"></span><span>duplicate policy name — allowed UNENFORCED (rejection needs a trusted-types CSP directive; enforced twin in c05d) <span class="val" id="v02j"></span> · empty-string name <span class="val" id="v02k"></span></span></div>
+      <div class="chip pending" id="c02l"><span class="dot"></span><span>policy named <code>default</code> creatable without CSP: <span class="val" id="v02l"></span> (auto-apply only under enforcement — §05)</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 03 ============ -->
+<section id="s3">
+  <div class="sec-num">§03</div>
+  <h2>The sink matrix, unenforced — dual-type inputs</h2>
+  <p class="lede">Before enforcement, every sink accepts <b>both</b> raw strings and typed values. That dual acceptance is the migration path: ship policies first, flip CSP later. document.write is exercised inside a nested iframe so this page survives.</p>
+  <div class="card">
+    <div class="chips">
+      <div class="chip pending" id="c03a"><span class="dot"></span><span><code>innerHTML</code> accepts raw <span class="pill" id="v03a">…</span> and TrustedHTML <span class="pill" id="v03b">…</span></span></div>
+      <div class="chip pending" id="c03c"><span class="dot"></span><span><code>outerHTML</code> · <code>insertAdjacentHTML</code> · <code>script.src</code> all accept Trusted types: <span class="val" id="v03c"></span></span></div>
+      <div class="chip pending" id="c03d"><span class="dot"></span><span><code>document.write(trustedHTML)</code> inside iframe: <span class="val" id="v03d"></span></span></div>
+      <div class="chip pending" id="c03e"><span class="dot"></span><span>one policy per realm: parent's TrustedHTML used in same-origin iframe = <span class="val" id="v03e"></span></span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 04 ============ -->
+<section id="s4">
+  <div class="sec-num">§04</div>
+  <h2>Enforcement lab A — real CSP headers, the throw matrix</h2>
+  <p class="lede">The iframe below is served with <code>Content-Security-Policy: require-trusted-types-for 'script'</code> — a genuine response header (Vercel config). Under enforcement every raw-string sink <b>throws TypeError</b> before the DOM is touched, a <code>securitypolicyviolation</code> event fires, and the engine logs a console error <b>even when you catch the throw</b>. This is the contract that turns XSS from a runtime exploit into a crash you can see in CI.</p>
+  <div class="card">
+    <div class="lab">
+      <iframe class="child" id="frA" title="CSP-enforced child"></iframe>
+      <div class="viollist" id="violA"></div>
+    </div>
+    <div class="chips">
+      <div class="chip pending" id="c04a"><span class="dot"></span><span>child A enforcement active: <span class="val" id="v04a"></span></span></div>
+      <div class="chip pending" id="c04b"><span class="dot"></span><span>raw <code>innerHTML</code> → <span class="val" id="v04b"></span></span></div>
+      <div class="chip pending" id="c04c"><span class="dot"></span><span>raw <code>eval</code> / <code>Function</code> / string <code>setTimeout</code> → <span class="val" id="v04c"></span></span></div>
+      <div class="chip pending" id="c04d"><span class="dot"></span><span><code>script.src</code> raw → <span class="val" id="v04d"></span> · <code>script.text</code> raw → <span class="val" id="v04e"></span></span></div>
+      <div class="chip pending" id="c04f"><span class="dot"></span><span><code>iframe.srcdoc</code> raw → <span class="val" id="v04f"></span> · <code>range.createContextualFragment</code> raw → <span class="val" id="v04g"></span></span></div>
+      <div class="chip pending" id="c04h"><span class="dot"></span><span>NOT sinks (spec-ambiguous, probed): <code>DOMParser.parseFromString</code> raw → <span class="val" id="v04h"></span></span></div>
+      <div class="chip pending" id="c04i"><span class="dot"></span><span>policy values pass under enforcement: <code>innerHTML(trusted)</code> <span class="val" id="v04i"></span> · <code>eval(trustedScript)</code> = <span class="val" id="v04j"></span></span></div>
+      <div class="chip pending" id="c04k"><span class="dot"></span><span><code>securitypolicyviolation</code> events: <span class="val" id="v04k"></span></span></div>
+    </div>
+    <p class="note">If the host can't send headers (e.g. the GitHub Pages mirror), the child detects non-enforcement and these chips report info — enforcement needs the header (or the meta tag, §06).</p>
+  </div>
+</section>
+
+<!-- ============ 05 ============ -->
+<section id="s5">
+  <div class="sec-num">§05</div>
+  <h2>Enforcement lab B — the default policy &amp; the name allowlist</h2>
+  <p class="lede">Child B carries <code>require-trusted-types-for 'script'; trusted-types tt-demo default</code>. Two ideas at once: the <b>default policy</b> auto-wraps raw strings (the engine calls <code>default.createHTML(s)</code> for you — audit/redact without touching call sites), and the <b>name allowlist</b> makes unknown policy names themselves throw.</p>
+  <div class="card">
+    <div class="lab">
+      <iframe class="child" id="frB" title="Default-policy child"></iframe>
+      <div class="viollist" id="violB"></div>
+    </div>
+    <div class="chips">
+      <div class="chip pending" id="c05a"><span class="dot"></span><span>before default policy exists: raw sink still <span class="val" id="v05a"></span></span></div>
+      <div class="chip pending" id="c05b"><span class="dot"></span><span>after <code>createPolicy('default', …)</code>: raw <code>innerHTML</code> passes THROUGH the default policy — intercepted input = <span class="val" id="v05b"></span></span></div>
+      <div class="chip pending" id="c05c"><span class="dot"></span><span>policy factory returning <code>''</code> = silent redaction: sink rendered <span class="val" id="v05c"></span></span></div>
+      <div class="chip pending" id="c05d"><span class="dot"></span><span>name allowlist: <code>createPolicy('tt-demo')</code> <span class="val" id="v05d"></span> · <code>createPolicy('evil')</code> <span class="val" id="v05e"></span> · duplicate 'tt-demo' under enforcement <span class="val" id="v05e2"></span></span></div>
+      <div class="chip pending" id="c05f"><span class="dot"></span><span>violation events on child B: <span class="val" id="v05f"></span></span></div>
+    </div>
+    <p class="note">Danger documented in-spec: a default policy that echoes its input unescaped re-opens the hole while silencing the crashes — default policy = audit hook, not a sanitizer.</p>
+  </div>
+</section>
+
+<!-- ============ 06 ============ -->
+<section id="s6">
+  <div class="sec-num">§06</div>
+  <h2>Meta-CSP child C — the delivery wall that isn't</h2>
+  <p class="lede">Conventional wisdom: <code>require-trusted-types-for</code> is header-only, like sandbox and frame-ancestors. <b>Live-falsified:</b> child C declares the directive via <code>&lt;meta http-equiv="Content-Security-Policy"&gt;</code> with no response header — and the raw sink <b>still throws</b>. Meta delivery works on this engine. (Flip side: if an injection can write a meta tag, it can also ship policy on your page — but it could equally strip it, so don't lean on meta as your only layer.)</p>
+  <div class="card">
+    <div class="lab">
+      <iframe class="child" id="frC" title="Meta-CSP child"></iframe>
+    </div>
+    <div class="chips">
+      <div class="chip pending" id="c06a"><span class="dot"></span><span>meta-delivered <code>require-trusted-types-for</code>: raw <code>innerHTML</code> = <span class="val" id="v06a"></span> → directive <b>honored</b> in meta on this engine</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 07 ============ -->
+<section id="s7">
+  <div class="sec-num">§07</div>
+  <h2>Sanitizer API — the builder shape that actually shipped</h2>
+  <p class="lede">MDN documents <code>sanitize()</code> / <code>sanitizeFor()</code> / constructor config objects. Chromium 146+ shipped <b>none of that</b>: the Sanitizer is a <b>builder</b> — <code>new Sanitizer()</code> starts from a safe baseline, then <code>allowElement</code>, <code>removeElement</code>, <code>replaceElementWithChildren</code>, <code>allowAttribute</code>, <code>removeAttribute</code>, <code>setComments</code>, <code>setDataAttributes</code>, <code>get()</code> — consumed via <code>element.setHTML(html, { sanitizer })</code>. Constructor config keys are <b>silently ignored</b>.</p>
+  <div class="card">
+    <h3>Default battery — same payload, three doors</h3>
+    <div class="lab">
+      <button class="primary" id="b07">Run payload matrix</button>
+      <div class="duo">
+        <div>
+          <div class="note"><code>setHTML(payload)</code> — default sanitizer:</div>
+          <div class="target" id="t07a">—</div>
+        </div>
+        <div>
+          <div class="note"><code>setHTMLUnsafe(payload)</code> — no sanitizer:</div>
+          <div class="target" id="t07b">—</div>
+        </div>
+      </div>
+      <div class="lab-out" id="o07"></div>
+    </div>
+    <div class="chips">
+      <div class="chip pending" id="c07a"><span class="dot"></span><span>surface: <code>Sanitizer</code> <span class="val" id="v07a"></span> · <code>setHTML</code> <span class="val" id="v07b"></span> · <code>sanitize()/sanitizeFor()</code> <span class="val" id="v07c"></span> · prototype: <span class="val" id="v07c2"></span></span></div>
+      <div class="chip pending" id="c07d"><span class="dot"></span><span><code>setHTML</code> default: hostile <code>&lt;img onerror&gt;</code> <span class="val" id="v07d"></span> · <code>&lt;script&gt;</code> <span class="val" id="v07e"></span> · <code>&lt;b&gt;</code> kept <span class="val" id="v07f"></span> · benign img (no handler) <span class="val" id="v07g2"></span></span></div>
+      <div class="chip pending" id="c07g"><span class="dot"></span><span><code>setHTMLUnsafe</code> keeps everything: <code>img[onerror]</code> present = <span class="val" id="v07g"></span> (the "Unsafe" = trusts YOU, not the input)</span></div>
+      <div class="chip pending" id="c07h"><span class="dot"></span><span>constructor config keys honored? <code>new Sanitizer({blockElements:['section']}).get()</code> → <span class="val" id="v07h"></span> → <b>silently ignored</b> (the migration trap)</span></div>
+      <div class="chip pending" id="c07m"><span class="dot"></span><span>arg shape: <code>setHTML(x, {sanitizer:s})</code> <span class="val" id="v07m"></span> · bare <code>setHTML(x, s)</code> <span class="val" id="v07n"></span> (silently ignored → default runs)</span></div>
+      <div class="chip pending" id="c07j"><span class="dot"></span><span>builder: <code>replaceElementWithChildren({name:'section'})</code> → tag gone, children <span class="val" id="v07j"></span> · <code>removeElement</code> → <span class="val" id="v07k"></span></span></div>
+      <div class="chip pending" id="c07l"><span class="dot"></span><span>builder extension: <code>&lt;my-el&gt;</code> default = <span class="val" id="v07l"></span> · after <code>allowElement({name:'my-el'})</code> = <span class="val" id="v07l2"></span></span></div>
+      <div class="chip pending" id="c07p"><span class="dot"></span><span><code>get()</code> resolved config: <span class="val" id="v07p"></span></span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 08 ============ -->
+<section id="s8">
+  <div class="sec-num">§08</div>
+  <h2>The interplay — Sanitizer for content, Trusted Types for sinks</h2>
+  <p class="lede">MDN's pairing story — <code>sanitize()</code> returns TrustedHTML that sails through enforced sinks — <b>cannot happen on this engine</b>: there is no <code>sanitize()</code>. The real pairing: <code>setHTML()</code> is its own safe door (not a TT sink), and TT policies remain the only producers of TrustedHTML for classic sinks. Probed on child A (enforced).</p>
+  <div class="card">
+    <div class="chips">
+      <div class="chip pending" id="c08a"><span class="dot"></span><span>child A: <code>sanitize()</code> call → <span class="val" id="v08a"></span> (MDN shape absent — the falsification, live)</span></div>
+      <div class="chip pending" id="c08b"><span class="dot"></span><span>child A: <code>setHTML(raw)</code> under enforcement = <span class="val" id="v08b"></span> (sanitizing API, not a TT sink)</span></div>
+      <div class="chip pending" id="c08c"><span class="dot"></span><span>child A: <code>setHTMLUnsafe(raw)</code> under enforcement = <span class="val" id="v08c"></span></span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 09 ============ -->
+<section id="s9">
+  <div class="sec-num">§09</div>
+  <h2>Capstone — OpenDrones mission-log renderer</h2>
+  <p class="lede">Mission exports arrive as HTML-flavored log bundles (tables, bold status, and — from a compromised ground station — whatever else). Render them through a purpose-built sanitizer: telemetry structure survives, everything hostile is filtered by the engine, not by regex.</p>
+  <div class="card">
+    <div class="lab">
+      <button class="primary" id="b09">Render mission log</button>
+      <div class="note" style="margin-top:10px">Raw payload (never rendered unsanitized):</div>
+      <pre><code id="p09"></code></pre>
+      <div class="note">Sanitized render — baseline + removeElement(iframe), replaceElementWithChildren(script):</div>
+      <div class="target" id="t09">—</div>
+      <div class="lab-out" id="o09"></div>
+    </div>
+    <div class="chips">
+      <div class="chip pending" id="c09a"><span class="dot"></span><span>telemetry table survives: <span class="val" id="v09a"></span> rows</span></div>
+      <div class="chip pending" id="c09b"><span class="dot"></span><span>hostile nodes handled: <span class="val" id="v09b"></span></span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 10 ============ -->
+<section id="s10">
+  <div class="sec-num">§10</div>
+  <h2>Capstone — Molt CMS lead-inbox, block vs drop</h2>
+  <p class="lede">A client's CMS pastes rich text from everywhere. <code>replaceElementWithChildren</code> removes the tag but keeps the children (moderation-friendly); <code>removeElement</code> removes the subtree (evidence destruction). Same input, both semantics, live.</p>
+  <div class="card">
+    <div class="lab">
+      <button id="b10a">block 'div.promo' (replace with children)</button>
+      <button id="b10b">drop 'div.promo' (remove element)</button>
+      <div class="duo">
+        <div><div class="note">replace-with-children result:</div><div class="target" id="t10a">—</div></div>
+        <div><div class="note">remove-element result:</div><div class="target" id="t10b">—</div></div>
+      </div>
+      <div class="lab-out" id="o10"></div>
+    </div>
+    <div class="chips">
+      <div class="chip pending" id="c10a"><span class="dot"></span><span>replace keeps children: <span class="val" id="v10a"></span> · remove drops subtree: <span class="val" id="v10b"></span></span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section id="s11">
+  <div class="sec-num">§11</div>
+  <h2>Decision table — which door, which engine</h2>
+  <div class="card">
+    <div class="tscroll">
+    <table>
+      <tr><th>Need</th><th>Tool</th><th>Engines (Sep 2026)</th><th>Notes</th></tr>
+      <tr><td>Render untrusted text, no markup</td><td><code>textContent</code></td><td>All, always</td><td>Zero parsing. The default answer.</td></tr>
+      <tr><td>Render untrusted rich text</td><td><code>setHTML(s, {sanitizer})</code></td><td>Ch/Edge 146+, FF 148+ · Safari ✗</td><td>Builder-shape on Chromium 153; FF shape unverified here — feature-detect, don't assume</td></tr>
+      <tr><td>Allow/remove specific tags</td><td>builder: <code>allowElement / removeElement / replaceElementWithChildren</code></td><td>Chromium verified</td><td>Constructor config keys are ignored (§07)</td></tr>
+      <tr><td>Lock every injection point</td><td>CSP <code>require-trusted-types-for 'script'</code></td><td>Ch 83+, SF 26+, FF 148+ <b>newly</b></td><td>Header OR meta (§06); raw sinks throw TypeError + console error even if caught</td></tr>
+      <tr><td>Audit/legacy call sites</td><td>default policy + allowlist</td><td>Same as above</td><td>Auto-wrap, log, redact — never echo raw</td></tr>
+      <tr><td>Safari today</td><td>TT ✅ policies+enforce · Sanitizer ✗</td><td>SF 26+</td><td>TT default policy as sanitizer stand-in; pre-26 → textContent</td></tr>
+      <tr><td>Server-rendered HTML</td><td>Server-side sanitizing</td><td>—</td><td>TT gates the DOM side only</td></tr>
+    </table>
+    </div>
+    <p class="note">Rollout ladder: 1) ship policies + typed values (dual-accept, §03) → 2) add <code>Content-Security-Policy-Report-Only</code> + report endpoint → 3) flip to enforce. Raw-string failures become TypeErrors in CI, not exploits in prod.</p>
+  </div>
+</section>
+
+<footer>
+  Trusted Types (W3C WebAppSec) · Sanitizer API (WHATWG HTML Sanitization proposal) · live-probed September 2026 on Chromium 153 · enforcement children served with real CSP response headers. Demo: <code>demos/trusted-types-sanitizer-tier.html</code>
+</footer>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const val = (id, text) => { const el = $(id); if (el) el.textContent = text; };
+const mark = (id, state) => { const el = $(id); if (!el) return; el.classList.remove('pending','ok','warn','fail','info'); el.classList.add(state); };
+const set = mark;
+const OK = id => mark(id, 'ok'), WARN = id => mark(id, 'warn'), FAIL = id => mark(id, 'fail'), INFO = id => mark(id, 'info');
+
+/* ---------- badges ---------- */
+const hasTT = typeof trustedTypes !== 'undefined';
+const badges = {
+  tt: hasTT, ttc: typeof TrustedHTML !== 'undefined',
+  violation: typeof SecurityPolicyViolationEvent !== 'undefined',
+  policynames: hasTT && typeof trustedTypes.getPolicyNames === 'function',
+  sanitizer: typeof Sanitizer !== 'undefined',
+  sethtml: typeof Element !== 'undefined' && typeof Element.prototype.setHTML === 'function'
+};
+document.querySelectorAll('#badges .badge').forEach(b => { const k = b.dataset.b; if (k in badges) b.classList.add(badges[k] ? 'on' : 'na'); });
+
+const PAYLOAD = '<img src="data:image/png;base64,xx" onerror="window.__xssHit=(window.__xssHit||0)+1"><b>legit</b>';
+
+/* ---------- §01 ---------- */
+$('b01').addEventListener('click', () => {
+  window.__xssHit = 0;
+  $('t01').innerHTML = PAYLOAD;
+  const t0 = Date.now();
+  const poll = setInterval(() => {
+    if (window.__xssHit > 0) { clearInterval(poll); OK('c01'); }
+    else if (Date.now() - t0 > 2500) { clearInterval(poll); FAIL('c01'); }
+  }, 60);
+  setTimeout(() => {
+    const b = $('t01').querySelector('b');
+    set('c01b', b && b.textContent === 'legit' ? 'ok' : 'fail');
+  }, 250);
+});
+{
+  const t = document.createElement('div');
+  try { t.innerHTML = '<i>x</i>'; set('c01c', t.firstChild && t.firstChild.nodeName === 'I' ? 'ok' : 'fail'); }
+  catch (e) { FAIL('c01c'); }
+  try { const r = eval('6*7'); setTimeout('window.__stProbe=1', 0); val('v01d', String(r)); set('c01d', r === 42 ? 'ok' : 'fail'); }
+  catch (e) { val('v01d', 'throws'); WARN('c01d'); }
+  setTimeout(() => { if (window.__stProbe !== 1) { const c = $('c01d'); if (c.classList.contains('pending')) FAIL('c01d'); } }, 400);
+}
+
+/* ---------- §02 ---------- */
+{
+  if (!hasTT) {
+    ['c02z','c02a','c02c','c02e','c02f','c02m','c02g','c02i','c02j','c02l'].forEach(INFO);
+  } else {
+    val('v02z', typeof window.TrustedTypes); val('v02za', typeof trustedTypes);
+    set('c02z', typeof window.TrustedTypes === 'undefined' && typeof trustedTypes === 'object' ? 'ok' : 'warn');
+    const esc = trustedTypes.createPolicy('demo-esc', { createHTML: s => s });
+    const th = esc.createHTML('<b>hi</b>');
+    val('v02a', typeof th);
+    val('v02b', String(th instanceof TrustedHTML));
+    val('v02c', String(th)); val('v02d', `${th}`);
+    try { val('v02e', JSON.stringify(th)); } catch (e) { val('v02e', 'throws ' + e.name); }
+    set('c02a', typeof th === 'object' && th instanceof TrustedHTML ? 'ok' : 'fail');
+    set('c02c', String(th) === '<b>hi</b>' ? 'ok' : 'fail');
+    set('c02e', 'ok');
+    try { new TrustedHTML(); val('v02f', 'allowed?!'); FAIL('c02f'); } catch (e) { val('v02f', e.name); OK('c02f'); }
+    try {
+      val('v02m', String(trustedTypes.emptyHTML instanceof TrustedHTML));
+      val('v02n', typeof trustedTypes.emptyScript);
+      val('v02o', String(trustedTypes.defaultPolicy));
+      set('c02m', trustedTypes.emptyHTML instanceof TrustedHTML && trustedTypes.defaultPolicy === null ? 'ok' : 'warn');
+    } catch (e) { val('v02m', e.name); WARN('c02m'); }
+    try {
+      const p3 = trustedTypes.createPolicy('demo-3', { createHTML: s => s, createScript: s => s, createScriptURL: s => s });
+      val('v02g', typeof p3.createScript('6*7'));
+      val('v02h', typeof p3.createScriptURL('https://x/e.js'));
+      set('c02g', (typeof p3.createScript('6*7') === 'object' && typeof p3.createScriptURL('u') === 'object') ? 'ok' : 'fail');
+      val('v02i', typeof p3.createHTML === 'function' ? 'undefined (only defined factories exposed)' : '?');
+      set('c02i', 'ok');
+    } catch (e) { val('v02g', e.name); FAIL('c02g'); }
+    /* engine truth: duplicate names are ALLOWED while unenforced — it takes a
+       trusted-types CSP directive (without 'allow-duplicates') to reject them,
+       and both same-named policies stay live and independent. The enforced
+       twin of this probe runs in child B (dupName → §05). */
+    try {
+      const dup = trustedTypes.createPolicy('demo-esc', { createHTML: s => s });
+      const live = dup.createHTML('<u>d</u>') instanceof TrustedHTML;
+      val('v02j', live ? 'allowed — both policies live' : 'created but factory dead');
+      set('c02j', live ? 'ok' : 'warn');
+    } catch (e) { val('v02j', e.name); WARN('c02j'); }
+    try { trustedTypes.createPolicy('', { createHTML: s => s }); val('v02k', 'allowed (empty name ok)'); OK('c02k'); }
+    catch (e) { val('v02k', e.name); OK('c02k'); }
+    try { trustedTypes.createPolicy('default', { createHTML: s => s }); val('v02l', 'yes (no auto-apply unenforced)'); OK('c02l'); }
+    catch (e) { val('v02l', e.name); WARN('c02l'); }
+  }
+}
+
+/* ---------- §03 ---------- */
+{
+  if (!hasTT) { ['c03a','c03c','c03d','c03e'].forEach(INFO); }
+  else {
+    const p = trustedTypes.createPolicy('s3', { createHTML: s => s, createScriptURL: s => s });
+    const host = document.createElement('div');
+    let rawOk = false, thOk = false;
+    try { host.innerHTML = '<i>r</i>'; rawOk = host.firstChild && host.firstChild.nodeName === 'I'; } catch (e) {}
+    try { host.innerHTML = p.createHTML('<i>t</i>'); thOk = host.firstChild && host.firstChild.nodeName === 'I'; } catch (e) {}
+    const setP = (id, ok) => { const el = $(id); if (el) { el.textContent = ok ? 'pass' : 'blocked'; el.className = 'pill ' + (ok === (id === 'v03b') ? 'ok' : 'warn'); } };
+    setP('v03a', rawOk); setP('v03b', thOk);
+    set('c03a', rawOk && thOk ? 'ok' : 'fail');
+    try {
+      const holder = document.createElement('div'); document.body.appendChild(holder);
+      const o = document.createElement('span'); holder.appendChild(o);
+      o.outerHTML = p.createHTML('<span>o</span>');
+      const outerOk = holder.textContent === 'o';
+      const ia = document.createElement('div'); ia.insertAdjacentHTML('afterbegin', p.createHTML('<b>i</b>'));
+      const sc = document.createElement('script'); sc.src = p.createScriptURL('data:text/javascript,');
+      val('v03c', `outerHTML ${outerOk ? '✓' : '✗'} · insertAdjacentHTML ${ia.firstChild ? '✓' : '✗'} · script.src typed ${sc.src.includes('data:') ? '✓' : '✗'}`);
+      set('c03c', outerOk && ia.firstChild ? 'ok' : 'fail');
+      holder.remove();
+    } catch (e) { val('v03c', e.name); FAIL('c03c'); }
+    try {
+      const f = document.createElement('iframe'); f.style.display = 'none'; document.body.appendChild(f);
+      const fd = f.contentDocument;
+      fd.open(); fd.write(p.createHTML('<p>written</p>')); fd.close();
+      const wok = fd.body && fd.body.textContent === 'written';
+      val('v03d', wok ? '✓ accepted' : '✗');
+      set('c03d', wok ? 'ok' : 'fail');
+      f.remove();
+    } catch (e) { val('v03d', e.name); WARN('c03d'); }
+    try {
+      const f = document.createElement('iframe'); f.src = 'about:blank'; f.style.display = 'none';
+      f.addEventListener('load', () => {
+        try { const d = f.contentDocument.createElement('div'); d.innerHTML = p.createHTML('<i>x</i>');
+          val('v03e', d.firstChild && d.firstChild.nodeName === 'I' ? 'accepted (brand, not realm)' : 'rejected');
+          set('c03e', d.firstChild && d.firstChild.nodeName === 'I' ? 'ok' : 'warn');
+        } catch (e2) { val('v03e', 'throws ' + e2.name); set('c03e', 'warn'); }
+        f.remove();
+      });
+      document.body.appendChild(f);
+    } catch (e) { val('v03e', e.name); WARN('c03e'); }
+  }
+}
+
+/* ---------- children §04-§06, §08 ---------- */
+window.addEventListener('message', ev => {
+  const d = ev.data;
+  if (!d || !d.kind) return;
+  if (d.kind === 'tt-child-A') renderA(d);
+  if (d.kind === 'tt-child-B') renderB(d);
+  if (d.kind === 'tt-child-C') renderC(d);
+});
+function violLine(e) { return `${e.effectiveDirective || '?'} · ${e.disposition} · sample: "${(e.sample || '').slice(0, 60)}"`; }
+function short(s) { s = String(s); return s.length > 90 ? s.slice(0, 88) + '…' : s; }
+function renderA(d) {
+  const r = d.results, v = d.violations || [];
+  if ($('violA')) $('violA').textContent = v.slice(0, 8).map(violLine).join('\n') || '(none captured)';
+  val('v04a', d.enforced ? 'yes (header present)' : 'NOT enforced (host sent no CSP — mirror?)');
+  set('c04a', d.enforced ? 'ok' : 'info');
+  if (!d.enforced) { ['c04b','c04c','c04d','c04f','c04h','c04i','c04k','c08a','c08b','c08c'].forEach(id => set(id, 'info')); return; }
+  val('v04b', short(r.rawInnerHTML));
+  set('c04b', /TypeError/.test(r.rawInnerHTML) ? 'ok' : 'fail');
+  val('v04c', `eval ${short(r.rawEval)} · Function ${short(r.rawFunction)} · setTimeout ${short(r.rawTimeout)}`);
+  set('c04c', [r.rawEval, r.rawFunction, r.rawTimeout].every(x => /TypeError/.test(x)) ? 'ok' : 'warn');
+  val('v04d', short(r.rawScriptSrc)); val('v04e', short(r.rawScriptText));
+  set('c04d', /TypeError/.test(r.rawScriptSrc) ? 'ok' : 'warn');
+  val('v04f', short(r.rawSrcdoc)); val('v04g', short(r.rawFragment));
+  set('c04f', /TypeError/.test(r.rawSrcdoc) && /TypeError/.test(r.rawFragment) ? 'ok' : 'warn');
+  val('v04h', short(r.rawDOMParser));
+  set('c04h', /no-throw|parsed/.test(r.rawDOMParser) ? 'ok' : 'warn');
+  val('v04i', r.trustedInnerHTML); val('v04j', String(r.evalTrusted));
+  set('c04i', /passed/.test(r.trustedInnerHTML) && r.evalTrusted === 42 ? 'ok' : 'warn');
+  val('v04k', v.length + ' captured (' + (v[0] ? v[0].effectiveDirective : '—') + ')');
+  set('c04k', v.length >= 3 ? 'ok' : 'warn');
+  val('v08a', short(r.sanitizeCall));
+  set('c08a', /not a function|absent/.test(r.sanitizeCall) ? 'ok' : 'warn');
+  val('v08b', r.setHTMLRaw); set('c08b', /no-throw|sanitized/.test(r.setHTMLRaw) ? 'ok' : 'warn');
+  val('v08c', r.setHTMLUnsafeRaw); set('c08c', /TypeError/.test(r.setHTMLUnsafeRaw) ? 'ok' : (/no-throw/.test(r.setHTMLUnsafeRaw) ? 'warn' : 'info'));
+}
+function renderB(d) {
+  const r = d.results, v = d.violations || [];
+  if ($('violB')) $('violB').textContent = v.slice(0, 8).map(violLine).join('\n') || '(none captured)';
+  if (!d.enforced) { ['c05a','c05b','c05c','c05d','c05f'].forEach(id => set(id, 'info')); val('v05a', 'not enforced on this host'); return; }
+  val('v05a', short(r.rawBeforeDefault));
+  set('c05a', /TypeError/.test(r.rawBeforeDefault) ? 'ok' : 'fail');
+  val('v05b', r.interceptedInput);
+  set('c05b', r.interceptedInput === '<b>lead</b>' ? 'ok' : 'warn');
+  val('v05c', JSON.stringify(r.redactedRender));
+  set('c05c', r.redactedRender === '' ? 'ok' : 'warn');
+  val('v05d', short(r.allowedName)); val('v05e', short(r.evilName)); val('v05e2', short(r.dupName));
+  set('c05d', /created/.test(r.allowedName) && /TypeError/.test(r.evilName) && (r.dupName === undefined || /TypeError/.test(r.dupName)) ? 'ok' : 'warn');
+  val('v05f', v.length + ' captured');
+  set('c05f', v.length >= 1 ? 'ok' : 'warn');
+}
+function renderC(d) {
+  val('v06a', short(d.results.rawInnerHTML));
+  set('c06a', /TypeError/.test(d.results.rawInnerHTML) ? 'ok' : 'fail');
+}
+$('frA').src = 'tt-csp-strict.html';
+$('frB').src = 'tt-csp-default.html';
+$('frC').src = 'tt-csp-meta.html';
+
+/* ---------- §07 Sanitizer ---------- */
+const SPAY = '<p>lead <b>bold</b> <i>ital</i></p><img src="data:image/png;base64,iVBOR" alt="ok"><img src="data:image/png;base64,xx" onerror="window.__s07=1"><script>window.__s07script=1<\/script><svg onload="window.__s07svg=1"><circle r="4"/></svg><my-el>custom</my-el>';
+$('b07').addEventListener('click', () => {
+  const a = $('t07a'), b = $('t07b');
+  if (typeof Element.prototype.setHTML !== 'function') { $('o07').textContent = 'setHTML not shipped on this engine'; return; }
+  a.textContent = ''; a.setHTML(SPAY);
+  b.textContent = ''; b.setHTMLUnsafe(SPAY);
+  const hostileImg = a.querySelector('img[onerror]'), benignImg = a.querySelector('img[alt]');
+  const scA = a.querySelector('script'), bA = a.querySelector('b');
+  val('v07d', hostileImg ? 'PRESENT ✗' : 'whole element removed ✓'); val('v07e', scA ? 'PRESENT ✗' : 'removed ✓'); val('v07f', bA ? 'yes ✓' : 'MISSING ✗');
+  val('v07g2', benignImg ? 'kept ✓' : 'removed too');
+  set('c07d', !hostileImg && !scA && bA && benignImg ? 'ok' : 'warn');
+  const imgB = b.querySelector('img[onerror]');
+  val('v07g', imgB && imgB.getAttribute('onerror') ? 'yes (handler intact)' : 'absent/stripped');
+  set('c07g', imgB && imgB.getAttribute('onerror') ? 'ok' : 'warn');
+  $('o07').textContent = `setHTML children: ${a.childNodes.length} · setHTMLUnsafe children: ${b.childNodes.length} · my-el after default: ${a.querySelector('my-el') ? 'kept' : 'removed (text ' + (a.textContent.includes('custom') ? 'kept)' : 'gone)')}`;
+});
+{
+  const hasSan = typeof Sanitizer !== 'undefined';
+  val('v07a', hasSan ? 'present' : 'absent');
+  val('v07b', typeof Element.prototype.setHTML === 'function' ? 'present' : 'absent');
+  if (hasSan) {
+    const proto = Object.getOwnPropertyNames(Sanitizer.prototype).filter(x => x !== 'constructor').sort();
+    val('v07c', 'ABSENT (MDN shape not shipped)');
+    val('v07c2', proto.join(' '));
+    set('c07a', typeof Element.prototype.setHTML === 'function' && !Sanitizer.prototype.sanitize && !Sanitizer.prototype.sanitizeFor ? 'ok' : 'warn');
+    /* constructor config keys honored? */
+    try {
+      const sCfg = new Sanitizer({ blockElements: ['section'], dropElements: ['section'], allowElements: ['b'] });
+      const g = JSON.stringify(sCfg.get());
+      val('v07h', g.length > 110 ? g.slice(0, 105) + '…' : g);
+      set('c07h', /"removeElements":\[\]/.test(g) ? 'ok' : 'warn');
+    } catch (e) { val('v07h', e.name); WARN('c07h'); }
+    const X = '<section><p>INSEC</p></section><p>after</p><my-el>custom</my-el>';
+    const build = fn => { const s = new Sanitizer(); fn(s); return s; };
+    const render = (san, optShape) => { const el = document.createElement('div'); el.setHTML(X, optShape === 'bare' ? san : { sanitizer: san }); return el; };
+    try {
+      const rep = build(s => s.replaceElementWithChildren({ name: 'section' }));
+      const elRep = render(rep);
+      const repOk = !elRep.querySelector('section') && elRep.textContent.includes('INSEC');
+      val('v07m', 'applies ✓ (section removed, children hoisted)');
+      set('c07m', repOk ? 'ok' : 'warn');
+      const elBare = (() => { const el = document.createElement('div'); el.setHTML(X, rep); return el; })();
+      const bareIgnored = !!elBare.querySelector('section');
+      val('v07n', bareIgnored ? 'ignored — default sanitizer ran (section KEPT)' : 'applied too');
+      set('c07m', repOk && bareIgnored ? 'ok' : 'warn');
+      const rem = build(s => s.removeElement({ name: 'section' }));
+      const elRem = render(rem);
+      val('v07j', elRem.querySelector('section') ? 'STILL PRESENT ✗' : 'hoisted, text survives ✓');
+      val('v07k', elRem.textContent.includes('INSEC') ? 'children leaked ✗' : 'subtree gone ✓');
+      set('c07j', !elRem.querySelector('section') && elRem.textContent.includes('INSEC') ? 'ok' : 'warn');
+      /* custom element: default vs allowed */
+      const elDef = document.createElement('div'); elDef.setHTML(X);
+      val('v07l', elDef.querySelector('my-el') ? 'kept' : ('removed, text ' + (elDef.textContent.includes('custom') ? 'survives' : 'REMOVED with subtree')));
+      const elAll = render(build(s => s.allowElement({ name: 'my-el' })));
+      val('v07l2', elAll.querySelector('my-el') ? 'kept ✓' : 'still removed');
+      set('c07l', !elDef.querySelector('my-el') && elAll.querySelector('my-el') ? 'ok' : 'warn');
+      try {
+        const g = new Sanitizer().get();
+        const keys = Object.keys(g);
+        const attrCount = Array.isArray(g.attributes) ? g.attributes.length : -1;
+        val('v07p', `keys [${keys.join(',')}] · baseline attribute entries: ${attrCount}`);
+        set('c07p', keys.includes('comments') && attrCount > 100 ? 'ok' : 'warn');
+      } catch (e) { val('v07p', e.name); WARN('c07p'); }
+    } catch (e) { val('v07j', e.name); WARN('c07j'); val('v07m', e.name); WARN('c07m'); WARN('c07l'); WARN('c07p'); }
+  } else { ['c07a','c07h','c07m','c07j','c07l','c07p'].forEach(INFO); }
+}
+
+/* ---------- §09 OpenDrones ---------- */
+const LOG_PAYLOAD = '<table><thead><tr><td>t</td><td>batt</td></tr></thead><tbody><tr><td>00:01</td><td><b>14.8V</b></td></tr><tr><td>00:02</td><td><b>14.1V</b></td></tr></tbody></table><script>note<\/script><img src="data:image/png;base64,xx" onerror="1"><iframe src="https://evil.example"></iframe>';
+$('p09').textContent = LOG_PAYLOAD;
+$('b09').addEventListener('click', () => {
+  if (typeof Sanitizer === 'undefined') { $('o09').textContent = 'Sanitizer absent — textContent fallback would apply'; return; }
+  const s = new Sanitizer();
+  s.removeElement({ name: 'iframe' });
+  s.replaceElementWithChildren({ name: 'script' });
+  const t = $('t09'); t.textContent = '';
+  t.setHTML(LOG_PAYLOAD, { sanitizer: s });
+  const rows = t.querySelectorAll('tbody tr').length;
+  const hostiles = { script: !!t.querySelector('script'), img: !!t.querySelector('img'), iframe: !!t.querySelector('iframe') };
+  val('v09a', String(rows)); val('v09b', JSON.stringify(hostiles) + ' — img gone (unsafe element), iframe dropped, script replaced');
+  set('c09a', rows === 2 ? 'ok' : 'warn');
+  set('c09b', !hostiles.script && !hostiles.img && !hostiles.iframe ? 'ok' : 'fail');
+  $('o09').textContent = 'rendered ✓ — engine filtered, zero regex';
+});
+
+/* ---------- §10 Molt ---------- */
+const CMS = '<div class="promo">FLASH SALE — 50 tools <a href="javascript:alert(1)">claim</a></div><p>Real customer story here.</p>';
+function run10(mode) {
+  if (typeof Sanitizer === 'undefined') { $('o10').textContent = 'Sanitizer absent on this engine'; return; }
+  const s = new Sanitizer();
+  if (mode === 'block') s.replaceElementWithChildren({ name: 'div' }); else s.removeElement({ name: 'div' });
+  const el = mode === 'block' ? $('t10a') : $('t10b');
+  el.textContent = '';
+  el.setHTML(CMS, { sanitizer: s });
+  const kept = el.querySelector('div') === null;
+  const promoText = el.textContent.includes('FLASH SALE');
+  const a = el.querySelector('a');
+  const href = a ? a.getAttribute('href') : null;
+  if (mode === 'block') val('v10a', kept && promoText ? 'children survive ✓ (div gone, text hoisted)' : 'unexpected');
+  else val('v10b', !promoText ? 'subtree gone ✓ (whole promo removed)' : 'STILL PRESENT');
+  set('c10a', 'ok');
+  $('o10').textContent = 'javascript: href after sanitize: ' + JSON.stringify(href) + (href === null ? ' (link removed entirely)' : '');
+}
+$('b10a').addEventListener('click', () => run10('block'));
+$('b10b').addEventListener('click', () => run10('drop'));
+
+})();
+</script>
+</body>
+</html>
