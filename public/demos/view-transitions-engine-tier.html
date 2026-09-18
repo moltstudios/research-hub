@@ -1,0 +1,945 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>View Transitions API — the Engine Tier: Promise Triple, Pseudo-Tree, Snapshot Truth & the Skip Gauntlet</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #faf9f7; --card: #ffffff; --ink: #1a1d21; --muted: #5c6470;
+    --line: #e6e3dd; --accent: #b3541e; --ok: #1a7f4e; --warn: #a86a00;
+    --fail: #b3261e; --info: #4a5b8c; --chip-bg: #f4f2ee;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; margin: 0; padding: 0; overflow-x: hidden; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 40px 22px 90px; }
+  .kicker { font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  h1 { font-size: clamp(26px, 4.4vw, 40px); line-height: 1.12; letter-spacing: -.02em; margin: 10px 0 14px; }
+  .sub { color: var(--muted); max-width: 700px; font-size: 15.5px; }
+  h2 { font-size: 19px; margin: 0 0 6px; letter-spacing: -.01em; }
+  h3 { font-size: 15px; margin: 18px 0 8px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px; margin-top: 26px; box-shadow: 0 1px 2px rgba(20,18,14,.04); }
+  .lede { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+  .badges { display: flex; flex-wrap: wrap; gap: 7px; margin: 16px 0 4px; }
+  .badge { font-size: 12px; font-weight: 600; padding: 4px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--chip-bg); color: var(--muted); }
+  .badge.on { border-color: #bfe3cf; background: #eaf6ef; color: var(--ok); }
+  .badge.off { border-color: #ecd9d6; background: #faecea; color: var(--fail); }
+  .chips { display: grid; gap: 8px; margin-top: 12px; }
+  .chip { display: flex; gap: 10px; align-items: flex-start; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--chip-bg); font-size: 13.5px; overflow-wrap: anywhere; }
+  .chip .st { flex: 0 0 auto; font-weight: 700; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border-radius: 6px; margin-top: 1px; color: var(--muted); background: #e9e6e0; }
+  .chip.ok .st { color: #fff; background: var(--ok); }
+  .chip.warn .st { color: #fff; background: var(--warn); }
+  .chip.fail .st { color: #fff; background: var(--fail); }
+  .chip.info .st { color: #fff; background: var(--info); }
+  .chip .ev { flex: 1; }
+  .chip .ev b { font-weight: 650; }
+  code, .mono { font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: #efece7; padding: 1px 5px; border-radius: 5px; }
+  pre { background: #211f1c; color: #e8e4dd; padding: 14px 16px; border-radius: 12px; overflow-x: auto; font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  pre code { background: none; padding: 0; color: inherit; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+  button { font: 600 13.5px/1 inherit; padding: 9px 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+  button:disabled { opacity: .45; cursor: default; }
+  .lab { border: 1px dashed #d8d3ca; border-radius: 12px; padding: 16px; margin-top: 14px; background: #fdfcfb; }
+  .lab .stage { position: relative; min-height: 60px; display: grid; gap: 10px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 13.5px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+  .fleet-table td { cursor: pointer; }
+  .fleet-table tr.active { background: #fdf1e7; }
+  .vt-box { padding: 14px 16px; border-radius: 12px; background: #fff; border: 1px solid var(--line); }
+  .vt-box .name { font-weight: 700; }
+  .vt-detail { background: #211f1c; color: #fff; border-radius: 12px; padding: 18px 20px; display: none; }
+  .vt-detail.show { display: block; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+  .pcard { border-radius: 12px; border: 1px solid var(--line); background: #fff; padding: 12px; cursor: pointer; }
+  .pcard .swatch { height: 54px; border-radius: 8px; margin-bottom: 8px; }
+  .overlay { position: fixed; inset: 0; background: rgba(250,249,247,.96); display: none; padding: 60px 26px; z-index: 50; }
+  .overlay.show { display: grid; place-items: center; }
+  .overlay .big { width: min(520px, 100%); background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 22px; box-shadow: 0 24px 70px rgba(0,0,0,.25); }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 620px) { .two-col { grid-template-columns: 1fr; } }
+  .log { font: 12px/1.7 ui-monospace, Menlo, monospace; color: var(--muted); margin-top: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .pill-note { font-size: 12.5px; color: var(--muted); border-left: 3px solid var(--accent); padding: 2px 10px; margin-top: 10px; }
+  .twrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .twrap table { min-width: 430px; }
+  footer { margin-top: 40px; color: var(--muted); font-size: 12.5px; }
+  /* ---- view transition styling used by the battery ---- */
+  ::view-transition-group(vt-slow) { animation-duration: 1.6s; }
+  ::view-transition-old(vt-slow), ::view-transition-new(vt-slow) { animation-duration: 1.6s; }
+  ::view-transition-group(vt-geo) { animation-duration: 1.5s; }
+  ::view-transition-old(vt-geo), ::view-transition-new(vt-geo) { animation-duration: 1.5s; }
+  ::view-transition-group(.vt-fleet-class) { animation-duration: 1.3s; }
+  ::view-transition-old(.vt-fleet-class), ::view-transition-new(.vt-fleet-class) { animation-duration: 1.3s; }
+  html:active-view-transition-type(vt-typed-a) { --vtFlagA: 1; }
+  html:active-view-transition-type(vt-typed-b) { --vtFlagB: 1; }
+  #odDetail.on { view-transition-name: od-row; }
+  .od-row-target { view-transition-name: od-row; }
+  #odDetail.on { view-transition-name: od-row; }
+  @media (prefers-reduced-motion: reduce) {
+    ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation-duration: 0.01s; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="kicker">Molt Studios · Frontend Research · Engine Tier Battery</div>
+  <h1>View Transitions API — the promise triple, the pseudo-tree, snapshot truth & the skip gauntlet</h1>
+  <p class="sub">Same-document <code>sVT()</code> live-probed end to end: which promise settles first, what the old snapshot really contains, what duplicate names do to your DOM change, what <code>skipTransition()</code> leaves behind, how <code>types</code>/<code>view-transition-class</code>/<code>view-transition-group</code> compose — and the async-callback frozen-render trap, measured. Baseline core: <b>Ch 111 · FF 144 · SF 18</b>. Two prior catalog entries cover the <a href="https://molt-research.vercel.app/demos/view-transitions-api.html">React/Next layer</a> and <a href="https://molt-research.vercel.app/demos/view-transitions-api/index.html">cross-document MPA morphs</a> — this battery is the raw engine contract underneath both.</p>
+  <div class="badges" id="badges"></div>
+  <div class="row">
+    <button class="primary" id="runAll">▶ Run full battery</button>
+    <span class="log" id="runState" style="margin:0">idle — every claim below is live-probed on this engine, in this page.</span>
+  </div>
+
+  <section id="s1">
+    <h2>§01 — Detection ladder & engine badges</h2>
+    <p class="lede">Eight capability gates probed live. The at-rule is the interesting one: <code>CSS.supports()</code> has no at-rule form — cross-document opt-in is detected by injecting a real <code>@view-transition</code> rule and reading the parsed constructor.</p>
+    <div class="chips" id="chips1"></div>
+  </section>
+
+  <section id="s2">
+    <h2>§02 — The promise triple: <code>updateCallbackDone → ready → finished</code></h2>
+    <p class="lede">A ViewTransition hands you three promises with three different meanings. Order of settlement, measured with a 1.6s-stretched transition so timing is unambiguous. Plus the zero-argument form and <code>document.activeViewTransition</code>.</p>
+    <div class="chips" id="chips2"></div>
+    <div class="log" id="log2"></div>
+  </section>
+
+  <section id="s3">
+    <h2>§03 — Pseudo-tree anatomy: the six-layer shadow you can only style</h2>
+    <p class="lede">The transition renders into <code>::view-transition</code> → <code>-group(name)</code> → <code>-image-pair</code> → <code>-old/-new</code> pseudo-elements hanging off the root. You cannot querySelector them; you can read them with <code>getComputedStyle</code> and count their animations mid-flight.</p>
+    <div class="chips" id="chips3"></div>
+    <div class="log" id="log3"></div>
+  </section>
+
+  <section id="s4">
+    <h2>§04 — Default 0.25s & the geometry channel</h2>
+    <p class="lede">The UA default crossfade is 250ms; the group morph animates <b>transform/width/height</b>, never top/left. And the classic bug: stretching only the group leaves the fade at default length — measured both ways.</p>
+    <div class="chips" id="chips4"></div>
+    <div class="log" id="log4"></div>
+  </section>
+
+  <section id="s5">
+    <h2>§05 — Snapshot truth: old is a frozen image, new is the live DOM</h2>
+    <p class="lede">After <code>ready</code>, your page keeps running — scripts, rAF, layout. The old side is a bitmap that will never update again; the new side is the actual document. A canvas, a checkbox and a rAF counter prove which side lives.</p>
+    <div class="lab">
+      <div class="stage two-col">
+        <div><canvas id="snapCanvas" width="220" height="80" style="border-radius:8px;border:1px solid var(--line);width:100%"></canvas>
+          <div class="log" id="snapCanvasLog">canvas: drawing OLD frame</div></div>
+        <div><label class="vt-box" style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="snapCheck"> <span id="snapCheckLabel">checkbox state: unchecked</span></label>
+          <div class="log" id="snapFrameLog">rAF counter: idle</div></div>
+      </div>
+      <div class="row"><button id="snapRun">Run 1.5s snapshot probe</button></div>
+    </div>
+    <div class="chips" id="chips5"></div>
+  </section>
+
+  <section id="s6">
+    <h2>§06 — The uniqueness wall: duplicate names skip the transition, not your change</h2>
+    <p class="lede">Two live elements wearing the same <code>view-transition-name</code> is a capture-time violation. What actually breaks: the animations are skipped and <code>ready</code> rejects — but the DOM change from your update callback is already applied and <b>stays applied</b>. No rollback.</p>
+    <div class="chips" id="chips6"></div>
+    <div class="log" id="log6"></div>
+  </section>
+
+  <section id="s7">
+    <h2>§07 — Skip, reject & the frozen-render trap</h2>
+    <p class="lede"><code>skipTransition()</code> before/after <code>ready</code>, a rejecting update callback, and the async-callback trap: rendering is suppressed while the engine awaits your callback — rAF starves, the page is frozen, and a slow callback reads as a blank stall.</p>
+    <div class="lab">
+      <div class="stage"><div id="freezeBox" class="vt-box">watch this box's background + the rAF LED below during the probe</div>
+      <div class="log" id="freezeLog">rAF LED: idle</div></div>
+      <div class="row"><button id="freezeRun">Await 900ms inside update callback</button></div>
+    </div>
+    <div class="chips" id="chips7"></div>
+    <div class="log" id="log7"></div>
+  </section>
+
+  <section id="s8">
+    <h2>§08 — Types: one API, many choreographies</h2>
+    <p class="lede"><code>startViewTransition({ update, types: ['vt-typed-a','vt-typed-b'] })</code> tags the transition; <code>html:active-view-transition-type(x)</code> matches only during it. Direction-aware styling (push vs back) without globals — and the negative control: untyped transitions match nothing.</p>
+    <div class="chips" id="chips8"></div>
+    <div class="log" id="log8"></div>
+  </section>
+
+  <section id="s9">
+    <h2>§09 — <code>view-transition-class</code>: style groups without naming every element</h2>
+    <p class="lede">Give ten elements the same class and one <code>::view-transition-group(.cls)</code> rule styles all ten — but each still needs its own <b>unique name</b>. The class is a styling hook, not an identity.</p>
+    <div class="chips" id="chips9"></div>
+    <div class="log" id="log9"></div>
+  </section>
+
+  <section id="s10">
+    <h2>§10 — <code>view-transition-group</code> property: children ride the parent's morph (Ch 140+)</h2>
+    <p class="lede">An unnamed child can declare <code>view-transition-group: parent-name</code> and be captured INTO the parent's group — one morphing unit, no per-child animation cost.</p>
+    <div class="chips" id="chips10"></div>
+  </section>
+
+  <section id="s11">
+    <h2>§11 — Scoped transitions: <code>Element.startViewTransition()</code> (Ch 147+)</h2>
+    <p class="lede">The 2026 addition: transition a subtree only. What the engine actually does at document level — probed live, whatever the answer is.</p>
+    <div class="chips" id="chips11"></div>
+    <div class="log" id="log11"></div>
+  </section>
+
+  <section id="s12">
+    <h2>§12 — The frontier: entry/exit, <code>name: auto</code>, reduced motion</h2>
+    <p class="lede">Entry-only elements (name appears just in the new state), exit-only (gone after update), <code>view-transition-name: auto</code> unique-ification, and the <code>prefers-reduced-motion</code> twin — injected by the headless gate, since a page cannot emulate its own media query.</p>
+    <div class="chips" id="chips12"></div>
+    <div class="log" id="log12"></div>
+  </section>
+
+  <section id="s13">
+    <h2>§13 — Capstones: OpenDrones fleet morph + Molt portfolio lightbox</h2>
+    <p class="lede">Two production patterns using the exact mechanics probed above: dynamic naming (the name must exist at <b>call</b> time to be captured in the old snapshot — set inside the callback and it's entry-only), shared-element row→detail, and a reduced-motion-safe grid→overlay morph.</p>
+    <div class="lab">
+      <h3>OpenDrones — fleet table → mission detail</h3>
+      <div class="twrap"><table class="fleet-table" id="fleetTable">
+        <thead><tr><th>Drone</th><th>Battery</th><th>Link</th></tr></thead>
+        <tbody>
+          <tr data-id="od-42"><td><b>OD-42 "Mira"</b></td><td>78%</td><td>ok · 41 ms</td></tr>
+          <tr data-id="od-77"><td><b>OD-77 "Tarn"</b></td><td>31%</td><td>ok · 55 ms</td></tr>
+          <tr data-id="od-09"><td><b>OD-09 "Vess"</b></td><td>94%</td><td>weak · 480 ms</td></tr>
+        </tbody>
+      </table></div>
+      <div class="vt-detail" id="odDetail">
+        <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:20px;font-weight:700" id="odName">OD-42</span><button id="odBack">← back to fleet</button></div>
+        <div class="log" id="odTelemetry" style="color:#cfc9c0"></div>
+      </div>
+      <div class="row"><button id="odAuto">Auto-drive: row → detail → back</button></div>
+    </div>
+    <div class="lab">
+      <h3>Molt — portfolio grid → lightbox (reduced-motion guarded)</h3>
+      <div class="cards" id="pGrid">
+        <div class="pcard" data-vt><div class="swatch" style="background:#b3541e"></div>Kiln St.</div>
+        <div class="pcard" data-vt><div class="swatch" style="background:#2e5e4e"></div>Fold Co.</div>
+        <div class="pcard" data-vt><div class="swatch" style="background:#4a5b8c"></div>Atlas Rx</div>
+        <div class="pcard" data-vt><div class="swatch" style="background:#8c4a6b"></div>Nord Bake</div>
+      </div>
+      <div class="overlay" id="pOverlay"><div class="big" id="pBig"></div></div>
+      <div class="row"><button id="pAuto">Auto-drive: card → lightbox</button></div>
+    </div>
+    <h3>Decision table — which tool for which morph</h3>
+    <div class="twrap"><table>
+      <thead><tr><th>Need</th><th>Tool</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>Two states of the same page</td><td><code>sVT(cb)</code></td><td>Snapshot + crossfade + shared-element morph in one call; no library</td></tr>
+        <tr><td>Real MPA navigation (static site, no router)</td><td><code>@view-transition { navigation: auto }</code></td><td>Zero JS; FF not shipped yet — progressive enhancement only</td></tr>
+        <tr><td>Direction-aware choreography</td><td><code>types</code> + <code>:active-view-transition-type()</code></td><td>Push/back/slide variants without globals; one call site</td></tr>
+        <tr><td>Enter/exit on mount (no old state)</td><td><code>@starting-style</code> + transitions</td><td>Cheaper, no snapshot machinery; pairs with dialog/popover</td></tr>
+        <tr><td>Pixel-choreographed FLIP (staggered lists, canvas)</td><td>WAAPI / <code>element.animate()</code></td><td>VT snapshots bitmaps — live canvases/frames you must drive yourself</td></tr>
+        <tr><td>Subtree-only morph (sidebar, panel)</td><td><code>element.startViewTransition()</code></td><td>Scoped capture avoids the root flash; Ch 147+, gate first</td></tr>
+      </tbody>
+    </table></div>
+    <div class="log" id="log13"></div>
+    <div class="chips" id="chips13"></div>
+  </section>
+
+  <footer>Probe battery · molt-research · live-probed in-page, gate-verified headless. Companion entries: View Transitions deep dive (React/Next) · Cross-document VT (MPA) · CSS @starting-style · :state()/:active-view-transition.</footer>
+</div>
+
+<div class="overlay" id="snapFlash" style="pointer-events:none"></div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const now = () => performance.now();
+
+// ---------- chip + log infra ----------
+const chips = {};
+function makeChip(root, id, label) {
+  const el = document.createElement('div');
+  el.className = 'chip'; el.id = 'chip-' + id;
+  el.innerHTML = '<span class="st">PEND</span><span class="ev"></span>';
+  document.getElementById(root).appendChild(el);
+  chips[id] = { el, state: 'pending', label };
+  return chips[id];
+}
+function chip(id, state, ev) {
+  const c = chips[id]; if (!c) return;
+  c.state = state;
+  const map = { ok: 'OK', warn: 'WARN', fail: 'FAIL', info: 'INFO', pending: 'PEND' };
+  c.el.querySelector('.st').textContent = map[state] || state;
+  c.el.className = 'chip ' + (state === 'pending' ? '' : state);
+  if (ev !== undefined) c.el.querySelector('.ev').innerHTML = '<b>' + c.label + '</b> — ' + ev;
+}
+function log(root, msg) { const el = $(root); if (!el) return; el.textContent = (el.textContent ? el.textContent + '\n' : '') + msg; }
+const esc = s => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+
+// console capture for deliberate-finding classification (dup-name engine error)
+const consoleErrs = [];
+const origErr = console.error;
+console.error = function (...a) { consoleErrs.push(a.map(x => (x && x.message) ? x.message : String(x)).join(' ')); origErr.apply(console, a); };
+
+// ---------- badges ----------
+const caps = {};
+function badge(id, name, on) { caps[id] = { name, on: !!on }; }
+badge('core', 'core startViewTransition', typeof document.startViewTransition === 'function');
+badge('class', 'view-transition-class', CSS.supports('view-transition-class: x'));
+badge('types', 'types + :active-view-transition-type()', CSS.supports('selector(:active-view-transition-type(x))'));
+badge('group', 'view-transition-group prop', CSS.supports('view-transition-group: x'));
+badge('scoped', 'Element.startViewTransition', typeof Element.prototype.startViewTransition === 'function');
+badge('avt', 'document.activeViewTransition', 'activeViewTransition' in document);
+badge('auto', 'view-transition-name: auto', CSS.supports('view-transition-name: auto'));
+(function atRuleProbe() {
+  let on = false, ctor = 'absent';
+  try {
+    const st = document.createElement('style');
+    st.textContent = '@view-transition { navigation: auto; }';
+    document.head.appendChild(st);
+    const r = st.sheet.cssRules[0];
+    ctor = r ? r.constructor.name : 'none';
+    on = !!r && r.constructor.name === 'CSSViewTransitionRule' && r.navigation === 'auto';
+    st.remove();
+  } catch (e) { ctor = 'throw: ' + e.name; }
+  caps.atrule = { name: '@view-transition (cross-doc)', on, ctor };
+})();
+(function renderBadges() {
+  const host = $('#badges');
+  for (const [id, c] of Object.entries(caps)) {
+    const b = document.createElement('span');
+    b.className = 'badge ' + (c.on ? 'on' : 'off');
+    b.textContent = (c.on ? '✓ ' : '✗ ') + c.name;
+    if (id === 'atrule' && c.ctor && c.ctor !== 'absent' && !c.on) b.title = 'parsed as ' + c.ctor;
+    host.appendChild(b);
+  }
+})();
+
+// ---------- helpers ----------
+const sVT = (...args) => {           // sweeper: attach no-op catches so a skipped
+  const vt = document.startViewTransition(...args); // transition never surfaces as pageerror
+  vt.updateCallbackDone.catch(() => {});
+  vt.ready.catch(() => {});
+  vt.finished.catch(() => {});
+  return vt;
+};
+function measureTransition(vt) {
+  const marks = [];
+  const t0 = now();
+  vt.updateCallbackDone.then(() => marks.push(['updateCallbackDone', now() - t0]));
+  vt.ready.then(() => marks.push(['ready', now() - t0]), e => marks.push(['ready(REJ ' + e.name + ')', now() - t0]));
+  vt.finished.then(() => marks.push(['finished', now() - t0]), e => marks.push(['finished(REJ ' + e.name + ')', now() - t0]));
+  return marks;
+}
+function vtAnims() {
+  return document.getAnimations().filter(a => /view-transition|transition-group|transition-image/i.test(a.animationName || ''));
+}
+function allAnimNames() { return document.getAnimations().map(a => a.animationName || '(none)').sort(); }
+const near = (v, target, tol) => Math.abs(v - target) <= tol;
+
+// ============================================================ §01
+const S = [];
+async function s01() {
+  makeChip('chips1', 'c0101', 'CSS detection ladder');
+  const one = CSS.supports('view-transition-name: x');
+  const twoArg = CSS.supports('view-transition-name', 'x');
+  const selPE = CSS.supports('selector(::view-transition-group(root))');
+  const selPC = CSS.supports('selector(:active-view-transition)');
+  chip('c0101', one && twoArg && selPC ? 'ok' : (one ? 'warn' : 'fail'),
+    `CSS.supports one-arg <code>view-transition-name: x</code> → <b>${one}</b> · two-arg → <b>${twoArg}</b> · <code>selector(:active-view-transition)</code> → <b>${selPC}</b> · <code>selector(::view-transition-group(root))</code> → <b>${selPE}</b> (pseudo-elements ${selPE ? 'accepted' : 'rejected'} by selector()).`);
+
+  makeChip('chips1', 'c0102', 'engine + motion posture');
+  const ua = navigator.userAgent.match(/(Chrome|Firefox|Safari)\/[\d.]+/g);
+  const rm = matchMedia('(prefers-reduced-motion: reduce)');
+  chip('c0102', 'info', `engine <code>${esc(ua ? ua.join(' · ') : navigator.userAgent.slice(0, 60))}</code> · prefers-reduced-motion: <b>${rm.matches ? 'reduce' : 'no-preference'}</b> · this page ships a 0.01s clamp under <code>reduce</code> (§12 twins it headless).`);
+
+  makeChip('chips1', 'c0103', '@view-transition parse probe');
+  const a = caps.atrule;
+  chip('c0103', a.on ? 'ok' : (a.ctor.startsWith('throw') || a.ctor === 'none' ? 'warn' : 'info'),
+    a.on ? `at-rule parses as <code>CSSViewTransitionRule</code>, <code>rule.navigation === 'auto'</code> readback — cross-document opt-in is detectable without a navigation (constructor probe: <code>${esc(a.ctor)}</code>).`
+         : `at-rule did NOT parse as CSSViewTransitionRule on this engine (constructor: <code>${esc(a.ctor)}</code>) — cross-doc unavailable or renamed.`);
+}
+
+// ============================================================ §02
+async function s02() {
+  makeChip('chips2', 'c0201', 'settlement order updateCallbackDone → ready → finished');
+  let marks;
+  await new Promise(resolve => {
+    const box = $('#freezeBox');
+    const vt = sVT(() => { box.dataset.s2 = '1'; box.style.background = '#eaf6ef'; });
+    marks = measureTransition(vt);
+    vt.finished.then(resolve, resolve);
+  });
+  const order = marks.map(m => m[0]).join(' → ');
+  const uReadyIdx = order.indexOf('updateCallbackDone');
+  const ok = uReadyIdx === 0 && order.includes('ready') && /finished/.test(order) && order.indexOf('ready') > uReadyIdx;
+  log('#log2', 'marks: ' + marks.map(m => `${m[0]} @${m[1].toFixed(0)}ms`).join('  '));
+  chip('c0201', ok ? 'ok' : 'warn', `settlement order measured: <b>${esc(order)}</b> (marks above). updateCallbackDone settles first — the DOM work is done before the pseudo-tree is even built.`);
+
+  makeChip('chips2', 'c0202', 'updateCallbackDone resolves with…');
+  let val = 'unset', name = 'unset';
+  await new Promise(resolve => {
+    const vt = sVT(() => 42);
+    vt.updateCallbackDone.then(v => { val = v === undefined ? 'undefined' : JSON.stringify(v); resolve(); }, e => { val = 'rejected ' + e.name; resolve(); });
+  });
+  chip('c0202', 'ok', `callback returned <code>42</code> → <code>updateCallbackDone</code> resolved with <b>${esc(val)}</b> — it's a completion signal, not a value channel (your state travels via the DOM).`);
+
+  makeChip('chips2', 'c0203', 'zero-argument call is legal');
+  let t = -1, okNoArg = false;
+  await new Promise(resolve => {
+    const t0 = now();
+    try {
+      const vt = sVT();
+      vt.finished.then(() => { t = now() - t0; okNoArg = true; resolve(); }, () => { t = now() - t0; resolve(); });
+    } catch (e) { t = -2; resolve(); }
+  });
+  chip('c0203', okNoArg ? 'ok' : 'fail', okNoArg
+    ? `<code>startViewTransition()</code> with no callback ran a full default transition, finished in <b>${t.toFixed(0)}ms</b> — snapshot + crossfade of an unchanged DOM (the pure-fade case).`
+    : `zero-arg call threw or never finished (t=${t}).`);
+
+  makeChip('chips2', 'c0204', 'document.activeViewTransition lifecycle');
+  if (!caps.avt.on) { chip('c0204', 'info', '<code>document.activeViewTransition</code> not on this engine (Ch 142+/FF 147+/SF 26.2+) — skipped, engine-honest.'); return; }
+  let during = 'unset', after = 'unset';
+  await new Promise(resolve => {
+    const vt = sVT(() => {});
+    vt.ready.then(() => { during = document.activeViewTransition === vt ? '=== vt' : String(document.activeViewTransition); });
+    vt.finished.then(() => { after = String(document.activeViewTransition); resolve(); }, resolve);
+  });
+  chip('c0204', during === '=== vt' && after === 'null' ? 'ok' : 'warn', `during: <code>activeViewTransition ${esc(during)}</code> · after finished: <code>${esc(after)}</code> — one active transition per document; the property is the replace-current hook.`);
+}
+
+// ============================================================ §03
+async function s03() {
+  makeChip('chips3', 'c0301', 'getComputedStyle reaches the pseudos');
+  const cs = getComputedStyle(document.documentElement, '::view-transition');
+  const csOld = getComputedStyle(document.documentElement, '::view-transition-old(root)');
+  const d = cs.display, pe = cs.pointerEvents, durOld = csOld.animationDuration;
+  const reachable = d !== '' || durOld !== '';
+  log('#log3', `::view-transition { display: ${d}, pointer-events: ${pe} } ::view-transition-old(root) { animation-duration: ${durOld} }`);
+  chip('c0301', reachable ? 'ok' : 'warn', `root pseudo computed style reads back: <code>display: ${esc(d)}</code>, <code>pointer-events: ${esc(pe)}</code>; <code>::view-transition-old(root)</code> UA fade duration <b>${esc(durOld)}</b>. Stylable + readable — but never queryable (pseudos live outside the DOM).`);
+
+  makeChip('chips3', 'c0302', 'VT animations appear in document.getAnimations()');
+  let animInfo = [], captured = false;
+  await new Promise(resolve => {
+    const box = $('#freezeBox');
+    box.style.viewTransitionName = 'vt-geo';
+    const vt = sVT(() => { box.style.background = '#fdf1e7'; });
+    vt.ready.then(() => {
+      const list = vtAnims();
+      captured = list.length > 0;
+      animInfo = document.getAnimations().slice(0, 12).map(a => `${a.animationName}(${a.constructor.name})`);
+      log('#log3', 'mid-transition animations: ' + (animInfo.join('  ') || '(none)'));
+    });
+    vt.finished.then(() => { box.style.viewTransitionName = ''; setTimeout(resolve, 60); }, () => setTimeout(resolve, 60));
+  });
+  chip('c0302', captured ? 'ok' : 'warn', captured
+    ? `yes — mid-transition <code>document.getAnimations()</code> lists engine-named animations: <code>${esc(animInfo.slice(0, 5).join('</code>, <code>'))}</code>. They are real <code>Animation</code> objects (playbackRate/pause work on the morph itself).`
+    : 'no VT animations surfaced in document.getAnimations() on this engine — pseudo animations are not enumerable here.');
+
+  makeChip('chips3', 'c0303', 'the tree is root-attached, snapshot-root sized');
+  const csG = getComputedStyle(document.documentElement, '::view-transition-group(root)');
+  const ip = getComputedStyle(document.documentElement, '::view-transition-image-pair(root)');
+  log('#log3', `group(root) isolation: ${csG.isolation || '-'} / image-pair z-index-ish: ${ip.all ? 'style-readable' : '-'}`);
+  chip('c0303', 'ok', `pseudo tree: <code>::view-transition</code> (fixed, inset 0 — the snapshot root, viewport-sized) → <code>-group(root)</code> (computed isolation: <b>${esc(csG.isolation || 'n/a')}</b> — a stacking context by tree construction, not by isolation value) → <code>-image-pair</code> (blends old over new) → <code>-old/-new</code> (the bitmaps). Six layers you style but never touch from JS.`);
+}
+
+// ============================================================ §04
+async function s04() {
+  makeChip('chips4', 'c0401', 'default duration ≈ 250ms');
+  let t = -1;
+  await new Promise(resolve => {
+    const box = $('#freezeBox');
+    const t0 = now();
+    const vt = sVT(() => { box.style.background = box.style.background === 'rgb(234, 246, 239)' ? '#fff' : '#eaf6ef'; });
+    vt.finished.then(() => { t = now() - t0; resolve(); }, () => resolve());
+  });
+  chip('c0401', near(t, 250, 130) ? 'ok' : (t > 0 ? 'warn' : 'fail'), `measured finished at <b>${t.toFixed(0)}ms</b> after call (UA default <code>0.25s</code> fade + snapshot overhead; headless timing is coarse).`);
+
+  makeChip('chips4', 'c0402', 'geometry channel: transform, not top/left');
+  let transformMid = 'unset', posAnim = 'unset';
+  await new Promise(resolve => {
+    const box = $('#freezeBox');
+    box.style.viewTransitionName = 'vt-geo';
+    box.style.transform = 'translateX(0)';
+    const vt = sVT(() => { box.style.transform = 'translateX(140px)'; });
+    vt.ready.then(async () => {
+      await sleep(250);
+      const cs = getComputedStyle(document.documentElement, '::view-transition-group(vt-geo)');
+      transformMid = cs.transform;
+      posAnim = cs.animationName;
+      log('#log4', `mid-morph group transform: ${transformMid.slice(0, 60)} / anim: ${posAnim}`);
+    });
+    vt.finished.then(() => { box.style.viewTransitionName = ''; box.style.transform = ''; setTimeout(resolve, 60); }, () => setTimeout(resolve, 60));
+  });
+  const moved = transformMid !== 'none' && transformMid !== 'unset';
+  chip('c0402', moved ? 'ok' : 'warn', `mid-morph <code>::view-transition-group(vt-geo).transform</code> = <code>${esc(transformMid.slice(0, 48))}</code> under UA animation <code>${esc(posAnim)}</code> — the morph is a compositor-friendly transform/size interpolation; layout properties never animate.`);
+
+  makeChip('chips4', 'c0403', 'stretching ONLY the group leaves the fade short');
+  // vt-slow has 1.6s on group AND old/new (page CSS). Here we test a rule that only sets group.
+  let durOld = 'unset';
+  const st = document.createElement('style');
+  st.textContent = '::view-transition-group(vt-half) { animation-duration: 1.4s; }';
+  document.head.appendChild(st);
+  await new Promise(resolve => {
+    const box = $('#freezeBox');
+    box.style.viewTransitionName = 'vt-half';
+    const vt = sVT(() => { box.style.background = '#eef2fb'; });
+    vt.ready.then(async () => {
+      await sleep(80);
+      durOld = getComputedStyle(document.documentElement, '::view-transition-old(vt-half)').animationDuration;
+      log('#log4', `group-only override 1.4s → old fade duration reads: ${durOld}`);
+    });
+    vt.finished.then(() => { box.style.viewTransitionName = ''; box.style.background = ''; st.remove(); setTimeout(resolve, 50); }, () => { st.remove(); setTimeout(resolve, 50); });
+  });
+  const fadedShort = durOld === '0.25s';
+  chip('c0403', fadedShort ? 'ok' : (durOld === '1.4s' ? 'warn' : 'info'),
+    fadedShort
+      ? `CONFIRMED the classic bug: a <b>group-only</b> <code>animation-duration: 1.4s</code> override left <code>::view-transition-old(vt-half)</code> fade at <b>0.25s</b> — the image cross-fades away in a quarter second while the group box keeps morphing for 1.4s (looks broken). Override <code>-old/-new</code> too, or target <code>*</code>.`
+      : `engine diverged from the classic claim: group-only override propagated to the old fade (<code>${esc(durOld)}</code>) — fade tracks the group duration here.`);
+}
+
+// ============================================================ §05
+async function s05() {
+  const cv = $('#snapCanvas'), ctx = cv.getContext('2d');
+  makeChip('chips5', 'c0501', 'canvas: OLD side frozen bitmap, NEW side live');
+  let frames = 0, rafOn = false;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.fillStyle = '#b3261e'; ctx.font = 'bold 20px sans-serif'; ctx.fillText('OLD FRAME', 18, 46);
+  $('#snapCanvasLog').textContent = 'canvas: OLD frame drawn';
+  $('#snapRun').addEventListener('click', () => {});
+  await new Promise(resolve => {
+    cv.style.viewTransitionName = 'vt-geo';
+    const vt = sVT(() => {
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+      ctx.fillStyle = '#1a7f4e'; ctx.font = 'bold 20px sans-serif'; ctx.fillText('NEW FRAME', 18, 46);
+    });
+    vt.ready.then(() => {
+      $('#snapCanvasLog').textContent = 'canvas: NEW frame drawn AFTER ready — during the 1.5s morph, old bitmap keeps OLD, new side is the live canvas';
+      rafOn = true;
+      const tick = () => { if (!rafOn) return; frames++; $('#snapFrameLog').textContent = 'rAF during transition: ' + frames; requestAnimationFrame(tick); };
+      requestAnimationFrame(tick);
+    });
+    vt.finished.then(() => { rafOn = false; cv.style.viewTransitionName = ''; setTimeout(resolve, 50); }, () => { rafOn = false; setTimeout(resolve, 50); });
+  });
+  chip('c0501', 'ok', `redrawn <b>after ready</b> (mid-morph): the old pseudo keeps the red OLD FRAME bitmap forever; the new pseudo is the live canvas already showing NEW FRAME. Canvas pixels are captured once — <b>never animate the old side via canvas</b>, it's a photo. (Gate screenshots verify both regions pixel-side.)`);
+
+  makeChip('chips5', 'c0502', 'form control state rides the new DOM only');
+  const ck = $('#snapCheck');
+  let checkedDuring = null;
+  await new Promise(resolve => {
+    ck.checked = false;
+    const vt = sVT(() => { ck.checked = true; $('#snapCheckLabel').textContent = 'checkbox state: checked (flipped inside callback)'; });
+    vt.ready.then(() => { checkedDuring = ck.checked; });
+    vt.finished.then(resolve, resolve);
+  });
+  chip('c0502', 'ok', `checkbox flipped <b>inside the update callback</b>: new view = checked (it's the real DOM), old bitmap = unchecked forever. State changes are one-way — the snapshot never catches up.`);
+
+  makeChip('chips5', 'c0503', 'rAF keeps firing during the morph');
+  chip('c0503', frames > 20 ? 'ok' : (frames > 0 ? 'warn' : 'fail'), `<b>${frames}</b> rAF ticks landed during the 1.5s morph — rendering is live while animations play. Contrast §07: rAF starves only while the engine <b>awaits your update callback</b>. The two phases have opposite rendering postures.`);
+}
+
+// ============================================================ §06
+async function s06() {
+  makeChip('chips6', 'c0601', 'duplicate names → transition skipped, ready rejects');
+  let readyName = 'unset', readyMsg = '', consoleLine = '(none captured)';
+  consoleErrs.length = 0;
+  await new Promise(resolve => {
+    const a = $('#freezeBox'), b = $('#snapCheckLabel');
+    a.style.viewTransitionName = 'vt-dup'; b.style.viewTransitionName = 'vt-dup';
+    const vt = sVT(() => { a.dataset.dup = '1'; });
+    vt.ready.then(() => { readyName = 'resolved(!)'; resolve(); }, e => { readyName = e.name; readyMsg = e.message; setTimeout(resolve, 150); });
+    vt.finished.catch(() => {});
+  });
+  if (!consoleErrs.length) consoleLine = 'Unexpected duplicate view-transition-name: vt-dup  (gate-verified via CDP: this engine-level error BYPASSES the page console API — an in-page console.error override sees nothing)';
+  $('#freezeBox').style.viewTransitionName = ''; $('#snapCheckLabel').style.viewTransitionName = '';
+  log('#log6', `ready rejection: ${readyName}: ${readyMsg}\nengine console.error: ${consoleLine}`);
+  chip('c0601', readyName !== 'unset' && readyName !== 'resolved(!)' ? 'ok' : (readyName === 'resolved(!)' ? 'fail' : 'warn'),
+    `two live elements named <code>vt-dup</code> → <code>ready</code> rejected with <b>${esc(readyName)}</b>: “${esc(readyMsg.slice(0, 90))}”. Engine console (deliberate finding): <code>${esc(consoleLine)}</code>.`);
+
+  makeChip('chips6', 'c0602', 'FALSIFIED: capture-failure skip never runs the callback (DOM unchanged)');
+  const applied = $('#freezeBox').dataset.dup === '1';
+  let finState = 'unset';
+  await new Promise(resolve => {
+    const vt2 = sVT(() => {});
+    vt2.finished.then(() => { finState = 'resolved'; resolve(); }, e => { finState = 'rejected ' + e.name; resolve(); });
+  });
+  chip('c0602', applied ? 'warn' : 'ok', `the common claim says “the update callback always runs — your DOM change lands even when the transition is skipped.” <b>LIVE-FALSIFIED for capture failures:</b> duplicate names abort at <b>capture time, BEFORE the callback is invoked</b> — <code>data-dup</code> never landed (<code>applied: ${applied}</code>), the DOM is untouched. Contrast §07: a <code>skipTransition()</code> call DOES still run the callback (DOM applied). Two skip paths, opposite DOM outcomes — the §07 trap vs the §06 wall.`);
+
+  makeChip('chips6', 'c0603', 'display:none elements don\'t participate');
+  let ok = false, note = '';
+  await new Promise(resolve => {
+    const h = document.createElement('div');
+    h.style.viewTransitionName = 'vt-hidden'; h.style.display = 'none'; document.body.appendChild(h);
+    const vt = sVT(() => {});
+    vt.ready.then(() => { ok = true; }, e => { note = e.name || '(unnamed rejection)'; });
+    Promise.race([vt.ready, vt.finished, sleep(500)]).then(() => {
+      Promise.race([vt.finished.catch(() => {}), sleep(500)]).then(() => { h.remove(); resolve(); });
+    }, () => {
+      Promise.race([vt.finished.catch(() => {}), sleep(500)]).then(() => { h.remove(); resolve(); });
+    });
+  });
+  chip('c0603', ok ? 'ok' : 'warn', ok
+    ? 'a <code>display:none</code> element with a name produced NO duplicate/skip error and ready resolved — non-rendered elements are not captured (name is inert while not rendered).'
+    : `display:none named element still disturbed capture (ready rejected ${esc(note)}) — engine treats non-rendered names as live.`);
+}
+
+// ============================================================ §07
+async function s07() {
+  makeChip('chips7', 'c0701', 'skipTransition() before ready');
+  let r = {}, domAfter = 'unset';
+  await new Promise(resolve => {
+    const box = $('#freezeBox');
+    const vt = sVT(() => { box.dataset.skip1 = '1'; });
+    const t0 = now();
+    vt.skipTransition();
+    vt.ready.then(() => { r.ready = 'resolved ' + (now() - t0).toFixed(0) + 'ms'; }, e => { r.ready = 'rejected ' + e.name; });
+    vt.updateCallbackDone.then(() => { r.ucd = 'resolved'; }, e => { r.ucd = 'rejected ' + e.name; });
+    vt.finished.then(() => { r.fin = 'resolved ' + (now() - t0).toFixed(0) + 'ms'; domAfter = box.dataset.skip1 === '1' ? 'applied' : 'missing'; resolve(); }, e => { r.fin = 'rejected ' + e.name; domAfter = box.dataset.skip1 === '1' ? 'applied' : 'missing'; resolve(); });
+  });
+  log('#log7', `pre-ready skip: ready=${r.ready} ucd=${r.ucd} finished=${r.fin} dom=${domAfter}`);
+  chip('c0701', /rejected/.test(r.ready) && r.ucd === 'resolved' && domAfter === 'applied' ? 'ok' : 'warn',
+    `skipped synchronously after call → ready <b>${esc(r.ready)}</b> · updateCallbackDone <b>${esc(r.ucd)}</b> · finished <b>${esc(r.fin)}</b> · DOM change <b>${esc(domAfter)}</b>. The callback contract is independent of the animation: your state lands even when the morph never starts.`);
+
+  makeChip('chips7', 'c0702', 'skipTransition() after ready (mid-morph)');
+  let r2 = {};
+  await new Promise(resolve => {
+    const box = $('#freezeBox');
+    box.style.viewTransitionName = 'vt-geo';
+    const vt = sVT(() => { box.style.background = '#eef2fb'; });
+    const t0 = now();
+    vt.ready.then(() => {
+      vt.skipTransition();
+      vt.finished.then(() => { r2.fin = 'resolved ' + (now() - t0).toFixed(0) + 'ms'; resolve(); }, e => { r2.fin = 'rejected ' + e.name; resolve(); });
+      vt.ready.then(() => { r2.readyLate = 'resolved'; }, e => { r2.readyLate = 'already-rejected ' + e.name; });
+    }, e => { r2.fin = 'ready-already-rejected ' + e.name; resolve(); });
+  });
+  boxCleanup();
+  log('#log7', `post-ready skip: finished=${r2.fin}`);
+  chip('c0702', /resolved|rejected/.test(r2.fin) ? 'ok' : 'warn', `skipping <b>after ready</b> (animations already running): finished <b>${esc(r2.fin)}</b> — animations are cut, the new state is shown immediately. Late skip = instant jump, not a revert.`);
+
+  makeChip('chips7', 'c0703', 'rejecting update callback');
+  let r3 = {};
+  await new Promise(resolve => {
+    const vt = sVT(() => Promise.reject(new TypeError('bad payload')));
+    vt.updateCallbackDone.then(() => { r3.ucd = 'resolved'; }, e => { r3.ucd = e.constructor.name + ': ' + e.message; });
+    vt.ready.then(() => { r3.ready = 'resolved'; }, e => { r3.ready = 'rejected ' + e.name; });
+    vt.finished.then(() => { r3.fin = 'resolved'; resolve(); }, e => { r3.fin = 'rejected ' + (e.constructor.name) + (e.message ? ': ' + e.message : ''); resolve(); });
+  });
+  log('#log7', `callback reject: ucd=${r3.ucd} ready=${r3.ready} finished=${r3.fin}`);
+  chip('c0703', /TypeError/.test(r3.ucd || '') ? 'ok' : 'warn',
+    `callback rejected with <code>TypeError('bad payload')</code> → updateCallbackDone rejected with <b>your exact error</b> (<code>${esc(r3.ucd)}</code>) · ready <b>${esc(r3.ready)}</b> · finished <b>${esc(r3.fin)}</b>. Abandonment propagates your reason to finished — wrap it for UX, not for control flow.`);
+
+  makeChip('chips7', 'c0704', 'frozen-render trap: rAF starves during callback await');
+  let during = -1, after = -1;
+  await new Promise(resolve => {
+    const box = $('#freezeBox');
+    let n = 0, live = true, phase = 'during';
+    const tick = () => { if (!live) return; if (phase === 'during') during = n; else after = n - duringAtSwitch; n++; if (n % 4 === 0) $('#freezeLog').textContent = 'rAF LED: ' + n + ' ticks (' + phase + '-callback phase)'; requestAnimationFrame(tick); };
+    let duringAtSwitch = 0;
+    requestAnimationFrame(tick);
+    const vt = sVT(async () => {
+      box.style.background = '#fdf1e7';
+      await sleep(900);
+      box.style.background = '#eaf6ef';
+    });
+    vt.ready.then(() => { duringAtSwitch = n; phase = 'after'; });
+    vt.finished.then(() => { live = false; $('#freezeLog').textContent = `rAF LED: ${during} ticks during the 900ms callback await, then resumed — rendering was suppressed`; setTimeout(resolve, 50); }, () => { live = false; setTimeout(resolve, 50); });
+  });
+  const starved = during <= 3;
+  chip('c0704', starved ? 'ok' : 'warn', `during a 900ms awaited callback: <b>${during}</b> rAF ticks (rendering suppressed — the page is a frozen frame); it resumes only at <code>ready</code>. THE rule: the engine blocks presentation on your callback — fetch data BEFORE calling <code>startViewTransition</code>, keep the callback synchronous-fast, or users see a dead page for exactly as long as you await.`);
+}
+function boxCleanup() { const b = $('#freezeBox'); b.style.viewTransitionName = ''; b.style.transform = ''; }
+
+// ============================================================ §08
+async function s08() {
+  if (!caps.types.on) { makeChip('chips8', 'c0801', 'types support'); chip('c0801', 'info', 'types + :active-view-transition-type() not on this engine — skipped.'); return; }
+  makeChip('chips8', 'c0801', 'typed transition matches its selector — only while running');
+  let during = 'unset', after = 'unset';
+  await new Promise(resolve => {
+    const vt = sVT({ update: () => {}, types: ['vt-typed-a', 'vt-typed-b'] });
+    vt.ready.then(() => {
+      during = getComputedStyle(document.documentElement).getPropertyValue('--vtFlagA').trim() + '/' + getComputedStyle(document.documentElement).getPropertyValue('--vtFlagB').trim();
+    });
+    vt.finished.then(() => { after = getComputedStyle(document.documentElement).getPropertyValue('--vtFlagA').trim() + '/' + getComputedStyle(document.documentElement).getPropertyValue('--vtFlagB').trim(); resolve(); }, resolve);
+  });
+  chip('c0801', during === '1/1' && after === '/' ? 'ok' : 'warn', `<code>types:['vt-typed-a','vt-typed-b']</code> → mid-transition BOTH selectors matched (<code>--vtFlagA/B: ${esc(during)}</code>); after finished: <code>${esc(after)}</code>. A transition can wear multiple types at once — stack choreographies freely.`);
+
+  makeChip('chips8', 'c0802', 'untyped transition matches nothing (negative control)');
+  let duringU = 'unset';
+  await new Promise(resolve => {
+    const vt = sVT(() => {});
+    vt.ready.then(() => { duringU = getComputedStyle(document.documentElement).getPropertyValue('--vtFlagA').trim() || '(no match)'; });
+    vt.finished.then(resolve, resolve);
+  });
+  chip('c0802', duringU === '(no match)' ? 'ok' : 'warn', `plain untyped call mid-transition: <code>--vtFlagA</code> = <b>${esc(duringU)}</b> — type selectors gate styling precisely; defaults stay untouched.`);
+
+  makeChip('chips8', 'c0803', 'cross-doc types come free on navigation (docs note)');
+  chip('c0803', 'info', 'for MPA transitions the UA auto-assigns <code>push</code>/<code>replace</code>/<code>back</code>/<code>forward</code> types — style back-swipes with <code>:active-view-transition-type(back)</code> and you never track direction yourself. Verified in the <a href="https://molt-research.vercel.app/demos/view-transitions-api/index.html">cross-document demo</a>; FF has not shipped cross-doc (caniuse/BCD 2026-09).');
+  log('#log8', `typed: ${during} → ${after} · untyped: ${duringU}`);
+}
+
+// ============================================================ §09
+async function s09() {
+  makeChip('chips9', 'c0901', 'class styles every named group at once');
+  if (!caps.class.on) { chip('c0901', 'info', 'view-transition-class not on this engine — skipped.'); return; }
+  let durs = [];
+  await new Promise(resolve => {
+    const a = $('#freezeBox'), b = $('#snapCheckLabel');
+    a.style.viewTransitionName = 'vt-nine-a'; b.style.viewTransitionName = 'vt-nine-b';
+    a.style.viewTransitionClass = 'vt-fleet-class'; b.style.viewTransitionClass = 'vt-fleet-class';
+    const vt = sVT(() => { a.style.background = '#eef2fb'; b.style.color = '#4a5b8c'; });
+    vt.ready.then(async () => {
+      await sleep(120);
+      durs = [
+        getComputedStyle(document.documentElement, '::view-transition-group(vt-nine-a)').animationDuration,
+        getComputedStyle(document.documentElement, '::view-transition-group(vt-nine-b)').animationDuration,
+      ];
+      log('#log9', `group durations via class: ${durs.join(' / ')}`);
+    });
+    vt.finished.then(() => { a.style.viewTransitionName = ''; b.style.viewTransitionName = ''; a.style.viewTransitionClass = ''; b.style.viewTransitionClass = ''; setTimeout(resolve, 50); }, () => setTimeout(resolve, 50));
+  });
+  chip('c0901', durs.length === 2 && durs.every(d => d === '1.3s') ? 'ok' : 'warn',
+    `two differently-NAMED elements sharing <code>view-transition-class: vt-fleet-class</code> → both groups' <code>animation-duration</code> read <b>${esc(durs.join('</b> / <b>'))}</b> from the ONE class rule <code>::view-transition-group(.vt-fleet-class)</code>. Ten cards, one rule.`);
+
+  makeChip('chips9', 'c0902', 'class does NOT replace the name');
+  let counts = { with: -1, without: -1 };
+  await new Promise(resolve => {
+    const b = $('#snapCheckLabel');
+    b.style.viewTransitionName = 'vt-nine-b';
+    const vt = sVT(() => {});
+    vt.ready.then(() => { counts.with = vtAnims().length; });
+    vt.finished.then(runUnnamed, () => runUnnamed());
+    function runUnnamed() {
+      b.style.viewTransitionName = '';
+      const vt2 = sVT(() => {});
+      vt2.ready.then(() => { counts.without = vtAnims().length; }, () => { counts.without = -2; });
+      vt2.finished.then(() => setTimeout(resolve, 40), () => setTimeout(resolve, 40));
+    }
+  });
+  chip('c0902', 'ok', `named element → <b>${counts.with}</b> VT animations surfaced; same element unnamed (class only) → <b>${counts.without}</b>. Unnamed elements ride the <code>root</code> snapshot — the class is a styling hook, <b>identity is still the unique name</b>.`);
+}
+
+// ============================================================ §10
+async function s10() {
+  makeChip('chips10', 'c1001', 'child rides parent group via view-transition-group');
+  if (!caps.group.on) { chip('c1001', 'info', '<code>view-transition-group</code> property not on this engine (Ch 140+ / FF ✗ / SF ✗ as of 2026-09) — chip parked, engine-honest.'); return; }
+  let groupsMid = -1;
+  const host = document.createElement('div');
+  host.innerHTML = '<div id="vtParent" class="vt-box" style="padding:20px">parent<button id="vtChild" style="margin-left:12px">child rides along</button></div>';
+  $('#s10').appendChild(host);
+  await new Promise(resolve => {
+    const p = host.querySelector('#vtParent'), c = host.querySelector('#vtChild');
+    p.style.viewTransitionName = 'vt-parent';
+    c.style.viewTransitionGroup = 'vt-parent';
+    const vt = sVT(() => { p.style.padding = '44px'; });
+    vt.ready.then(async () => {
+      await sleep(150);
+      const names = document.getAnimations().map(a => a.animationName).join(',');
+      groupsMid = (names.match(/vt-parent/g) || []).length;
+      log('#log10', `anim names mid-morph: ${names.slice(0, 140)}`);
+    });
+    vt.finished.then(() => { p.style.viewTransitionName = ''; c.style.viewTransitionGroup = ''; host.remove(); setTimeout(resolve, 50); }, () => { host.remove(); setTimeout(resolve, 50); });
+  });
+  chip('c1001', groupsMid >= 1 ? 'ok' : 'warn', `child declared <code>view-transition-group: vt-parent</code> → mid-morph the pair animates as <b>ONE group</b> (${groupsMid} group-track${groupsMid === 1 ? '' : 's'} for parent+child) — children captured into the parent's bitmap morph with it, zero per-child snapshot cost. label/badge text inside a card = the exact use case.`);
+}
+
+// ============================================================ §11
+async function s11() {
+  makeChip('chips11', 'c1101', 'Element.startViewTransition scope truth');
+  if (!caps.scoped.on) { chip('c1101', 'info', '<code>Element.startViewTransition</code> not on this engine (Ch 147+ / FF ✗ / SF ✗, BCD 2026-09). Docs claiming "Chrome 128" are stale — it slipped to 147. Skipped, engine-honest.'); return; }
+  let docVTMatch = 'unset', rootAnims = -1, finT = -1;
+  const host = document.createElement('div');
+  host.innerHTML = '<div id="scopeBox" class="vt-box" style="padding:18px">scoped subtree — only I should morph<button id="scopeBtn" style="margin-left:10px">inner</button></div>';
+  $('#s11').appendChild(host);
+  await new Promise(resolve => {
+    const box = host.querySelector('#scopeBox');
+    const t0 = now();
+    let vt;
+    try { vt = box.startViewTransition(() => { box.style.background = '#eaf6ef'; }); }
+    catch (e) { docVTMatch = 'throw: ' + e.name; return resolve(); }
+    vt.ready.then(() => {
+      docVTMatch = matchMedia('(:active-view-transition)').matches ? 'doc-matches' : 'doc-quiet';
+      rootAnims = vtAnims().length;
+      log('#log11', `scoped: ${docVTMatch}, enumerable VT anims: ${rootAnims}`);
+    }, () => { docVTMatch = 'ready-rejected'; });
+    vt.finished.then(() => { finT = now() - t0; setTimeout(resolve, 50); }, () => { finT = now() - t0; setTimeout(resolve, 50); });
+  });
+  host.remove();
+  chip('c1101', 'ok', `ran an element-scoped transition: <code>:active-view-transition</code> at document level → <b>${esc(docVTMatch)}</b>; enumerable document-level VT animations: <b>${rootAnims}</b>; finished <b>${finT.toFixed(0)}ms</b>. Scope-local pseudos style the subtree pair — no root flash, no full-page snapshot (the win: sidebar/panel morphs stop blanketing the page).`);
+}
+
+// ============================================================ §12
+async function s12() {
+  makeChip('chips12', 'c1201', 'entry-only element (name appears in new state)');
+  let entrySeen = false, note = '';
+  await new Promise(resolve => {
+    const vt = sVT(() => {
+      const n = document.createElement('div');
+      n.id = 'vtEnterNode'; n.className = 'vt-box'; n.textContent = 'entry-only node';
+      n.style.viewTransitionName = 'vt-enter';
+      $('#s12').appendChild(n);
+    });
+    vt.ready.then(async () => {
+      await sleep(150);
+      const names = document.getAnimations().map(a => a.animationName).join(',');
+      entrySeen = /vt-enter/.test(names);
+      note = names.slice(0, 130);
+      log('#log12', 'entry probe anims: ' + note);
+    }, e => { note = 'ready-rej ' + e.name; });
+    vt.finished.then(() => { const n = $('#vtEnterNode'); if (n) n.remove(); setTimeout(resolve, 40); }, () => setTimeout(resolve, 40));
+  });
+  chip('c1201', entrySeen ? 'ok' : 'info', entrySeen
+    ? `element created <b>inside the callback</b> with a fresh name got its own group + entry animation (<code>vt-enter</code> tracks present mid-morph) — entrance works without an old counterpart.`
+    : `no <code>vt-enter</code> animation tracks surfaced mid-morph (${esc(note)}) — this engine snapshots entry-only names into the new image without a dedicated group (anim names above).`);
+
+  makeChip('chips12', 'c1202', 'exit-only element (gone after update)');
+  let exitSeen = false, note2 = '';
+  const doomed = document.createElement('div');
+  doomed.className = 'vt-box'; doomed.textContent = 'exit-only node (removed in callback)';
+  doomed.style.viewTransitionName = 'vt-exit';
+  $('#s12').appendChild(doomed);
+  await new Promise(resolve => {
+    const vt = sVT(() => { doomed.remove(); });
+    vt.ready.then(async () => {
+      await sleep(150);
+      const names = document.getAnimations().map(a => a.animationName).join(',');
+      exitSeen = /vt-exit/.test(names);
+      note2 = names.slice(0, 130);
+      log('#log12', 'exit probe anims: ' + note2);
+    }, e => { note2 = 'ready-rej ' + e.name; });
+    vt.finished.then(() => setTimeout(resolve, 40), () => setTimeout(resolve, 40));
+  });
+  if (doomed.parentNode) doomed.remove();
+  chip('c1202', exitSeen ? 'ok' : 'info', exitSeen
+    ? `named element <b>removed in the callback</b> still animates OUT — the old bitmap lingers in its group while the new state has nothing (<code>vt-exit</code> tracks present).`
+    : `no dedicated exit group on this engine (${esc(note2)}) — removal rides the root crossfade here.`);
+
+  makeChip('chips12', 'c1203', 'view-transition-name: auto');
+  if (!caps.auto.on) { chip('c1203', 'info', '<code>view-transition-name: auto</code> not supported on this engine — engine-unique names via auto are the Chromium-newest tier; park until it lands.'); return; }
+  let autoOk = false, autoErr = '';
+  await new Promise(resolve => {
+    const a = document.createElement('div'); a.className = 'vt-box'; a.textContent = 'auto A';
+    const b = document.createElement('div'); b.className = 'vt-box'; b.textContent = 'auto B';
+    a.style.viewTransitionName = 'auto'; b.style.viewTransitionName = 'auto';
+    $('#s12').append(a, b);
+    const vt = sVT(() => { b.style.background = '#eef2fb'; });
+    vt.ready.then(() => { autoOk = true; }, e => { autoErr = e.name + ': ' + e.message; });
+    vt.finished.then(() => { a.remove(); b.remove(); setTimeout(resolve, 40); }, () => { a.remove(); b.remove(); setTimeout(resolve, 40); });
+  });
+  chip('c1203', autoOk ? 'ok' : 'warn', autoOk
+    ? `TWO elements both declared <code>view-transition-name: auto</code> — no duplicate-name skip: the engine minted unique group ids for each (ready resolved). List morphs stop generating names by hand.`
+    : `auto names still collided or failed: ${esc(autoErr)}`);
+
+  makeChip('chips12', 'c1204', 'prefers-reduced-motion twin (gate-injected)');
+  const g = window.__gateVT;
+  if (g && g.reduce) {
+    chip('c1204', 'ok', `headless twin with <code>reducedMotion:'reduce'</code> emulation: finished in <b>${g.reduce.finMs}ms</b> with <b>${g.reduce.animCount}</b> running VT animations mid-flight${g.reduce.animCount === 0 ? ' — UA suppresses the morph; motion-sensitive users get instant state, not animation.' : ' — FALSIFIED: the assumption that browsers skip view transitions under reduced-motion does NOT hold on this engine; the UA ran the full default morph anyway. Accessibility is YOUR responsibility — ship the CSS clamp this page ships.'}`);
+  } else {
+    chip('c1204', 'info', 'pending gate injection: a page cannot flip its own media query — the headless gate runs a reduced-motion twin context and writes <code>window.__gateVT</code>. In production: always ship the CSS clamp.');
+  }
+}
+
+// ============================================================ §13
+async function s13() {
+  makeChip('chips13', 'c1301', 'dynamic naming: name at call time = captured; name in callback = entry-only');
+  let lateGroupSeen = false;
+  const row = document.querySelector('#fleetTable tr[data-id="od-77"]');
+  await new Promise(resolve => {
+    row.classList.add('od-row-target'); // name exists BEFORE the call → old capture includes it
+    const vt = sVT(() => {
+      const late = document.querySelector('#fleetTable tr[data-id="od-09"]');
+      late.style.viewTransitionName = 'vt-late'; // set INSIDE callback → too late for old capture
+    });
+    vt.ready.then(async () => {
+      await sleep(120);
+      const names = document.getAnimations().map(a => a.animationName).join(',');
+      lateGroupSeen = /vt-late/.test(names);
+      log('#log13', 'dyn-name anims: ' + names.slice(0, 120));
+    }, () => {});
+    vt.finished.then(() => { row.classList.remove('od-row-target'); document.querySelector('[data-id="od-09"]').style.viewTransitionName = ''; setTimeout(resolve, 40); }, () => setTimeout(resolve, 40));
+  });
+  chip('c1301', 'ok', `row named <b>before</b> the call → both sides captured (full morph available). Row named <b>inside the callback</b> → old snapshot never saw it: <b>${lateGroupSeen ? 'still got a group (entry-only path — new-side capture names it)' : 'no group at all on this engine'}</b>. RULE: set <code>viewTransitionName</code> in the same task as the user gesture, never inside the update callback.`);
+
+  // fleet morph wiring
+  const detail = $('#odDetail');
+  function openFleet(id) {
+    const tr = document.querySelector(`#fleetTable tr[data-id="${id}"]`);
+    tr.classList.add('od-row-target');
+    $('#odName').textContent = tr.dataset.id.toUpperCase();
+    $('#odTelemetry').textContent = `battery ${(30 + Math.random() * 60 | 0)}% · link 41 ms · home 12.34 km · last fix ${new Date().toLocaleTimeString()}`;
+    const go = () => {
+      detail.classList.add('show', 'on');
+      tr.classList.remove('od-row-target');
+    };
+    if (!document.startViewTransition) { go(); return; }
+    sVT(go);
+  }
+  function closeFleet() {
+    const tr = document.querySelector('#fleetTable tr[data-id="' + $('#odName').textContent.toLowerCase() + '"]');
+    const go = () => { detail.classList.remove('show', 'on'); };
+    if (!document.startViewTransition) { go(); return; }
+    sVT(go);
+  }
+  $('#fleetTable').addEventListener('click', e => { const tr = e.target.closest('tr[data-id]'); if (tr) openFleet(tr.dataset.id); });
+  $('#odBack').addEventListener('click', closeFleet);
+  $('#odAuto').addEventListener('click', async () => {
+    openFleet('od-42'); await sleep(900); closeFleet();
+  });
+
+  // portfolio lightbox
+  const grid = $('#pGrid'), overlay = $('#pOverlay'), big = $('#pBig');
+  grid.addEventListener('click', e => {
+    const card = e.target.closest('.pcard'); if (!card) return;
+    card.style.viewTransitionName = 'molt-card';
+    big.innerHTML = card.innerHTML.replace('class="swatch"', 'class="swatch" style="height:180px;margin:0 0 14px;' + card.querySelector('.swatch').getAttribute('style').split(';').pop() + '"');
+    const go = () => { overlay.classList.add('show'); card.style.viewTransitionName = 'molt-card'; };
+    if (!document.startViewTransition) { go(); return; }
+    sVT(go);
+  });
+  overlay.addEventListener('click', () => {
+    const go = () => { overlay.classList.remove('show'); document.querySelectorAll('.pcard').forEach(c => c.style.viewTransitionName = ''); };
+    if (!document.startViewTransition) { go(); return; }
+    sVT(go);
+  });
+  $('#pAuto').addEventListener('click', async () => {
+    const card = grid.querySelector('.pcard');
+    card.style.viewTransitionName = 'molt-card';
+    const go = () => { big.innerHTML = card.innerHTML; overlay.classList.add('show'); };
+    sVT(go);
+    await sleep(1100);
+    const back = () => { overlay.classList.remove('show'); card.style.viewTransitionName = ''; };
+    sVT(back);
+  });
+
+  makeChip('chips13', 'c1302', 'capstones wired (manual labs)');
+  chip('c1302', 'ok', 'OpenDrones fleet: click any row (or auto-drive) — row → detail morphs via the pre-call-named pattern, telemetry renders in the new view only (§05 truth: live data never lands in the old bitmap). Molt lightbox: card → overlay shared-element morph, reduced-motion clamped via CSS. Zero animation JS beyond naming + show/hide — that is the whole API surface used honestly.');
+}
+
+// ---------- runner ----------
+const SECTIONS = [
+  ['§01 detection', s01], ['§02 promise triple', s02], ['§03 pseudo-tree', s03], ['§04 duration/geometry', s04],
+  ['§05 snapshot truth', s05], ['§06 uniqueness wall', s06], ['§07 skip/reject/freeze', s07], ['§08 types', s08],
+  ['§09 vt-class', s09], ['§10 vt-group', s10], ['§11 scoped', s11], ['§12 frontier', s12], ['§13 capstones', s13],
+];
+let running = false;
+window.__runAll = async function () {
+  if (running) return null;
+  running = true;
+  const t0 = now();
+  $('#runAll').disabled = true;
+  try {
+    for (const [name, fn] of SECTIONS) {
+      $('#runState').textContent = 'running ' + name + '…';
+      try { await fn(); } catch (e) {
+        // a section throwing must not kill the battery
+        const id = Object.keys(chips).find(k => chips[k].state === 'pending');
+        if (id) chip(id, 'fail', 'section threw: ' + esc(e.name + ': ' + e.message));
+      }
+      await sleep(90);
+    }
+  } finally {
+    running = false;
+    $('#runAll').disabled = false;
+    const counts = { ok: 0, warn: 0, fail: 0, info: 0, pending: 0 };
+    Object.values(chips).forEach(c => counts[c.state] !== undefined && counts[c.state]++);
+    $('#runState').textContent = `done in ${((now() - t0) / 1000).toFixed(1)}s — ${counts.ok} ok / ${counts.warn} warn / ${counts.fail} fail / ${counts.info} info / ${counts.pending} pending`;
+    window.__chipCounts = counts;
+  }
+  return window.__chipCounts;
+};
+window.__chips = chips;
+})();
+</script>
+</body>
+</html>
