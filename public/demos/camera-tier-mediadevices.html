@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Camera Tier — MediaDevices, getUserMedia &amp; MediaStreamTrack</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #faf9f7; --card: #ffffff; --ink: #1a1a1e; --muted: #6b6b76;
+    --accent: #1f6e7a; --accent-soft: #e4f0f1; --ok: #2e7d4f; --ok-bg: #e8f4ec;
+    --warn: #9a6b0f; --warn-bg: #fbf3e2; --fail: #b3352c; --fail-bg: #fbe9e7;
+    --info: #2c5f8a; --info-bg: #e9f1f8; --line: #e6e4df; --code-bg: #f2f1ed;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; overflow-x: hidden; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 20px 90px; }
+  header.hero { padding: 54px 0 34px; border-bottom: 1px solid var(--line); margin-bottom: 40px; position: relative; overflow: hidden; }
+  .orb { position: absolute; border-radius: 50%; filter: blur(70px); opacity: .35; pointer-events: none; }
+  .orb.a { width: 340px; height: 340px; background: #6fc3cf; top: -160px; right: -80px; }
+  .orb.b { width: 260px; height: 260px; background: #8ab6d9; bottom: -180px; left: -60px; }
+  .kicker { font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  h1 { font-size: clamp(28px, 4.6vw, 42px); line-height: 1.12; letter-spacing: -.02em; margin: 10px 0 14px; max-width: 680px; }
+  .sub { color: var(--muted); max-width: 700px; font-size: 15.5px; position: relative; }
+  .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+  .badge { font-size: 12px; font-weight: 600; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--muted); }
+  .badge.on { border-color: var(--ok); color: var(--ok); background: var(--ok-bg); }
+  .badge.na { border-color: var(--fail); color: var(--fail); background: var(--fail-bg); }
+  section { margin: 46px 0; }
+  h2 { font-size: 21px; letter-spacing: -.01em; margin-bottom: 6px; }
+  h2 .sn { color: var(--accent); font-family: var(--mono); font-size: 15px; margin-right: 8px; }
+  .lead { color: var(--muted); font-size: 14.5px; max-width: 760px; margin-bottom: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; margin-bottom: 14px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .chip { font-size: 12.5px; font-family: var(--mono); padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); overflow-wrap: anywhere; max-width: 100%; }
+  .chip.ok { border-color: var(--ok); background: var(--ok-bg); color: var(--ok); }
+  .chip.warn { border-color: var(--warn); background: var(--warn-bg); color: var(--warn); }
+  .chip.fail { border-color: var(--fail); background: var(--fail-bg); color: var(--fail); }
+  .chip.info { border-color: var(--info); background: var(--info-bg); color: var(--info); }
+  .chip.pending { opacity: .55; }
+  .chip .val { font-weight: 700; }
+  code { font-family: var(--mono); font-size: .92em; background: var(--code-bg); padding: 1px 5px; border-radius: 5px; }
+  pre { font-family: var(--mono); font-size: 12.5px; line-height: 1.55; background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; margin: 10px 0; }
+  pre b { color: var(--accent); font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .tscroll { overflow-x: auto; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--accent-soft); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+  tr:last-child td { border-bottom: 0; }
+  .btn { font: inherit; font-size: 13.5px; font-weight: 600; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+  .btn.secondary { background: var(--card); color: var(--accent); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px; }
+  video, canvas { max-width: 100%; border-radius: 10px; border: 1px solid var(--line); background: #0b0d10; display: block; }
+  video.mirror { transform: scaleX(-1); }
+  .stage { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px; }
+  @media (max-width: 720px) { .stage { grid-template-columns: 1fr; } }
+  .stage figure { margin: 0; }
+  .stage figcaption { font-size: 12px; color: var(--muted); margin-top: 6px; font-family: var(--mono); }
+  .ladder { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .ladder span { font-size: 12px; font-family: var(--mono); padding: 4px 9px; border-radius: 6px; background: var(--code-bg); border: 1px solid var(--line); color: var(--muted); }
+  .ladder span.hit { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); font-weight: 700; }
+  .ladder span.err { background: var(--fail-bg); border-color: var(--fail); color: var(--fail); font-weight: 700; }
+  .strip { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .strip img { width: 96px; height: 72px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+  iframe.wall { width: 100%; height: 88px; border: 1px dashed var(--line); border-radius: 10px; background: var(--card); margin-top: 10px; }
+  .note { font-size: 13px; color: var(--muted); border-left: 3px solid var(--accent); padding: 6px 12px; margin-top: 10px; background: var(--accent-soft); border-radius: 0 8px 8px 0; }
+  .cap-tag { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; color: #fff; background: var(--accent); border-radius: 6px; padding: 2px 8px; display: inline-block; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hero">
+  <div class="orb a"></div><div class="orb b"></div>
+  <div class="kicker">Web Platform API · The Capture Tier</div>
+  <h1>MediaDevices, getUserMedia &amp; MediaStreamTrack — the camera tier, live-probed</h1>
+  <p class="sub">Every camera, microphone and capture flow starts here. This page live-probes the engine contract on <b>your</b> browser: the privacy wall on device labels, the two-track constraint negotiation (bare = wish, <code>exact</code> = law), the track lifecycle truth (self-stop fires no <code>ended</code>), the capability wall (<code>torch</code>/<code>zoom</code> are device gifts, not API rights) and the ImageCapture holdout matrix. Capstones: an OpenDrones inspection camera and a Molt client photo booth.</p>
+  <div class="badges" id="badges">
+    <span class="badge" data-b="md">navigator.mediaDevices</span>
+    <span class="badge" data-b="secure">secure context</span>
+    <span class="badge" data-b="perms">permissions.query('camera')</span>
+    <span class="badge" data-b="enum">enumerateDevices</span>
+    <span class="badge" data-b="ic">ImageCapture</span>
+    <span class="badge" data-b="caps">getCapabilities()</span>
+    <span class="badge" data-b="worker">worker exposure</span>
+  </div>
+</header>
+
+<section id="s01">
+  <h2><span class="sn">§01</span>The door — mediaDevices, secure context &amp; the worker jail</h2>
+  <p class="lead">The whole capture tier hangs off one object. It is <b>absent</b> (not denied) on insecure origins, and it never grew a worker story — capture is a main-thread privilege.</p>
+  <div class="card">
+    <div class="chips" id="chips01"></div>
+  </div>
+  <pre>// The three doors that must ALL be open:
+navigator.mediaDevices?.getUserMedia({ video: true, audio: true })  // door 1: object exists
+// door 2: isSecureContext === true (http://localhost is a secure context; http://lan-ip is NOT)
+// door 3: you are on the main thread — workers see navigator, but navigator.mediaDevices is undefined</pre>
+</section>
+
+<section id="s02">
+  <h2><span class="sn">§02</span>enumerateDevices — the label privacy wall</h2>
+  <p class="lead">Device <b>ids</b> enumerate freely; device <b>labels</b> are fingerprint-gated behind a granted capture permission. This is why your device picker must render <i>after</i> a permission (or you show "Camera 1, Camera 2" anonymously).</p>
+  <div class="card">
+    <div class="chips" id="chips02"></div>
+  </div>
+  <pre>const pre = await navigator.mediaDevices.enumerateDevices(); // before ANY grant
+pre[0].label === <b>""</b>            // ← live-probed: labels sealed pre-permission
+await navigator.mediaDevices.getUserMedia({ video: true });   // grant happens
+const post = await navigator.mediaDevices.enumerateDevices();
+post.find(d => d.kind === 'videoinput').label  // now "FaceTime HD Camera" / "Fake Device"</pre>
+</section>
+
+<section id="s03">
+  <h2><span class="sn">§03</span>Constraint negotiation — bare value vs <code>exact</code></h2>
+  <p class="lead">The #1 copy-paste trap: a bare constraint value is an <b>ideal</b> — the engine silently falls back to whatever it has. Only <code>{ exact: … }</code>` turns a wish into a law, and law-breaking rejects with <code>OverconstrainedError</code> naming the guilty constraint.</p>
+  <div class="card">
+    <div class="chips" id="chips03"></div>
+  </div>
+  <pre>getUserMedia({ video: { width: 9999 } })            // RESOLVES — engine picks best fit (silent fallback)
+getUserMedia({ video: { width: { exact: 9999 } } }) // REJECTS — OverconstrainedError, e.constraint === 'width'
+getUserMedia({ video: { unicorn: { exact: 1 } } })  // live truth: unknown keys are IGNORED, not rejected
+getUserMedia({ video: false, audio: false })        // live truth: TypeError "At least one of audio and video…"</pre>
+</section>
+
+<section id="s04">
+  <h2><span class="sn">§04</span>applyConstraints — re-negotiating a LIVE track</h2>
+  <p class="lead">Constraints are not just for construction. <code>track.applyConstraints()</code> re-negotiates a running track; an <code>exact</code> miss rejects but the track <b>survives untouched</b>. On an ended track it's <code>InvalidStateError</code>.</p>
+  <div class="card">
+    <div class="chips" id="chips04"></div>
+  </div>
+</section>
+
+<section id="s05">
+  <h2><span class="sn">§05</span>Track lifecycle — stop(), clone(), enabled vs muted</h2>
+  <p class="lead">The engine truth most code gets wrong: stopping your own track fires <b>no</b> <code>ended</code> event (that event is for external death — device unplugged). <code>enabled = false</code> is silence/blackness, not release. <code>clone()</code> shares the source: stopping the original does <b>not</b> stop the clone.</p>
+  <div class="card">
+    <div class="chips" id="chips05"></div>
+  </div>
+  <pre>track.stop()            // readyState → 'ended'; idempotent; NO 'ended' event for self-stop
+track.enabled = false   // black frames / silent audio — camera indicator STAYS ON (not a release)
+const t2 = track.clone() // new track id, same live source
+track.stop(); t2.readyState // 'live' — the clone is an independent subscription</pre>
+</section>
+
+<section id="s06">
+  <h2><span class="sn">§06</span>Stream anatomy — ids, active, addTrack</h2>
+  <p class="lead">A MediaStream is a mutable bag of tracks with an ephemeral id. <code>stream.active</code> is derived: it flips false only when <b>every</b> track has ended.</p>
+  <div class="card">
+    <div class="chips" id="chips06"></div>
+  </div>
+</section>
+
+<section id="s07">
+  <h2><span class="sn">§07</span>The video element plumbing — srcObject</h2>
+  <p class="lead"><code>srcObject</code> is the zero-copy path (no blob URL, no MIME negotiation). For unattended playback: <code>autoplay muted playsinline</code> — mobile engines refuse otherwise. Dimensions come from the track, at <code>loadedmetadata</code>.</p>
+  <div class="card">
+    <div class="chips" id="chips07"></div>
+  </div>
+  <div class="stage">
+    <figure>
+      <video id="v7" autoplay muted playsinline></video>
+      <figcaption id="v7cap">waiting for track…</figcaption>
+    </figure>
+    <figure>
+      <canvas id="c7" width="320" height="240"></canvas>
+      <figcaption>grabFrame → drawImage (the portable snapshot)</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="s08">
+  <h2><span class="sn">§08</span>ImageCapture — the Chromium holdout</h2>
+  <p class="lead"><code>takePhoto()</code> goes through the device's still pipeline (real flash, full sensor resolution); <code>grabFrame()</code> returns an <code>ImageBitmap</code> of the live video. Firefox and Safari never shipped ImageCapture — the cross-browser still-frame path is <code>drawImage(video)</code> onto a canvas.</p>
+  <div class="card">
+    <div class="chips" id="chips08"></div>
+  </div>
+</section>
+
+<section id="s09">
+  <h2><span class="sn">§09</span>Permission tiers — query, denial &amp; dismissal</h2>
+  <p class="lead">Chromium exposes camera/microphone through the Permissions API; Firefox and Safari don't (feature-detect or try/catch). And the error taxonomy matters: <code>NotAllowedError</code> covers user-denial <b>and</b> policy-block — check the console for the policy tell.</p>
+  <div class="card">
+    <div class="chips" id="chips09"></div>
+  </div>
+</section>
+
+<section id="s10">
+  <h2><span class="sn">§10</span>The iframe policy wall</h2>
+  <p class="lead">Default permissions-policy allowlist for camera is <code>'self'</code>: same-origin children capture freely, cross-origin children are hard-blocked (NotAllowedError + <i>Permissions policy violation</i> console error) unless the embedder adds <code>allow="camera"</code>. Same wall as geolocation and fullscreen.</p>
+  <div class="card">
+    <div class="chips" id="chips10"></div>
+    <iframe class="wall" id="fSame" title="same-origin child"></iframe>
+    <iframe class="wall" id="fXNo" title="cross-origin child, no allow"></iframe>
+    <iframe class="wall" id="fXYes" allow="camera" title="cross-origin child, allow=camera"></iframe>
+  </div>
+</section>
+
+<section id="s11">
+  <h2><span class="sn">§11</span>contentHint &amp; getSupportedConstraints</h2>
+  <p class="lead"><code>contentHint</code> tells the encoder what the track IS ('detail' for documents, 'motion' for games, 'speech' for voice) without changing capture. The static vocabulary — <code>getSupportedConstraints()</code> — is the API's full menu, but it says nothing about YOUR device: that's <code>track.getCapabilities()</code>.</p>
+  <div class="card">
+    <div class="chips" id="chips11"></div>
+  </div>
+</section>
+
+<section id="s12">
+  <h2><span class="sn">§12</span>The capability wall — torch/zoom are device gifts</h2>
+  <p class="lead">The API vocabulary lists <code>torch</code>, <code>zoom</code>, <code>focusMode</code>… but a device that lacks them rejects <code>exact</code> attempts with <code>OverconstrainedError</code>. Never render a torch button without reading <code>getCapabilities()</code> first — this is the honest-UI rule.</p>
+  <div class="card">
+    <div class="chips" id="chips12"></div>
+  </div>
+</section>
+
+<section id="s13">
+  <h2><span class="sn">§13</span><span class="cap-tag">Capstone · OpenDrones</span>Field inspection camera</h2>
+  <p class="lead">Device picker from post-grant enumeration, zoom bounded by measured capabilities (disabled with an honest reason when absent), telemetry-stamped frame export, and a torch control that only lights up when the hardware answers for it.</p>
+  <div class="card">
+    <video id="v13" autoplay muted playsinline></video>
+    <div class="row">
+      <select id="odDev" aria-label="camera device"></select>
+      <input type="range" id="odZoom" min="100" max="400" value="100" style="max-width:180px" />
+      <span id="odZoomLbl" style="font-size:12px;font-family:var(--mono);color:var(--muted)">zoom</span>
+      <button class="btn" id="odGrab">Grab frame</button>
+      <button class="btn secondary" id="odTorch">Torch</button>
+      <button class="btn secondary" id="odSwitch">Stop / release</button>
+    </div>
+    <div class="stage">
+      <figure>
+        <canvas id="c13" width="320" height="240"></canvas>
+        <figcaption>last frame + telemetry stamp</figcaption>
+      </figure>
+      <figure>
+        <div class="strip" id="odStrip"></div>
+        <figcaption>capture log (PNG export via toDataURL)</figcaption>
+      </figure>
+    </div>
+    <div class="chips" id="chips13"></div>
+  </div>
+</section>
+
+<section id="s14">
+  <h2><span class="sn">§14</span><span class="cap-tag">Capstone · Molt Studios</span>Client photo booth</h2>
+  <p class="lead">The facing-mode ladder (<code>user</code> → <code>environment</code> → any) with mirrored selfie preview, a 3-2-1 countdown, and the portable snapshot path (drawImage — works on every engine, no ImageCapture needed). Denial gets product copy, not a dead button.</p>
+  <div class="card">
+    <video id="v14" class="mirror" autoplay muted playsinline></video>
+    <div class="row">
+      <button class="btn" id="moltStart">Start booth</button>
+      <button class="btn" id="moltSnap">3-2-1 photo</button>
+      <button class="btn secondary" id="moltFlip">Flip camera</button>
+    </div>
+    <div class="ladder" id="moltLadder"><span>user</span><span>environment</span><span>any</span></div>
+    <div class="strip" id="moltStrip"></div>
+    <div class="chips" id="chips14"></div>
+  </div>
+</section>
+
+<section id="s15">
+  <h2><span class="sn">§15</span>Decision table — the capture tier in one grid</h2>
+  <div class="tscroll">
+  <table>
+    <thead><tr><th>Need</th><th>Use</th><th>Why / gotcha</th></tr></thead>
+    <tbody>
+      <tr><td>Camera / mic</td><td><code>getUserMedia</code></td><td>Persistent permission; remember <code>stop()</code> to kill the indicator</td></tr>
+      <tr><td>Screen / window / tab</td><td><code>getDisplayMedia</code></td><td>Per-capture prompt, never persistent; <code>preferredAudio</code> Chromium-only</td></tr>
+      <tr><td>Synthetic video (no device)</td><td><code>canvas.captureStream()</code></td><td>Owns nothing, asks no permission — the privacy-safe demo path</td></tr>
+      <tr><td>Still frame, all engines</td><td><code>drawImage(video)</code> → canvas</td><td>The portable path; ImageCapture is Chromium-only</td></tr>
+      <tr><td>Full-sensor stills</td><td><code>ImageCapture.takePhoto()</code></td><td>Device still pipeline (flash/resolution); gate on <code>'ImageCapture' in window</code></td></tr>
+      <tr><td>Front/back camera</td><td><code>facingMode</code> ladder</td><td>Bare value = wish; probe result, don't assume mobile-only values on desktop</td></tr>
+      <tr><td>Device picker</td><td>enumerate + <code>deviceId: {exact}</code></td><td>Ids are ephemeral (re-check each session); labels need a grant first</td></tr>
+      <tr><td>Torch / zoom UI</td><td>read <code>getCapabilities()</code></td><td>Feature-detect per track — vocabulary ≠ hardware</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note">House rule: capture is a privilege — request it in-context, show live state, and <code>stop()</code> tracks the moment the flow ends. An always-on camera indicator is a trust leak.</p>
+</section>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const chipsRoot = {};
+function chip(section, id, cls, val) {
+  const host = $('chips' + String(section).padStart(2, '0'));
+  let el = document.getElementById(id);
+  if (!el) { el = document.createElement('span'); el.id = id; el.className = 'chip pending'; el.textContent = id + ' …'; host.appendChild(el); }
+  el.className = 'chip ' + cls;
+  const v = document.createElement('span'); v.className = 'val'; v.textContent = ' ' + val;
+  el.textContent = ''; el.appendChild(document.createTextNode(id)); el.appendChild(v);
+}
+function badge(name, on) {
+  const b = document.querySelector('.badge[data-b="' + name + '"]');
+  if (b) { b.classList.add(on ? 'on' : 'na'); b.textContent = b.textContent + (on ? ' ✓' : ' ✗'); }
+}
+const MD = navigator.mediaDevices;
+window.__cam = { pre: null, denied: null, devices: [], caps: null, child: {}, capstones: {} };
+
+const wait = ms => new Promise(r => setTimeout(r, ms));
+async function gum(c) { try { return { ok: true, stream: await MD.getUserMedia(c) }; } catch (e) { return { ok: false, err: e }; } }
+const stopAll = s => s.getTracks().forEach(t => t.stop());
+
+async function s01() {
+  chip(1, 'c01a', MD ? 'ok' : 'fail', MD ? 'present' : 'ABSENT');
+  if (MD) badge('md', true);
+  chip(1, 'c01b', isSecureContext ? 'ok' : 'fail', isSecureContext ? 'isSecureContext=true' : 'insecure');
+  if (isSecureContext) badge('secure', true);
+  chip(1, 'c01c', 'info', 'gUM arity=' + MD.getUserMedia.length + ' — constraints optional in the IDL, but the engine still requires ≥1 track kind');
+  const noArg = await gum(); // missing argument entirely
+  window.__cam.noArg = { name: noArg.err ? noArg.err.name : null, message: noArg.err ? noArg.err.message : null };
+  chip(1, 'c01d', noArg.ok ? 'warn' : 'ok', noArg.ok ? 'resolved bare?!' : (noArg.err.name + ' — ' + (noArg.err.message || '').slice(0, 90)));
+  // worker jail — real probe, blob worker
+  const jail = await new Promise(res => {
+    try {
+      const src = `onmessage=e=>postMessage({hasNav:'mediaDevices' in navigator, md:typeof navigator.mediaDevices})`;
+      const w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      const t = setTimeout(() => res({ timeout: true }), 1200);
+      w.onmessage = ev => { clearTimeout(t); w.terminate(); res(ev.data); };
+      w.postMessage('go');
+    } catch (e) { res({ err: String(e) }); }
+  });
+  chip(1, 'c01e', jail.md === 'undefined' ? 'ok' : 'warn', jail.timeout ? 'worker probe timeout' : `worker: navigator=${jail.hasNav}, mediaDevices=${jail.md} (the main-thread jail)`);
+  if (jail.md === 'undefined') badge('worker', true);
+}
+
+async function s02() {
+  const pre = await MD.enumerateDevices();
+  window.__cam.pre = { count: pre.length, labelsEmpty: pre.every(d => d.label === '') };
+  const kinds = [...new Set(pre.map(d => d.kind))].join('+');
+  chip(2, 'c02a', pre.length ? 'ok' : 'warn', pre.length + ' devices (' + kinds + ')');
+  chip(2, 'c02b', window.__cam.pre.labelsEmpty ? 'ok' : 'info', window.__cam.pre.labelsEmpty
+    ? 'ALL labels "" pre-grant (the privacy wall)'
+    : 'labels present pre-grant — auto-granted env (wall falsifiable only in a clean context; denied context proves it)');
+  badge('enum', pre.length > 0);
+  const hasToJson = pre[0] && typeof pre[0].toJSON === 'function';
+  chip(2, 'c02c', hasToJson ? 'ok' : 'warn', 'MediaDeviceInfo.toJSON ' + (hasToJson ? 'shipped' : 'absent'));
+  // grant, then re-enumerate
+  const g = await gum({ video: true });
+  if (!g.ok) { chip(2, 'c02d', 'fail', 'grant failed: ' + g.err.name); window.__cam.denied = { name: g.err.name, message: g.err.message }; return null; }
+  stopAll(g.stream);
+  const post = await MD.enumerateDevices();
+  window.__cam.devices = post.map(d => ({ kind: d.kind, label: d.label, id: d.deviceId.slice(0, 8), gid: d.groupId.slice(0, 8) }));
+  const vid = post.find(d => d.kind === 'videoinput');
+  chip(2, 'c02d', vid && vid.label ? 'ok' : 'warn', 'post-grant label: "' + (vid ? vid.label : '?') + '"');
+  const groupPair = post.filter(d => d.kind !== 'audiooutput');
+  const sharedGid = groupPair.length >= 2 && groupPair[0].groupId === groupPair[1].groupId;
+  chip(2, 'c02e', 'info', 'groupId shared cam+mic: ' + sharedGid + ' · audiooutput listed: ' + post.some(d => d.kind === 'audiooutput'));
+  chip(2, 'c02f', 'info', 'deviceIds are ephemeral — persist nothing, re-enumerate each session');
+  return post;
+}
+
+async function s03() {
+  const bare = await gum({ video: { width: 9999, height: 9999 } });
+  if (!bare.ok) { chip(3, 'c03a', 'fail', bare.err.name); return; }
+  const st = bare.stream.getVideoTracks()[0].getSettings();
+  chip(3, 'c03a', 'ok', `bare 9999×9999 → RESOLVED ${st.width}×${st.height} (silent fallback)`);
+  stopAll(bare.stream);
+  const ex = await gum({ video: { width: { exact: 9999 } } });
+  chip(3, 'c03b', !ex.ok && ex.err.name === 'OverconstrainedError' ? 'ok' : 'fail', !ex.ok ? `exact → ${ex.err.name}, constraint="${ex.err.constraint}"` : 'exact resolved?! (' + ex.stream.getVideoTracks()[0].getSettings().width + ')');
+  if (ex.ok) stopAll(ex.stream);
+  const uni = await gum({ video: { unicorn: { exact: 1 } } });
+  chip(3, 'c03c', uni.ok ? 'ok' : 'warn', uni.ok ? 'unknown constraint key IGNORED → resolved' : 'unknown key rejected: ' + uni.err.name);
+  if (uni.ok) stopAll(uni.stream);
+  const bogus = await gum({ video: { deviceId: { exact: 'bogus-id' } } });
+  chip(3, 'c03d', !bogus.ok && bogus.err.constraint === 'deviceId' ? 'ok' : 'fail', !bogus.ok ? `bogus deviceId → ${bogus.err.name} (constraint="${bogus.err.constraint}")` : 'bogus device resolved?!');
+  if (bogus.ok) stopAll(bogus.stream);
+  const none = await gum({ video: false, audio: false });
+  window.__cam.emptyCons = none.ok ? { ok: true } : { name: none.err.name, message: none.err.message };
+  chip(3, 'c03e', none.ok ? 'warn' : 'ok', none.ok ? `{video:false,audio:false} RESOLVED with ${none.stream.getTracks().length} tracks (empty stream is legal!)` : `{video:false,audio:false} → ${none.err.name}: "${(none.err.message || '').slice(0, 60)}" (spec says resolve empty — engine throws)`);
+  if (none.ok) stopAll(none.stream);
+}
+
+async function s04() {
+  const g = await gum({ video: true });
+  if (!g.ok) { chip(4, 'c04a', 'fail', 'no track: ' + g.err.name); return; }
+  const t = g.stream.getVideoTracks()[0];
+  const before = t.getSettings().width;
+  const bad = await t.applyConstraints({ width: { exact: 12345 } }).then(() => ({ ok: true }), e => ({ ok: false, err: e }));
+  const after = t.getSettings().width;
+  chip(4, 'c04a', !bad.ok && bad.err.name === 'OverconstrainedError' && t.readyState === 'live' && before === after ? 'ok' : 'fail',
+    !bad.ok ? `exact miss → ${bad.err.name} · track still ${t.readyState} · width ${before}→${after} (survives)` : 'apply resolved 12345?!');
+  const ideal = await t.applyConstraints({ width: 320 }).then(() => ({ ok: true }), e => ({ ok: false, err: e }));
+  chip(4, 'c04b', ideal.ok && t.getSettings().width === 320 ? 'ok' : 'warn', `live ideal 320 → settings width=${t.getSettings().width}`);
+  const caps = t.getCapabilities ? t.getCapabilities() : null;
+  window.__cam.caps = caps;
+  chip(4, 'c04c', caps ? 'ok' : 'warn', 'getCapabilities keys: ' + (caps ? Object.keys(caps).join(',') : 'absent'));
+  if (caps) badge('caps', true);
+  t.stop();
+  const dead = await t.applyConstraints({ width: 320 }).then(() => ({ ok: true }), e => ({ ok: false, err: e }));
+  chip(4, 'c04d', !dead.ok && dead.err.name === 'InvalidStateError' ? 'ok' : 'warn', !dead.ok ? `ended track apply → ${dead.err.name} (spec says InvalidStateError — engine truth measured)` : 'ended track apply resolved?!');
+}
+
+async function s05() {
+  const g = await gum({ video: true, audio: true });
+  if (!g.ok) { chip(5, 'c05a', 'fail', 'no stream: ' + g.err.name); return; }
+  const [vt, at] = [g.stream.getVideoTracks()[0], g.stream.getAudioTracks()[0]];
+  chip(5, 'c05a', 'ok', `kinds ${vt.kind}+${at.kind} · track ids unique: ${vt.id !== at.id}`);
+  chip(5, 'c05b', 'info', `labels: "${vt.label}" / "${at.label}" · muted=${vt.muted} · isolated=${vt.isolated}`);
+  let endedFired = false; vt.addEventListener('ended', () => { endedFired = true; });
+  vt.stop();
+  await wait(700);
+  chip(5, 'c05c', !endedFired && vt.readyState === 'ended' ? 'ok' : 'fail', `self-stop → readyState='${vt.readyState}' · ended event fired: ${endedFired} (no event for your own stop)`);
+  let threw = null; try { vt.stop(); } catch (e) { threw = e.name; }
+  chip(5, 'c05d', threw === null ? 'ok' : 'warn', 'second stop() ' + (threw === null ? 'silently OK (idempotent)' : 'threw ' + threw));
+  // clone() shares source
+  const g2 = await gum({ video: true });
+  const orig = g2.stream.getVideoTracks()[0];
+  const clone = orig.clone();
+  orig.stop();
+  await wait(250);
+  chip(5, 'c05e', clone.readyState === 'live' && clone.id !== orig.id ? 'ok' : 'fail', `clone survives original's stop (readyState='${clone.readyState}', new id)`);
+  clone.stop(); stopAll(g2.stream);
+  // enabled=false: blackness, not release
+  const g3 = await gum({ video: true });
+  const t3 = g3.stream.getVideoTracks()[0];
+  t3.enabled = false;
+  chip(5, 'c05f', 'ok', `enabled=false → readyState='${t3.readyState}' (running, black frames — NOT a release)`);
+  t3.enabled = true;
+  stopAll(g3.stream); stopAll(g.stream);
+}
+
+async function s06() {
+  const g = await gum({ video: true, audio: true });
+  if (!g.ok) { chip(6, 'c06a', 'fail', 'no stream: ' + g.err.name); return; }
+  const s = g.stream;
+  chip(6, 'c06a', s.active ? 'ok' : 'fail', `active=${s.active} · ${s.getVideoTracks().length}v+${s.getAudioTracks().length}a · id="${s.id.slice(0, 18)}…"`);
+  const s2 = new MediaStream([s.getVideoTracks()[0]]);
+  chip(6, 'c06b', s2.id !== s.id ? 'ok' : 'fail', 'new MediaStream([track]) → fresh id, shared track');
+  const dup = new MediaStream(); dup.addTrack(s.getVideoTracks()[0]); dup.addTrack(s.getVideoTracks()[0]);
+  chip(6, 'c06c', dup.getTracks().length === 1 ? 'ok' : 'warn', `addTrack(same track) twice → ${dup.getTracks().length} entr${dup.getTracks().length === 1 ? 'y (no-op)' : 'ies'}`);
+  stopAll(s); await wait(200);
+  chip(6, 'c06d', !s.active ? 'ok' : 'fail', `all tracks stopped → active=${s.active} (derived flag)`);
+}
+
+async function s07() {
+  const g = await gum({ video: true });
+  if (!g.ok) { chip(7, 'c07a', 'fail', g.err.name); return; }
+  const t = g.stream.getVideoTracks()[0];
+  const v = $('v7'); v.srcObject = g.stream;
+  await new Promise(res => { if (v.readyState >= 1) res(); else v.addEventListener('loadedmetadata', res, { once: true }); });
+  const ts = t.getSettings();
+  chip(7, 'c07a', v.videoWidth === ts.width && v.videoHeight === ts.height ? 'ok' : 'warn', `video ${v.videoWidth}×${v.videoHeight} === track settings ${ts.width}×${ts.height} at loadedmetadata`);
+  $('v7cap').textContent = `live · ${v.videoWidth}×${v.videoHeight} @ ${ts.frameRate || '?'}fps`;
+  const c = $('c7'); const ctx = c.getContext('2d');
+  await v.play().catch(() => {});
+  await new Promise(r => { const t0 = performance.now(); const iv = setInterval(() => { if (v.currentTime > 0 || performance.now() - t0 > 3000) { clearInterval(iv); r(); } }, 100); });
+  ctx.drawImage(v, 0, 0, c.width, c.height);
+  const px = ctx.getImageData(Math.floor(c.width / 2), Math.floor(c.height / 2), 1, 1).data;
+  chip(7, 'c07b', 'ok', `drawImage(video) portable snapshot ok (center px ${px[0]},${px[1]},${px[2]})`);
+  const hasHint = 'contentHint' in t;
+  chip(7, 'c07c', hasHint ? 'ok' : 'warn', hasHint ? `contentHint default "" · settable live` : 'contentHint absent');
+  t.contentHint = 'zzz-garbage';
+  chip(7, 'c07d', t.contentHint === 'zzz-garbage' ? 'warn' : 'ok', `garbage hint "${t.contentHint}" ${t.contentHint === 'zzz-garbage' ? 'ACCEPTED unvalidated (hints, not settings)' : 'rejected/clamped'}`);
+  t.contentHint = 'detail';
+  window.__cam.v7stream = g.stream; // keep for §8 + capstones reuse
+}
+
+async function s08() {
+  const has = 'ImageCapture' in window;
+  badge('ic', has);
+  chip(8, 'c08a', has ? 'ok' : 'info', has ? `ImageCapture shipped (${typeof ImageCapture})` : 'ImageCapture ABSENT — portable path is drawImage (§07)');
+  if (!has) return;
+  const stream = window.__cam.v7stream;
+  if (!stream) { chip(8, 'c08b', 'info', 'no live track for ImageCapture probes'); return; }
+  const t = stream.getVideoTracks()[0];
+  const ic = new ImageCapture(t);
+  chip(8, 'c08b', 'ok', 'new ImageCapture(track) ok · ic.track === track: ' + (ic.track === t));
+  try {
+    const bmp = await ic.grabFrame();
+    chip(8, 'c08c', bmp.width > 0 ? 'ok' : 'warn', `grabFrame → ImageBitmap ${bmp.width}×${bmp.height}`);
+    if (bmp.close) bmp.close();
+  } catch (e) { chip(8, 'c08c', 'warn', 'grabFrame: ' + e.name); }
+  try {
+    const blob = await ic.takePhoto();
+    chip(8, 'c08d', blob.size > 0 ? 'ok' : 'warn', `takePhoto → Blob ${blob.type} ${blob.size}B`);
+  } catch (e) { chip(8, 'c08d', 'warn', 'takePhoto: ' + e.name + ' (' + String(e.message || '').slice(0, 30) + ')'); }
+  try {
+    const pc = await ic.getPhotoCapabilities();
+    chip(8, 'c08e', 'ok', 'getPhotoCapabilities: ' + Object.keys(pc).slice(0, 6).join(','));
+  } catch (e) { chip(8, 'c08e', 'warn', 'getPhotoCapabilities: ' + e.name); }
+  // ended-track ImageCapture
+  const g2 = await gum({ video: true });
+  const t2 = g2.stream.getVideoTracks()[0]; t2.stop();
+  const ic2 = new ImageCapture(t2);
+  const r = await ic2.grabFrame().then(() => ({ ok: true }), e => ({ ok: false, err: e }));
+  chip(8, 'c08f', !r.ok ? 'ok' : 'warn', !r.ok ? 'grabFrame on ended track → ' + r.err.name : 'grabFrame on ended track resolved?!');
+}
+
+async function s09() {
+  let st = null, err = null;
+  try { st = await navigator.permissions.query({ name: 'camera' }); } catch (e) { err = e.name + ': ' + (e.message || '').slice(0, 40); }
+  window.__cam.permQuery = st ? { state: st.state } : { err };
+  chip(9, 'c09a', st ? 'ok' : 'info', st ? `permissions.query('camera') → '${st.state}'` : `query('camera') → ${err} (FF/Safari: absent — try/catch, never assume)`);
+  if (st) badge('perms', true);
+  let stm = null; try { stm = await navigator.permissions.query({ name: 'microphone' }); } catch (e) {}
+  chip(9, 'c09b', stm ? 'ok' : 'info', stm ? `query('microphone') → '${stm.state}'` : "query('microphone') absent");
+  // denial path — only meaningful when permission is actually denied; otherwise record state truth
+  if (st && st.state === 'denied') {
+    const d = await gum({ video: true });
+    window.__cam.denied = { name: d.err.name, message: d.err.message };
+    chip(9, 'c09c', !d.ok && d.err.name === 'NotAllowedError' ? 'ok' : 'fail', `denied → ${d.err.name}: "${(d.err.message || '').slice(0, 44)}"`);
+  } else {
+    chip(9, 'c09c', 'info', `no denial to probe here — state '${st ? st.state : '?'}'; NotAllowedError is the denied+policy-block class`);
+  }
+}
+
+function buildChildren() {
+  const here = new URL(location.href);
+  const child = here.pathname.replace(/[^/]*$/, 'camera-iframe-child.html');
+  const origin = here.protocol + '//' + here.host;
+  // cross-origin sibling: localhost <-> 127.0.0.1 swap (or the GH Pages mirror in prod)
+  let x = here.host.includes('localhost') ? origin.replace('//localhost', '//127.0.0.1') : null;
+  if (!x && here.host.includes('127.0.0.1')) x = origin.replace('//127.0.0.1', '//localhost');
+  $('fSame').src = child + '?slot=same';
+  if (x) { $('fXNo').src = x + child + '?slot=xno'; $('fXYes').src = x + child + '?slot=xyes'; }
+  else { $('fXNo').src = 'https://moltstudios.github.io/research-hub' + child + '?slot=xno'; $('fXYes').src = 'https://moltstudios.github.io/research-hub' + child + '?slot=xyes'; }
+}
+
+async function reportChildren() {
+  // children were embedded before §11 — reports have had seconds to land by now
+  let waited = 0;
+  while (!window.__cam.child.same && waited < 6000) { await wait(500); waited += 500; }
+  await wait(800);
+  const reports = window.__cam.child;
+  chip(10, 'c10a', reports.same ? (reports.same.ok ? 'ok' : 'warn') : 'info',
+    reports.same ? (reports.same.ok ? `same-origin child: GRANTED (${reports.same.w}×${reports.same.h}) — default 'self' allows` : `same-origin child: ${reports.same.err}`) : 'same-origin child: no report');
+  chip(10, 'c10b', reports.xno ? (reports.xno.ok ? 'warn' : 'ok') : 'info',
+    reports.xno ? (reports.xno.ok ? 'cross-origin child allowed WITHOUT allow?!' : `cross-origin no-allow → ${reports.xno.err} (the policy wall)`) : 'cross-origin no-allow: no report');
+  chip(10, 'c10c', reports.xyes ? (reports.xyes.ok ? 'ok' : 'warn') : 'info',
+    reports.xyes ? (reports.xyes.ok ? `allow="camera" child: GRANTED (${reports.xyes.w}×${reports.xyes.h}) — delegation works` : `allow="camera" child: ${reports.xyes.err} (delegation can't exceed the embedder's own grant)`) : 'allow="camera" child: no report');
+}
+
+async function s11() {
+  const sc = MD.getSupportedConstraints ? MD.getSupportedConstraints() : null;
+  chip(11, 'c11a', sc ? 'ok' : 'fail', 'getSupportedConstraints: ' + (sc ? Object.keys(sc).length + ' keys — ' + Object.keys(sc).filter(k => ['torch', 'zoom', 'facingMode', 'focusMode', 'height'].includes(k)).join(',') : 'absent'));
+  window.__cam.supported = sc ? Object.keys(sc) : [];
+  const stream = window.__cam.v7stream;
+  if (stream) {
+    const t = stream.getVideoTracks()[0];
+    t.contentHint = 'detail';
+    chip(11, 'c11b', t.contentHint === 'detail' ? 'ok' : 'warn', `video contentHint='detail' set (${t.contentHint}) — processing hint, no settings change`);
+    const a = stream.getAudioTracks()[0];
+    if (a) { a.contentHint = 'speech'; chip(11, 'c11c', a.contentHint === 'speech' ? 'ok' : 'warn', `audio contentHint='speech' set`); }
+  }
+  chip(11, 'c11d', 'info', 'vocabulary ≠ hardware: getSupportedConstraints is the MENU, getCapabilities is YOUR DEVICE');
+}
+
+async function s12() {
+  const caps = window.__cam.caps;
+  if (!caps) { chip(12, 'c12a', 'info', 'no capabilities captured (§04)'); return; }
+  const has = k => k in caps;
+  chip(12, 'c12a', 'ok', 'width range: ' + JSON.stringify(caps.width));
+  const zoomTorch = ['zoom', 'torch', 'focusMode', 'facingMode'].map(k => k + '=' + has(k)).join(' ');
+  chip(12, 'c12b', 'info', zoomTorch + (has('zoom') || has('torch') ? '' : ' — none on this device (honest-UI: hide controls)'));
+  // live capability wall: torch exact on a torch-less device
+  const stream = window.__cam.v7stream || (await gum({ video: true })).stream;
+  const t = stream.getVideoTracks()[0];
+  if (!has('torch')) {
+    const r = await t.applyConstraints({ advanced: [{ torch: true }] }).then(() => ({ ok: true }), e => ({ ok: false, err: e }));
+    chip(12, 'c12c', !r.ok ? 'ok' : 'warn', !r.ok ? `torch on torch-less device → ${r.err.name} (the wall)` : 'torch silently accepted (advanced constraints ignore?)');
+  } else {
+    chip(12, 'c12c', 'info', 'device HAS torch — wall probe skipped');
+  }
+  if (!window.__cam.v7stream) stopAll(stream);
+}
+
+async function capstoneOD(devices) {
+  const out = window.__cam.capstones;
+  const dev = $('odDev');
+  (devices || []).filter(d => d.kind === 'videoinput').forEach((d, i) => {
+    const o = document.createElement('option'); o.value = d.deviceId; o.textContent = (d.label || 'camera ' + (i + 1)).slice(0, 36); dev.appendChild(o);
+  });
+  let stream = null, track = null;
+  const start = async cons => { if (stream) { stopAll(stream); stream = null; } const g = await gum({ video: cons }); if (g.ok) { stream = g.stream; track = stream.getVideoTracks()[0]; $('v13').srcObject = stream; out.start = { ok: true, w: track.getSettings().width }; return true; } out.start = { ok: false, err: g.err.name }; return false; };
+  await start(dev.value ? { deviceId: { exact: dev.value } } : true);
+  chip(13, 'k13a', out.start && out.start.ok ? 'ok' : 'fail', out.start && out.start.ok ? `OD cam live ${out.start.w}px via deviceId exact` : 'OD cam failed: ' + (out.start && out.start.err));
+  const caps = track && track.getCapabilities ? track.getCapabilities() : {};
+  const zr = $('odZoom'), zl = $('odZoomLbl');
+  if (caps.zoom) { zr.min = caps.zoom.min * 100; zr.max = caps.zoom.max * 100; zr.disabled = false; zl.textContent = 'zoom HW'; }
+  else { zr.disabled = true; zl.textContent = 'zoom: no HW capability'; }
+  chip(13, 'k13b', 'ok', caps.zoom ? 'zoom slider bounded by getCapabilities' : 'zoom honestly disabled (capability wall §12)');
+  const torch = $('odTorch');
+  torch.disabled = !caps.torch;
+  if (!caps.torch) torch.title = 'no torch capability on this track'; else torch.onclick = async () => { const on = torch.dataset.on !== '1'; await track.applyConstraints({ advanced: [{ torch: on }] }); torch.dataset.on = on ? '1' : ''; torch.textContent = on ? 'Torch ●' : 'Torch'; };
+  chip(13, 'k13c', 'ok', caps.torch ? 'torch control armed' : 'torch disabled with reason (the honest-UI rule)');
+  $('odGrab').onclick = async () => {
+    const c = $('c13'), ctx = c.getContext('2d');
+    const v = $('v13'); c.width = v.videoWidth || 320; c.height = v.videoHeight || 240;
+    ctx.drawImage(v, 0, 0, c.width, c.height);
+    ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, c.height - 26, c.width, 26);
+    ctx.fillStyle = '#7ef0c0'; ctx.font = '12px ui-monospace,monospace';
+    ctx.fillText('OD-M07 · ' + new Date().toISOString().replace('T', ' ').slice(0, 19) + 'Z · ' + (track.getSettings().width || '?') + 'px', 8, c.height - 9);
+    const img = new Image(); img.src = c.toDataURL('image/png');
+    const log = $('odStrip'); log.prepend(img);
+    while (log.children.length > 4) log.lastChild.remove();
+    out.grab = { w: c.width, stamped: true };
+    chip(13, 'k13d', 'ok', `frame grabbed ${c.width}×${c.height} + telemetry stamp + PNG export`);
+  };
+  $('odSwitch').onclick = () => { if (stream) { stopAll(stream); stream = null; chip(13, 'k13e', 'ok', 'released — tracks stopped (indicator off)'); } };
+  dev.onchange = () => start({ deviceId: { exact: dev.value } });
+  zr.oninput = async () => { zl.textContent = 'zoom ' + (zr.value / 100).toFixed(1) + '×'; if (caps.zoom) await track.applyConstraints({ advanced: [{ zoom: zr.value / 100 }] }); };
+  await wait(400);
+  if (out.start && out.start.ok) { try { await $('odGrab').onclick(); } catch (e) { chip(13, 'k13d', 'warn', 'grab: ' + e.name); } }
+}
+
+async function capstoneMolt() {
+  const out = window.__cam.capstones;
+  const ladder = $('moltLadder').children;
+  const steps = [{ facingMode: 'user' }, { facingMode: 'environment' }, true];
+  let hit = -1, stream = null;
+  for (let i = 0; i < steps.length; i++) {
+    const g = await gum({ video: steps[i] === true ? true : steps[i] });
+    ladder[i].className = g.ok ? 'hit' : 'err';
+    if (g.ok) { hit = i; stopAll(g.stream); break; } else ladder[i].textContent += ' ✗';
+  }
+  out.moltLadder = hit;
+  chip(14, 'k14a', hit >= 0 ? 'ok' : 'fail', hit >= 0 ? `facing ladder settled at step ${hit + 1} (${['user', 'environment', 'any'][hit]})` : 'all ladder steps failed');
+  const g = await gum({ video: hit === 1 ? { facingMode: 'environment' } : true });
+  if (g.ok) {
+    stream = g.stream; $('v14').srcObject = stream;
+    const v = $('v14');
+    await v.play().catch(() => {});
+    await new Promise(r => { if (v.readyState >= 1) r(); else v.addEventListener('loadedmetadata', r, { once: true }); setTimeout(r, 3000); });
+    out.booth = { w: v.videoWidth };
+    chip(14, 'k14b', 'ok', `booth live ${v.videoWidth}×${v.videoHeight} mirrored preview`);
+  } else { chip(14, 'k14b', 'fail', 'booth: ' + g.err.name); out.booth = { err: g.err.name }; return; }
+  const snap = async () => {
+    const v = $('v14'); const c = document.createElement('canvas');
+    c.width = 240; c.height = 180;
+    c.getContext('2d').drawImage(v, (v.videoWidth - v.videoHeight * 240 / 180) / 2, 0, v.videoHeight * 240 / 180, v.videoHeight, 0, 0, 240, 180);
+    const img = new Image(); img.src = c.toDataURL('image/jpeg', .85);
+    $('moltStrip').prepend(img);
+    while ($('moltStrip').children.length > 6) $('moltStrip').lastChild.remove();
+    out.snap = true;
+    chip(14, 'k14c', 'ok', 'countdown photo → drawImage crop → JPEG strip (portable, no ImageCapture)');
+  };
+  $('moltSnap').onclick = async () => { const lbl = $('moltSnap'); for (const n of ['3', '2', '1']) { lbl.textContent = n; await wait(650); } lbl.textContent = '3-2-1 photo'; await snap(); };
+  $('moltFlip').onclick = async () => { stopAll(stream); const g2 = await gum({ video: { facingMode: 'environment' } }); if (g2.ok) { stream = g2.stream; $('v14').srcObject = stream; $('v14').classList.toggle('mirror'); out.flip = true; chip(14, 'k14d', 'ok', 'flip → environment (or best match), mirror toggled'); } else { const g3 = await gum({ video: true }); if (g3.ok) { stream = g3.stream; $('v14').srcObject = stream; chip(14, 'k14d', 'warn', 'flip fell back to default camera (' + g2.err.name + ')'); } } };
+  $('moltStart').onclick = () => $('moltSnap').click();
+  out.moltStream = stream;
+}
+
+// child reports (§10)
+window.addEventListener('message', ev => {
+  const d = ev.data;
+  if (!d || !d.__camChild) return;
+  window.__cam.child[d.slot] = d.report;
+});
+
+async function runAll() {
+  try {
+    await s01();
+    const devices = await s02();
+    await s03(); await s04(); await s05(); await s06(); await s07(); await s08(); await s09();
+    buildChildren(); // embed iframes now — reports land while later sections run
+    await s11(); await s12();
+    await capstoneOD(devices && devices.map ? devices : null);
+    await capstoneMolt();
+    await reportChildren();
+    window.__cam.done = true;
+  } catch (e) {
+    window.__cam.fatal = String(e && e.stack || e);
+  }
+}
+window.__runAll = runAll;
+// fast capstone driver for the gate (skips human countdown pacing)
+window.__driveCapstones = async () => {
+  const b = $('odGrab'); if (b && b.onclick) { try { await b.onclick(); } catch (e) {} }
+  const m = $('moltSnap'); if (m && m.onclick) { try { await m.onclick(); } catch (e) {} }
+};
+runAll();
+})();
+</script>
+</body>
+</html>
