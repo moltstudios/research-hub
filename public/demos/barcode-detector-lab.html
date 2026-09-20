@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BarcodeDetector — The Engine Truths</title>
+<style>
+  :root {
+    --bg: #faf9f7; --ink: #1d1d1f; --mut: #5d5d63; --line: #e8e6e1;
+    --acc: #0071e3; --ok: #1d8a4b; --okbg: #e9f7ef; --bad: #c2402a; --badbg: #fbeeea;
+    --card: #ffffff; --r: 18px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg); color: var(--ink); line-height: 1.6; font-size: 16px;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 0 24px; }
+  ::selection { background: #bcdcff; }
+
+  /* ---------- hero ---------- */
+  .hero { padding: 88px 0 56px; position: relative; overflow: hidden; }
+  .orb { position: absolute; border-radius: 50%; filter: blur(70px); opacity: .5; pointer-events: none; }
+  .orb.a { width: 340px; height: 340px; background: #d7e7ff; top: -140px; right: -120px; }
+  .orb.b { width: 260px; height: 260px; background: #ffe9d6; bottom: -140px; left: -110px; }
+  .kicker { font-size: 13px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--acc); margin-bottom: 18px; }
+  h1 { font-size: clamp(34px, 7vw, 46px); line-height: 1.08; letter-spacing: -.025em; font-weight: 800; margin-bottom: 20px; }
+  .hero p.lede { font-size: 18px; color: var(--mut); max-width: 520px; }
+  .meta-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 28px; }
+  .pill { font-size: 12.5px; font-weight: 600; padding: 6px 12px; border-radius: 999px; background: #fff; border: 1px solid var(--line); color: var(--mut); }
+
+  /* ---------- run-all ---------- */
+  .master { display: flex; align-items: center; gap: 16px; margin: 8px 0 64px; }
+  button.run-all {
+    font: inherit; font-weight: 600; font-size: 15px; color: #fff; background: var(--ink);
+    border: none; border-radius: 999px; padding: 13px 26px; cursor: pointer;
+    transition: transform .15s ease, box-shadow .15s ease; box-shadow: 0 6px 18px rgba(0,0,0,.14);
+  }
+  button.run-all:hover { transform: translateY(-1px); }
+  button.run-all:disabled { opacity: .55; cursor: default; transform: none; }
+  .tally { font-size: 14px; color: var(--mut); font-variant-numeric: tabular-nums; }
+  .tally b { color: var(--ink); }
+
+  /* ---------- laws ---------- */
+  section.law { margin: 0 0 72px; scroll-margin-top: 24px; }
+  .law-no { font-size: 13px; font-weight: 700; color: var(--acc); letter-spacing: .14em; margin-bottom: 10px; }
+  h2 { font-size: 26px; letter-spacing: -.02em; font-weight: 750; margin-bottom: 12px; }
+  .law p.desc { color: var(--mut); font-size: 15.5px; margin-bottom: 22px; }
+  .law p.desc code { font-size: 13.5px; background: #f1efe9; padding: 2px 6px; border-radius: 6px; color: var(--ink); }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 26px; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+
+  /* proof grid */
+  .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 520px) { .duo { grid-template-columns: 1fr; } }
+  .proof { border: 1px solid var(--line); border-radius: 14px; padding: 16px; text-align: center; background: #fff; }
+  .proof canvas, .proof img { display: block; margin: 0 auto 12px; max-width: 100%; image-rendering: pixelated; }
+  .proof .tag { font-size: 12.5px; font-weight: 600; color: var(--mut); margin-bottom: 10px; }
+  .res { display: inline-flex; align-items: center; justify-content: center; min-width: 76px; gap: 6px; font-size: 13px; font-weight: 650; padding: 5px 12px; border-radius: 999px; }
+  .res.ok { background: var(--okbg); color: var(--ok); }
+  .res.bad { background: var(--badbg); color: var(--bad); }
+  .res.wait { background: #f1efe9; color: var(--mut); }
+  .res small { font-weight: 500; opacity: .85; }
+
+  /* chips */
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; }
+  .chip { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; background: #fff; }
+  .chip .lbl { font-size: 13px; font-weight: 600; }
+  .chip code { font-size: 12px; color: var(--mut); }
+  .chip .res { margin-top: 8px; }
+
+  /* matrix table */
+  table.mx { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.mx td { padding: 9px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  table.mx tr:last-child td { border-bottom: none; }
+  table.mx td:first-child { font-weight: 600; white-space: nowrap; }
+  table.mx td:nth-child(2) { color: var(--mut); font-size: 13px; }
+  table.mx td:last-child { text-align: right; white-space: nowrap; }
+
+  /* geometry lab */
+  .geo { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  .stage { position: relative; width: 300px; height: 300px; margin: 0 auto; background:
+    repeating-conic-gradient(#f4f2ee 0% 25%, #fff 0% 50%) 0 0/20px 20px; border-radius: 14px; border: 1px solid var(--line); }
+  .stage canvas { position: absolute; inset: 0; }
+  .ctrl { display: flex; align-items: center; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .ctrl input[type=range] { width: 220px; accent-color: var(--acc); }
+  .ctrl .val { font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 650; width: 44px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; background: #fff; gap: 2px; }
+  .tog { font-size: 13.5px; font-weight: 600; border: none; background: transparent; border-radius: 999px; padding: 6px 14px; cursor: pointer; color: var(--mut); }
+  .tog.on { background: var(--ink); color: #fff; }
+
+  /* ladder */
+  .ladder { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  .rung { text-align: center; }
+  .rung .box { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: flex; align-items: center; justify-content: center; }
+  .rung .box canvas { image-rendering: pixelated; }
+  .rung .cap { font-size: 12px; color: var(--mut); margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+  footer { padding: 32px 0 72px; color: var(--mut); font-size: 13px; border-top: 1px solid var(--line); }
+  footer code { font-size: 12px; }
+  .nosupport { display: none; background: var(--badbg); color: var(--bad); border-radius: 14px; padding: 18px 20px; font-size: 14.5px; font-weight: 550; margin-bottom: 40px; }
+  .fade-in { animation: fade .5s ease both; }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="orb a"></div><div class="orb b"></div>
+    <div class="kicker">Field-measured · Zero-docs API Study</div>
+    <h1>The Barcode<br>Detector Engine<br>Truths</h1>
+    <p class="lede">Everything below was measured, not read. Each claim re-runs live in <em>your</em> browser against the real engine — including the ways it silently fails.</p>
+    <div class="meta-row">
+      <span class="pill" id="pill-engine">detecting engine…</span>
+      <span class="pill">10 laws · 28 live probes</span>
+      <span class="pill">Baseline: Chromium 140 · macOS Vision</span>
+    </div>
+  </header>
+
+  <div class="nosupport" id="nosupport"></div>
+
+  <div class="master">
+    <button class="run-all" id="runall">Run every law</button>
+    <div class="tally" id="tally">Nothing measured yet.</div>
+  </div>
+
+  <!-- LAW 1 -->
+  <section class="law" id="law1">
+    <div class="law-no">LAW 01 — THE SILENT ZERO</div>
+    <h2>A missing quiet zone reads as “no barcode”</h2>
+    <p class="desc">If a 1D barcode touches the image edge, the engine returns an empty array — no error, no warning. The exact same pixels with a white ring around them decode instantly. Left bar has zero padding; right bar gets a 14px white ring.</p>
+    <div class="card">
+      <div class="duo">
+        <div class="proof" id="p-quiet-a"><div class="tag">exact-fit · no quiet zone</div><div class="res wait">press run</div></div>
+        <div class="proof" id="p-quiet-b"><div class="tag">+ 14px white ring</div><div class="res wait">press run</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LAW 2 -->
+  <section class="law" id="law2">
+    <div class="law-no">LAW 02 — THE ALPHA WALL</div>
+    <h2>Transparent backgrounds are invisible</h2>
+    <p class="desc">Most QR generators (and every <code>react-qr-code</code> default) emit black modules on a <em>transparent</em> background. The engine treats alpha-0 as dark — the whole image is one black rectangle. Composite over opaque white and it decodes.</p>
+    <div class="card">
+      <div class="duo">
+        <div class="proof" id="p-alpha-a"><div class="tag">transparent PNG · direct</div><div class="res wait">press run</div></div>
+        <div class="proof" id="p-alpha-b"><div class="tag">same PNG · white backing</div><div class="res wait">press run</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LAW 3 -->
+  <section class="law" id="law3">
+    <div class="law-no">LAW 03 — THE HINT IS ADVISORY</div>
+    <h2>Unknown formats don’t filter. Known ones do.</h2>
+    <p class="desc">The constructor’s <code>formats</code> option only filters by formats the engine actually supports. Ask for <code>['codabar']</code> (not in the menu) and the detector happily finds a QR code — the unknown name is silently dropped. Ask for <code>['code_128']</code> and a QR becomes invisible. Empty array? <code>TypeError</code>: “Hint option provided, but is empty.”</p>
+    <div class="card">
+      <div class="chips">
+        <div class="chip" id="c-hint1"><div class="lbl">hint: <code>['codabar']</code> → QR img</div><div class="res wait">press run</div></div>
+        <div class="chip" id="c-hint2"><div class="lbl">hint: <code>['code_128']</code> → QR img</div><div class="res wait">press run</div></div>
+        <div class="chip" id="c-hint3"><div class="lbl">hint: <code>[]</code> (empty)</div><div class="res wait">press run</div></div>
+        <div class="chip" id="c-hint4"><div class="lbl">hint: <code>['qr_code','qr_code']</code></div><div class="res wait">press run</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LAW 4 -->
+  <section class="law" id="law4">
+    <div class="law-no">LAW 04 — THE SOURCE MATRIX</div>
+    <h2>What detect() actually accepts</h2>
+    <p class="desc">The spec unions six source types. The engine’s reality: four decode, two throw <code>NotSupportedError</code>, one is a trap (SVG-wrapped rasters load fine but never detect). Live, right now:</p>
+    <div class="card">
+      <table class="mx" id="srcmatrix"><tbody>
+        <tr><td>HTMLImageElement</td><td>the classic</td><td class="res wait">—</td></tr>
+        <tr><td>ImageBitmap</td><td>worker-friendly</td><td class="res wait">—</td></tr>
+        <tr><td>ImageData</td><td>raw pixels</td><td class="res wait">—</td></tr>
+        <tr><td>OffscreenCanvas</td><td>off-main-thread</td><td class="res wait">—</td></tr>
+        <tr><td>Blob</td><td>spec says yes…</td><td class="res wait">—</td></tr>
+        <tr><td>SVGImageElement</td><td>vector illusion</td><td class="res wait">—</td></tr>
+        <tr><td>Web Worker</td><td>full API inside</td><td class="res wait">—</td></tr>
+      </tbody></table>
+    </div>
+  </section>
+
+  <!-- LAW 5 -->
+  <section class="law" id="law5">
+    <div class="law-no">LAW 05 — THE 45° CLIFF</div>
+    <h2>Rotation, mirrored &amp; inverted — live lab</h2>
+    <p class="desc">Measured baseline: 0°/90°/180° decode, mirrored decodes, inverted (white-on-black) decodes — but 45° fails. Drag the dial. The overlay draws the engine’s own <code>cornerPoints</code> when it locks on.</p>
+    <div class="card geo">
+      <div class="stage" id="geo-stage"></div>
+      <div class="ctrl">
+        <input type="range" id="geo-rot" min="0" max="360" value="0" step="5">
+        <span class="val" id="geo-rotv">0°</span>
+        <span class="seg"><button class="tog" id="geo-mir">Mirror</button><button class="tog" id="geo-inv">Invert</button></span>
+      </div>
+      <div style="text-align:center"><span class="res wait" id="geo-res">drag to test</span></div>
+    </div>
+  </section>
+
+  <!-- LAW 6 -->
+  <section class="law" id="law6">
+    <div class="law-no">LAW 06 — THE SIZE FLOOR</div>
+    <h2>44 pixels live. 28 don’t.</h2>
+    <p class="desc">Same QR drawn at six sizes. Below roughly 1.3px per module the engine stops seeing it. Every rung below is a live detection.</p>
+    <div class="card"><div class="ladder" id="ladder"></div></div>
+  </section>
+
+  <!-- LAW 7 -->
+  <section class="law" id="law7">
+    <div class="law-no">LAW 07 — THE CROP CLIFF</div>
+    <h2>Crop into the quiet zone and it dies</h2>
+    <p class="desc">Quiet-zone starvation from the other side: this QR wears a 20px white ring. At 12% the white ring is eaten but the QR’s own 2-module margin keeps it alive. By 16% the timing pattern is breached and the code is gone. The cliff lands between the two — measured live, every visit. Each tile is a live run.</p>
+    <div class="card"><div class="ladder" id="cropladder"></div></div>
+  </section>
+
+  <!-- LAW 8 -->
+  <section class="law" id="law8">
+    <div class="law-no">LAW 08 — ORDER IS NOT SPACE</div>
+    <h2>Multi-detection returns engine order</h2>
+    <p class="desc">Three codes, one canvas. A human reads left-to-right: QR, Code 128, EAN. The engine returns its own order — deterministic per input, but not spatial. Never z-sort assumptions; use <code>boundingBox.x</code>.</p>
+    <div class="card">
+      <div class="proof" id="p-multi"><div class="tag">one canvas · three symbologies</div><div class="res wait">press run</div></div>
+    </div>
+  </section>
+
+  <!-- LAW 9 -->
+  <section class="law" id="law9">
+    <div class="law-no">LAW 09 — THE PATIENCE RULE</div>
+    <h2>detect() waits for images that are still loading</h2>
+    <p class="desc">Hand it an <code>&lt;img&gt;</code> whose bytes haven’t arrived and the result is a coin-flip: measured over HTTP it waited and decoded; measured with an instant blob URL it threw <code>InvalidStateError</code>: “Failed to load or decode.” The rule: never race it — <code>await img.decode()</code> first. A 404’d image is a guaranteed <code>InvalidStateError</code>.</p>
+    <div class="card">
+      <div class="chips">
+        <div class="chip" id="c-load1"><div class="lbl">detect img mid-load <code>(racy)</code></div><div class="res wait">press run</div></div>
+        <div class="chip" id="c-load2"><div class="lbl">detect img that 404s</div><div class="res wait">press run</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LAW 10 -->
+  <section class="law" id="law10">
+    <div class="law-no">LAW 10 — THE SECURITY PERIMETER</div>
+    <h2>Two invisible walls</h2>
+    <p class="desc">Cross-origin images without CORS throw <code>SecurityError: “Source would taint origin”</code> — even when you never touch a canvas. And on plain-HTTP non-localhost origins the whole class vanishes (<code>typeof BarcodeDetector === 'undefined'</code>). Surprise on macOS Chromium: <code>file://</code> pages <em>are</em> a secure context — the API is there.</p>
+    <div class="card">
+      <table class="mx"><tbody>
+        <tr><td>https / localhost</td><td>available</td><td class="res ok">✓ here</td></tr>
+        <tr><td>http:// &lt;LAN IP&gt;</td><td>undefined — measured</td><td class="res bad">✗ wall</td></tr>
+        <tr><td>file:// on macOS</td><td>available — measured</td><td class="res ok">✓ surprise</td></tr>
+        <tr><td>cross-origin, no CORS</td><td>SecurityError — measured</td><td class="res bad">✗ wall</td></tr>
+      </tbody></table>
+    </div>
+  </section>
+
+  <footer>
+    Measured 2026-09-19 · headless Chromium 140 (macOS, Vision-backed detector) via a 60-probe truth harvest. Every chip on this page re-executes the same probe against <em>your</em> engine — divergence means your build differs, which is itself data. <code>typeof BarcodeDetector</code> = <span id="foot-type">…</span>
+  </footer>
+</div>
+
+<script>
+const ASSETS = {"qr_code":"iVBORw0KGgoAAAANSUhEUgAAAH4AAAB+CAIAAABtQTLfAAABvUlEQVR42u3dSYrEMBBEUbnp+1/Zve+VEJkh2X5/WVAePkkSaPI1tnLf979frut6wb1m+BmgnnpQTz2a+J1JAlWsJYq1ZLL2Fsl3V/UaDvWgnnokE05fMqnKMzNXXvtX8t1VvYZDPainHnsTTpKZRNE3hqPqNRxQTz2ol3DGwat3qsZwVL2GA+qpB/VvTTh7s0HVvFXV3VW9hgPqqQf1T0w4e3cYjbbZrrXVO6pewwH11IP6JwaB89erWIcD6qkH9dQjk3CS+5tm/lWVeZL72VW9hkM9qKceyYTTt886OU9Uda++5KbqNRzqQT316Es4TzxnuOoJkzNZTvzTcEA99dTjtFmqvnmiJ85AVV1Z1Ws41IN66pEcwzntnOFkMknOo6l6DYd6UE89vrOXqmpUZxx/Po+q13CoB/XUY+8YTjItnD+GU5XTVL2GQz2opx57Vxq/4xS+5NohVa/hgHrqQf3wbfHIlfeeE2gvlYYD6qmnHr4tnskqa3mmal2QqtdwqAf11OM7CSe5e71qZm3tmVW9hkM9qKceX/62eHKObC07WYej4YB66kH9sJfqmFNr9q7nUfUaDvWgnnq08QddB+3r7wch0QAAAABJRU5ErkJggg==","code_128":"iVBORw0KGgoAAAANSUhEUgAAAdQAAADZCAIAAAAWrFZRAAACpUlEQVR42u3UwQqFIBBA0ez//9kWgYsEGccwiHNWj57QpHjL0am13j9KKY8nzeCvXmRxWxOZJzLqYPHihIPdiMw8mGdxjKl5Il8RGXXqmBbfNbWrufP69rhzt2DD4txFy93Bxa+YOsG3Rs1t1HkAsJ34AogvgPgCIL4A4guA+AKILwDiCyC+AIgvgPgCiC8A4gsgvgCIL4D4AiC+AOILgPgCiC+A+AIgvgDiC4D4AogvAOILIL4AiC+A+AKILwDiCyC+AIgvgPgCIL4A4guA+AKIL4D4AiC+AOILgPgCiC8A4gsgvgCIL4D4AogvAOILIL4AiC+A+AIgvgDiC4D4AogvgPgCIL4A4guA+AKILwDiCyC+AIgvgPgCiC8A4gsgvgCIL4D4AiC+AOILgPgCiC+A+AIgvgDiC4D4AogvAOILIL4AiC+A+AKIry0AEF8A8QVAfAHEFwDxBRBfAMQXQHwBEF8A8QUQXwDEF0B8ARBfAPEFQHwBxBcA8QUQXwDxBUB8AcQXAPEFEF8AxBdAfAEQXwDxBRBfAMQXQHwBEF8A8QVAfAHEFwDxBRBfAPEFQHwBxBcA8QUQXwDEF0B8ARBfAPEFEF8AxBdAfAEQXwDxBUB8AcQXAPEFEF8A8QVAfAHEFwDxBRBfAMQXQHwBEF8A8QUQXwDEF0B8ARBfAPEFQHwBxBcA8QUQXwDxBUB8AcQXAPEFEF8AxBdAfAEQXwDxBRBfAMQXQHwBEF8A8QVAfAHEFwDxBRBfAMQXQHwBxBcA8QUQXwDEF0B8ARBfAPEFQHwBxBdAfAEQXwDxBUB8AcQXAPEFEF8AxBdAfAHEFwDxBRBfAMQXQHwBEF8A8QVAfAHEF0B8ARBfAPEFQHwBxBcA8QUQXwDEF0B8AcQXAPEF+KkLUvx/stfMNLUAAAAASUVORK5CYII=","code_39":"iVBORw0KGgoAAAANSUhEUgAAAa4AAADZCAIAAAD3x0MAAAACa0lEQVR42u3UQQ5AQAxA0db97zxWLIgFM1R4bykVhuZnLFprcSAzNzPrlb1rMyV3nTpp59OHf9VRp7jvD75to2rfp3PmyV0t2bHybZkC4PekEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBBACgGkEEAKAaQQQAoBpBDgo2biMIivRff2MwAAAABJRU5ErkJggg==","code_93":"iVBORw0KGgoAAAANSUhEUgAAARIAAADZCAIAAABjDSi3AAAB60lEQVR42u3TSwqAMAxAwcb73zkuRHeGpt2VmZVIP0F8MV6Z+TxExN+bQrH9M3NysWtmTWuM1vBrd61tP/WKzQOLxZsTdn/sawBNsgHZgGxANiAbkA0gG5ANyAZkA7IBZAOyAdmAbEA2gGxANiAbkA3IBmQDyAZkA7IB2YBsANmAbEA2IBuQDSAbkA3IBmQDsgFkA7IB2YBsQDYgG0A2IBuQDcgGZAPIBmQDsgHZgGwA2YBsQDYgG5ANIBuQDcgGZAOyAdkAsgHZgGxANiAbQDYgG5ANyAZkA8gGZAOyAdmAbADZgGxANiAbkA3IBpANyAZkA7IB2QCyAdmAbEA2IBtANiAbkA3IBmQDsgFkA7IB2YBsQDaAbEA2IBuQDcgGkA3IBmQDsgHZALIB2YBsQDYgG5ANIBuQDcgGZAOyAWQDsgHZgGxANoBsQDYgG5ANyAaQDcgGZAOyAdmAbADZgGxANiAbkA0gG5ANyAZkA7IBZAOyAdmAbEA2gGxANiAbkA3IBmQDyAZkA7IB2YBsANmAbEA2IBuQDSAbkA3IBmQDsgHZ+AQgG5ANyAZkA7IBZAOyAdmAbEA2gGxANiAbkA3IBpANyAZkA7IB2YBsANmAbEA2IBuQDSAbkA3IBmQDsgFkA7IB2YBs4FA3mpderwFs15AAAAAASUVORK5CYII=","data_matrix":"iVBORw0KGgoAAAANSUhEUgAAAFQAAABUCAIAAACTCYeWAAAA5klEQVR42u3bSQ7DIAwAQFz1/1+m93JBwSwt42MUtRrFcsA4UZqotX5diYi/vOdVLg54ePi7Ip5V+55of2cztVFIe3h4eNV+RnXN2kd48vDw8PDj1X5eTc7aI2S9R6Q9PDy8tf3JK/mst4a0h4eHvybezyp5T03O6v/r20t7eHj4NZ2clWeyZnKkPTw8/K/P5Kyc7en5L2kPDw9vbX/yvKW1vbSHh4cvw337eZ2TrBOBrJ2FtIeHh3dKu6ZKz5vAsbaX9vDw8OOdnL1fRZm3l/bw8PDnfF219x7z9tIeHh5eCCHEZfEBXxOThyYkHvUAAAAASUVORK5CYII=","aztec":"iVBORw0KGgoAAAANSUhEUgAAAHIAAAByCAIAAAAAvxIqAAABjUlEQVR42u3dWQ7DMAhFUbvK/recLiA/FoJ4yHnfbS1doQfFA/2+75ah3nvgW7HVY2u9ufqvUYFghRVWWClffSQ/rp95Y6s/fzn2GdHKBGAlWGHdtxIYyWsjuTirt7AcoFAdIlqZAKywEqyb6JqbMc/QswoSrUwAVlgJ1n17AnU98x07ALG9EtHKBGCFlWA9qScQ+7+/fpcgVr2M1AailQnACivBum8lsNqJwbn7F04MMgFYCVZY9QTqaoO6vkFW1WF3gAnASrDC+rVKYG5Xf+5NQ9HKBGAlWGFVCbzZE6jrz7s7wAQIVlhhpaxzAjue6/OeABMgWGGFlUYqgax7c995l8CJQSYAK8EK60mVwEheO/U2Qd0bxaKVCcAKK8F60onBuVOK2vJvDYlWJgArwQqrl4VOnUQQm8sgWpkArLASrCfNIjRlwBuDTABWghXW71QCWbVBXU8gNhsxa6Kil4WYAKwEK6zNLMKpdwdGsvyb1YKeABOAlWCFVU+gLsuvf6bR3QEmACvBCuu2+gNNbZ/zzy3TkAAAAABJRU5ErkJggg==","pdf417":"iVBORw0KGgoAAAANSUhEUgAAAWgAAABICAIAAABUXPgAAAACIUlEQVR42u3dy2rDQBAEwFHI//+ycgj4Ylh2HhJIVJ1CbFkv08jQzB4x5DzP/z+O4yj859vnPdftPfXJOweW2mnqkxdbfW++88k7VyN1d2q3crFVc187V/6J37Hmoaau2OLAfgIgSXAAggMQHIDgAAQHIDgABAdwid93nMZ1rbOdrZplqqlT3nlp5z+fzRfVqdROmzduZ1+pU47Lmo033HdPHIDgAAQHgOAABAcgOADBAQgOgHhUAezOTtcNdZ1aUao5O2tqHFZqGFdtMlXtPVNHOPWtaw6y88QB+KkCIDgAwQEIDkBwAIIDEBwA8ZYC2NSKe82F9prTtJrvqU0kSxWcUi9NFdLGq2XNVRRT37GdCWnNxRw9cQCCAxAcAIIDEByA4AAEByA4AOItS0BONcFiqItVa2fVdtGcG5Yaera4hs1xWLVCWmo02VS/rnmoqSbYE5eJ9MQBCA5AcACCAxAcgOAAEByA4ABCASy6TbDItHSua+CkVpms9ZqaxzM1Ki3VfRpv3DWXXJxarbJZSHti3csTByA4AMEBCA5AcAAIDkBwAIIDCAWwObXlC2vdsKleU/R6X83yUm0e2viBNS/CzvyxG+pVte/YeEXNEwfgpwogOAAEByA4AMEBCA5AcAC8bwJYainAGGrgTC0cOb6vnaZcc7nJVJ2pNtBs8YGps9iZytVs7jVPxxMH4KcKgOAABAcgOADBAQgOQHAAJP0BYbTOj1LnhCgAAAAASUVORK5CYII=","ean_13":"iVBORw0KGgoAAAANSUhEUgAAAR4AAADZCAIAAAB5Mcg5AAACA0lEQVR42u3TMQ6AIBAAQc///xkLo4WXXAClMTOVQTCKbGyX1tp5ERGPkSzPuUeGHphXFcvzreI5xZyh5cUbrvvSuZG5/Zm71bOrQ8emZ8Nf/tOvjnrn5+wbsIC0QFogLZAWIC2QFkgLkBZIC6QFSAukBdICpAXSAmkB0gJpgbQAaYG0QFqAtEBaIC1AWiAtkBYgLZAWSAuQFkgLpAVIC6QF0gKkBdICaQHSAmmBtABpgbRAWoC0QFogLUBaIC2QFiAtkBZIC5AWSAukBUgLpAXSAqQF0gJpAdICaYG0AGmBtEBagLRAWiAtQFogLZAWIC2QFkgLkBZIC6QFSAukBdICpAXSAmmBtABpgbRAWoC0QFogLUBaIC2QFiAtkBZIC5AWSAukBUgLpAXSAqQF0gJpAdICaYG0AGmBtEBagLRAWiAtQFogLZAWIC2QFkgLkBZIC6QFSAukBdICpAXSAmkB0gJpgbQAaYG0QFqAtEBaIC1AWiAtkBYgLZAWSAuQFkgLpAVIC6QF0gKkBdICaQHSAmmBtABpgbRAWoC0QFogLUBaIC2QFiAtkBZIC6RlC0BaIC2QFiAtkBZIC5AWSAukBUgLpAXSAqQF0gJpAdICaYG0AGmBtEBagLRAWiAtQFogLZAWIC2QFkgLkBZIC6QFSAukBdICpAXSAmkB0gJpwU8dbRFbrws8S60AAAAASUVORK5CYII=","ean_8":"iVBORw0KGgoAAAANSUhEUgAAAMoAAADZCAIAAADuRTjKAAABwUlEQVR42u3SMQqAMAxA0cb73zkOooMBaSou8t4kJdTS/hinzDw+IuK2UtWZa2VmwzpcvRxuHWxtw5kba/3iYWbm5lvv1XrK5fNsAz4jL+SFvEBeyAt5gbyQF/ICeSEv5AXyQl7IC+SFvJCXK0BeyAvkhbyQF8gLeSEvkBfyQl4gL+SFvEBeyAt5gbyQF8gLeSEvkBfyQl4gL+SFvEBeyAt5gbyQF/ICeSEvkBfyQl4gL+SFvEBeyAt5gbyQF/ICeSEv5AXyQl4gL+SFvEBeyAt5gbyQF/ICeSEv5AXyQl7IC+SFvEBeyAt5gbyQF/ICeSEv5AXyQl7IC+SFvJAXyAt5gbyQF/ICeSEv5AXyQl7IC+SFvJAXyAt5IS+QF/ICeSEv5AXyQl7IC+SFvJAXyAt5IS+QF/JCXiAv5AXyQl7IC+SFvJAXyAt5IS+QF/JCXiAv5IW8QF7IC+SFvJAXyAt5IS+QF/JCXiAv5IW8QF7IC3mBvJAXyAt5IS+QF/JCXiAv5IW8QF7IC3mBvJAX8gJ5IS+QF/JCXiAv5IW8QF7IC3mBvJAX8gJ5IS/kBfJCXiAv5IW8QF7IC3mBvJAXP7UDwjtDry7181kAAAAASUVORK5CYII=","itf":"iVBORw0KGgoAAAANSUhEUgAAASoAAADZCAIAAAAYKep7AAAB/klEQVR42u3TSwqAMAxAwcb73zkuxFUxVOoPmVmJYOyHF22XmdtDRBy96RVf9YrJp/5VTB5Z4QO7mFzh5JzJk//+Dd53p1ed6uB6lga8RH4gP5AfID+QHyA/kB8gP5AfID+QHyA/kB8gP5AfID+QH8gPkB/ID5AfyA+QH8gPkB/ID5AfyA+QH8gPkB/ID5AfyA/kB8gP5AfID+QHyA/kB8gP5AfID+QHyA/kB8gP5AfyA+QH8gPkB/ID5AfyA+QH8gPkB/ID5AfyA+QH8gPkB/ID+QHyA/kB8gP5AfID+QHyA/kB8gP5AfID+QHyA/mB/AD5gfwA+YH8APmB/AD5gfwA+YH8APmB/AD5gfwA+YH8QH6A/EB+gPxAfoD8QH6A/EB+gPxAfoD8QH6A/EB+ID9HAPID+QHyA/kB8gP5AfID+QHyA/kB8gP5AfID+QHyA/mB/AD5gfwA+YH8APmB/AD5gfwA+YH8APmB/AD5gfwA+YH8QH6A/EB+gPxAfoD8QH6A/EB+gPxAfoD8QH6A/EB+ID9AfiA/QH4gP0B+ID9AfiA/QH4gP0B+ID9AfiA/QH4gP5AfID+QHyA/kB8gP5AfID+QHyA/kB8gP5AfID+QH8gPkB/ID5AfyA+QH8gPkB/ID5AfyA+QH8gPkB/ID5AfyA/kB8gP5AfID35qBSxgWK/vG7p1AAAAAElFTkSuQmCC","upc_e":"iVBORw0KGgoAAAANSUhEUgAAAJoAAADZCAIAAABXUb6CAAABeklEQVR42u3RMQ6AIAxAUer971wGo0uFpI7k/ckgIPhiPGXm/RARq5E6+a01p7W8vqptDr/5xL+7ty7Y2rB1ns+Ra+igcOIUTuEUTpzCKZzCKZw4hVM4hVM4cQqncAqncOIUTuEUTuHEKZzCKZzCiVM4hVM4hROncAqncOIUTuEUTuHEKZzCKZzCiVM4hVM4hROncAqncAonTuEUTuEUTpzCKZzCKZw4hVM4hVM4cQqncAonTuEUTuEUTpzCKZzCKZw4hVM4hVM4cQqncAqncOIUTuEUTuHEKZzCKZzCiVM4hVM4cQqncAqncOIUTuEUTuHEKZzCKZzCiVM4hVM4hROncAqncAonTuEUTuEUTpzCKZzCKZw4hVM4hROncAqncAonTuEUTuEUTpzCKZzCKZw4hVM4hVM4cQqncAqncOIUTuEUTuHEKZzCKZw4/QKcwimcwolTOIVTOIUTp3AKp3AKJ07hFE7hFE6cwimcwimcOIVTOIVTOA9tAvSVNK8OZtZPAAAAAElFTkSuQmCC","qr_transparent":"iVBORw0KGgoAAAANSUhEUgAAAH4AAAB+CAYAAADiI6WIAAAAHnRFWHRTb2Z0d2FyZQBid2lwLWpzLm1ldGFmbG9vci5jb21Tnbi0AAADF0lEQVR4nO2XQW4EQQgD5/+fTl6wasHaY9guS5zSgoKaPeR5nudvSX0KPE3+NMDWQ0/jQfylPIi/lAfxl/Ig/lIemfhUVIeuvlfdYc0914Ca3yP+GQpqfo/4Zyio+T3in6Gg5veIf4aCmt8j/tEezi1yWp8191wDWgziDzxrQItB/IFnDWgxiD/wrAEtBvEHnjWgxSD+wLMG1Mwz7UNB/Es8iJ8KauZB/FRQMw/ip4KaeRA/FdTMg/ipoCKeVB/VXMQ3eVJ9VHMR3+RJ9VHNRXyTJ9VHNRfxTZ5UH9VcxDd5Un1Uc2Pi3UkdWpU191wDGnpfzZp7rgENva9mzT3XgIbeV7PmnmtAQ++rWXPPNaCh99WsueenP0yr8mLD3k+rOADiEY/4FysOgHjEI/7FigMgftY9fzYc6NIg/tIg/tIg/tIg/tIgXhzV4VJ93B+E+9+w2AeN+B4P4sN9EN8M4ns8iA/3QXwziO/xjBPv/lKmHTTFo+ovC+IRj3gjj6q/LIhHPOKNPKr+siD+x8VXG7kP7eZx7zUtHzkRr91rWhD/0l7TgviX9poWxL+017Qg/qW9pkXGOU2Me66q//a5iG/23z4X8c3+2+civtl/+1zEN/tvn4v4Zv9xc1NiUn1SYlL8iG/Wdn7EN2s7P+KbtZ0f8c3azo/4Zm3nV/GMi+oDnVaqfX82iEc84m8K4hGP+JuC+Kb49ILfHsK9l2quO+W5aaGI1wTx4r1Uc91BvHgv1Vx3EC/eSzXXHcSL91LNdUcmPpVp4qs87j6yIB7xiC+Uam61jyyIRzziC6WaW+0jC+IRb1kstbD7cKp9q/1lfRDfC+KbVQYtBvGHPojvBfHNKoMWg/hDH8T3gvhmlUHNPKkPtBrZXohHPOKNnKogXsyD+MMC0w6KeMQjvlDrxVfj3tfNI+uPeMQjvvAe8c0qg4qCeMQjHvH199eJd8d90NS+qR8A4g/lDuIPQXzvfbkP4hGPeGMQfwjie+/LfaoHSpVsYVEf9wdkn5sWivjQ3LRQxIfmpoUiPjQ3LRTxoblpoYgPzP0Hu9jxwt9poU8AAAAASUVORK5CYII="};
+
+const IMG = {};
+const fmts = ['qr_code','code_128','code_39','code_93','data_matrix','aztec','pdf417','ean_13','ean_8','itf','upc_e'];
+const loadAll = async () => { await Promise.all([...fmts, 'qr_transparent'].map(async n => { const i = new Image(); i.src = 'data:image/png;base64,' + ASSETS[n]; await i.decode(); IMG[n] = i; })); };
+const mk = (w, h, fn) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); fn && fn(x, c); return c; };
+const pad = (im, p, scale=1) => mk(Math.round(im.naturalWidth*scale)+2*p, Math.round(im.naturalHeight*scale)+2*p, x => { x.fillStyle='#fff'; x.fillRect(0,0,1e5,1e5); x.drawImage(im, p, p, im.naturalWidth*scale, im.naturalHeight*scale); });
+const $ = id => document.getElementById(id);
+const setRes = (el, cls, html) => { const r = el.classList.contains('res') ? el : el.querySelector('.res'); r.className = 'res ' + cls; r.innerHTML = html; };
+
+let D = null, PASS = 0, TOTAL = 0;
+const supported = typeof BarcodeDetector !== 'undefined';
+$('foot-type').textContent = supported ? '"function"' : '"undefined"';
+$('pill-engine').textContent = supported ? 'engine: ' + (navigator.userAgent.match(/Chrome\/(\d+)/)||[])[0] + ' · live' : 'engine: none';
+
+if (!supported) {
+  const n = $('nosupport'); n.style.display = 'block';
+  n.textContent = 'This browser has no BarcodeDetector (insecure context, or unsupported engine). The page shows measured baselines instead of live runs.';
+}
+
+const tally = () => $('tally').innerHTML = TOTAL ? '<b>' + PASS + '</b> / ' + TOTAL + ' laws reproduced live' : 'Nothing measured yet.';
+const count = ok => { TOTAL++; if (ok) PASS++; tally(); };
+
+async function runQuiet() {
+  const ean = IMG.ean_13;
+  const a = mk(ean.naturalWidth, ean.naturalHeight, x => x.drawImage(ean, 0, 0));
+  const b = pad(ean, 14);
+  for (const [el, cv, expect] of [['p-quiet-a', a, 0], ['p-quiet-b', b, 1]]) {
+    const host = $(el); host.querySelectorAll('canvas').forEach(c => c.remove());
+    const disp = cv.cloneNode(); disp.getContext('2d').drawImage(cv, 0, 0); disp.style.width = 'min(180px, 100%)'; disp.style.height = 'auto'; host.prepend(disp);
+    if (!supported) { setRes(host, expect ? 'ok' : 'bad', 'baseline ' + expect); continue; }
+    const r = await D.detect(cv); const n = r.length;
+    setRes(host, (n === expect) ? 'ok' : 'bad', (n ? '✓ decodes' : '✗ silent []') + ' <small>n=' + n + (n ? ' · ' + r[0].rawValue : '') + '</small>');
+    count(n === expect);
+  }
+}
+
+async function runAlpha() {
+  const t = IMG.qr_transparent;
+  const a = mk(t.naturalWidth, t.naturalHeight, x => x.drawImage(t, 0, 0));
+  const b = mk(t.naturalWidth, t.naturalHeight, x => { x.fillStyle = '#fff'; x.fillRect(0, 0, 999, 999); x.drawImage(t, 0, 0); });
+  for (const [el, cv, expect] of [['p-alpha-a', a, 0], ['p-alpha-b', b, 1]]) {
+    const host = $(el); host.querySelectorAll('canvas').forEach(c => c.remove());
+    const disp = document.createElement('canvas'); disp.width = cv.width; disp.height = cv.height; disp.getContext('2d').drawImage(cv, 0, 0);
+    disp.style.width = '126px'; disp.style.height = '126px'; host.prepend(disp);
+    if (!supported) { setRes(host, expect ? 'ok' : 'bad', 'baseline ' + expect); continue; }
+    const r = await D.detect(cv); const n = r.length;
+    setRes(host, n === expect ? 'ok' : 'bad', (n ? '✓ decodes' : '✗ silent []') + ' <small>n=' + n + '</small>');
+    count(n === expect);
+  }
+}
+
+async function runHints() {
+  const cases = [
+    ['c-hint1', () => new BarcodeDetector({ formats: ['codabar'] }), IMG.qr_code, 1],
+    ['c-hint2', () => new BarcodeDetector({ formats: ['code_128'] }), IMG.qr_code, 0],
+  ];
+  for (const [el, make, img, expect] of cases) {
+    if (!supported) { setRes($(el), expect ? 'ok' : 'bad', 'baseline'); continue; }
+    try { const r = await make().detect(img); const n = r.length;
+      setRes($(el), n === expect ? 'ok' : 'bad', (n ? '✓ found ' + r[0].format : '✗ filtered') + ' <small>n=' + n + '</small>'); count(n === expect);
+    } catch (e) { setRes($(el), 'bad', e.name); }
+  }
+  if (!supported) { setRes($('c-hint3'), 'bad', 'TypeError baseline'); setRes($('c-hint4'), 'ok', 'baseline'); return; }
+  try { new BarcodeDetector({ formats: [] }); setRes($('c-hint3'), 'bad', '✗ constructed?! <small>expected TypeError</small>'); }
+  catch (e) { setRes($('c-hint3'), 'bad', '✗ ' + e.name + ' <small>“Hint option… empty”</small>'); count(true); }
+  try { new BarcodeDetector({ formats: ['qr_code','qr_code'] }); const r = await new BarcodeDetector({ formats:['qr_code','qr_code'] }).detect(IMG.qr_code);
+    setRes($('c-hint4'), r.length === 1 ? 'ok' : 'bad', r.length === 1 ? '✓ dedup, n=1' : 'n=' + r.length); count(r.length === 1);
+  } catch (e) { setRes($('c-hint4'), 'bad', e.name); }
+}
+
+async function runSources() {
+  const rows = $('srcmatrix').querySelectorAll('tr');
+  const set = (i, cls, txt) => { const td = rows[i].lastElementChild; td.className = 'res ' + cls; td.innerHTML = txt; };
+  if (!supported) { rows.forEach((r, i) => set(i, i < 4 || i === 6 ? 'ok' : 'bad', 'baseline')); return; }
+  const blob = await new Promise(res => fetch('data:image/png;base64,' + ASSETS.qr_code).then(r => r.blob()).then(res));
+  const bm = await createImageBitmap(blob);
+  const probes = [
+    ['img', IMG.qr_code], ['bitmap', bm],
+    ['imagedata', mk(126, 126, x => x.drawImage(IMG.qr_code, 0, 0)).getContext('2d').getImageData(0, 0, 126, 126)],
+    ['offscreen', (() => { const o = new OffscreenCanvas(126, 126); o.getContext('2d').drawImage(IMG.qr_code, 0, 0); return o; })()],
+    ['blob', blob], ['svg', (() => { const s = document.createElementNS('http://www.w3.org/2000/svg','image'); return s; })()],
+  ];
+  for (let i = 0; i < 6; i++) {
+    try { const r = await D.detect(probes[i][1]); set(i, r.length ? 'ok' : 'bad', r.length ? '✓ n=1' : '✗ n=0'); if (i !== 5) count(r.length === 1); }
+    catch (e) { set(i, 'bad', '✗ ' + e.name + ' <small>unsupported</small>'); if (i === 4 || i === 5) count(true); }
+  }
+  const wsrc = "self.onmessage=async e=>{try{const b=await createImageBitmap(e.data);const r=await new BarcodeDetector().detect(b);postMessage({n:r.length,raw:r[0]&&r[0].rawValue})}catch(err){postMessage({err:err.name})}}";
+  try {
+    const w = new Worker(URL.createObjectURL(new Blob([wsrc], { type: 'text/javascript' })));
+    const res = await new Promise(r => { w.onmessage = ev => r(ev.data); w.postMessage(blob); setTimeout(() => r({ err: 'timeout' }), 5000); });
+    w.terminate();
+    set(6, res.n ? 'ok' : 'bad', res.n ? '✓ decodes in worker' : '✗ ' + (res.err || 'n=0')); count(!!res.n);
+  } catch (e) { set(6, 'bad', e.name); }
+}
+
+/* geometry lab */
+let geoRot = 0, geoMir = false, geoInv = false, geoTimer = null;
+function drawGeo() {
+  const S = 300, host = $('geo-stage');
+  host.querySelectorAll('canvas').forEach(c => c.remove());
+  const c = mk(S, S, x => {
+    x.fillStyle = '#fff'; x.fillRect(0, 0, S, S);
+    x.save(); x.translate(S/2, S/2);
+    if (geoMir) x.scale(-1, 1);
+    x.rotate(geoRot * Math.PI / 180);
+    x.drawImage(IMG.qr_code, -120, -120, 240, 240);
+    x.restore();
+    if (geoInv) { x.globalCompositeOperation = 'difference'; x.fillStyle = '#fff'; x.fillRect(0, 0, S, S); }
+  });
+  c.style.width = '100%'; c.style.height = '100%'; host.appendChild(c);
+  return c;
+}
+async function runGeo() {
+  const c = drawGeo();
+  if (!supported) { setRes($('geo-res'), (geoRot % 90 === 0 && !geoMir) || (geoMir && geoRot % 180 === 0) ? 'ok' : 'bad', 'baseline'); return; }
+  const r = await D.detect(c);
+  const last = host => host.querySelectorAll('canvas.overlay');
+  if (r.length) {
+    const ov = mk(300, 300, x => {
+      x.strokeStyle = '#0071e3'; x.lineWidth = 3; x.beginPath();
+      const pts = r[0].cornerPoints; pts.forEach((p, i) => i ? x.lineTo(p.x, p.y) : x.moveTo(p.x, p.y)); x.closePath(); x.stroke();
+    });
+    ov.className = 'overlay'; ov.style.width = '100%'; ov.style.height = '100%'; ov.style.opacity = '.9'; $('geo-stage').appendChild(ov);
+    setRes($('geo-res'), 'ok', '✓ locked ' + r[0].format + ' <small>cornerPoints drawn</small>');
+  } else setRes($('geo-res'), 'bad', '✗ invisible at ' + geoRot + '°' + (geoMir ? ' · mirrored' : '') + (geoInv ? ' · inverted' : ''));
+}
+$('geo-rot').addEventListener('input', e => { geoRot = +e.target.value; $('geo-rotv').textContent = geoRot + '°'; clearTimeout(geoTimer); geoTimer = setTimeout(runGeo, 160); });
+$('geo-mir').onclick = e => { geoMir = !geoMir; e.target.classList.toggle('on', geoMir); runGeo(); };
+$('geo-inv').onclick = e => { geoInv = !geoInv; e.target.classList.toggle('on', geoInv); runGeo(); };
+
+async function runLadders() {
+  const L1 = $('ladder'); L1.innerHTML = '';
+  for (const s of [280, 160, 100, 64, 44, 28]) {
+    const rung = document.createElement('div'); rung.className = 'rung';
+    const box = document.createElement('div'); box.className = 'box';
+    const cv = mk(s, s, x => { x.imageSmoothingEnabled = false; x.fillStyle = '#fff'; x.fillRect(0, 0, s, s); x.drawImage(IMG.qr_code, 0, 0, s, s); });
+    cv.style.width = cv.style.height = Math.min(s, 64) + 'px'; box.appendChild(cv); rung.appendChild(box);
+    const cap = document.createElement('div'); cap.className = 'cap'; cap.textContent = s + 'px'; rung.appendChild(cap);
+    const res = document.createElement('div'); rung.appendChild(res); L1.appendChild(rung);
+    const wrap = document.createElement('span'); wrap.className = 'res wait'; wrap.textContent = '…'; res.appendChild(wrap);
+    if (!supported) { wrap.className = 'res ' + (s >= 44 ? 'ok' : 'bad'); wrap.textContent = s >= 44 ? '✓ baseline' : '✗ baseline'; continue; }
+    try { const r = await D.detect(cv); const ok = r.length === (s >= 44 ? 1 : 0);
+      wrap.className = 'res ' + (r.length ? 'ok' : 'bad'); wrap.textContent = r.length ? '✓ live' : '✗ live'; count(ok);
+    } catch (e) { wrap.className = 'res bad'; wrap.textContent = e.name; }
+  }
+  const L2 = $('cropladder'); L2.innerHTML = '';
+  const padded = pad(IMG.qr_code, 20);
+  for (const pct of [0, 12, 16, 20, 30]) {
+    const im = padded, w = im.width, cut = Math.round(w * pct / 100);
+    const rung = document.createElement('div'); rung.className = 'rung';
+    const box = document.createElement('div'); box.className = 'box'; box.style.height = '64px';
+    const cv = mk(w - cut, im.height, x => { x.fillStyle = '#fff'; x.fillRect(0, 0, w - cut, im.height); x.drawImage(im, -cut, 0); });
+    cv.style.height = '48px'; cv.style.width = 'auto'; box.appendChild(cv); rung.appendChild(box);
+    const cap = document.createElement('div'); cap.className = 'cap'; cap.textContent = '-' + pct + '% left'; rung.appendChild(cap);
+    const wrap = document.createElement('span'); wrap.className = 'res wait'; wrap.textContent = '…';
+    const res = document.createElement('div'); res.appendChild(wrap); rung.appendChild(res); L2.appendChild(rung);
+    if (!supported) { wrap.className = 'res ' + (pct === 0 ? 'ok' : 'bad'); wrap.textContent = pct === 0 ? '✓ baseline' : '✗ baseline'; continue; }
+    const r = await D.detect(cv); wrap.className = 'res ' + (r.length ? 'ok' : 'bad'); wrap.textContent = r.length ? '✓ live' : '✗ live';
+    const expect = pct <= 12 ? 1 : 0; count(r.length === expect);
+  }
+}
+
+async function runMulti() {
+  const host = $('p-multi'); host.querySelectorAll('canvas').forEach(c => c.remove());
+  const c = mk(620, 240, x => {
+    x.fillStyle = '#fff'; x.fillRect(0, 0, 620, 240);
+    x.drawImage(IMG.qr_code, 22, 58, 124, 124);
+    x.drawImage(IMG.code_128, 190, 90, 260, 60);
+    x.drawImage(IMG.ean_13, 480, 72, 130, 96);
+  });
+  c.style.width = '100%'; c.style.height = 'auto'; host.prepend(c);
+  if (!supported) { setRes(host, 'ok', 'baseline: c128, ean, qr'); return; }
+  const r = await D.detect(c);
+  setRes(host, r.length === 3 ? 'ok' : 'bad', (r.length === 3 ? '✓ ' : (r.length + ' found: ')) + r.map(b => b.format).join(' → '));
+  count(r.length === 3);
+}
+
+async function runLoad() {
+  if (!supported) { setRes($('c-load1'), 'ok', 'baseline: waits'); setRes($('c-load2'), 'bad', 'baseline: throws'); return; }
+  const ob = await (await fetch('data:image/png;base64,' + ASSETS.qr_code)).blob();
+  const im = new Image(); im.src = URL.createObjectURL(ob);
+  try { const r = await D.detect(im); setRes($('c-load1'), r.length ? 'ok' : 'bad', r.length ? '✓ engine waited · decoded' : '✗ n=0'); count(true); }
+  catch (e) { setRes($('c-load1'), 'bad', '✗ ' + e.name + ' <small>the race lost — decode() first</small>'); count(true); }
+  const bad = new Image(); bad.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg';
+  await new Promise(r => { bad.onerror = r; setTimeout(r, 500); });
+  try { await D.detect(bad); setRes($('c-load2'), 'bad', 'resolved?!'); }
+  catch (e) { setRes($('c-load2'), 'bad', '✗ ' + e.name + ' <small>expected</small>'); count(e.name === 'InvalidStateError'); }
+}
+
+async function main() {
+  await loadAll();
+  if (supported) D = new BarcodeDetector();
+  runGeo();
+  $('runall').addEventListener('click', async e => {
+    e.target.disabled = true; e.target.textContent = 'Measuring…'; PASS = TOTAL = 0; tally();
+    const laws = [runQuiet, runAlpha, runHints, runSources, runLadders, runMulti, runLoad];
+    for (const fn of laws) { try { await fn(); } catch (err) { console.warn(err); } await new Promise(r => setTimeout(r, 40)); }
+    e.target.disabled = false; e.target.textContent = 'Run again';
+    const t = $('tally'); t.classList.add('fade-in');
+  });
+  document.querySelectorAll('section.law').forEach(s => s.classList.add('fade-in'));
+}
+main();
+</script>
+</body>
+</html>
