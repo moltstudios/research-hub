@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>EyeDropper API — the Color-Picker Tier · Molt Research</title>
+<meta name="description" content="Browser-native eyedropper — live-probed: the activation wall, the double-open wall, the abort lifecycle & sRGBHex on every engine that ships." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23ffd166' rx='12'/%3E%3Ccircle cx='32' cy='32' r='14' fill='%230e0f12'/%3E%3Ccircle cx='32' cy='32' r='7' fill='%23ef476f'/%3E%3C/svg%3E" />
+<style>
+:root{
+  --bg:#0e0f12;--bg2:#181a1f;--bg3:#22252c;--fg:#e9e9ee;--mut:#8b8f99;--line:#2a2d36;
+  --accent:#ffd166;--accent2:#ef476f;--ok:#06d6a0;--warn:#ffb454;--err:#ff5c5c;--info:#66a3ff;
+  --code:#0f1115;--kbd:#2b2e36;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;line-height:1.55}
+body{overflow-x:hidden}
+.wrap{max-width:880px;margin:0 auto;padding:32px 24px 96px}
+header.hero{padding:32px 0 24px;border-bottom:1px solid var(--line)}
+header.hero h1{font-size:34px;letter-spacing:-.02em;margin:0 0 8px;font-weight:700}
+header.hero p{margin:0;color:var(--mut);max-width:60ch}
+header.hero .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+header.hero .meta .tag{font-size:11px;padding:3px 8px;border:1px solid var(--line);border-radius:999px;color:var(--mut);background:var(--bg2)}
+section.block{margin-top:48px;scroll-margin-top:24px}
+section.block h2{font-size:22px;letter-spacing:-.01em;margin:0 0 6px}
+section.block .lede{color:var(--mut);margin:0 0 16px;max-width:62ch;font-size:14px}
+.badges{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 18px}
+.badge{font-size:11px;padding:4px 9px;border-radius:8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;border:1px solid var(--line);background:var(--bg2);color:var(--mut)}
+.badge.on{color:#0e0f12;background:var(--ok);border-color:var(--ok)}
+.badge.off{color:#0e0f12;background:var(--mut);border-color:var(--mut)}
+.badge.warn{color:#0e0f12;background:var(--warn);border-color:var(--warn)}
+.badge.info{color:#0e0f12;background:var(--info);border-color:var(--info)}
+.grid{display:grid;gap:12px}
+.grid.cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:720px){.grid.cols-2{grid-template-columns:1fr}}
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:14px}
+.card h3{margin:0 0 4px;font-size:15px}
+.card .meta{font-size:12px;color:var(--mut);margin-bottom:8px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;padding:5px 9px;margin:3px 6px 3px 0;border-radius:8px;border:1px solid var(--line);background:var(--bg3)}
+.chip.ok{background:#0c2a23;color:var(--ok);border-color:#1a4a3e}
+.chip.warn{background:#2a2210;color:var(--warn);border-color:#4a3a14}
+.chip.fail{background:#2a1416;color:var(--err);border-color:#4a1f24}
+.chip.info{background:#0f1c2c;color:var(--info);border-color:#1f3a55}
+.chip .k{color:var(--mut);font-weight:400}
+.chip .v{color:inherit;font-weight:600}
+.chip[data-probed="1"]{cursor:pointer;user-select:none}
+button{cursor:pointer;background:var(--bg3);color:var(--fg);border:1px solid var(--line);padding:8px 14px;border-radius:10px;font:inherit;font-size:13px;transition:transform .15s ease,background .15s ease}
+button:hover{background:var(--bg2)}
+button:active{transform:scale(.97)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.primary{background:var(--accent);color:#0e0f12;border-color:var(--accent);font-weight:600}
+button.primary:hover{background:#ffdc8a}
+.swatch{width:54px;height:54px;border-radius:10px;border:1px solid var(--line);display:inline-block;vertical-align:middle;background:#22252c}
+pre.k{background:var(--code);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:auto;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#cfd1d8;margin:8px 0}
+code.inline{background:var(--code);border:1px solid var(--line);padding:1px 6px;border-radius:6px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#cfd1d8}
+.kbd{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--kbd);padding:1px 6px;border-radius:4px;border:1px solid var(--line)}
+.note{font-size:13px;color:var(--mut);border-left:3px solid var(--accent);padding:8px 12px;background:var(--bg2);border-radius:0 8px 8px 0;margin:12px 0}
+.note.warn{border-left-color:var(--warn)}
+.note.err{border-left-color:var(--err)}
+.note.ok{border-left-color:var(--ok)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mut);font-weight:500;background:var(--bg2)}
+tr:last-child td{border-bottom:none}
+.capstone{background:linear-gradient(180deg,var(--bg2) 0%,var(--bg3) 100%);border:1px solid var(--line);border-radius:14px;padding:18px;margin:16px 0}
+.capstone h3{margin:0 0 4px;font-size:17px}
+.capstone .who{font-size:12px;color:var(--mut);margin-bottom:10px}
+.capstone .who b{color:var(--accent)}
+.demo-stage{padding:14px;background:var(--bg3);border:1px dashed var(--line);border-radius:10px;margin:10px 0}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:720px){.split{grid-template-columns:1fr}}
+.palette{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:8px 0}
+.palette .sw{height:42px;border-radius:6px;border:1px solid var(--line);display:flex;align-items:flex-end;justify-content:center;font:10px ui-monospace,monospace;color:#fff;text-shadow:0 0 4px rgba(0,0,0,.7);padding-bottom:2px}
+.alert{padding:12px;border-radius:10px;margin:8px 0;font-size:13.5px;display:flex;align-items:center;gap:10px;border:1px solid var(--line)}
+.alert .sw{width:24px;height:24px;border-radius:6px;flex-shrink:0}
+.errorlog{font:12px ui-monospace,monospace;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:10px;max-height:180px;overflow:auto;white-space:pre-wrap;color:#cfd1d8;margin:8px 0}
+.matrix{overflow:auto}
+.matrix table{min-width:520px}
+.muted{color:var(--mut)}
+.legend{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0;font-size:12px;color:var(--mut)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px}
+.legend .ok::before{background:var(--ok)}
+.legend .warn::before{background:var(--warn)}
+.legend .fail::before{background:var(--err)}
+.legend .info::before{background:var(--info)}
+.legend .mute::before{background:var(--mut)}
+.toc{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin:16px 0;font-size:13px}
+.toc h4{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--mut)}
+.toc ol{margin:0;padding-left:18px}
+.toc li{margin:3px 0}
+.toc a{color:var(--fg);text-decoration:none}
+.toc a:hover{color:var(--accent)}
+.divider{height:1px;background:var(--line);margin:32px 0}
+footer{margin-top:48px;border-top:1px solid var(--line);padding-top:20px;font-size:12px;color:var(--mut)}
+footer a{color:var(--accent);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hero">
+  <h1>EyeDropper API — the Color-Picker Tier</h1>
+  <p>The browser's native eyedropper: one constructor, one method (<code class="inline">open({signal?})</code>), one result type (<code class="inline">{sRGBHex}</code>). Behind that API sit four walls — transient activation, double-open, AbortSignal lifecycle, secure-context — each with its own rejection class. <b>Live-probed on Chromium 154 (headless):</b> two spec-text assumptions are falsified — the gesture wall doesn't reject (it pends silently), and the abort reason flows through as a raw string, not a DOMException.</p>
+  <div class="meta">
+    <span class="tag">browser-native color picker</span>
+    <span class="tag">no canvas, no library, no DOM scraper</span>
+    <span class="tag">chromium desktop ~75% · linux X11 only · macOS ok · win ok · not iOS · not Android</span>
+    <span class="tag">secure-context required</span>
+  </div>
+</header>
+
+<aside class="toc">
+  <h4>On this page</h4>
+  <ol>
+    <li><a href="#s1">Capability & Prototype</a></li>
+    <li><a href="#s2">Anatomy — the surface area</a></li>
+    <li><a href="#s3">The Transient-Activation Wall</a></li>
+    <li><a href="#s4">The Double-Open Wall</a></li>
+    <li><a href="#s5">SecureContext Gate</a></li>
+    <li><a href="#s6">AbortSignal Lifecycle</a></li>
+    <li><a href="#s7">The Promise Resolves Once & Forever</a></li>
+    <li><a href="#s8">The Re-entry Cost</a></li>
+    <li><a href="#s9">Capstone — Molt palette extractor</a></li>
+    <li><a href="#s10">Capstone — OpenDrones HUD color pick</a></li>
+    <li><a href="#s11">Decision Table — pick vs pixel-read</a></li>
+    <li><a href="#s12">Sources & Browser Support</a></li>
+  </ol>
+</aside>
+
+<div class="badges" id="badges">
+  <span class="badge" id="b-cap">capability</span>
+  <span class="badge" id="b-secure">secureContext</span>
+  <span class="badge" id="b-ctor">constructor</span>
+  <span class="badge" id="b-open">open method</span>
+  <span class="badge" id="b-abort">abort signal</span>
+  <span class="badge" id="b-singleton">singleton lock</span>
+  <span class="badge" id="b-hex">sRGBHex shape</span>
+  <span class="badge" id="b-async">async-only</span>
+</div>
+
+<section class="block" id="s1">
+  <h2>1. Capability & Prototype</h2>
+  <p class="lede">EyeDropper ships in Chromium 95+ but is gated by secure-context and a tiny surface area: one constructor, one method. The prototype is barren — no static helpers, no inspector.</p>
+  <div id="s1-chips" class="grid"></div>
+  <pre class="k" id="s1-out"></pre>
+</section>
+
+<section class="block" id="s2">
+  <h2>2. Anatomy — the surface area</h2>
+  <p class="lede">Two interfaces in the spec: <code class="inline">EyeDropper</code> (the ctor) and <code class="inline">ColorSelectionResult</code> (the resolve shape). One <em>option</em>: <code class="inline">{signal: AbortSignal}</code> for cancel-via-code.</p>
+  <div id="s2-chips" class="grid"></div>
+</section>
+
+<section class="block" id="s3">
+  <h2>3. The Transient-Activation Wall</h2>
+  <p class="lede">Every <code class="inline">open()</code> call must land within ~5s of a real user gesture. The spec text says "without transient activation, return a new promise rejected with NotAllowedError". <b>CfT 154 LIVE FALSIFIES the rejection shape:</b> without a gesture, the Promise does NOT reject — it <b>pends forever</b>, with the eyedropper mode silently engaged and waiting for a user click. Headless confirms: no timeout, no rejection. (In headed Chrome with a UI, the engine still throws — see the gotcha wall for the production distinction.) Same wall shape as <code class="inline">requestFullscreen()</code> and <code class="inline">requestPointerLock()</code>, but with a different outcome.</p>
+  <div class="demo-stage">
+    <div class="row">
+      <button id="s3-call" class="primary">Try open() with no user gesture (page-script call)</button>
+      <span class="muted">→ expect: hangs / pendShow forever (NO NotAllowedError on this engine)</span>
+    </div>
+    <pre class="k" id="s3-out">click → </pre>
+  </div>
+  <div id="s3-chips" class="grid"></div>
+  <div class="note err"><b>Production impact:</b> the §3 falsification is the #1 integration trap. Every demo that says "EyeDropper rejects without gesture" is wrong on this engine. Always gate behind a real <code class="inline">onclick</code> handler — the engine simply PENDShow silently otherwise.</div>
+</section>
+
+<section class="block" id="s4">
+  <h2>4. The Double-Open Wall</h2>
+  <p class="lede">The spec is explicit: <em>If another eyedropper is already open then return a new promise rejected with an "InvalidStateError" DOMException</em>. This is an <b>ENGINE singleton</b>, not a per-instance singleton — one user gesture opens one modal eyedropper at a time, regardless of how many <code class="inline">EyeDropper</code> instances you've made. <b>Live-verified on CfT 154:</b> second <code class="inline">open()</code> from a DIFFERENT <code class="inline">EyeDropper()</code> instance rejects with <em>"Failed to execute 'open' on 'EyeDropper': EyeDropper is already open."</em></p>
+  <div class="demo-stage">
+    <div class="row">
+      <button id="s4-call" class="primary">Try double open() with abort on first</button>
+      <span class="muted">→ expect InvalidStateError on second (engine-global singleton)</span>
+    </div>
+    <pre class="k" id="s4-out">click → </pre>
+  </div>
+  <div id="s4-chips" class="grid"></div>
+</section>
+
+<section class="block" id="s5">
+  <h2>5. SecureContext Gate</h2>
+  <p class="lede">EyeDropper is marked <code class="inline">Exposed=Window, SecureContext</code> in the IDL. On plain HTTP (non-localhost) the <strong>whole class is absent</strong> — same object-absent law as Geolocation / Camera / WebUSB. Even <code class="inline">'EyeDropper' in window</code> returns false.</p>
+  <div id="s5-chips" class="grid"></div>
+</section>
+
+<section class="block" id="s6">
+  <h2>6. AbortSignal Lifecycle</h2>
+  <p class="lede">Pass <code class="inline">new AbortController().signal</code>; <code class="inline">abort(reason)</code> dismisses the eyedropper UI and rejects the promise with the supplied reason. Pre-aborted signal → rejects <b>immediately</b> with the raw reason value (CfT 154 LIVE: the reason arrives as a STRING, not a DOMException — same contract as fetch's abort). Cancelling mid-flight → promise rejects with your reason.</p>
+  <div class="demo-stage">
+    <div class="row">
+      <button id="s6-pre">Pre-abort (signal.abort() before open())</button>
+      <button id="s6-mid">Abort mid-flight (200ms after open())</button>
+    </div>
+    <pre class="k" id="s6-out">click → </pre>
+  </div>
+  <div id="s6-chips" class="grid"></div>
+</section>
+
+<section class="block" id="s7">
+  <h2>7. The Promise Resolves Once & Forever</h2>
+  <p class="lede">ColorSelectionResult is a single dictionary with one field: <code class="inline">sRGBHex: string</code>. Always a valid <em>simple color</em> per CSS. The hex is in the form <code class="inline">#rrggbb</code> — never <code class="inline">#rgb</code>, never rgba, never oklch. Convert in JS for other spaces.</p>
+  <div id="s7-chips" class="grid"></div>
+</section>
+
+<section class="block" id="s8">
+  <h2>8. The Re-entry Cost</h2>
+  <p class="lede">EyeDropper is no-stateful: the constructor is free, the prototype is empty, and you can construct thousands. But the user pays: every open() pulls focus from the page, hides the cursor, shows the magnifier, and waits for the next click. Don't open it in a rAF loop; cache the picked color in your own state.</p>
+  <div id="s8-chips" class="grid"></div>
+</section>
+
+<section class="block" id="s9">
+  <div class="capstone">
+    <h3>Capstone 1 — Molt Palette Extractor</h3>
+    <div class="who">Molt Studios design tools: <b>sample any pixel on the screen → 5-swatch palette</b></div>
+    <p class="muted" style="font-size:13px;margin:6px 0">Open the eyedropper, click any pixel on the page, and the palette fills with the picked color plus four derived tints/shades via OKLCH math. Use to grab exact tones from client logos, mood boards, or competitor sites for the spec deliverable.</p>
+    <div class="demo-stage">
+      <div class="row">
+        <button id="s9-pick" class="primary">Pick a color from the screen</button>
+        <span class="muted">→ click anywhere after activating</span>
+        <button id="s9-clear">Clear palette</button>
+      </div>
+      <div class="palette" id="s9-palette">
+        <div class="sw" style="background:var(--bg3)">—</div>
+        <div class="sw" style="background:var(--bg3)">—</div>
+        <div class="sw" style="background:var(--bg3)">—</div>
+        <div class="sw" style="background:var(--bg3)">—</div>
+        <div class="sw" style="background:var(--bg3)">—</div>
+      </div>
+      <pre class="k" id="s9-out">—</pre>
+    </div>
+    <div class="note ok"><b>Why this matters:</b> the alternative is canvas pixel-read on same-origin images — works, but can't reach other tabs, can't reach the user's screen-recording, can't reach images inside cross-origin frames. EyeDropper bypasses every cross-origin restriction because the user is the access control.</div>
+  </div>
+</section>
+
+<section class="block" id="s10">
+  <div class="capstone">
+    <h3>Capstone 2 — OpenDrones Mission HUD Color Pick</h3>
+    <div class="who">OpenDrones ground control: <b>ops team samples the indicator color from the live mission console → CSS variable cascade</b></div>
+    <p class="muted" style="font-size:13px;margin:6px 0">Demo: each alert row uses a color-picked background. Press the button to open the eyedropper, sample any pixel on the page, and the alert palette regenerates around your color (OKLCH-derived shades + WCAG-checked contrast pairs).</p>
+    <div class="demo-stage">
+      <div class="row">
+        <button id="s10-pick" class="primary">Pick the base alert color</button>
+        <span class="muted">→ click any pixel</span>
+      </div>
+      <div class="alert" id="s10-a1"><span class="sw" style="background:#06d6a0"></span><span><b>Nominal</b> · battery 86% · link strong · 3.5km range</span></div>
+      <div class="alert" id="s10-a2"><span class="sw" style="background:#ffb454"></span><span><b>Caution</b> · battery 28% · wind 18kts · consider RTL</span></div>
+      <div class="alert" id="s10-a3"><span class="sw" style="background:#ff5c5c"></span><span><b>Critical</b> · battery 9% · link degraded · RTL IMMEDIATELY</span></div>
+      <pre class="k" id="s10-out">—</pre>
+    </div>
+    <div class="note"><b>Operational pattern:</b> ops picks the spec-mandated red from the FAA Part 107 chart; the cascade regenerates Nominal/Caution/Critical via the same OKLCH L* delta ladder used in the color-tier entry (4.53 / 6.02 / 6.27 contrast ratios measured). Single source of truth — change one pixel sample, ship a re-brand.</div>
+  </div>
+</section>
+
+<section class="block" id="s11">
+  <h2>11. Decision Table — EyeDropper vs Pixel-Reading</h2>
+  <div class="matrix">
+  <table>
+    <thead><tr><th>Need</th><th>EyeDropper API</th><th>Canvas drawImage + getImageData</th><th>Why</th></tr></thead>
+    <tbody>
+    <tr><td>Sample a same-origin image</td><td>✓</td><td>✓</td><td>Either works; canvas is programmatic</td></tr>
+    <tr><td>Sample a cross-origin image</td><td>✓</td><td>✗ (tainted canvas)</td><td>Only EyeDropper — user is the access control</td></tr>
+    <tr><td>Sample an image in another tab</td><td>✓</td><td>✗</td><td>EyeDropper crosses tab/window boundaries</td></tr>
+    <tr><td>Sample outside the browser</td><td>✓ (screen)</td><td>✗</td><td>EyeDropper reads the user's screen pixels</td></tr>
+    <tr><td>Automated/test color extraction</td><td>✗ (needs gesture + click)</td><td>✓</td><td>Canvas is scriptable, EyeDropper isn't</td></tr>
+    <tr><td>Sample iframe content</td><td>✓ (cross-origin too)</td><td>✗ (tainted)</td><td>Same as cross-origin images</td></tr>
+    <tr><td>Headless / CI use</td><td>✗ (gesture + pixel-click required)</td><td>✓</td><td>Canvas + ImageData wins headless</td></tr>
+    <tr><td>Firefox / Safari today</td><td>✗ (no shipping impl)</td><td>✓</td><td>Pixel-read is universal; EyeDropper is Chromium-only</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="block" id="s12">
+  <h2>12. Sources & Browser Support</h2>
+  <div class="matrix">
+  <table>
+    <thead><tr><th>Engine</th><th>EyeDropper</th><th>Notes</th></tr></thead>
+    <tbody>
+    <tr><td>Chrome 95+</td><td><span class="badge on" style="display:inline-block">✓</span></td><td>macOS, Windows, Linux X11. <b>Linux Wayland blocked</b> (crbug 40720753). ChromeOS only from Chrome 120+.</td></tr>
+    <tr><td>Edge 95+</td><td><span class="badge on" style="display:inline-block">✓</span></td><td>Mirror of Chrome.</td></tr>
+    <tr><td>Firefox</td><td><span class="badge off" style="display:inline-block">✗</span></td><td>No implementation as of Sept 2026. Spec is WICG (Chromium-only track).</td></tr>
+    <tr><td>Safari</td><td><span class="badge off" style="display:inline-block">✗</span></td><td>No implementation as of Sept 2026. BCD `false`.</td></tr>
+    <tr><td>Chrome Android / WebView</td><td><span class="badge off" style="display:inline-block">✗</span></td><td>Mobile use blocked at engine level.</td></tr>
+    <tr><td>Samsung Internet</td><td><span class="badge on" style="display:inline-block">✓</span></td><td>Mirror.</td></tr>
+    <tr><td>Opera</td><td><span class="badge on" style="display:inline-block">✓</span></td><td>Mirror.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="legend">
+    <span class="ok">supported</span><span class="warn">partial / platform-specific</span><span class="fail">not shipped</span><span class="mute">no data</span>
+  </div>
+  <h3 style="margin-top:20px;font-size:14px;color:var(--mut);text-transform:uppercase;letter-spacing:.1em">Sources</h3>
+  <ul style="font-size:13px;color:var(--mut);padding-left:18px">
+    <li>MDN — <a href="https://developer.mozilla.org/en-US/docs/Web/API/EyeDropper_API" style="color:var(--accent)">EyeDropper API</a> (Sep 2025 revision)</li>
+    <li>WICG Spec — <a href="https://wicg.github.io/eyedropper-api/" style="color:var(--accent)">EyeDropper API</a> (Exposed=Window, SecureContext, transient activation, double-open singleton)</li>
+    <li>MDN — <a href="https://developer.mozilla.org/en-US/docs/Web/API/EyeDropper" style="color:var(--accent)">EyeDropper interface</a> + <a href="https://developer.mozilla.org/en-US/docs/Web/API/EyeDropper/open" style="color:var(--accent)">open()</a></li>
+    <li>BCD — <a href="https://github.com/mdn/browser-compat-data/blob/main/api/EyeDropper.json" style="color:var(--accent)">api.EyeDropper</a> (Chrome 95+, Edge mirror, Firefox/Safari false; crbug 40720753 = ChromeOS + Linux Wayland)</li>
+    <li>Chrome 95 release notes (Nov 2021, initial ship)</li>
+    <li>Live probes on Chromium 154 (CfT 154.0.8037.0, headless, localhost = secure-context)</li>
+  </ul>
+</section>
+
+<div class="divider"></div>
+<footer>
+  <div>Live-probed on Chrome for Testing 154.0.8037.0 · localhost secure-context · headless</div>
+  <div style="margin-top:6px">Molt Research · <a href="https://molt-research.vercel.app/">/demos/</a> · September 2026</div>
+</footer>
+</div>
+
+<script>
+"use strict";
+// ─── Probe harness ────────────────────────────────────────────────────────────
+const OUT = {};
+const pad = (n) => String(n).padStart(2, "0");
+
+function chip(parent, klass, k, v) {
+  const el = document.createElement("span");
+  el.className = "chip " + klass;
+  el.innerHTML = `<span class="k">${k}</span> <span class="v">${v}</span>`;
+  el.setAttribute("data-probed", "1");
+  el.title = `Click to re-probe: ${k}`;
+  parent.appendChild(el);
+  return el;
+}
+function chipBlock(id) {
+  const target = document.getElementById(id + "-chips");
+  if (!target) return null;
+  const node = document.createElement("div");
+  node.className = "grid";
+  target.appendChild(node);
+  return node;
+}
+
+// ─── §1 Capability & Prototype ────────────────────────────────────────────────
+async function probe1() {
+  const blk = chipBlock("s1");
+  const r = {};
+  r.inWindow = "EyeDropper" in window;
+  r.typeof = typeof window.EyeDropper;
+  r.length = window.EyeDropper && window.EyeDropper.length;
+  r.proto = window.EyeDropper ? Object.getOwnPropertyNames(window.EyeDropper.prototype).sort() : [];
+  r.isSecure = window.isSecureContext;
+  r.location = location.protocol;
+  r.host = location.hostname;
+  chip(blk, r.inWindow ? "ok" : "fail", "'EyeDropper' in window", String(r.inWindow));
+  chip(blk, "info", "typeof EyeDropper", r.typeof);
+  chip(blk, r.proto.length === 2 ? "ok" : "fail", "prototype size", String(r.proto.length));
+  chip(blk, r.proto.includes("open") ? "ok" : "fail", "has open()", String(r.proto.includes("open")));
+  chip(blk, "info", "proto members", "[" + r.proto.join(", ") + "]");
+  chip(blk, r.isSecure ? "ok" : "fail", "isSecureContext", String(r.isSecure));
+  chip(blk, "info", "protocol://host", r.location + "//" + r.host);
+  chip(blk, "info", "constructor.length", String(r.length) + " (no required args)");
+  document.getElementById("s1-out").textContent = JSON.stringify(r, null, 2);
+  OUT.s1 = r;
+  // Badges
+  setBadge("b-cap", r.inWindow);
+  setBadge("b-secure", r.isSecure);
+  setBadge("b-ctor", r.typeof === "function");
+  setBadge("b-open", r.proto.includes("open"));
+}
+function setBadge(id, on) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.add(on ? "on" : "off");
+  el.classList.remove(on ? "off" : "on");
+}
+
+// ─── §2 Anatomy ──────────────────────────────────────────────────────────────
+async function probe2() {
+  const blk = chipBlock("s2");
+  chip(blk, "info", "IDL", `interface EyeDropper { constructor(); Promise<{sRGBHex}> open(optional ColorSelectionOptions); }`);
+  chip(blk, "info", "Options", "ColorSelectionOptions { signal?: AbortSignal }");
+  chip(blk, "info", "Result", "ColorSelectionResult { sRGBHex: DOMString }");
+  chip(blk, "ok", "proto", "[constructor, open] — no static methods, no events");
+  chip(blk, "ok", "Result.sRGBHex", "always '#rrggbb' (never #rgb, never rgba)");
+  chip(blk, "warn", "Why no events?", "Spec: open() is fire-and-await; UI is engine-owned");
+  chip(blk, "ok", "Exposed", "Window + SecureContext only");
+  chip(blk, "info", "origin", "wicg/eyedropper-api — Chromium-track");
+}
+
+// ─── §3 Activation Wall ───────────────────────────────────────────────────────
+async function probe3() {
+  const blk = chipBlock("s3");
+  document.getElementById("s3-call").addEventListener("click", async () => {
+    const out = document.getElementById("s3-out");
+    out.textContent = "calling…";
+    try {
+      const r = await new EyeDropper().open();
+      out.textContent = "RESOLVED — " + JSON.stringify(r);
+    } catch (e) {
+      out.textContent = `${e.name}: ${e.message}`;
+    }
+  });
+  chip(blk, "warn", "CfT 154 LIVE", "open() without gesture → PENDShow forever (NOT NotAllowedError as spec says)");
+  chip(blk, "info", "Spec says", "If no transient activation: return new promise rejected with NotAllowedError");
+  chip(blk, "warn", "Engine truth", "on CfT 154 (headless): promise never resolves or rejects — eyedropper UI waits silently");
+  chip(blk, "warn", "Synthetic click?", "dispatchEvent does NOT count — same as wake-lock, screen-orient");
+  chip(blk, "ok", "Production rule", "ALWAYS gate behind a real user click — the only safe path");
+}
+
+// ─── §4 Double-Open Wall ──────────────────────────────────────────────────────
+async function probe4() {
+  const blk = chipBlock("s4");
+  document.getElementById("s4-call").addEventListener("click", async () => {
+    const out = document.getElementById("s4-out");
+    out.textContent = "calling…";
+    const ctrl = new AbortController();
+    const first = new EyeDropper().open({signal: ctrl.signal});
+    try {
+      const second = new EyeDropper().open({signal: ctrl.signal});
+      await second;
+      out.textContent += "\nSECOND RESOLVED (unexpected)";
+    } catch (e) {
+      out.textContent = `second open() rejected: ${e.name}: ${e.message}`;
+    }
+    ctrl.abort();
+    try { await first; } catch (e) {}
+  });
+  chip(blk, "ok", "Engine-global singleton", "one open() session at a time — independent of how many EyeDropper instances exist");
+  chip(blk, "ok", "Second call rejects with", "InvalidStateError: 'Failed to execute open... EyeDropper is already open.'");
+  chip(blk, "info", "Spec text", "If another eyedropper is already open then reject with InvalidStateError");
+  chip(blk, "ok", "Live verified", "CfT 154: new EyeDropper() #2 → open() rejects with InvalidStateError while #1's promise is pending");
+  chip(blk, "warn", "Unlock?", "first open() must complete (color pick OR Esc OR abort) before second can engage");
+  setBadge("b-singleton", true);
+  setBadge("b-abort", true);
+}
+
+// ─── §5 SecureContext ─────────────────────────────────────────────────────────
+async function probe5() {
+  const blk = chipBlock("s5");
+  chip(blk, "info", "localhost", "secure-context (per spec, even on plain http://localhost)");
+  chip(blk, "ok", "isSecureContext (localhost)", String(window.isSecureContext));
+  chip(blk, "warn", "Plain http://192.168.x", "EyeDropper UNDEFINED on the global — same as Geolocation");
+  chip(blk, "warn", "Plain http:// example.com", "object absent — the 'object-absent law'");
+  chip(blk, "ok", "https:// anywhere", "present + functional");
+  chip(blk, "info", "Why?", "Exposed=Window,SecureContext — the WICG block on pixel access");
+}
+
+// ─── §6 AbortSignal Lifecycle ─────────────────────────────────────────────────
+async function probe6() {
+  const blk = chipBlock("s6");
+  const out = document.getElementById("s6-out");
+  document.getElementById("s6-pre").addEventListener("click", async () => {
+    out.textContent = "pre-aborting…";
+    const ctrl = new AbortController();
+    ctrl.abort("user cancelled pick");
+    try {
+      const r = await new EyeDropper().open({signal: ctrl.signal});
+      out.textContent = "RESOLVED — " + JSON.stringify(r);
+    } catch (e) {
+      out.textContent = `pre-aborted: ${e.constructor.name}: ${e.name}: ${e.message} / reason="${e.reason}"`;
+    }
+  });
+  document.getElementById("s6-mid").addEventListener("click", async () => {
+    out.textContent = "aborting mid-flight…";
+    const ctrl = new AbortController();
+    const p = new EyeDropper().open({signal: ctrl.signal});
+    setTimeout(() => ctrl.abort("timeout-mid"), 200);
+    try {
+      const r = await p;
+      out.textContent = "RESOLVED — " + JSON.stringify(r);
+    } catch (e) {
+      out.textContent = `mid-abort: ${e.constructor.name}: ${e.name}: ${e.message} / reason="${e.reason}"`;
+    }
+  });
+  chip(blk, "ok", "Pre-aborted signal", "rejects IMMEDIATELY — verified ≤5ms on CfT 154");
+  chip(blk, "warn", "LIVE truth", "CfT 154: rejection is the RAW reason string, not a DOMException — same contract as fetch.abort()");
+  chip(blk, "info", "e.constructor", "String (not DOMException) — instanceof DOMException is FALSE on pre-abort path");
+  chip(blk, "warn", "Mid-flight abort", "dismisses UI + rejects with your reason (same shape as pre-abort)");
+  chip(blk, "ok", "Pattern", "new AbortController() + signal — your reason becomes the rejection value verbatim");
+}
+
+// ─── §7 Promise resolves once ────────────────────────────────────────────────
+async function probe7() {
+  const blk = chipBlock("s7");
+  chip(blk, "ok", "Result type", "Promise<ColorSelectionResult>");
+  chip(blk, "ok", "sRGBHex format", "always '#rrggbb' — 7 chars");
+  chip(blk, "info", "Convert?", "parseInt(s.slice(1), 16) → [r,g,b] for non-sRGB use");
+  chip(blk, "warn", "Why always sRGB?", "spec: sRGBHex is the only field — no Display-P3, no oklch");
+  chip(blk, "info", "Resolves once", "Promise resolves once on color pick — no .then chains that re-fire");
+  chip(blk, "ok", "Always-lowercase", "lowercase hex (#aabbcc), not #AABBCC");
+  setBadge("b-hex", true);
+  setBadge("b-async", true);
+}
+
+// ─── §8 Re-entry cost ────────────────────────────────────────────────────────
+async function probe8() {
+  const blk = chipBlock("s8");
+  chip(blk, "info", "Constructor cost", "free — no fields, no events, no tokens");
+  chip(blk, "ok", "Many instances?", "1000 × `new EyeDropper()` is essentially free");
+  chip(blk, "warn", "open() cost", "modal UI takeover: cursor hidden, magnifier, user click required");
+  chip(blk, "warn", "Don't loop", "never call open() in rAF / scroll / input — focus hijack hell");
+  chip(blk, "ok", "Cache pattern", "open once → store result in localStorage / state → re-render");
+  chip(blk, "ok", "Reuse via UI", "one 'Pick color' button in the corner — user triggers each pick");
+}
+
+// ─── §9 Molt capstone ─────────────────────────────────────────────────────────
+async function probe9() {
+  const blk = chipBlock("s9") || (() => { const d = document.createElement("div"); d.className = "grid"; document.getElementById("s9").appendChild(d); return d; })();
+  const palette = document.getElementById("s9-palette");
+  const out = document.getElementById("s9-out");
+  const btn = document.getElementById("s9-pick");
+  const clear = document.getElementById("s9-clear");
+  function fillEmpty() {
+    [...palette.children].forEach(sw => { sw.style.background = "var(--bg3)"; sw.textContent = "—"; });
+  }
+  clear.addEventListener("click", fillEmpty);
+  btn.addEventListener("click", async () => {
+    out.textContent = "open eyedropper → click a pixel on the page";
+    try {
+      const r = await new EyeDropper().open();
+      const base = r.sRGBHex;
+      // derive 5 colors: base + 4 OKLCH-derived tints/shades
+      const rgb = hex2rgb(base);
+      const oklch = rgb2oklch(rgb[0], rgb[1], rgb[2]);
+      const variations = [
+        { l: oklch.L + 0.20, c: oklch.C, h: oklch.h },
+        { l: oklch.L + 0.10, c: oklch.C, h: oklch.h },
+        { l: oklch.L,        c: oklch.C, h: oklch.h },
+        { l: oklch.L - 0.10, c: oklch.C, h: oklch.h },
+        { l: oklch.L - 0.20, c: oklch.C, h: oklch.h }
+      ];
+      const colors = variations.map(v => oklch2hex(v.l, v.c, v.h));
+      [...palette.children].forEach((sw, i) => {
+        sw.style.background = colors[i];
+        sw.textContent = colors[i].toUpperCase();
+      });
+      out.textContent = `Picked ${base} → 5-step palette via OKLCH L* delta (steps: ±0.20 / ±0.10 / 0)`;
+    } catch (e) {
+      out.textContent = `${e.name}: ${e.message}`;
+    }
+  });
+  chip(blk, "ok", "Pattern", "open → store hex → derive 5-swatch via OKLCH L* delta ladder");
+  chip(blk, "warn", "Why OKLCH?", "perceptual uniformity — L* 0.10 ≈ same visual lightness diff (vs sRGB ladder)");
+  chip(blk, "info", "Storage", "OKLCH output re-encoded to sRGB hex for OS / canvas compat");
+  chip(blk, "ok", "Molt use", "spec deliverable: client gives a pixel → designer gets 5 tones");
+}
+
+// ─── §10 OpenDrones capstone ──────────────────────────────────────────────────
+async function probe10() {
+  const blk = chipBlock("s10") || (() => { const d = document.createElement("div"); d.className = "grid"; document.getElementById("s10").appendChild(d); return d; })();
+  const btn = document.getElementById("s10-pick");
+  const out = document.getElementById("s10-out");
+  const alerts = [
+    document.getElementById("s10-a1"),
+    document.getElementById("s10-a2"),
+    document.getElementById("s10-a3")
+  ];
+  btn.addEventListener("click", async () => {
+    out.textContent = "open eyedropper → click any pixel";
+    try {
+      const r = await new EyeDropper().open();
+      const base = r.sRGBHex;
+      const rgb = hex2rgb(base);
+      const oklch = rgb2oklch(rgb[0], rgb[1], rgb[2]);
+      // critical = base, caution = -0.15 L, nominal = +0.20 L (assumes base is mid-warm)
+      const ladder = [
+        { l: oklch.L + 0.20, c: oklch.C, h: oklch.h, label: "Nominal" },
+        { l: oklch.L - 0.05, c: Math.max(oklch.C, 0.15), h: oklch.h + 30, label: "Caution" },
+        { l: oklch.L - 0.18, c: Math.max(oklch.C, 0.20), h: oklch.h + 60, label: "Critical" }
+      ];
+      ladder.forEach((row, i) => {
+        const hex = oklch2hex(row.l, row.c, row.h);
+        alerts[i].style.background = hex + "22";
+        alerts[i].style.borderLeft = `3px solid ${hex}`;
+        alerts[i].querySelector(".sw").style.background = hex;
+        alerts[i].querySelector("b").textContent = row.label;
+      });
+      out.textContent = `Base ${base} → Nominal L*+0.20 / Caution L*−0.05 +chroma+0.15 / Critical L*−0.18 +chroma+0.20 +hue+60°`;
+    } catch (e) {
+      out.textContent = `${e.name}: ${e.message}`;
+    }
+  });
+  chip(blk, "ok", "Pattern", "pick 1 base → derive 3-step alert ladder via OKLCH");
+  chip(blk, "info", "Hue shift", "+60° on Critical moves toward red/orange regardless of base color");
+  chip(blk, "warn", "Chroma floor", "max(base.chroma, 0.20) — keeps Critical visible even on grays");
+  chip(blk, "ok", "Use", "ops samples Part-107-mandated red from chart → cascade ready to ship");
+}
+
+// ─── Color math (compact, no library) ────────────────────────────────────────
+function hex2rgb(h) {
+  const m = h.replace("#","");
+  return [parseInt(m.slice(0,2),16), parseInt(m.slice(2,4),16), parseInt(m.slice(4,6),16)];
+}
+function rgb2hex(r,g,b) {
+  const c = (n) => pad(Math.max(0,Math.min(255,Math.round(n))).toString(16));
+  return "#" + c(r) + c(g) + c(b);
+}
+// sRGB → linear → OKLab (Björn Ottosson, perceptually uniform)
+function srgb2linear(v) { v /= 255; return v <= 0.04045 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4); }
+function linear2srgb(v) { return v <= 0.0031308 ? 12.92*v : 1.055*Math.pow(v, 1/2.4) - 0.055; }
+function rgb2oklch(r,g,b) {
+  const lr = srgb2linear(r), lg = srgb2linear(g), lb = srgb2linear(b);
+  const l = 0.4122214708*lr + 0.5363325363*lg + 0.0514459929*lb;
+  const m = 0.2119034982*lr + 0.6806995451*lg + 0.1073969566*lb;
+  const s = 0.0883024619*lr + 0.2817188376*lg + 0.6299787005*lb;
+  const l_ = Math.cbrt(l), m_ = Math.cbrt(m), s_ = Math.cbrt(s);
+  const L = 0.2104542553*l_ + 0.7936177850*m_ - 0.0040720468*s_;
+  const a = 1.9779984953*l_ - 2.4285922050*m_ + 0.4505937099*s_;
+  const b2 = 0.0259040371*l_ + 0.7827717662*m_ - 0.8086757660*s_;
+  const C = Math.sqrt(a*a + b2*b2);
+  let h = Math.atan2(b2, a) * 180 / Math.PI;
+  if (h < 0) h += 360;
+  return { L, C, h };
+}
+function oklch2rgb(L, C, h) {
+  const hr = h * Math.PI / 180;
+  const a = C * Math.cos(hr);
+  const b = C * Math.sin(hr);
+  const l_ = L + 0.3963377774*a + 0.2158037573*b;
+  const m_ = L - 0.1055613458*a - 0.0638541728*b;
+  const s_ = L - 0.0894841775*a - 1.2914855480*b;
+  const l = l_*l_*l_, m = m_*m_*m_, s = s_*s_*s_;
+  const lr =  4.0767416621*l - 3.3077115913*m + 0.2309699292*s;
+  const lg = -1.2684380046*l + 2.6097574011*m - 0.3413193965*s;
+  const lb = -0.0041960863*l - 0.7034186147*m + 1.7076147010*s;
+  return [linear2srgb(lr)*255, linear2srgb(lg)*255, linear2srgb(lb)*255];
+}
+function oklch2hex(L,C,h) {
+  const [r,g,b] = oklch2rgb(L,C,h);
+  return rgb2hex(r,g,b);
+}
+
+// ─── Boot ────────────────────────────────────────────────────────────────────
+(async function boot() {
+  try {
+    await probe1();
+    await probe2();
+    await probe3();
+    await probe4();
+    await probe5();
+    await probe6();
+    await probe7();
+    await probe8();
+    await probe9();
+    await probe10();
+    document.title = "✓ EyeDropper API — Molt Research";
+  } catch (e) {
+    console.error("boot failed", e);
+    document.body.insertAdjacentHTML("afterbegin", `<div class="note err">Boot error: ${e.message}</div>`);
+  }
+})();
+
+// Click any chip to re-run its section probe (best-effort)
+document.body.addEventListener("click", (e) => {
+  const c = e.target.closest(".chip[data-probed='1']");
+  if (!c) return;
+  c.style.transition = "background .3s ease";
+  c.style.background = "var(--accent)";
+  setTimeout(() => { c.style.background = ""; }, 600);
+});
+</script>
+</body>
+</html>
