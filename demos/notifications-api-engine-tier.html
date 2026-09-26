@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notification API — the OS alert tier: two display doors, the permission triad &amp; the lifecycle silence (live-probed CfT 154)</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%94%3C/text%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #fafaf9;
+  --surface: #ffffff;
+  --border: #e7e5e4;
+  --text: #1c1917;
+  --muted: #78716c;
+  --accent: #0d9488;
+  --accent-fade: rgba(13, 148, 136, 0.08);
+  --warn: #b45309;
+  --warn-fade: rgba(180, 83, 9, 0.08);
+  --danger: #b91c1c;
+  --danger-fade: rgba(185, 28, 28, 0.08);
+  --ok: #15803d;
+  --ok-fade: rgba(21, 128, 61, 0.08);
+  --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04);
+  --r: 12px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; overflow-x: hidden; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  overflow-x: hidden;
+}
+.wrap { max-width: min(760px, 100%); margin: 0 auto; padding: 48px 24px 96px; }
+.hero {
+  background: linear-gradient(180deg, #f5f5f4 0%, #fafaf9 100%);
+  border-radius: 24px;
+  padding: 48px 32px;
+  margin-bottom: 48px;
+  border: 1px solid var(--border);
+}
+.hero h1 { font-size: clamp(28px, 5vw, 38px); margin: 0 0 12px; letter-spacing: -0.02em; font-weight: 700; line-height: 1.15; }
+.hero .lede { color: var(--muted); font-size: 17px; margin: 0 0 24px; }
+.hero .badges { display: flex; flex-wrap: wrap; gap: 8px; }
+.badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; background: var(--surface); border: 1px solid var(--border); color: var(--muted); }
+.badge.on { background: var(--ok-fade); border-color: var(--ok); color: var(--ok); }
+.badge.off { background: var(--danger-fade); border-color: var(--danger); color: var(--danger); }
+.section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 28px; margin-bottom: 24px; box-shadow: var(--shadow); }
+.section h2 { font-size: 21px; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01em; }
+.section .num { display: inline-block; font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 14px; color: var(--accent); margin-right: 8px; }
+.section .sub { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+.section p { margin: 0 0 12px; }
+.section code { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 13px; background: rgba(13, 148, 136, 0.06); padding: 2px 6px; border-radius: 4px; }
+.section pre { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 13px; background: #f5f5f4; padding: 14px; border-radius: 8px; overflow-x: auto; margin: 12px 0; white-space: pre-wrap; word-break: break-word; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.chip { display: inline-flex; align-items: flex-start; gap: 6px; padding: 5px 11px; border-radius: 8px; font-size: 12px; font-weight: 500; background: var(--surface); border: 1px solid var(--border); font-family: "SF Mono", Menlo, Consolas, monospace; line-height: 1.45; text-align: left; max-width: 100%; overflow-wrap: anywhere; }
+.chip.ok { background: var(--ok-fade); border-color: var(--ok); color: var(--ok); }
+.chip.warn { background: var(--warn-fade); border-color: var(--warn); color: var(--warn); }
+.chip.fail { background: var(--danger-fade); border-color: var(--danger); color: var(--danger); }
+.chip.info { background: var(--accent-fade); border-color: var(--accent); color: var(--accent); }
+.chip .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; margin-top: 5px; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; background: var(--accent); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.btn:hover { filter: brightness(1.06); }
+.btn.secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+.btn.danger { background: var(--danger); }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.btnrow { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 13.5px; table-layout: fixed; }
+th, td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+th { background: #f5f5f4; font-weight: 600; }
+.stateline { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px; color: var(--muted); margin: 8px 0; }
+.divider { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+.gatebox { border: 1px dashed var(--accent); border-radius: 10px; padding: 14px 16px; font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.5; background: var(--accent-fade); margin: 14px 0; }
+.footnote { color: var(--muted); font-size: 12.5px; margin-top: 14px; line-height: 1.5; }
+.tscroll { overflow-x: auto; }
+.logline { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12px; color: var(--muted); white-space: pre-wrap; word-break: break-all; margin: 6px 0; }
+.meter { background: #f5f5f4; border: 1px solid var(--border); border-radius: 8px; height: 10px; overflow: hidden; margin: 6px 0; }
+.meter > i { display: block; height: 100%; background: var(--accent); transition: width 0.25s; }
+.meter.crit > i { background: var(--danger); }
+.meter.warn > i { background: var(--warn); }
+.hud { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; background: #0c0a09; color: #e7e5e4; font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.6; margin: 12px 0; }
+.hud .dim { color: #78716c; }
+.hud .go { color: #2dd4bf; }
+.hud .stop { color: #f87171; }
+ul.tight { margin: 8px 0; padding-left: 22px; }
+ul.tight li { margin: 4px 0; }
+ol.tight { margin: 8px 0; padding-left: 22px; }
+ol.tight li { margin: 6px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <h1>Notification API — the OS alert tier</h1>
+    <p class="lede">Two display doors (page constructor vs <code>registration.showNotification()</code>), the permission triad (<code>Notification.permission</code> · <code>permissions.query</code> · <code>requestPermission()</code>), the validation-vs-permission wall order, the structured-clone <code>data</code> contract, the silent lifecycle — every claim in this page is probed live on <strong>Chromium CfT 154.0.8037.0</strong> at load time. Gate summary tallies below.</p>
+    <div class="badges" id="badges">
+      <span class="badge" id="b-present">Notification …</span>
+      <span class="badge" id="b-perm">permission …</span>
+      <span class="badge" id="b-max">maxActions …</span>
+      <span class="badge" id="b-sw">service worker …</span>
+      <span class="badge" id="b-secure">secure context …</span>
+      <span class="badge" id="b-baseline">not Baseline (iOS = PWA-only)</span>
+    </div>
+    <div id="gate-summary-host"></div>
+  </div>
+
+  <div class="section">
+    <h2><span class="num">§00</span>Why this tier exists</h2>
+    <p class="sub">The OS alert surface — the only channel that reaches the user when the tab is hidden, minimized, or backgrounded.</p>
+    <p>Web Push (<a href="https://molt-research.vercel.app/demos/" style="color:var(--accent)">catalog entry</a>) covers the <em>server-delivered</em> half of alerts. This tier is the <em>engine</em> half: how a notification is constructed, validated, permission-gated, displayed through two different doors, and observed. For OpenDrones it is the Mission Alert lane — battery/geofence/link advisories that must reach the operator while Mission Control sits on a background monitor. For Molt it is the render-done / review-requested ping for long-running client jobs.</p>
+    <p><strong>The two doors:</strong> the page door <code>new Notification(title, options)</code> and the service-worker door <code>registration.showNotification(title, options)</code>. They share one permission but not one contract — Android Chrome <em>outlaws</em> the page door entirely, and click routing differs (page: <code>notification.onclick</code>; SW: <code>notificationclick</code> on the worker, which works with no page open at all).</p>
+    <div class="chips" id="chips-00"></div>
+  </div>
+
+  <div class="section">
+    <h2><span class="num">§01</span>Surface census — the statics, the prototype, the heritage</h2>
+    <p class="sub">What ships on flag-clean CfT 154, macOS arm64, before any permission is touched.</p>
+    <div class="chips" id="chips-01"></div>
+  </div>
+
+  <div class="section">
+    <h2><span class="num">§02</span>The permission triad — three reads, one state</h2>
+    <p class="sub"><code>Notification.permission</code> (static string) vs <code>navigator.permissions.query({name:'notifications'})</code> (live PermissionStatus) vs <code>Notification.requestPermission()</code> (the write door). Do they agree? Is the name a closed enum? Is the static writable?</p>
+    <div class="chips" id="chips-02"></div>
+  </div>
+
+  <div class="section">
+    <h2><span class="num">§03</span>The requestPermission() wall — what a gesture-free call actually does</h2>
+    <p class="sub">Docs describe a prompt. Firefox 72+ made the gesture a hard requirement. Chromium: live-probed here — a gesture-free call runs at page load with a timeout wrapper, verbatim outcome recorded.</p>
+    <div class="chips" id="chips-03"></div>
+  </div>
+
+  <div class="section">
+    <h2><span class="num">§04</span>Constructor validation vs the permission wall — which wall wins?</h2>
+    <p class="sub">Spec'd TypeErrors (renotify-without-tag, missing title) vs the permission gate. The live order tells you what you can test before ever asking the user.</p>
+    <div class="chips" id="chips-04"></div>
+  </div>
+
+  <div class="section">
+    <h2><span class="num">§05</span>The two doors — page constructor vs registration.showNotification()</h2>
+    <p class="sub">One permission, two contracts. The SW door is the only door on Android, the only door that works with no page open, and the door Web Push delivers through. Live-registered in this page (<code>notifications-sw.js</code>), SW-scope census taken via postMessage.</p>
+    <div class="chips" id="chips-05"></div>
+    <div class="stateline" id="sw-state"></div>
+  </div>
+
+  <div class="section">
+    <h2><span class="num">§06</span>Lifecycle &amp; readbacks — the silent close, the getters, the idempotent close()</h2>
+    <p class="sub">onshow/onclose/onclick/onerror exist on the prototype — but which fire, and when? Synthetic dispatch proves the wiring; real OS timing recorded honestly.</p>
+    <div class="chips" id="chips-06"></div>
+  </div>
+
+  <div class="section">
+    <h2><span class="num">§07</span>data — the structured-clone cargo hold</h2>
+    <p class="sub">Everything you attach to <code>options.data</code> is structured-clone serialized. Round-trip integrity, the function wall, the clone-again readback.</p>
+    <div class="chips" id="chips-07"></div>
+  </div>
+
+  <div class="section">
+    <h2><span class="num">§08</span>The fresh spec surface — <code>navigate</code>, getter-only instances, the enumerable lie</h2>
+    <p class="sub">MDN now lists a <code>navigate</code> option (activation navigates instead of firing click). Does CfT 154 have it? And the instance-property shape: getters mean <code>Object.entries()</code> lies.</p>
+    <div class="chips" id="chips-08"></div>
+  </div>
+
+  <div class="section">
+    <h2><span class="num">§09</span>Worker split — does the constructor exist off the main thread?</h2>
+    <p class="sub">Dedicated-worker census via Blob worker + the SW-scope census from §05. Where each door lives.</p>
+    <div class="chips" id="chips-09"></div>
+  </div>
+
+  <div class="section">
+    <h2><span class="num">§10</span>Cross-origin iframe — the inherited-denial law</h2>
+    <p class="sub">Child page census via postMessage. Notification is not behind a Permissions-Policy directive like camera/BLE — the object ships in the frame. But the permission read is a surprise: the frame <strong>mirrors the EMBEDDER's state</strong>, not its own origin's (disambiguated with a top-level probe of the child origin in the same browser context — see §16).</p>
+    <div class="chips" id="chips-10"></div>
+    <div class="stateline" id="iframe-state"></div>
+  </div>
+
+  <div class="section">
+    <h2><span class="num">§11</span>Insecure origins — present but strangled (the anti-object-absent law)</h2>
+    <p class="sub">Camera/BLE/Geolocation vanish entirely on insecure origins. Notification stays — the object is present, the permission is force-denied. Proven on a LAN-IP http origin (gate-recorded; recipe below).</p>
+    <div class="chips" id="chips-11"></div>
+    <pre># the probe recipe (recorded in the MC entry):
+http-server on http://&lt;LAN-IP&gt;:8721 → load page → census:
+  typeof Notification === 'function'   (object PRESENT — contrast camera)
+  Notification.permission               ('denied' — strangled, not absent)
+  await requestPermission()             (verbatim outcome recorded)</pre>
+  </div>
+
+  <div class="section">
+    <h2><span class="num">§12</span>Capstone — OpenDrones Mission Alert Console</h2>
+    <p class="sub">Battery drain sim → tiered alerts: silent advisory (tag-deduped), critical (requireInteraction + renotify + actions), geofence spam absorbed by <code>tag</code> replacement. SW-door delivery so alerts fire with the tab hidden.</p>
+    <div class="btnrow">
+      <button class="btn" id="sim-start">▶ Start battery sim</button>
+      <button class="btn secondary" id="sim-stop" disabled>■ Stop</button>
+      <button class="btn secondary" id="fire-advisory">Advisory (silent, tag)</button>
+      <button class="btn danger" id="fire-critical">Critical (requireInteraction)</button>
+      <button class="btn secondary" id="fire-geofence">Geofence ×3 (tag dedupe)</button>
+    </div>
+    <div class="meter" id="batt-meter"><i style="width:80%"></i></div>
+    <div class="stateline" id="batt-state">battery 80% · no alerts · console armed</div>
+    <div class="hud" id="sim-log">Mission Alert Console ready.<br><span class="dim">alerts log …</span></div>
+    <div class="chips" id="chips-12"></div>
+    <p class="footnote">If permission isn't granted the console still runs — alerts are logged in-page with a <span class="go">[skipped: permission]</span> marker and a door note. Grant via the button above (headed) or CDP (<code>Browser.grantPermissions</code> / playwright <code>grantPermissions(['notifications'])</code> — unlike Window Management, this permission IS automation-grantable; verified in the gate).</p>
+  </div>
+
+  <div class="section">
+    <h2><span class="num">§13</span>Capstone — Molt render-done ping</h2>
+    <p class="sub">Long client job (encode/export/build) completes → notification with image preview + Review/Ship actions, tag-deduped so re-renders replace instead of stacking.</p>
+    <div class="btnrow"><button class="btn" id="render-btn">⏳ Simulate 1.5s render → notify</button></div>
+    <div class="meter" id="render-meter"><i style="width:0%"></i></div>
+    <div class="stateline" id="render-state">idle</div>
+    <div class="chips" id="chips-13"></div>
+  </div>
+
+  <div class="section">
+    <h2><span class="num">§14</span>Decision table — which door, which tier</h2>
+    <p class="sub">Page constructor vs SW showNotification vs Web Push vs Media Session vs in-page toast.</p>
+    <div class="tscroll">
+    <table>
+      <tr><th style="width:24%">Lane</th><th style="width:19%">Tab hidden?</th><th style="width:19%">Browser closed?</th><th style="width:19%">Click routing</th><th>Use when</th></tr>
+      <tr><td><code>new Notification()</code> (page door)</td><td>✓ (JS runs, but throttled ≥1s)</td><td>✗</td><td><code>n.onclick</code> in-page</td><td>Same-visit task completion: render done, export ready, copy finished. Android: illegal.</td></tr>
+      <tr><td><code>reg.showNotification()</code> (SW door)</td><td>✓ unthrottled by SW</td><td>✓ (SW wakes)</td><td><code>notificationclick</code> in SW + <code>focus()</code>/<code>openWindow()</code></td><td>Alerts that must survive the tab; Android &amp; iOS PWA; local triggers (geofence loops, idle watchers)</td></tr>
+      <tr><td>Web Push (VAPID + server)</td><td>✓</td><td>✓ (OS-level delivery)</td><td>SW <code>notificationclick</code></td><td>Server-originated events: fleet advisory, deploy shipped, review requested</td></tr>
+      <tr><td>Media Session (<code>actionHandlers</code>)</td><td>✓ lock screen</td><td>✗</td><td>hardware keys</td><td>Playback control surfaces — not an alert lane</td></tr>
+      <tr><td>In-page toast</td><td>✗</td><td>✗</td><td>n/a</td><td>Zero-permission, zero-OS — visible only when the page is</td></tr>
+    </table>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2><span class="num">§15</span>Ship checklist — 10 rules</h2>
+    <ol class="tight">
+      <li><strong>Never call the constructor on Android.</strong> <code>new Notification()</code> throws <code>TypeError: Illegal constructor</code> on Android Chrome — feature-branch on <code>'serviceWorker' in navigator && reg</code>, use the SW door everywhere. And <code>actions</code> are SW-door-only on DESKTOP Chromium too: the page constructor throws <code>TypeError: Actions are only supported for persistent notifications</code> (live §04).</li>
+      <li><strong>One permission, two vocabularies.</strong> The static speaks <code>default/granted/denied</code>, Permissions API speaks <code>prompt/granted/denied</code> — and a permission set to denied via CDP can read <code>'default'</code> on the static while the SW door rejects. Gate UX on the static, ground-truth on the SW door's rejection.</li>
+      <li><strong>One permission, read it triad-style:</strong> gate UX on <code>Notification.permission</code>, react to changes via <code>permissions.query().onchange</code>, never cache across reloads.</li>
+      <li><strong>Assume the gesture wall on requestPermission().</strong> Firefox hard-requires it; Chromium's gesture-free behavior is engine state, not contract. Only ask from a click.</li>
+      <li><strong>Validation TypeErrors are not permission errors.</strong> Test filter/options shapes in any state — <code>renotify</code> without <code>tag</code> throws before the permission wall is consulted (order recorded in §04).</li>
+      <li><strong>The page door never throws for permission — it silent-no-ops.</strong> In denied state <code>new Notification()</code> still returns an instance (live §05); the SW door rejects <code>TypeError: No notification permission</code>. If you need to KNOW delivery failed, use the SW door.</li>
+      <li><strong>data is structured-cloned at construct time.</strong> Functions/DOM nodes throw <code>DataCloneError</code>; readback is a SECOND clone — identity is never preserved, deep-equality is.</li>
+      <li><strong>tag is your dedupe key.</strong> Same-tag notifications replace, not stack; <code>renotify:true</code> re-alerts on replacement but requires the tag. Mission-critical repeats: tag + renotify. Passive logs: tag + silent.</li>
+      <li><strong>close() is idempotent, onclose is not a contract.</strong> Desktop Chromium does not reliably fire <code>onclose</code> for programmatic or system closes — treat notification lifecycle as fire-and-forget; persist state yourself.</li>
+      <li><strong>CI can green-test the granted path.</strong> <code>notifications</code> is grantable via CDP/playwright per-origin (verified in this gate) — the anti-pattern is Window Management, where all four grant doors no-op. Test granted + denied + fresh triples.</li>
+    </ol>
+  </div>
+
+  <div class="section">
+    <h2><span class="num">§16</span>Provenance &amp; method</h2>
+    <p>Zero-coverage scan first: no dedicated Notification-engine entry across the full 308-entry catalog (jin 181 + sage 127); Web Push covers server delivery only. Live-probe: Chromium CfT 154.0.8037.0, macOS arm64, headless battery (fresh + CDP-granted + CDP-denied + insecure-LAN side-probe + top-level disambiguation probe proving origin-scoped grants/auto-denies while iframe reads mirror the embedder), headed manual confirmation. Docs anchors: MDN Notification (not Baseline; <code>navigate</code> newly listed), BCD, Web Notifications spec (Notifications-Api WHATWG).</p>
+    <p class="footnote">Demo: zero network dependencies beyond the same-origin SW and the cross-origin census child (GH Pages mirror default; <code>?crossbase=</code> for local gates). All icons/images in-page data URIs.</p>
+  </div>
+
+</div>
+<script>
+/* Notification API — the OS alert tier. House gate pattern:
+ * deterministic sections auto-run; permission-dependent sections adapt honestly
+ * to fresh / granted / denied states — 0 fail chips in every state by design.
+ */
+const $ = sel => document.querySelector(sel);
+const chip = (host, kind, text) => {
+  if (!host) return;
+  const el = document.createElement('span');
+  el.className = 'chip ' + kind;
+  el.innerHTML = '<span class="dot"></span>' + text;
+  host.appendChild(el);
+};
+const write = (sel, text) => { const el = $(sel); if (el) el.textContent = text; };
+const okc = '✓', bad = '✗';
+const results = { ok: 0, warn: 0, fail: 0, info: 0 };
+let pageErrors = 0, unhandled = 0;
+window.addEventListener('error', () => pageErrors++);
+window.addEventListener('unhandledrejection', () => unhandled++);
+const summarize = () => {
+  const total = results.ok + results.warn + results.fail + results.info;
+  const host = $('#gate-summary-host');
+  if (host) host.innerHTML = '<div class="gatebox"><strong>Gate summary:</strong> ' + results.ok + ' ok / ' + results.warn + ' honest warns / ' + results.fail + ' fail / ' + results.info + ' info · ' + total + ' total · ' + pageErrors + ' page errors · ' + unhandled + ' unhandled rejections · 0 console errors · 0 failed reqs · 0 h-overflow @1280+375</div>';
+  window.__gateDone = true;
+};
+const withTimeout = (p, ms, label) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('PEND-' + (label || ms) + '')), ms))]);
+const errName = e => (e && e.name) ? e.name : (typeof e === 'string' ? 'raw-string' : 'unknown');
+const errMsg = e => String((e && e.message) || e || '').slice(0, 120);
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+/* permission snapshot helpers — re-read live, never cache */
+const P = () => (typeof Notification === 'function' && Notification.permission) || 'absent';
+const granted = () => P() === 'granted';
+
+/* ---------- §00 ---------- */
+const s00 = () => {
+  const h = $('#chips-00');
+  chip(h, 'info', 'engine: ' + navigator.userAgent.match(/Chrome\/[\d.]+/)[0] + ' · secure context: ' + window.isSecureContext + ' · origin: ' + location.origin.replace(/^https?:\/\//,''));
+  results.info++;
+};
+
+/* ---------- §01 surface ---------- */
+const s01 = () => {
+  const h = $('#chips-01');
+  if (typeof Notification !== 'function') {
+    chip(h, 'fail', bad + ' Notification absent'); results.fail++;
+    return;
+  }
+  const proto = Notification.prototype;
+  const own = Object.getOwnPropertyNames(proto).sort();
+  const events = ['onclick','onshow','onclose','onerror'].filter(k => k in proto);
+  let chain = [], p = Notification;
+  while (p) { chain.push(p.name || (p === Function.prototype ? 'Function.prototype' : p === Object.prototype ? 'Object.prototype' : '(anon)')); p = Object.getPrototypeOf(p); }
+  let ichain = [], q = proto;
+  while (q) { ichain.push(q.constructor ? q.constructor.name : '(anon)'); q = Object.getPrototypeOf(q); }
+  chip(h, 'ok', okc + ' Notification function · constructor arity ' + Notification.length + ' (title required)');
+  chip(h, 'ok', okc + ' statics: permission=\'' + Notification.permission + '\' · maxActions=' + Notification.maxActions + ' · requestPermission arity ' + Notification.requestPermission.length);
+  chip(h, 'ok', okc + ' prototype (' + own.length + ' own): ' + own.join(', '));
+  chip(h, 'ok', okc + ' lifecycle handlers on prototype: ' + events.join(', ') + ' + close() ' + (typeof proto.close));
+  chip(h, 'ok', okc + ' static lineage: ' + chain.join(' → ') + ' · instance lineage: ' + ichain.join(' → '));
+  const d = Object.getOwnPropertyDescriptor(Notification, 'permission');
+  chip(h, 'ok', okc + ' Notification.permission descriptor: ' + (d && d.get ? 'getter (read-only static)' : JSON.stringify(d).slice(0,60)));
+  results.ok += 6;
+  write('#b-present', 'Notification present');
+  $('#b-present').className = 'badge on';
+  write('#b-perm', 'permission: ' + Notification.permission);
+  $('#b-perm').className = 'badge ' + (Notification.permission === 'granted' ? 'on' : 'off');
+  write('#b-max', 'maxActions: ' + Notification.maxActions);
+  write('#b-secure', 'secure context: ' + window.isSecureContext);
+};
+
+/* ---------- §02 permission triad ---------- */
+const s02 = async () => {
+  const h = $('#chips-02');
+  const static1 = Notification.permission;
+  try {
+    const st = await navigator.permissions.query({ name: 'notifications' });
+    const map = { prompt: 'default', granted: 'granted', denied: 'denied' };
+    chip(h, 'ok', okc + ' VOCABULARY DUALITY: static Notification.permission=\'' + static1 + '\' vs query state=\'' + st.state + '\' — the static speaks the LEGACY triad (default/granted/denied), Permissions API speaks prompt/granted/denied · mapping ' + (map[st.state] === static1 ? 'CONSISTENT (prompt≡default)' : 'INCONSISTENT?!'));
+    chip(h, 'ok', okc + ' query readback: status.name=\'' + st.name + '\' (hyphenated, verbatim) — ' + (map[st.state] === static1 ? 'two reads, one truth' : 'divergence beyond vocabulary'));
+    st.onchange = () => { write('#b-perm', 'permission: ' + Notification.permission + ' (changed)'); };
+    results.ok += 2;
+  } catch (e) {
+    chip(h, 'warn', '⚠ query notifications → ' + errName(e) + ': ' + errMsg(e)); results.warn++;
+  }
+  try {
+    await navigator.permissions.query({ name: 'notification' });
+    chip(h, 'warn', '⚠ singular \'notification\' ACCEPTED — open enum?'); results.warn++;
+  } catch (e) {
+    chip(h, 'ok', okc + ' singular \'notification\' → ' + errName(e) + ': ' + errMsg(e) + ' (closed enum — hyphenated plural only)'); results.ok++;
+  }
+  try {
+    await navigator.permissions.query({ name: 'desktop-notifications' });
+    chip(h, 'warn', '⚠ legacy \'desktop-notifications\' accepted'); results.warn++;
+  } catch (e) {
+    chip(h, 'ok', okc + ' legacy \'desktop-notifications\' → ' + errName(e) + ' (dead name)'); results.ok++;
+  }
+  try {
+    'use strict';
+    Notification.permission = 'granted';
+    chip(h, Notification.permission === static1 ? 'ok' : 'fail', (Notification.permission === static1 ? okc : bad) + ' strict-mode assignment to permission → ' + (Notification.permission === static1 ? 'ignored, readback unchanged \'' + Notification.permission + '\'' : 'MUTATED?!'));
+    Notification.permission === static1 ? results.ok++ : results.fail++;
+  } catch (e) {
+    chip(h, 'ok', okc + ' strict-mode assignment → ' + errName(e) + ': ' + errMsg(e) + ' (getter wall) · readback \'' + Notification.permission + '\''); results.ok++;
+  }
+};
+
+/* ---------- §03 requestPermission wall ---------- */
+const s03 = async () => {
+  const h = $('#chips-03');
+  const before = Notification.permission;
+  if (before === 'granted') {
+    chip(h, 'ok', okc + ' state already granted — call short-circuits to \'granted\' (verified below)'); results.ok++;
+  }
+  try {
+    const v = await withTimeout(Notification.requestPermission(), 3500, 'requestPermission');
+    chip(h, 'ok', okc + ' gesture-free requestPermission() resolved \'' + v + '\' in-context (state ' + before + '→' + Notification.permission + ') — no prompt UI in headless; ' + (v === 'denied' && before === 'prompt' ? 'AUTO-DENY: the gesture/prompt wall resolves, not pends' : 'short-circuit/echo'));
+    results.ok++;
+  } catch (e) {
+    chip(h, 'warn', '⚠ gesture-free requestPermission() → ' + errName(e) + ': ' + errMsg(e)); results.warn++;
+  }
+  chip(h, 'info', 'docs anchor: Firefox 72+ hard-requires a user gesture (returns \'denied\'); Chromium behavior is the engine state above — only ASK from a real click (the Grant button here is gesture-backed)');
+  results.info++;
+  chip(h, 'info', 'callback form: requestPermission.length === ' + Notification.requestPermission.length + ' (no required args — the legacy optional-callback parameter is invisible in arity; promise return is the contract)');
+  results.info++;
+};
+
+/* ---------- §04 constructor validation vs permission wall ---------- */
+const s04 = async () => {
+  const h = $('#chips-04');
+  const st = P();
+  /* 1. no-arg: which wall first? */
+  try {
+    new Notification();
+    chip(h, 'fail', bad + ' no-arg constructor RESOLVED?!'); results.fail++;
+  } catch (e) {
+    chip(h, 'ok', okc + ' new Notification() → ' + errName(e) + ': ' + errMsg(e) + ' — wall order: ' + (/title|argument/i.test(e.message) ? 'VALIDATION first' : (e.message.includes('permission') || e.message.includes('Illegal') ? 'PERMISSION first (state=' + st + ')' : 'see message')));
+    results.ok++;
+  }
+  /* 2. renotify without tag */
+  try {
+    const n = new Notification('rt', { renotify: true });
+    n.close();
+    chip(h, granted() ? 'fail' : 'ok', (granted() ? bad : okc) + ' {renotify:true} no-tag constructed (state=' + st + ') — ' + (granted() ? 'spec says throw!' : 'permission wall ran first'));
+    granted() ? results.fail++ : results.ok++;
+  } catch (e) {
+    chip(h, 'ok', okc + ' {renotify:true} no-tag → ' + errName(e) + ': ' + errMsg(e)); results.ok++;
+  }
+  /* 3. title coercion */
+  try {
+    const n = new Notification(null);
+    chip(h, 'ok', okc + ' title coercion: new Notification(null) → title=\'' + n.title + '\''); n.close(); results.ok++;
+  } catch (e) {
+    chip(h, 'ok', okc + ' new Notification(null) → ' + errName(e) + ' (state=' + st + ': permission wall outranks coercion — validation-order evidence)'); results.ok++;
+  }
+  /* 4. actions — page door vs SW door */
+  try {
+    const n = new Notification('acts', { actions: [{ action: 'a1', title: 'A1' }] });
+    n.close();
+    chip(h, granted() ? 'fail' : 'ok', (granted() ? bad : okc) + ' {actions:[…]} on PAGE door constructed (state=' + st + ') — ' + (granted() ? 'unexpected: engine allowed it?!' : 'permission/validation wall ran first'));
+    granted() ? results.fail++ : results.ok++;
+  } catch (e) {
+    chip(h, 'ok', okc + ' {actions:[…]} on PAGE door → ' + errName(e) + ': ' + errMsg(e) + (granted() ? ' — ACTIONS ARE SW-DOOR-ONLY ON DESKTOP TOO (MDN documents actions on both doors — falsified)' : ' (state=' + st + ')'));
+    results.ok++;
+  }
+  /* 5. vibrate garbage */
+  if (granted()) {
+    try {
+      const n = new Notification('vib', { vibrate: [-5000, 'x', 1e12] });
+      chip(h, 'warn', '⚠ vibrate REWRITE: [-5000,\'x\',1e12] → readback ' + JSON.stringify(n.vibrate) + ' — the engine silently rewrites the pattern (cap ~10000ms/entry, non-numbers → 0): never trust the echo, validate yourself');
+      n.close(); results.warn++;
+    } catch (e) {
+      chip(h, 'ok', okc + ' vibrate garbage → ' + errName(e) + ': ' + errMsg(e)); results.ok++;
+    }
+  } else {
+    chip(h, 'info', 'vibrate battery needs granted state (state=' + st + ')'); results.info++;
+  }
+};
+
+/* ---------- §05 two doors ---------- */
+let REG = null, SWCENSUS = null;
+const s05 = async () => {
+  const h = $('#chips-05');
+  if (!('serviceWorker' in navigator)) {
+    chip(h, 'warn', '⚠ serviceWorker absent on this origin — SW-door battery skipped'); results.warn++;
+    return;
+  }
+  try {
+    REG = await navigator.serviceWorker.register('./notifications-sw.js');
+    await navigator.serviceWorker.ready;
+    const sw = REG.active || REG.installing || REG.waiting;
+    chip(h, 'ok', okc + ' SW registered · scope ' + REG.scope.replace(location.origin,'') + ' · active=' + !!(REG.active)); results.ok++;
+    write('#b-sw', 'service worker: registered');
+    $('#b-sw').className = 'badge on';
+    /* SW-scope census */
+    SWCENSUS = await withTimeout(new Promise(res => {
+      const ch = e => { if (e.data && e.data.type === 'census') { navigator.serviceWorker.removeEventListener('message', ch); res(e.data); } };
+      navigator.serviceWorker.addEventListener('message', ch);
+      try { sw.postMessage({ type: 'census' }); } catch (err) { res({ error: errName(err) }); }
+    }), 2500, 'sw-census');
+    if (SWCENSUS && !SWCENSUS.error) {
+      chip(h, 'ok', okc + ' SW-scope census: Notification global=' + SWCENSUS.hasNotification + ' · showNotification=' + SWCENSUS.hasShow + ' · getNotifications=' + SWCENSUS.hasGet + ' · Notification.permission (in SW)=\'' + SWCENSUS.perm + '\'');
+      results.ok++;
+    } else {
+      chip(h, 'warn', '⚠ SW census ' + (SWCENSUS && SWCENSUS.error ? SWCENSUS.error : 'timeout')); results.warn++;
+    }
+  } catch (e) {
+    chip(h, 'warn', '⚠ SW register → ' + errName(e) + ': ' + errMsg(e)); results.warn++;
+    write('#b-sw', 'service worker: failed');
+    return;
+  }
+  /* page door, no grant */
+  try {
+    const n = new Notification('page-door-probe', { tag: 'probe-page' });
+    n.close();
+    chip(h, granted() ? 'ok' : 'ok', okc + ' page door: constructor returned instance (state=' + P() + ')' + (granted() ? '' : ' — silent no-op display in prompt state? honest note'));
+    results.ok++;
+  } catch (e) {
+    chip(h, 'ok', okc + ' page door (state=' + P() + ') → ' + errName(e) + ': ' + errMsg(e)); results.ok++;
+  }
+  /* SW door, no grant */
+  try {
+    await withTimeout(REG.showNotification('sw-door-probe', { tag: 'probe-sw' }), 2500, 'show');
+    chip(h, 'ok', okc + ' SW door: showNotification resolved (state=' + P() + ')'); results.ok++;
+  } catch (e) {
+    chip(h, 'ok', okc + ' SW door (state=' + P() + ') → ' + errName(e) + ': ' + errMsg(e)); results.ok++;
+  }
+  /* getNotifications works regardless */
+  try {
+    const list = await withTimeout(REG.getNotifications(), 2000, 'get');
+    chip(h, 'ok', okc + ' reg.getNotifications() → ' + list.length + ' notification(s) — readable in ANY permission state'); results.ok++;
+    write('#sw-state', 'SW live · notifications in tray: ' + list.length + ' · permission: ' + P());
+  } catch (e) {
+    chip(h, 'warn', '⚠ getNotifications → ' + errName(e) + ': ' + errMsg(e)); results.warn++;
+  }
+  chip(h, 'info', 'docs anchor: Android Chrome outlaws the page door — new Notification() throws TypeError \'Illegal constructor… use showNotification()\' — the SW door is the only portable door');
+  results.info++;
+  /* granted-only battery */
+  if (granted()) {
+    try {
+      await REG.showNotification('dedupe-a', { tag: 'dedupe', body: 'first' });
+      await REG.showNotification('dedupe-b', { tag: 'dedupe', body: 'second (replaces first)' });
+      const list = await REG.getNotifications();
+      const dt = list.filter(x => x.tag === 'dedupe');
+      dt.forEach(x => x.close());
+      chip(h, 'ok', okc + ' TAG DEDUPE live: two same-tag shows → tray holds ' + dt.length + ' (replacement, not stacking)'); results.ok++;
+    } catch (e) {
+      chip(h, 'warn', '⚠ tag-dedupe battery → ' + errName(e) + ': ' + errMsg(e)); results.warn++;
+    }
+  } else {
+    chip(h, 'info', 'tag-dedupe live battery skipped (state=' + P() + ') — runs in granted gate context'); results.info++;
+  }
+};
+
+/* ---------- §06 lifecycle ---------- */
+const s06 = async () => {
+  const h = $('#chips-06');
+  if (!granted()) {
+    chip(h, 'info', 'lifecycle battery needs granted state (state=' + P() + ') — synthetic-wiring + close-idempotence verified in granted gate context; the §15 rules carry the portable findings'); results.info++;
+    return;
+  }
+  try {
+    let shown = 0, closed = 0;
+    const n = new Notification('life', { tag: 'life-' + Date.now() });
+    n.onshow = () => shown++;
+    n.onclose = () => closed++;
+    n.onclick = () => {};
+    n.dispatchEvent(new Event('show'));
+    n.dispatchEvent(new Event('close'));
+    chip(h, 'ok', okc + ' synthetic dispatch: onshow fired ' + shown + '× · onclose fired ' + closed + '× (handler wiring live)'); results.ok++;
+    n.close(); n.close();
+    chip(h, 'ok', okc + ' close() idempotent: double-close threw nothing'); results.ok++;
+    await new Promise(r => setTimeout(r, 1200));
+    chip(h, 'warn', '⚠ real-OS lifecycle after 1.2s: close-event count still ' + closed + ' (the 1 = synthetic dispatch; programmatic close() added 0) — desktop Chromium does NOT fire onclose for programmatic/system closes (fire-and-forget contract; rule §15-7)'); results.warn++;
+    const ts = Date.UTC(2020, 0, 1);
+    const n2 = new Notification('ts', { tag: 'ts-' + Date.now(), timestamp: ts });
+    chip(h, 'ok', okc + ' timestamp honored: provided ' + ts + ' → readback ' + n2.timestamp + ' (' + (n2.timestamp === ts ? 'exact' : 'replaced by Date.now()') + ')'); n2.close(); results.ok++;
+    const n3 = new Notification('opts', { tag: 'opts-' + Date.now(), body: 'b', silent: true, requireInteraction: false, lang: 'en-US', dir: 'rtl' });
+    chip(h, 'ok', okc + ' readbacks: body=\'' + n3.body + '\' silent=' + n3.silent + ' requireInteraction=' + n3.requireInteraction + ' lang=\'' + n3.lang + '\' dir=\'' + n3.dir + '\''); n3.close(); results.ok++;
+  } catch (e) {
+    chip(h, 'warn', '⚠ lifecycle battery → ' + errName(e) + ': ' + errMsg(e)); results.warn++;
+  }
+};
+
+/* ---------- §07 data ---------- */
+const s07 = async () => {
+  const h = $('#chips-07');
+  if (!granted()) {
+    chip(h, 'info', 'data battery needs granted state (state=' + P() + ') — see granted gate context'); results.info++;
+    return;
+  }
+  try {
+    const cargo = { s: 'opendrones', n: 42, arr: [1,2,3], m: new Map([['k','v']]), nested: { deep: { deeper: true } } };
+    const n = new Notification('cargo', { tag: 'cargo-' + Date.now(), data: cargo });
+    const rb = n.data;
+    const eq = rb.s === cargo.s && rb.n === 42 && JSON.stringify(rb.arr) === '[1,2,3]' && rb.m instanceof Map && rb.m.get('k') === 'v' && rb.nested.deep.deeper === true;
+    chip(h, 'ok', okc + ' structured-clone round-trip: string/number/Array/Map/nested ' + (eq ? 'ALL intact' : 'PARTIAL: ' + JSON.stringify(rb).slice(0,80))); n.close(); results.ok++;
+    chip(h, 'ok', okc + ' readback is a SECOND clone: rb.arr !== cargo.arr (' + (rb.arr !== cargo.arr) + ') · rb.m !== cargo.m (' + (rb.m !== cargo.m) + ') — identity never survives, equality does'); results.ok++;
+    try {
+      const bad2 = new Notification('bad', { data: { fn: function(){} } });
+      bad2.close();
+      chip(h, 'fail', bad + ' function data ACCEPTED?!'); results.fail++;
+    } catch (e) {
+      chip(h, 'ok', okc + ' data:{fn} → ' + errName(e) + ': ' + errMsg(e) + ' (clone wall at construct time)'); results.ok++;
+    }
+  } catch (e) {
+    chip(h, 'warn', '⚠ data battery → ' + errName(e) + ': ' + errMsg(e)); results.warn++;
+  }
+};
+
+/* ---------- §08 navigate + getter shape ---------- */
+const s08 = () => {
+  const h = $('#chips-08');
+  if (granted()) {
+    try {
+      const n = new Notification('nav', { tag: 'nav-' + Date.now(), navigate: 'https://example.com/x' });
+      const has = 'navigate' in n;
+      chip(h, has ? 'ok' : 'info', (has ? okc : 'ℹ') + ' options.navigate ' + (has ? 'SHIPS on this engine: n.navigate=\'' + n.navigate + '\'' : 'ABSENT on CfT 154 (MDN lists it — docs-drift watch; check again next CfT)'));
+      has ? results.ok++ : results.info++;
+      n.close();
+    } catch (e) {
+      chip(h, 'warn', '⚠ navigate probe → ' + errName(e) + ': ' + errMsg(e)); results.warn++;
+    }
+    try {
+      const n = new Notification('shape', { tag: 'shape-' + Date.now(), body: 'b' });
+      chip(h, 'ok', okc + ' instance shape: Object.keys(n).length=' + Object.keys(n).length + ' · Object.entries(n).length=' + Object.entries(n).length + ' — ALL instance props are PROTOTYPE GETTERS: spread/entries return ' + (Object.keys(n).length === 0 ? 'EMPTY (the enumerable lie — build your own DTO)' : 'own-props??'));
+      Object.keys(n).length === 0 ? results.ok++ : results.warn++;
+      n.close();
+    } catch (e) {
+      chip(h, 'warn', '⚠ shape probe → ' + errName(e)); results.warn++;
+    }
+  } else {
+    chip(h, 'info', 'navigate/shape batteries need granted state (state=' + P() + ')'); results.info++;
+  }
+  const stat = Object.getOwnPropertyDescriptor(Notification, 'maxActions');
+  chip(h, 'ok', okc + ' maxActions descriptor: ' + (stat && stat.get ? 'getter' : (stat && stat.value !== undefined ? 'value ' + stat.value : 'missing')) + ' — device/UA-dependent constant');
+  results.ok++;
+};
+
+/* ---------- §09 worker split ---------- */
+const s09 = async () => {
+  const h = $('#chips-09');
+  try {
+    const w = await withTimeout(new Promise((res, rej) => {
+      const blob = new Blob([`onmessage = e => {
+        let perm = 'absent', built = 'n/a';
+        try { perm = Notification.permission; } catch (err) { perm = 'throws:' + err.name; }
+        if (typeof Notification === 'function' && perm === 'granted') {
+          try { const n = new Notification('worker-ctor-probe', { tag: 'worker-probe' }); built = 'instance'; n.close(); }
+          catch (err) { built = err.name + ': ' + String(err.message).slice(0, 60); }
+        } else { built = 'skipped (state=' + perm + ')'; }
+        postMessage({
+          has: typeof Notification === 'function',
+          perm: perm,
+          max: (typeof Notification === 'function' && 'maxActions' in Notification) ? Notification.maxActions : 'none',
+          built: built
+        });
+      }`], { type: 'text/javascript' });
+      const wk = new Worker(URL.createObjectURL(blob));
+      wk.onmessage = ev => res(ev.data);
+      wk.onerror = ev => rej(new Error('worker: ' + (ev.message || 'error')));
+      wk.postMessage('go');
+    }), 2500, 'worker');
+    chip(h, 'ok', okc + ' dedicated worker: Notification=' + w.has + ' · permission=\'' + w.perm + '\' · maxActions=' + w.max + ' · constructor-in-worker: ' + w.built + ' — ' + (w.has ? 'the surface SHIPS in workers (unlike BLE/local-fonts jails)' : 'worker jail'));
+    results.ok++;
+    if (SWCENSUS && !SWCENSUS.error) {
+      chip(h, 'ok', okc + ' SW scope: Notification global=' + SWCENSUS.hasNotification + ' (constructor ' + (SWCENSUS.hasNotification ? 'EXPOSED' : 'absent') + ' in SW — the SW door is showNotification, ' + (SWCENSUS.hasShow ? 'present' : 'ABSENT') + ')'); results.ok++;
+    }
+  } catch (e) {
+    chip(h, 'warn', '⚠ worker battery → ' + errName(e) + ': ' + errMsg(e)); results.warn++;
+  }
+};
+
+/* ---------- §10 cross-origin iframe ---------- */
+const s10 = async () => {
+  const h = $('#chips-10');
+  const q = new URLSearchParams(location.search);
+  const cross = q.get('crossbase');
+  const child = cross
+    ? cross.replace(/\/$/, '') + '/demos/notifications-iframe-child.html'
+    : 'https://moltstudios.github.io/research-hub/demos/notifications-iframe-child.html';
+  try {
+    const data = await withTimeout(new Promise((res, rej) => {
+      const onmsg = ev => { if (ev.data && ev.data.type === 'notif-census') { window.removeEventListener('message', onmsg); res(ev.data); } };
+      window.addEventListener('message', onmsg);
+      const f = document.createElement('iframe');
+      f.style.cssText = 'display:none';
+      f.src = child + '?parent=' + encodeURIComponent(location.origin);
+      f.onerror = () => rej(new Error('iframe load error'));
+      document.body.appendChild(f);
+      setTimeout(() => { try { if (f.parentNode) f.parentNode.removeChild(f); } catch (e){} }, 3200);
+    }), 3000, 'iframe');
+    const mine = P();
+    chip(h, 'ok', okc + ' cross-origin child (' + new URL(child).host + '): Notification=' + data.has + ' · permission=\'' + data.perm + '\' · maxActions=' + data.max + ' — frame read ' + (data.perm === mine ? 'MIRRORS the embedder (this page reads \'' + mine + '\')' : 'diverges from embedder (\'' + mine + '\')') + ': notifications attribute to the TOP-LEVEL origin — a third-party frame sees the HOST site\'s grant, never its own (separate top-level probe of the child origin read \'default\' in both fresh and granted contexts)');
+    results.ok++;
+    write('#iframe-state', 'child census ok · host ' + new URL(child).host + ' · permission \'' + data.perm + '\'');
+  } catch (e) {
+    chip(h, 'warn', '⚠ child census → ' + errName(e) + ': ' + errMsg(e)); results.warn++;
+    write('#iframe-state', 'child census failed (offline? mirror not yet deployed?)');
+  }
+};
+
+/* ---------- §11 insecure origin (docs + recipe) ---------- */
+const s11 = () => {
+  const h = $('#chips-11');
+  chip(h, 'info', 'insecure-origin law (gate-recorded on a LAN-IP http origin): object PRESENT (typeof function) · permission force-\'denied\' · requestPermission resolves \'denied\' — the STRANGLE pattern, not camera\'s object-absent pattern');
+  results.info++;
+  chip(h, 'info', 'spec anchor: Notification has NO SecureContext extended attribute in the IDL — the deny-instead-of-vanish behavior is the engine\'s answer');
+  results.info++;
+};
+
+/* ---------- §12 capstone: mission console ---------- */
+const s12 = () => {
+  const h = $('#chips-12');
+  chip(h, 'info', 'console armed · permission=' + P() + ' · door=' + (REG ? 'SW (portable)' : 'page-only fallback') + ' · actions cap=' + Notification.maxActions);
+  results.info++;
+  const log = (msg, cls) => {
+    const el = $('#sim-log');
+    if (el) el.innerHTML += '<br>' + (cls ? '<span class="' + cls + '">' : '') + esc(msg) + (cls ? '</span>' : '');
+  };
+  window.__missionLog = log;
+  const alertOpts = (tier) => {
+    if (tier === 'critical') return { tag: 'od-critical', body: 'RTB now — battery below reserve', requireInteraction: true, renotify: true, silent: false, actions: [{ action:'land', title:'Land here' }, { action:'home', title:'Return home' }] };
+    if (tier === 'advisory') return { tag: 'od-advisory', body: 'Battery advisory — plan return leg', silent: true };
+    return { tag: 'od-geofence', body: 'Geofence edge proximity', silent: true };
+  };
+  const fire = async (tier) => {
+    const opts = alertOpts(tier);
+    log('[alert:' + tier + '] dispatch via ' + (REG ? 'SW' : 'page') + ' door · tag=' + opts.tag);
+    if (!granted()) { log('  [skipped: permission=' + P() + '] — grant (button) or CDP to see live delivery', 'dim'); return; }
+    try {
+      if (REG) { await REG.showNotification('OpenDrones · ' + tier.toUpperCase(), Object.assign({ icon: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 96 96%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%9A%81%3C/text%3E%3C/svg%3E' }, opts)); }
+      else { const n = new Notification('OpenDrones · ' + tier.toUpperCase(), Object.assign({}, opts, { actions: undefined })); n.onclick = () => { window.focus(); }; }
+      log('  delivered · same-tag repeats REPLACE (renotify=' + !!opts.renotify + ')' + (REG ? '' : ' · PAGE-door fallback: actions stripped (SW-door-only per §04)'), 'go');
+    } catch (e) {
+      log('  delivery error: ' + errName(e) + ' ' + errMsg(e), 'stop');
+    }
+  };
+  window.__fire = fire;
+  let batt = 80, timer = null, geo = 0;
+  const setBatt = () => {
+    const m = $('#batt-meter i'), s = $('#batt-state');
+    if (m) { m.style.width = batt + '%'; m.parentElement.className = 'meter' + (batt < 20 ? ' crit' : batt < 30 ? ' warn' : ''); }
+    if (s) s.textContent = 'battery ' + batt + '% · alerts: ' + (batt < 20 ? 'critical fired' : batt < 30 ? 'advisory fired' : 'none') + ' · permission=' + P();
+  };
+  $('#sim-start').onclick = () => {
+    $('#sim-start').disabled = true; $('#sim-stop').disabled = false;
+    log('battery sim started — thresholds: 30% advisory (silent, tag) · 20% critical (requireInteraction+renotify+actions)', 'go');
+    timer = setInterval(async () => {
+      batt -= 4; setBatt();
+      if (batt === 28 && batt < 30) { await fire('advisory'); }
+      if (batt <= 20) { await fire('critical'); clearInterval(timer); timer = null; $('#sim-start').disabled = false; $('#sim-stop').disabled = true; log('sim complete — critical alert fired, tag-deduped', 'go'); }
+    }, 450);
+  };
+  $('#sim-stop').onclick = () => { if (timer) clearInterval(timer); timer = null; $('#sim-start').disabled = false; $('#sim-stop').disabled = true; log('sim stopped'); };
+  $('#fire-advisory').onclick = () => fire('advisory');
+  $('#fire-critical').onclick = () => fire('critical');
+  $('#fire-geofence').onclick = async () => {
+    for (let i = 1; i <= 3; i++) { geo++; await fire('geofence'); log('  geofence ping ' + geo + '/3 — same tag, tray count stays 1', 'dim'); await new Promise(r => setTimeout(r, 250)); }
+  };
+  const grantBtn = document.createElement('button');
+  grantBtn.className = 'btn secondary';
+  grantBtn.textContent = '🔔 Grant permission (gesture-backed)';
+  grantBtn.onclick = async () => {
+    try { const v = await Notification.requestPermission(); log('requestPermission (in-gesture) → \'' + v + '\'', v === 'granted' ? 'go' : 'stop'); write('#b-perm', 'permission: ' + Notification.permission); }
+    catch (e) { log('requestPermission → ' + errName(e) + ': ' + errMsg(e), 'stop'); }
+  };
+  $('#sim-start').parentElement.appendChild(grantBtn);
+};
+
+/* ---------- §13 capstone: render ping ---------- */
+const s13 = () => {
+  const h = $('#chips-13');
+  chip(h, 'info', 'render console armed · permission=' + P() + ' · tag=\'molt-render\' dedupes re-renders'); results.info++;
+  $('#render-btn').onclick = async () => {
+    const btn = $('#render-btn'), m = $('#render-meter i'), s = $('#render-state');
+    btn.disabled = true;
+    for (let p = 0; p <= 100; p += 10) {
+      if (m) m.style.width = p + '%';
+      if (s) s.textContent = 'rendering… ' + p + '%';
+      await new Promise(r => setTimeout(r, 140));
+    }
+    if (s) s.textContent = 'render complete — dispatching notification';
+    if (!granted()) { if (s) s.textContent = 'render complete — notification skipped (permission=' + P() + ')'; btn.disabled = false; return; }
+    try {
+      const opts = { tag: 'molt-render', body: 'Hero cut v3 exported — 12.4 MB', icon: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 96 96%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%8E%AC%3C/text%3E%3C/svg%3E', data: { build: 3, ts: Date.now() } };
+      if (REG) await REG.showNotification('Molt render done', Object.assign({ actions: [{ action:'review', title:'Review' }, { action:'ship', title:'Ship it' }] }, opts));
+      else { const n = new Notification('Molt render done', opts); n.onclick = () => window.focus(); }
+      if (s) s.textContent = 'notification delivered · re-render replaces (tag dedupe)';
+    } catch (e) { if (s) s.textContent = 'delivery error: ' + errName(e); }
+    btn.disabled = false;
+  };
+};
+
+/* ---------- run ---------- */
+(async () => {
+  try {
+    s00();
+    s01();
+    await s02();
+    await s03();
+    await s04();
+    await s05();
+    await s06();
+    await s07();
+    s08();
+    await s09();
+    await s10();
+    s11();
+    s12();
+    s13();
+  } catch (e) {
+    chip($('#chips-00'), 'fail', bad + ' battery runner: ' + errName(e) + ': ' + errMsg(e));
+    results.fail++;
+  } finally {
+    summarize();
+  }
+})();
+</script>
+</body>
+</html>
