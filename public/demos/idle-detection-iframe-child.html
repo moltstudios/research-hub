@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Idle Detection — iframe child probe</title>
+<link rel="icon" href="data:,">
+<style>
+body{font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;padding:10px;color:#1c1917;background:#fff}
+div{padding:4px 8px;border-radius:8px;background:#f5f5f4;margin:4px 0}
+</style>
+</head>
+<body>
+<div id="st">child loaded — awaiting probe request</div>
+<script>
+(function(){
+  var st = document.getElementById("st");
+  function set(t){ st.textContent = t; }
+  window.addEventListener("message", function(ev){
+    if (!ev.data || ev.data.type !== "idle-probe") return;
+    var out = { origin: location.origin, cross: ev.data.cross === true };
+    out.typeof = typeof IdleDetector;
+    out.ua = (navigator.userActivation && navigator.userActivation.isActive) || false;
+    if (typeof IdleDetector === "undefined"){
+      out.query = "n/a"; out.start = "n/a"; out.retry = "n/a";
+      ev.source.postMessage({ type: "idle-report", out: out }, ev.origin);
+      return;
+    }
+    navigator.permissions.query({ name: "idle-detection" }).then(function(s){
+      out.query = s.state + "/" + s.name;
+      return attempt();
+    }).catch(function(e){
+      out.query = "threw:" + e.name;
+      return attempt();
+    });
+    function attempt(){
+      var d = new IdleDetector();
+      var fired = 0;
+      d.onchange = function(){ fired++; };
+      return d.start({ threshold: 60000 }).then(function(){
+        out.start = "resolved user=" + d.userState + " screen=" + d.screenState;
+      }).catch(function(e){
+        out.start = e.name + ": " + String(e.message).slice(0, 110);
+      }).then(function(){
+        return d.start({ threshold: 60000 }).then(function(){ out.retry = "resolved"; },
+          function(e){ out.retry = e.name; });
+      }).then(function(){
+        out.fired = fired;
+        ev.source.postMessage({ type: "idle-report", out: out }, ev.origin);
+      });
+    }
+  });
+  try { top.postMessage({ type: "idle-child-loaded", host: location.host }, "*"); } catch(e){}
+})();
+</script>
+</body>
+</html>
