@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bfcache Lab Child — the page you navigate TO</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%2360a5fa'/%3E%3C/svg%3E">
+<style>
+:root{--bg:#0b0f14;--card:#121821;--line:#1f2937;--tx:#e5e7eb;--mut:#9ca3af;--ok:#34d399;--warn:#fbbf24;--bad:#f87171;--acc:#60a5fa}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--tx);font:15px/1.65 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:34px 30px;max-width:560px;width:100%}
+h1{font-size:21px;margin-bottom:6px}
+.sub{color:var(--mut);font-size:13.5px;margin-bottom:18px}
+.pill{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;border:1px solid var(--line);border-radius:999px;padding:4px 12px;margin:0 6px 10px 0;color:var(--mut)}
+.pill b{color:var(--tx);font-weight:700}
+.dot{width:8px;height:8px;border-radius:50%;background:#374151;display:inline-block;transition:background .2s}
+.dot.f{background:var(--ok)}
+button{background:var(--acc);color:#0b0f14;border:0;border-radius:10px;padding:11px 18px;font:600 14px/1 ui-sans-serif,system-ui;cursor:pointer;margin-top:16px}
+button:hover{filter:brightness(1.1)}
+.rep{background:#0b0f14;border:1px solid var(--line);border-radius:12px;padding:14px 16px;font:12.5px/1.7 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--mut);margin-top:16px;overflow-wrap:anywhere;white-space:pre-wrap}
+a{color:var(--acc)}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🧪 Lab child page</h1>
+  <p class="sub">You navigated here from the demo (a <b>real cross-document navigation</b>). This page is instrumented: when you go back, its <code>pagehide.persisted</code> flag tells the demo whether <i>this</i> page was also offered to the bfcache. It will auto-return in <b id="cd">1.4s</b>…</p>
+  <div>
+    <span class="pill"><span class="dot" id="dBefore"></span><b>beforeunload</b></span>
+    <span class="pill"><span class="dot" id="dPagehide"></span><b>pagehide</b> <span id="phFlag"></span></span>
+    <span class="pill"><span class="dot" id="dFreeze"></span><b>freeze</b></span>
+    <span class="pill"><span class="dot" id="dUnload"></span><b>unload</b></span>
+    <span class="pill"><span class="dot" id="dResume"></span><b>resume</b></span>
+    <span class="pill"><span class="dot" id="dPageshow"></span><b>pageshow</b> <span id="psFlag"></span></span>
+  </div>
+  <button id="back">Return to the demo now</button>
+  <div class="rep" id="rep">report will appear when events fire…</div>
+  <p class="sub" style="margin-top:14px">Landed here directly? <a href="bfcache-page-lifecycle-api.html">Open the main demo →</a></p>
+</div>
+<script>
+(function(){
+"use strict";
+var q = new URLSearchParams(location.search);
+var R = {
+  visit: 1,
+  round: q.get('r') || '?',
+  auto: q.get('ret') === 'auto',
+  beforeunloadFired: false,
+  pagehidePersisted: null,
+  pagehideFired: false,
+  freezeFired: false,
+  unloadFired: false,
+  resumeFired: false,
+  pageshowPersisted: null,
+  timerWallMs: null,
+  timerPageMs: null,
+  dateAtHide: null,
+  dateBack: null,
+  navType: (performance.getEntriesByType('navigation')[0] || {}).type || null
+};
+function save(){ try{ sessionStorage.setItem('bfc.child.report', JSON.stringify(R)); }catch(e){} }
+function dot(id){ var el = document.getElementById(id); if (el) el.classList.add('f'); }
+function render(){
+  document.getElementById('rep').textContent = JSON.stringify(R, null, 1);
+  document.getElementById('phFlag').textContent = R.pagehideFired ? (R.pagehidePersisted ? '(persisted ✓)' : '(persisted ✗)') : '';
+  document.getElementById('psFlag').textContent = R.pageshowPersisted === null ? '' : (R.pageshowPersisted ? '(persisted ✓)' : '(persisted ✗)');
+}
+save();
+
+// timer-survival lab: 2s timer; if this page freezes mid-wait, wall clock and page clock diverge
+var t0d = Date.now(), t0p = performance.now();
+setTimeout(function(){
+  R.timerWallMs = Date.now() - t0d;
+  R.timerPageMs = Math.round(performance.now() - t0p);
+  save(); render();
+}, 2000);
+
+// IMPORTANT: unload listener armed ONLY for round B (r=B) — an unconditional one
+// would make this child permanently bfcache-ineligible and falsify the A/B comparison.
+if (q.get('r') === 'B') window.addEventListener('unload', function(){ R.unloadFired = true; save(); dot('dUnload'); render(); });
+window.addEventListener('pagehide', function(e){
+  R.pagehideFired = true; R.pagehidePersisted = e.persisted; R.dateAtHide = Date.now();
+  save(); dot('dPagehide'); render();
+});
+document.addEventListener('freeze', function(){ R.freezeFired = true; R.dateBack = Date.now(); save(); dot('dFreeze'); render(); });
+document.addEventListener('resume', function(){ R.resumeFired = true; save(); dot('dResume'); render(); });
+window.addEventListener('pageshow', function(e){
+  // visit 2 = this page was FORWARD-restored from bfcache (the strongest possible proof)
+  R.visit++; R.pageshowPersisted = e.persisted;
+  R.resumeToPageshowMs = R.resumeFired ? 'resume fired first' : 'no resume';
+  R.dateBack = R.dateBack || Date.now();
+  R.frozenWallMs = R.dateAtHide ? (Date.now() - R.dateAtHide) : null;
+  R.navType = 'pageshow-after-' + ((performance.getEntriesByType('navigation')[0] || {}).type);
+  save(); dot('dPageshow'); render();
+  try { if (R.visit >= 2) fetch('/report?round=child-fwd&d=' + encodeURIComponent(JSON.stringify(R))); } catch(e){}
+});
+render();
+
+var cd = parseFloat((q.get('dwell') || '1.4'), 10);
+var CHAIN = q.get('chain');
+var NAVTYPE = ((performance.getEntriesByType('navigation')[0] || {}).type) || 'navigate';
+if (CHAIN === '2' && NAVTYPE === 'back_forward'){
+  // this load IS the refused restore (opener-linked pages don't enter bfcache)
+  // → the moment notRestoredReasons exists: read it, phone it home, show it.
+  var nrr = null;
+  try {
+    var nt = performance.getEntriesByType('navigation')[0];
+    nrr = nt && nt.notRestoredReasons ? { src: nt.notRestoredReasons.src, id: nt.notRestoredReasons.id, reasons: (nt.notRestoredReasons.reasons||[]).map(function(x){return x.reason;}) } : null;
+  } catch(e){}
+  try { fetch('/report?round=child-nrr&d=' + encodeURIComponent(JSON.stringify(nrr))); } catch(e){}
+  document.getElementById('cd').textContent = 'restore REFUSED' + (nrr && nrr.reasons && nrr.reasons.length ? ' — ' + nrr.reasons.join(', ') : '');
+} else if (CHAIN === '1' && NAVTYPE === 'back_forward'){
+  // chain1 reloaded via a traversal = ITS restore was refused (opener on the tab).
+  // Read notRestoredReasons here, phone it, render it, and BREAK the loop (no re-push).
+  var nrr2 = null;
+  try {
+    var nt2 = performance.getEntriesByType('navigation')[0];
+    nrr2 = nt2 && nt2.notRestoredReasons ? { src: nt2.notRestoredReasons.src, id: nt2.notRestoredReasons.id, reasons: (nt2.notRestoredReasons.reasons||[]).map(function(x){return x.reason;}) } : null;
+  } catch(e){}
+  try { fetch('/report?round=child-nrr-c1&d=' + encodeURIComponent(JSON.stringify(nrr2))); } catch(e){}
+  document.getElementById('cd').textContent = 'restore REFUSED — ' + (nrr2 && nrr2.reasons && nrr2.reasons.length ? nrr2.reasons.join(', ') : 'notRestoredReasons ' + (nrr2 === null ? 'null' : 'empty'));
+} else if (R.auto){
+  var iv = setInterval(function(){
+    cd -= 0.1;
+    if (cd <= 0){
+      clearInterval(iv);
+      document.getElementById('cd').textContent = 'going deeper…';
+      if (CHAIN === '1') location.href = location.pathname + '?ret=auto&r=C&chain=2'; // push a second entry in THIS tab
+      else history.back();
+      return;
+    }
+    document.getElementById('cd').textContent = cd.toFixed(1) + 's';
+  }, 100);
+  setTimeout(function(){}, 60000); // keep a task pending; harmless, freezes cleanly
+}
+document.getElementById('back').addEventListener('click', function(){ history.back(); });
+})();
+</script>
+</body>
+</html>

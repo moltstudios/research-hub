@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bfcache + Page Lifecycle API — the navigation-stability tier</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%2360a5fa'/%3E%3Ccircle cx='8' cy='8' r='3' fill='%230b0f14'/%3E%3C/svg%3E">
+<style>
+:root{--bg:#0b0f14;--card:#121821;--line:#1f2937;--tx:#e5e7eb;--mut:#9ca3af;--ok:#34d399;--ok-soft:#ecfdf5;--warn:#fbbf24;--warn-soft:#451a03;--bad:#f87171;--bad-soft:#450a0a;--acc:#60a5fa;--acc2:#a78bfa}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--tx);font:15px/1.7 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:860px;margin:0 auto;padding:28px 18px 60px}
+header{padding:34px 0 8px}
+h1{font-size:clamp(24px,5vw,34px);line-height:1.2;letter-spacing:-.5px}
+h1 span{color:var(--acc)}
+.kicker{color:var(--acc);font-weight:700;font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px}
+.sub{color:var(--mut);max-width:64ch;margin-top:10px;font-size:14.5px}
+section{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px 22px;margin:20px 0}
+h2{font-size:18px;margin-bottom:4px;letter-spacing:-.2px}
+h2 .n{color:var(--acc);font-family:ui-monospace,Menlo,monospace;font-size:14px;margin-right:8px}
+.lead{color:var(--mut);font-size:13.5px;margin-bottom:14px;max-width:70ch}
+p{margin:8px 0;max-width:75ch}
+code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:#0b0f14;border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:#93c5fd}
+pre{background:#0b0f14;border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow-x:auto;font:12.5px/1.75 ui-monospace,SFMono-Regular,Menlo,monospace;color:#c7d2fe;margin:12px 0;max-width:100%}
+pre b{color:#fbbf24;font-weight:400}
+pre i{color:#6b7280;font-style:normal}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px}
+th{text-align:left;color:var(--mut);font-weight:600;border-bottom:1px solid var(--line);padding:7px 10px 7px 0}
+td{border-bottom:1px solid #17202c;padding:7px 10px 7px 0;vertical-align:top}
+td code,th code{overflow-wrap:anywhere}
+td,th{overflow-wrap:break-word}
+td:last-child,th:last-child{padding-right:0}
+.chip{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:3px 10px;margin:3px 4px 3px 0;border:1px solid transparent;vertical-align:middle;max-width:100%;line-height:1.45;overflow-wrap:break-word}
+.chip.ok{background:var(--ok-soft);color:#065f46;border-color:#a7f3d0}
+.chip.warn{background:var(--warn-soft);color:var(--warn);border-color:#fde68a}
+.chip.fail{background:var(--bad-soft);color:var(--bad);border-color:#fecaca}
+.chip.info{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}
+.badges{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 2px}
+.badge{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;border:1px solid var(--line);border-radius:999px;padding:4px 12px;color:var(--mut)}
+.badge.on .dot{background:var(--ok)} .badge.off .dot{background:var(--bad)}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.law{border-left:3px solid var(--acc);padding:8px 14px;margin:10px 0;background:#0e141d;border-radius:0 10px 10px 0}
+.law.hot{border-left-color:var(--warn)}
+.law b{color:#dbeafe}
+.law .why{color:var(--mut);font-size:13px}
+.btn{background:var(--acc);color:#0b0f14;border:0;border-radius:10px;padding:11px 18px;font:600 14px/1 ui-sans-serif,system-ui;cursor:pointer;margin:6px 8px 6px 0;display:inline-block}
+.btn:hover{filter:brightness(1.12)}
+.btn.warn{background:var(--warn)}
+.btn.ghost{background:transparent;color:var(--acc);border:1px solid var(--acc)}
+.out{background:#0b0f14;border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:12px 0;font:12.5px/1.8 ui-monospace,Menlo,monospace;color:var(--mut);overflow-wrap:anywhere}
+.out b{color:#dbeafe;font-weight:700}
+.mini{font-size:12.5px;color:var(--mut)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid2>div{min-width:0}
+.grid2 pre{max-width:100%}
+code{overflow-wrap:anywhere}
+@media(max-width:640px){.grid2{grid-template-columns:1fr}}
+.states{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin:14px 0}
+@media(max-width:680px){.states{grid-template-columns:repeat(3,1fr)}}
+.st{border:1px solid var(--line);border-radius:10px;padding:8px 6px;text-align:center;font:600 11.5px/1.4 ui-sans-serif;color:var(--mut);background:#0b0f14}
+.st small{display:block;font-weight:400;font-size:10px;color:#4b5563}
+.st.now{border-color:var(--ok);color:var(--ok);box-shadow:0 0 0 1px var(--ok) inset}
+.st.sys{border-color:var(--acc2)}
+input[type=search]{background:#0b0f14;border:1px solid var(--line);color:var(--tx);border-radius:8px;padding:8px 12px;font:13px ui-sans-serif;width:100%;margin:8px 0}
+.tgl{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 13px;margin:4px 6px 4px 0;font:600 12.5px ui-sans-serif;color:var(--mut);cursor:pointer;user-select:none}
+.tgl.on{border-color:var(--bad);color:var(--bad)}
+.tgl .sw{width:30px;height:16px;border-radius:999px;background:#374151;position:relative;transition:.15s}
+.tgl.on .sw{background:var(--bad)}
+.tgl .sw::after{content:"";position:absolute;width:12px;height:12px;border-radius:50%;background:#e5e7eb;top:2px;left:2px;transition:.15s}
+.tgl.on .sw::after{left:16px}
+.arrowline{color:#374151;text-align:center;font:11px ui-monospace;margin:2px 0}
+footer{color:#4b5563;font-size:12px;padding:18px 4px;text-align:center}
+a{color:var(--acc)}
+.hl{color:var(--warn);font-weight:600}
+.okl{color:var(--ok);font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+<div class="kicker">web-platform api · live-probed · priority 3</div>
+<h1>bfcache + Page Lifecycle — <span>the navigation-stability tier</span></h1>
+<p class="sub">1 in 10 desktop navigations and 1 in 5 mobile navigations are Back/Forward. The back/forward cache turns every one of them into an <b>instant, network-free restore of the whole page — JavaScript heap included</b>. This page is the tier's contract: how to observe restores (<code>pageshow.persisted</code>), how to read why a restore <i>didn't</i> happen (<code>notRestoredReasons</code>), how to survive freezing (<code>freeze</code>/<code>resume</code>), and the September&nbsp;2026 endgame of the <code>unload</code> deprecation.</p>
+<div class="badges">
+<span class="badge on"><span class="dot"></span>bfcache: all engines (Chrome 96+, FF 1.5, Safari ≈forever)</span>
+<span class="badge on"><span class="dot"></span>pageshow/pagehide · persisted: universal</span>
+<span class="badge on"><span class="dot"></span>notRestoredReasons: Chromium 125+</span>
+<span class="badge off"><span class="dot"></span>freeze/resume/wasDiscarded: Chromium-only (68+)</span>
+</div>
+</header>
+
+<section id="s01">
+<h2><span class="n">01</span>Engine introspection — what this browser gives you</h2>
+<p class="lead">Live capability probes on the page you're reading right now. These are the four doors into the tier.</p>
+<div id="c01"></div>
+<div class="law"><b>The null ≠ undefined distinction.</b> <span class="why"><code>notRestoredReasons</code> is <code>undefined</code> when the engine doesn't support it, but <code>null</code> when it does and the navigation just wasn't a history traversal (any fresh load). Probe for <code>'notRestoredReasons' in entry</code>, not for truthiness — the fresh-load null is the <i>correct</i> answer, not a missing feature.</span></div>
+</section>
+
+<section id="s02">
+<h2><span class="n">02</span>The two caches — why a bfcache restore always wins</h2>
+<p class="lead">bfcache is not the HTTP cache. They hold different things and answer different navigations.</p>
+<table>
+<tr><th></th><th>HTTP cache</th><th>bfcache</th></tr>
+<tr><td><b>Holds</b></td><td>response bytes per URL</td><td>the <b>live page in memory</b> — DOM, JS heap, scroll, timers (paused)</td></tr>
+<tr><td><b>Cost to restore</b></td><td>re-parse, re-execute, re-layout (fast path)</td><td>make visible + unpause JS (~0ms of loading)</td></tr>
+<tr><td><b>Revalidation</b></td><td><code>no-cache</code>/<code>max-age=0</code> honored</td><td><b>none</b> — memory snapshot shown as-is, headers ignored</td></tr>
+<tr><td><b>Guarantee</b></td><td>until eviction by policy</td><td>best-effort; can be refused or evicted at any time</td></tr>
+</table>
+<div class="law"><b>Law: a bfcache restore beats even a perfectly HTTP-cached reload.</b> <span class="why">A reload must at minimum re-parse and re-execute from cached bytes; a restore skips <i>all</i> loading — the page simply resumes. That's why browsers fight unload handlers for it: it is the single largest free navigation win left on the web.</span></div>
+<div class="law"><b>While cached, the page is frozen, not destroyed.</b> <span class="why">Timers, pending promises, and nearly all queued tasks pause. On restore they resume — which is both the magic (state survives) and the trap (a <code>setTimeout</code> that "was about to fire" fires late; <code>Date.now()</code> jumps forward across the freeze, and on engines that pause the page clock — Firefox, Safari — <code>performance.now()</code> lags behind it; Chromium keeps it running, §09).</span></div>
+<div class="law"><b>SPAs don't get soft-navigation bfcache — but the shell does.</b> <span class="why">bfcache keys on browser-managed (cross-document) navigations. In-app route changes can't be cached; going Back to the SPA tab from another site still restores the whole app without re-init.</span></div>
+</section>
+
+<section id="s03">
+<h2><span class="n">03</span>THE lab — real navigation, real Back, live verdict</h2>
+<p class="lead">This harness performs an actual cross-document navigation to the instrumented <a href="bfcache-lab-child.html">lab child page</a>, which auto-returns via <code>history.back()</code>. When you arrive back here, every chip below is computed from <i>what actually happened</i>. Round A runs clean. Round B arms an <code>unload</code> listener first — the exact listener class Chrome finished deprecating one week before this page shipped.</p>
+<div>
+<button class="btn" id="labGoA">▶ Run round A — clean</button>
+<button class="btn warn" id="labGoB">▶ Run round B — armed with an unload listener</button>
+<button class="btn" id="labGoC" style="border-color:var(--acc2)">▶ Run round C — child via window.open (opener-linked → forced refusal + notRestoredReasons)</button>
+</div>
+<p class="mini" id="labNote">Round A first (round B needs A's baseline). Each round navigates away and auto-returns in ~2s. Your scroll position is deliberately parked mid-page before leaving, so preservation can be measured.</p>
+<h2 style="font-size:15px;margin-top:18px">Round A results <span class="mini">(clean page)</span></h2>
+<div class="out" id="labA">not run yet</div>
+<h2 style="font-size:15px;margin-top:18px">Round B results <span class="mini">(unload listener armed before navigating away)</span></h2>
+<div class="out" id="labB">not run yet</div>
+<div class="law hot"><b>The falsification at stake in round B.</b> <span class="why">For Chrome's whole bfcache era, an <code>unload</code> listener made a page <b>ineligible</b> for bfcache (<code>notRestoredReasons: "unload-listener"</code>). Chrome's deprecation rollout — 100% of page loads as of <b>Chrome 154, Sep 22 2026</b> — is designed to remove the event entirely. So in 154 the listener should neither fire <i>nor</i> block. If round B still restores → the old law is dead. If it doesn't restore → the law held. The page records whichever truth the engine gives.</span></div>
+</section>
+
+<section id="s04">
+<h2><span class="n">04</span>The persisted contract — four flags, two directions</h2>
+<p class="lead">Every bfcache observable hangs off <code>PageTransitionEvent.persisted</code>. The event order is fixed by spec; the flags mean different things entering vs leaving.</p>
+<table>
+<tr><th>Moment</th><th>Event</th><th><code>persisted</code></th><th>Meaning</th></tr>
+<tr><td rowspan="1">page enters bfcache</td><td><code>pagehide</code></td><td><code>true</code></td><td><b>intent</b>, not guarantee — browser <i>intends</i> to cache; eviction can still discard</td></tr>
+<tr><td></td><td><code>freeze</code> (follows)</td><td>—</td><td>tasks now paused; last code you run before the void</td></tr>
+<tr><td rowspan="2">page restored</td><td><code>resume</code></td><td>—</td><td>unpause; fires <b>before</b> pageshow (also fires for un-freezing background tabs)</td></tr>
+<tr><td><code>pageshow</code></td><td><code>true</code></td><td><b>fact</b> — this IS a bfcache restore; the load event does <i>not</i> re-fire</td></tr>
+<tr><td>normal unload</td><td><code>pagehide</code></td><td><code>false</code></td><td>page will be discarded; this is the terminal transition</td></tr>
+</table>
+<div class="law"><b>Measure hit-rate with pageshow, recover work with resume.</b> <span class="why"><code>resume</code> also fires when a merely-frozen background tab is revisited (no bfcache involved), so it can't distinguish restore-from-bfcache from un-freeze. Only <code>pageshow</code> with <code>persisted === true</code> counts a bfcache hit.</span></div>
+<div class="law hot"><b>pagehide.persisted = true does NOT promise a cache entry.</b> <span class="why">It marks intent. Memory pressure, another tab claiming the slot, or a blocker discovered later can still evict — silently, with no event, because a frozen page can't run code. Never leave critical persistence to "persisted said true."</span></div>
+<div class="out" id="evlog">this page's own lifecycle events will log here…</div>
+</section>
+
+<section id="s05">
+<h2><span class="n">05</span>notRestoredReasons — the post-mortem API</h2>
+<p class="lead">When Back <i>doesn't</i> restore, Chromium 125+ tells you why. The fresh document loaded by the back-navigation carries a <code>PerformanceNavigationTiming.notRestoredReasons</code> tree explaining what blocked the <i>previous</i> version of the page. Six reasons are spec-standard; the rest are UA-specific. Cross-origin iframes report <code>"masked"</code> — reasons hidden, blame still assigned.</p>
+<div class="out" id="nrrNow">reading this page's current navigation entry…</div>
+<input type="search" id="nrrFilter" placeholder="filter reasons… try: websocket, cache-control, serviceworker">
+<table id="nrrTable">
+<tr><th>reason key</th><th>class</th><th>what it means</th></tr>
+</table>
+<div class="law"><b>The shape.</b> <span class="why"><code>{ children:[…per iframe…], id, name, src, url, reasons:[{reason}] }</code>. <code>children</code> recurses same-origin iframes; cross-origin children get <code>reasons: null</code> + <code>url: null</code> and the parent gains <code>"masked"</code>. <code>id</code>/<code>name</code>/<code>src</code> identify <i>which</i> iframe — your tool to blame third-party embeds precisely.</span></div>
+<div class="law"><b>Spec reasons are stable vocabulary; UA reasons are volatile.</b> <span class="why">The spec explicitly warns not to depend on exact wording — treat unknown future reasons as "blocked, investigate," not as errors. Monitor with a <code>PerformanceObserver({type:'navigation', buffered:true})</code> and ship the strings to RUM.</span></div>
+</section>
+
+<section id="s06">
+<h2><span class="n">06</span>The blocking wall — what makes a page ineligible</h2>
+<p class="lead">Three doors out of eligibility: response-level walls (set by your server), document-level walls (set by your code), and environment walls (set by the user's machine). These toggles arm the two document-level walls live on this page — then re-run the §03 lab to see the verdict change.</p>
+<div>
+<span class="tgl" id="tglUnload"><span class="sw"></span>unload listener</span>
+<span class="tgl" id="tglBefore"><span class="sw"></span>beforeunload listener</span>
+<span class="mini" id="tglNote"></span>
+</div>
+<table>
+<tr><th>Blocker</th><th>reason key</th><th>class</th><th>fix</th></tr>
+<tr><td><code>unload</code> listener (desktop)</td><td><code>unload-listener</code></td><td>document</td><td>migrate to <code>pagehide</code> — fires in every case unload does, plus on bfcache entry</td></tr>
+<tr><td><code>Cache-Control: no-store</code> on the document</td><td><code>response-cache-control-no-store</code></td><td>response</td><td>reserve for genuinely sensitive pages; use <code>no-cache</code>/<code>max-age=0</code> to force revalidation instead</td></tr>
+<tr><td>window.opener reference</td><td>—</td><td>document</td><td><code>rel="noopener"</code> (default for <code>target=_blank</code> in modern browsers); avoid <code>window.open</code>+handle flows</td></tr>
+<tr><td>in-flight fetch/XHR at unload</td><td><code>fetch</code> / <code>outstanding-network-request</code></td><td>document</td><td>finish or abort before navigation; use <code>keepalive</code> for beacons</td></tr>
+<tr><td>held / pending Web Locks</td><td><code>lock</code></td><td>document</td><td>release locks on <code>pagehide</code> (they're force-released anyway)</td></tr>
+<tr><td>pending IndexedDB version change</td><td><code>idbversionchangeevent</code></td><td>document</td><td>close or settle version-change transactions promptly</td></tr>
+<tr><td>active getUserMedia track</td><td><code>mediastream</code> / <code>audio-capture</code> / <code>video-capture</code></td><td>document</td><td>stop tracks when leaving the view that needs them</td></tr>
+<tr><td>payment / MIDI / WebHID / Web Share / XR in use</td><td><code>paymentrequest</code> <code>midi</code> <code>webhid</code> <code>webshare</code> <code>webxrdevice</code></td><td>document</td><td>capability-gated UX; accept the tradeoff or close before nav</td></tr>
+<tr><td>blocking iframe content</td><td>child reasons / <code>masked</code></td><td>embed</td><td>Permissions-Policy on the embed, or <code>iframe sandbox</code>, to fence third-party blockers</td></tr>
+<tr><td>opposite: WebSocket (modern Chrome)</td><td>—</td><td>—</td><td><b>no longer blocks</b>: connection is closed on entry; <code>error</code>+<code>close</code> fire on restore — reconnect there</td></tr>
+</table>
+<div class="law"><b>beforeunload no longer blocks — but still costs.</b> <span class="why">It made pages ineligible in old engines; modern bfcache ignores it. Keep it <i>conditional</i> anyway: attach only while unsaved-changes exist, remove after save. Unconditional beforeunload is a Dialog-shaped tax on every navigation.</span></div>
+</section>
+
+<section id="s07">
+<h2><span class="n">07</span>The unload endgame — deprecation, 100% as of Chrome 154</h2>
+<p class="lead">Chrome is deleting <code>unload</code> by rolling out "handlers stop firing" origin by origin. The completed ladder (rollout is by page-load share, held at each step for consistency):</p>
+<table>
+<tr><th>Milestone</th><th>Date</th><th>Top-50 sites</th><th>All other origins</th></tr>
+<tr><td>135</td><td>Mar 2025</td><td>1 (google.com)</td><td>0%</td></tr>
+<tr><td>139–142</td><td>Jul–Oct 2025</td><td>5 → 50</td><td>0%</td></tr>
+<tr><td>146</td><td>Mar 2026</td><td>50</td><td>1%</td></tr>
+<tr><td>148</td><td>May 2026</td><td>50</td><td>10%</td></tr>
+<tr><td>150</td><td>Jun 2026</td><td>50</td><td>40%</td></tr>
+<tr><td>152</td><td>Aug 2026</td><td>50</td><td>80%</td></tr>
+<tr><td><b>154</b></td><td><b>Sep 22, 2026</b></td><td>50</td><td><b>100% — complete</b></td></tr>
+</table>
+<div class="law hot"><b>What "deprecated" means here: the handler stops FIRING — the listener may still register.</b> <span class="why">Rollout flips the default so unload callbacks don't run (unless the page re-enables via <code>Permissions-Policy: unload=(self)</code> or enterprise policy). A dead listener shouldn't keep blocking bfcache — but verify on your own 154 traffic: the §03 round B lab exists precisely because "should" is not a verdict.</span></div>
+<div class="law"><b>The replacements, by job.</b> <span class="why">Save state → <code>visibilitychange</code> to <code>hidden</code> (the last <i>reliable</i> moment on every platform). Cleanup on leave → <code>pagehide</code> (and restore-on-resume, because a pagehide page may come back). Warn unsaved changes → conditional <code>beforeunload</code>, removed once saved. End-of-session analytics → <code>sendBeacon</code> / <code>fetch keepalive</code> from pagehide.</span></div>
+</section>
+
+<section id="s08">
+<h2><span class="n">08</span>Page Lifecycle — the state machine under the events</h2>
+<p class="lead">Seven discrete states; the two <span style="color:var(--acc2)">system-initiated</span> ones are the ones apps break on. Live tracker below — this page's actual state, updating as you interact.</p>
+<div class="states">
+<div class="st" id="stActive">ACTIVE<small>visible + focus</small></div>
+<div class="st" id="stPassive">PASSIVE<small>visible, no focus</small></div>
+<div class="st" id="stHidden">HIDDEN<small>tab switched</small></div>
+<div class="st sys" id="stFrozen">FROZEN<small>tasks paused</small></div>
+<div class="st sys" id="stDiscarded">DISCARDED<small>no JS runs</small></div>
+<div class="st" id="stTerminated">TERMINATED<small>pagehide ✗</small></div>
+</div>
+<div class="out" id="stLog">state transitions log here…</div>
+<pre><i>// The canonical state reader — frozen/terminated only observable in their events</i>
+const getState = () =>
+  document.visibilityState === 'hidden' ? 'hidden'
+  : document.hasFocus() ? 'active' : 'passive';</pre>
+<div class="law"><b>hidden is your last reliable save point — not unload, not pagehide.</b> <span class="why">Mobile browsers freeze and kill hidden tabs with no further events; desktops increasingly do the same. When <code>visibilitychange</code> reports <code>hidden</code>: flush state, release locks, stop cameras, send the beacon. Everything after hidden is best-effort.</span></div>
+<div class="law"><b>Discarded pages run zero JS — recovery must happen on reload.</b> <span class="why">The tab still shows title + favicon; the user's next click reloads the URL. That fresh document checks <code>document.wasDiscarded === true</code> and rebuilds the session instead of greeting the user with a login screen.</span></div>
+</section>
+
+<section id="s09">
+<h2><span class="n">09</span>freeze / resume — surviving the void</h2>
+<p class="lead">Chromium freezes hidden tabs (minutes later, or instantly under memory pressure) and every bfcache entry. While frozen: timers, rAF, microtask-draining tasks — all paused. The events are your only signal; there is no polling a frozen page.</p>
+<pre>document.addEventListener('freeze', () => {
+  <i>// LAST code before pause — sync, short, no promises of continuation</i>
+  saveToStorage(sessionState); stopRAF(); closeStreams();
+});
+document.addEventListener('resume', () => {
+  <i>// un-paused. Could be a background-tab un-freeze OR a bfcache restore —</i>
+  <i>// check the NEXT pageshow.persisted to know which</i>
+  restartLoops(); reconnectSockets();
+});</pre>
+<div class="law"><b>The clock split — only on engines that pause the page clock.</b> <span class="why"><code>Date.now()</code> always jumps across a freeze. Whether <code>performance.now()</code> lags behind it is engine-specific: engines that pause the monotonic clock while frozen (Firefox, Safari) show <code>Date.now() - then_date &gt; performance.now() - then_perf</code> by exactly the frozen duration — but Chromium 154 keeps the page clock running straight through (lab-measured: 1781ms frozen, page clock advanced 1781.3ms → pause ≈ 0ms; the §03 lab prints your engine's verdict live). Never compute durations across a freeze with <code>Date.now()</code>; and never <em>assume</em> the page clock paused — measure, then branch.</span></div>
+<div class="law"><b>freeze-time limits: you get ~500ms, sync only.</b> <span class="why">The freeze handler can finish, but long-running or async work may be killed. Anything that must survive has to be persisted synchronously (storage APIs), not promised.</span></div>
+<div class="out" id="freezeOut">freeze/resume listener armed. In a live browser: background this tab for ~5 min (Chrome desktop) and return — or run the §03 lab, which freezes this page en route to the child.</div>
+</section>
+
+<section id="s10">
+<h2><span class="n">10</span>wasDiscarded — the silent reload</h2>
+<div class="out" id="discOut">reading…</div>
+<pre>if (document.wasDiscarded) {
+  <i>// this is NOT a fresh visit — the user never closed the tab.</i>
+  restoreSessionFrom(storage); skipOnboarding(); resumeWhereTheyLeftOff();
+}</pre>
+<div class="law"><b>Discard ≠ crash, but your analytics can't tell the difference without this flag.</b> <span class="why">A discard-reload is a normal navigation with a ghost session behind it. Mark it in RUM (<code>wasDiscarded: true</code>) or your "sessions" and "bounces" quietly rot on memory-constrained devices — which skew mobile, which is most of the traffic.</span></div>
+</section>
+
+<section id="s11">
+<h2><span class="n">11</span>What survives a restore — and the analytics tax</h2>
+<table>
+<tr><th>Survives (in the memory snapshot)</th><th>Does NOT survive (gone on any non-restore)</th></tr>
+<tr><td>entire JS heap: variables, closures, module state</td><td>everything, on reload — hence the tier</td></tr>
+<tr><td>DOM + form input + scroll position</td><td>in-flight network state (requests, WS — closed on entry)</td></tr>
+<tr><td>pending timers/promises — <b>paused, then resumed late</b></td><td>held Web Locks (force-released)</td></tr>
+<tr><td>CSS/JS execution state, event listeners</td><td>transient OS resources (camera, focus)</td></tr>
+</table>
+<div class="law hot"><b>bfcache restores corrupt naive analytics.</b> <span class="why">A restore re-fires <code>pageshow</code> but not <code>load</code> — so load-based PV counters undercount, while "page viewed" events bound to visibility overcount. Every RUM tag must carry the persisted flag:</span></div>
+<pre>window.addEventListener('pageshow', e => {
+  rum('pageview', { bfcache: e.persisted });   <i>// persisted=true → a restore, not a visit</i>
+  if (e.persisted) refreshTimeSensitiveData(); <i>// prices, cart, auth — see §12</i>
+});</pre>
+<div class="law"><b>Core Web Vitals already count restores.</b> <span class="why">Field INP/LCP include bfcache-restored pages — one more reason eligibility is a business metric, not a nicety. Chrome's own target: pages ineligible for bfcache are leaving measurable INP wins on the table for 10–20% of navigations.</span></div>
+</section>
+
+<section id="s12">
+<h2><span class="n">12</span>Production capstones</h2>
+<div class="grid2">
+<div>
+<h2 style="font-size:15px">🛩️ OpenDrones — mission dashboard</h2>
+<p class="mini">A pilot hits Back from telemetry detail → the dashboard must resume with mission state intact, and the telemetry WebSocket must self-heal:</p>
+<pre>let ws;
+function connectWS(){
+  ws = new WebSocket(TELEM_URL);
+  ws.onmessage = e => ingest(JSON.parse(e.data));
+}
+connectWS();
+window.addEventListener('pageshow', e => {
+  <i>// Chrome closed the WS on bfcache entry;</i>
+  <i>// error+close fired on restore — reconnect here</i>
+  if (e.persisted && ws.readyState > 1) connectWS();
+});
+document.addEventListener('freeze', () =>
+  localStorage.setItem('mission', JSON.stringify(snapshot())));
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushTelemetry(); <i>// last reliable</i>
+});
+if (document.wasDiscarded) restoreMission(localStorage.mission);</pre>
+</div>
+<div>
+<h2 style="font-size:15px">🛒 Molt — checkout &amp; funnels</h2>
+<p class="mini">Back is the #1 gesture in every funnel. Stale-cart and logged-out exposures are the two bfcache liabilities:</p>
+<pre>window.addEventListener('pageshow', e => {
+  if (!e.persisted) return;
+  <i>// 1) a restore can show a cart the user just changed elsewhere</i>
+  refreshCartSummary();
+  <i>// 2) a restore can resurrect a page after logout on a shared device</i>
+  if (!document.cookie.includes('session')) location.reload();
+});</pre>
+<p class="mini">And the server side: <b>never</b> blanket <code>Cache-Control: no-store</code> the document for freshness — it forfeits bfcache on 10–20% of navigations. Use <code>no-cache</code> (revalidates, still cacheable-in-memory) and refresh in-page on <code>persisted</code> restores.</p>
+</div>
+</div>
+<div class="law"><b>Tier placement.</b> <span class="why">Sits with Page Visibility (e55980b5 — the <i>visibility</i> half of reliability), Navigation API (9491b018 — the SPA routing this tier complements), Wake Lock (2ea6c281 — the keep-alive counterweight), and Web Locks (the <code>lock</code> reason above). Together: the navigation-stability tier.</span></div>
+</section>
+
+<footer>bfcache · Page Lifecycle API · live-probed engine truth · Molt Studios research · Chrome 154 verification · priority 3 tier</footer>
+</div>
+
+<script>
+(function(){
+"use strict";
+var CENSUS = { ok:0, warn:0, fail:0, info:0, pending:0 };
+function chip(host, cls, html){
+  var el = document.getElementById(host);
+  if (!el) return;
+  var s = document.createElement("span");
+  s.className = "chip " + cls;
+  s.innerHTML = html;
+  el.appendChild(s);
+  if (el.classList.contains('out') && el.dataset.live !== 'keep') el.dataset.live = '1';
+  CENSUS[cls] = (CENSUS[cls] || 0) + 1;
+}
+window.__chipCensus = function(){ return JSON.parse(JSON.stringify(CENSUS)); };
+function esc(v){ return String(v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function setOut(id, html){ var el = document.getElementById(id); if (el) el.innerHTML = html; }
+function fmt(ms){ return (Math.round(ms*10)/10) + 'ms'; }
+
+/* ---------- §01 engine introspection ---------- */
+(function(){
+  var nav = performance.getEntriesByType('navigation')[0];
+  var hasNRR = nav && ('notRestoredReasons' in nav);
+  chip('c01','info', '<b>nav entry .type</b> → ' + esc(nav ? nav.type : 'n/a') + (nav && nav.activationStart > 0 ? ' (prerendered, activationStart ' + nav.activationStart + ')' : ''));
+  chip('c01', hasNRR ? 'ok' : 'warn', '<b>notRestoredReasons</b> → ' + (hasNRR ? 'supported, value on this load: <b>' + esc(nav.notRestoredReasons) + '</b> (null = correct for a fresh load)' : 'undefined — engine without the API (Firefox/Safari)'));
+  chip('c01', ('onfreeze' in document) ? 'ok' : 'warn', '<b>freeze/resume events</b> → ' + (('onfreeze' in document) ? 'supported (Chromium)' : 'not supported in this engine'));
+  chip('c01', document.wasDiscarded ? 'warn' : 'ok', '<b>document.wasDiscarded</b> → ' + esc(document.wasDiscarded) + (document.wasDiscarded ? ' — this load IS a discard recovery' : ''));
+  var ua = navigator.userAgentData && navigator.userAgentData.brands;
+  chip('c01','info', '<b>engine</b> → ' + esc(ua ? ua.map(function(b){return b.version + ' ' + b.brand;}).filter(function(s){return s.indexOf('Not')<0;}).join(' · ') : navigator.userAgent.slice(0,80)));
+})();
+
+/* ---------- §04 event log (this page's own lifecycle) ---------- */
+var EVLOG = [];
+function logEv(name, extra){
+  EVLOG.push(name + (extra !== undefined && extra !== '' ? ' (' + extra + ')' : '') + ' @ ' + (Math.round(performance.now())) + 'ms');
+  setOut('evlog', EVLOG.map(function(l){ return '<b>·</b> ' + esc(l); }).join('<br>'));
+}
+window.addEventListener('pageshow', function(e){ logEv('pageshow', 'persisted=' + e.persisted); });
+window.addEventListener('pagehide', function(e){ logEv('pagehide', 'persisted=' + e.persisted); });
+// NOTE: unload/beforeunload listeners are deliberately NOT registered here —
+// an unconditional unload listener makes this page permanently bfcache-ineligible
+// and would falsify the §03 lab (this exact bug was caught by the verification gate).
+// They are armed only via the §06 toggles, and log here when armed.
+document.addEventListener('freeze', function(){ logEv('freeze'); });
+document.addEventListener('resume', function(){ logEv('resume'); });
+window.addEventListener('load', function(){ logEv('load (one-time — must NOT re-fire on restore)'); }, { once: false });
+
+/* ---------- §08 state tracker ---------- */
+function getState(){
+  if (document.visibilityState === 'hidden') return 'hidden';
+  return document.hasFocus() ? 'active' : 'passive';
+}
+function paintState(prev){
+  ['stActive','stPassive','stHidden'].forEach(function(id){ document.getElementById(id).classList.remove('now'); });
+  var map = { active:'stActive', passive:'stPassive', hidden:'stHidden' };
+  var el = document.getElementById(map[getState()]);
+  if (el) el.classList.add('now');
+  var line = (prev ? esc(prev) + ' → ' : '') + '<b>' + getState() + '</b>';
+  var el2 = document.getElementById('stLog');
+  el2.innerHTML = (el2.innerHTML === 'state transitions log here…' ? '' : el2.innerHTML + '<br>') + line;
+}
+document.addEventListener('visibilitychange', function(){ paintState('visibilitychange'); });
+window.addEventListener('focus', function(){ paintState('focus'); });
+window.addEventListener('blur', function(){ paintState('blur'); });
+window.addEventListener('pageshow', function(){ paintState('pageshow'); });
+paintState();
+
+/* ---------- §05 notRestoredReasons ---------- */
+(function(){
+  var nav = performance.getEntriesByType('navigation')[0];
+  setOut('nrrNow', 'current entry .type = <b>' + esc(nav && nav.type) + '</b> · notRestoredReasons = <b>' + esc(nav && nav.notRestoredReasons === undefined ? 'undefined (unsupported)' : nav && nav.notRestoredReasons) + '</b>' + (nav && nav.notRestoredReasons === null ? ' — null is correct: this was a fresh load, not a refused history restore' : ''));
+  var REASONS = [
+    ['fetch','spec','a fetch initiated by this document was cancelled mid-flight while unloading'],
+    ['lock','spec','held locks / lock requests were terminated at unload'],
+    ['masked','spec','reason hidden for privacy (cross-origin iframe blocked it, or UA-specific)'],
+    ['navigation-failure','spec','the navigation that created this document errored'],
+    ['parser-aborted','spec','initial HTML parse never finished'],
+    ['websocket','spec','open WebSocket shut down at unload (older engines; modern Chrome no longer blocks — see §06)'],
+    ['broadcastchannel-message','UA','a BroadcastChannel message arrived while page was cached'],
+    ['idledetector','UA','active IdleDetector at unload'],
+    ['keyboardlock','UA','Keyboard.lock() still active'],
+    ['mediastream','UA','live MediaStreamTrack at unload'],
+    ['midi','UA','MIDI permission requested'],
+    ['modals','UA','user prompt showing while unloading'],
+    ['navigating','UA','loading still in progress at unload'],
+    ['navigation-canceled','UA','navigation cancelled via window.stop()'],
+    ['non-trivial-browsing-context-group','UA','browsing context group has multiple top-level contexts (opener chains)'],
+    ['otpcredential','UA','OTPCredential created'],
+    ['outstanding-network-request','UA','network requests outstanding at unload'],
+    ['paymentrequest','UA','active PaymentRequest at unload'],
+    ['pictureinpicturewindow','UA','active Picture-in-Picture window'],
+    ['plugins','UA','document contains plugins'],
+    ['request-method-not-get','UA','document came from a non-GET request (POST result pages)'],
+    ['response-auth-required','UA','HTTP-auth required for the response'],
+    ['response-cache-control-no-store','UA','document response had Cache-Control: no-store'],
+    ['response-cache-control-no-cache','UA','document response had Cache-Control: no-cache'],
+    ['response-keep-alive','UA','response contained a Keep-Alive header'],
+    ['response-scheme-not-http-or-https','UA','scheme not http(s)'],
+    ['response-status-not-ok','UA','response status not ok'],
+    ['rtc','UA','RTCPeerConnection / RTCDataChannel shut down at unload'],
+    ['sensors','UA','sensor access requested'],
+    ['serviceworker-added / claimed / postmessage / version-activated / unregistered','UA','service-worker lifecycle churn while cached'],
+    ['sharedworker','UA','page in a SharedWorker owner set'],
+    ['smartcardconnection','UA','active SmartCardConnection'],
+    ['speechrecognition','UA','active SpeechRecognition'],
+    ['storageaccess','UA','Storage Access permission requested'],
+    ['unload-listener','UA','unload listener registered (the §07 endgame)'],
+    ['webhid / webshare / webtransport / webxrdevice','UA','respective API active or requested']
+  ];
+  var tb = document.getElementById('nrrTable');
+  REASONS.forEach(function(r){
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td><code>' + esc(r[0]) + '</code></td><td>' + (r[1] === 'spec' ? 'spec' : 'UA') + '</td><td>' + esc(r[2]) + '</td>';
+    tr.dataset.hay = (r[0] + ' ' + r[2]).toLowerCase();
+    tb.appendChild(tr);
+  });
+  document.getElementById('nrrFilter').addEventListener('input', function(){
+    var v = this.value.toLowerCase();
+    Array.prototype.forEach.call(tb.querySelectorAll('tr'), function(tr){
+      tr.style.display = !v || (tr.dataset.hay || '').indexOf(v) >= 0 ? '' : 'none';
+    });
+  });
+})();
+
+/* ---------- §06 toggles ---------- */
+var unloadArmed = false, beforeArmed = false;
+var beforeHandler = function(){ logEv('beforeunload'); };
+var unloadHandler = function(){ logEv('unload'); try { sessionStorage.setItem('bfc.mainUnload', '1'); } catch(e){} };
+function paintToggles(){
+  document.getElementById('tglUnload').classList.toggle('on', unloadArmed);
+  document.getElementById('tglBefore').classList.toggle('on', beforeArmed);
+  document.getElementById('tglNote').textContent = (unloadArmed || beforeArmed)
+    ? 'armed — run the §03 lab now; round B will read these flags' : '';
+}
+function armUnload(on){
+  unloadArmed = on;
+  if (on) window.addEventListener('unload', unloadHandler); else window.removeEventListener('unload', unloadHandler);
+  logEv(on ? 'unload listener ARMED (page now bfcache-ineligible in engines where it still counts)' : 'unload listener disarmed');
+  paintToggles();
+}
+document.getElementById('tglUnload').addEventListener('click', function(){ armUnload(!unloadArmed); });
+document.getElementById('tglBefore').addEventListener('click', function(){
+  beforeArmed = !beforeArmed;
+  if (beforeArmed) window.addEventListener('beforeunload', beforeHandler); else window.removeEventListener('beforeunload', beforeHandler);
+  logEv(beforeArmed ? 'beforeunload listener ARMED' : 'beforeunload listener disarmed');
+  paintToggles();
+});
+paintToggles();
+
+/* ---------- §03 THE lab ---------- */
+var CHILD_URL = new URL('bfcache-lab-child.html', location.href).href;
+var DWELL = (new URLSearchParams(location.search)).get('dwell') || ''; // pass-through for long-dwell freeze probes
+var LAB = null;
+function beginRound(id){
+  window.scrollTo(0, 400); // park mid-page so scroll preservation is measurable
+  LAB = {
+    round: id,
+    dateT0: Date.now(),
+    perfT0: performance.now(),
+    marker: 'heap-marker-' + Math.random().toString(36).slice(2, 8),
+    scrollY: window.scrollY,
+    loadFired: window.__loadEverFired || false
+  };
+  window.__labMarker = LAB.marker; // heap survival probe
+  try { sessionStorage.setItem('bfc.lab', JSON.stringify({ round:id, dateT0:LAB.dateT0, perfT0:LAB.perfT0, scrollY:LAB.scrollY })); } catch(e){}
+  setOut(id === 'A' ? 'labA' : 'labB', 'navigating to the child page… auto-return in ~2s');
+  setTimeout(function(){ location.href = CHILD_URL + '?ret=auto&r=' + id + (DWELL ? '&dwell=' + DWELL : ''); }, 350);
+}
+document.getElementById('labGoA').addEventListener('click', function(){ beginRound('A'); });
+document.getElementById('labGoB').addEventListener('click', function(){
+  armUnload(true); // the poisoned round arms the blocker itself
+  try { sessionStorage.setItem('bfc.mainUnload', '0'); } catch(e){}
+  beginRound('B');
+});
+document.getElementById('labGoC').addEventListener('click', function(){
+  // round C: open the child via window.open — the new tab keeps window.opener set,
+  // which makes that page ineligible for bfcache: the forced refusal that makes
+  // performance.getEntriesByType('navigation')[0].notRestoredReasons speak.
+  logEv('round C — child opened via window.open (opener linked)');
+  window.open(CHILD_URL + '?ret=auto&r=C&chain=1', '_blank', 'width=760,height=640');
+});
+window.__loadEverFired = false;
+window.addEventListener('load', function(){ window.__loadEverFired = true; });
+
+window.addEventListener('pageshow', function(e){
+  var meta = null;
+  try { meta = JSON.parse(sessionStorage.getItem('bfc.lab') || 'null'); } catch(err){}
+  if (!meta) return;
+  var host = meta.round === 'A' ? 'labA' : 'labB';
+  var restored = e.persisted;
+  var child = null;
+  try { child = JSON.parse(sessionStorage.getItem('bfc.child.report') || 'null'); } catch(err){}
+  var html = '';
+  html += '<div><span class="chip ' + (restored ? 'ok' : 'fail') + '"><b>pageshow.persisted = ' + restored + '</b> → ' + (restored ? 'bfcache HIT — this page resumed from memory' : 'NOT restored — fresh document was loaded for the Back') + '</span></div>';
+  var nav = performance.getEntriesByType('navigation')[0];
+  if (restored){
+    html += '<div><span class="chip ok"><b>JS heap survived: ' + (window.__labMarker && window.__labMarker.indexOf('heap-marker-') === 0) + '</b> (marker ' + esc(window.__labMarker || 'gone') + ')</span></div>';
+    html += '<div><span class="chip ' + (window.__loadEverFired && !nav ? 'info' : 'info') + '"><b>load event did NOT re-fire</b> — restores skip loading entirely</span></div>';
+    var dateD = Date.now() - meta.dateT0, perfD = performance.now() - meta.perfT0;
+    var frozen = Math.max(0, Math.round(dateD - perfD));
+    html += '<div><span class="chip info"><b>round-trip ' + fmt(dateD) + ' wall</b> · page clock advanced ' + fmt(perfD) + ' → <b>frozen for ≈' + fmt(frozen) + '</b> (the clock split, §09)</span></div>';
+    html += '<div><span class="chip ' + (Math.abs(window.scrollY - meta.scrollY) < 4 ? 'ok' : 'warn') + '"><b>scroll preserved: was ' + meta.scrollY + ', now ' + window.scrollY + '</b></span></div>';
+  } else {
+    html += '<div><span class="chip fail"><b>fresh document</b> — marker gone, scroll reset, everything rebuilt from bytes</span></div>';
+    html += '<div><span class="chip info"><b>new nav entry type = ' + esc(nav && nav.type) + '</b> ' + (nav && nav.type === 'back_forward' ? '(back_forward = the Back that refused the cache)' : '') + '</span></div>';
+    if (nav && nav.notRestoredReasons){
+      var rr = (nav.notRestoredReasons.reasons || []).map(function(r){ return r.reason; }).join(', ');
+      html += '<div><span class="chip ' + (rr ? 'warn' : 'ok') + '"><b>notRestoredReasons:</b> ' + (rr ? esc(rr) : '(empty — refused without a reason, e.g. environment)') + '</span></div>';
+    } else if (nav && nav.notRestoredReasons === null){
+      html += '<div><span class="chip info"><b>notRestoredReasons: null</b> — engine says this wasn\'t treated as a refused history restore</span></div>';
+    }
+  }
+  if (child){
+    html += '<div><span class="chip ' + (child.pagehidePersisted ? 'ok' : 'warn') + '"><b>child pagehide.persisted = ' + child.pagehidePersisted + '</b> → the page you went TO was ' + (child.pagehidePersisted ? 'also offered to bfcache (forward history)' : 'not cached') + '</span></div>';
+    if (child.unloadFired) html += '<div><span class="chip warn"><b>child saw its unload listener FIRE</b> — this engine still runs unload</span></div>';
+    else html += '<div><span class="chip ' + (child.pagehideFired ? 'ok' : 'warn') + '"><b>child unload never fired</b> (pagehide did: ' + child.pagehideFired + ') — deprecation model</span></div>';
+    if (child.freezeFired) html += '<div><span class="chip ok"><b>child froze</b> on bfcache entry (freeze event fired)</span></div>';
+    if (child.timerWallMs !== null) html += '<div><span class="chip info"><b>child 2s timer fired at wall+' + fmt(child.timerWallMs) + ' vs page-clock+' + fmt(child.timerPageMs) + '</b></span></div>';
+  }
+  if (meta.round === 'B'){
+    var mainUnloadFired = false;
+    try { mainUnloadFired = sessionStorage.getItem('bfc.mainUnload') === '1'; } catch(err){}
+    html += '<div><span class="chip ' + (mainUnloadFired ? 'warn' : 'ok') + '"><b>main unload listener ' + (mainUnloadFired ? 'FIRED' : 'never fired') + '</b> ' + (restored ? 'and the page still cached → unload no longer blocks bfcache here' : (mainUnloadFired ? '— the legacy law: unload ran, cache refused' : '— handler dead (deprecation) but cache still refused; see reasons above')) + '</span></div>';
+  }
+  setOut(host, html);
+  if (meta.round === 'B') armUnload(false); // disarm after reading — don't pollute later rounds
+  try { sessionStorage.removeItem('bfc.lab'); } catch(err){}
+});
+document.getElementById('labGoA').addEventListener('click', function(){});
+
+/* ---------- §09 freeze lab readout ---------- */
+var freezeInfo = { fired:false, resumed:false, t0d:null, t0p:null };
+document.addEventListener('freeze', function(){
+  freezeInfo.fired = true; freezeInfo.t0d = Date.now(); freezeInfo.t0p = performance.now();
+  setOut('freezeOut', '<b>freeze fired</b> @ ' + Math.round(performance.now()) + 'ms — tasks paused. Resume will report the clock split.');
+});
+document.addEventListener('resume', function(){
+  freezeInfo.resumed = true;
+  var wall = freezeInfo.t0d ? Date.now() - freezeInfo.t0d : 0, page = freezeInfo.t0p ? performance.now() - freezeInfo.t0p : 0;
+  var html = '<b>resume fired</b> @ ' + Math.round(performance.now()) + 'ms';
+  if (freezeInfo.t0d) html += '<br>while frozen: wall advanced ' + fmt(wall) + ', page clock advanced ' + fmt(page) + ' → paused for ≈' + fmt(Math.max(0, wall - page));
+  setOut('freezeOut', html + '<br>(was this a bfcache restore? the next pageshow.persisted answers)');
+});
+
+/* ---------- §10 wasDiscarded readout ---------- */
+setOut('discOut', 'document.wasDiscarded = <b>' + esc(document.wasDiscarded) + '</b>' + (document.wasDiscarded ? ' — this load IS a discard recovery; restore session now' : ' — normal load (the flag only exists on Chromium reloads of discarded tabs)'));
+
+/* ---------- self-driving harness for zero-CDP engine verification (?autorun=A|B) ----------
+   Lets a REAL browser (no debugger attached) run the lab and phone results home —
+   CDP attachment itself can disqualify pages from bfcache, so the honest engine
+   verdict needs a debugger-free run. Results POST to /report on the local server. */
+(function(){
+  var m = /autorun=([AB])/.exec(location.search);
+  var mc = /autorun=C/.exec(location.search);
+  if (mc){
+    // round C needs a genuine user gesture for window.open — phone the button's
+    // screen coords so an out-of-band click can trigger it (popup blocker otherwise)
+    setTimeout(function(){
+      var b = document.getElementById('labGoC');
+      if (!b) return;
+      b.scrollIntoView({block:'center'});
+      setTimeout(function(){
+        var r = b.getBoundingClientRect();
+        var sx = Math.round(window.screenX + r.x + r.width/2);
+        var sy = Math.round(window.screenY + r.y + r.height/2 + (window.outerHeight - window.innerHeight));
+        try { fetch('/report?round=clickme&d=' + sx + ',' + sy); } catch(e){}
+      }, 300);
+    }, 900);
+    // popup-blocking-off lane (e.g. --disable-popup-blocking): the synthetic click is enough
+    if (/popups=1/.test(location.search)){
+      setTimeout(function(){ var b2 = document.getElementById('labGoC'); if (b2) b2.click(); }, 1500);
+    }
+    return;
+  }
+  if (!m) return;
+  var round = m[1];
+  try { fetch('/report?round=boot-' + round + '&d=' + encodeURIComponent(navigator.userAgent)); } catch(e){}
+  setTimeout(function(){ var b = document.getElementById(round === 'A' ? 'labGoA' : 'labGoB'); if (b) b.click(); }, 900);
+  var t0 = Date.now();
+  var iv = setInterval(function(){
+    var out = document.getElementById(round === 'A' ? 'labA' : 'labB');
+    var txt = out ? out.innerText : '';
+    if (txt.indexOf('child') !== -1 && txt.indexOf('pageshow.persisted') !== -1){
+      clearInterval(iv);
+      try { fetch('/report?round=' + round + '&d=' + encodeURIComponent(txt)); } catch(e){}
+    } else if (Date.now() - t0 > 15000){
+      clearInterval(iv);
+      try { fetch('/report?round=' + round + '&d=TIMEOUT'); } catch(e){}
+    }
+  }, 400);
+})();
+})();
+</script>
+</body>
+</html>
