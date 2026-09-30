@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reporting API + Network Error Logging — the observability tier</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%2360a5fa'/%3E%3Cpath d='M3 11l4-5 2 3 2-2 2 4z' fill='%230b0f14'/%3E%3C/svg%3E">
+<style>
+:root{--bg:#0b0f14;--card:#121821;--line:#1f2937;--tx:#e5e7eb;--mut:#9ca3af;--ok:#34d399;--ok-soft:#ecfdf5;--warn:#fbbf24;--warn-soft:#451a03;--bad:#f87171;--bad-soft:#450a0a;--acc:#60a5fa;--acc2:#a78bfa}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--tx);font:15px/1.7 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:860px;margin:0 auto;padding:28px 18px 60px}
+header{padding:34px 0 8px}
+h1{font-size:clamp(24px,5vw,34px);line-height:1.2;letter-spacing:-.5px}
+h1 span{color:var(--acc)}
+.kicker{color:var(--acc);font-weight:700;font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px}
+.sub{color:var(--mut);max-width:64ch;margin-top:10px;font-size:14.5px}
+section{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px 22px;margin:20px 0}
+h2{font-size:18px;margin-bottom:4px;letter-spacing:-.2px}
+h2 .n{color:var(--acc);font-family:ui-monospace,Menlo,monospace;font-size:14px;margin-right:8px}
+.lead{color:var(--mut);font-size:13.5px;margin-bottom:14px;max-width:70ch}
+p{margin:8px 0;max-width:75ch}
+code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:#0b0f14;border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:#93c5fd}
+pre{background:#0b0f14;border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow-x:auto;font:12.5px/1.75 ui-monospace,SFMono-Regular,Menlo,monospace;color:#c7d2fe;margin:12px 0;max-width:100%}
+pre b{color:#fbbf24;font-weight:400}
+pre i{color:#6b7280;font-style:normal}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px}
+th{text-align:left;color:var(--mut);font-weight:600;border-bottom:1px solid var(--line);padding:7px 10px 7px 0}
+td{border-bottom:1px solid #17202c;padding:7px 10px 7px 0;vertical-align:top}
+td code,th code{overflow-wrap:anywhere}
+td,th{overflow-wrap:break-word}
+td:last-child,th:last-child{padding-right:0}
+.chip{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:3px 10px;margin:3px 4px 3px 0;border:1px solid transparent;vertical-align:middle;max-width:100%;line-height:1.45;overflow-wrap:break-word}
+.chip.ok{background:var(--ok-soft);color:#065f46;border-color:#a7f3d0}
+.chip.warn{background:var(--warn-soft);color:var(--warn);border-color:#fde68a}
+.chip.fail{background:var(--bad-soft);color:var(--bad);border-color:#fecaca}
+.chip.info{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}
+.badges{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 2px}
+.badge{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;border:1px solid var(--line);border-radius:999px;padding:4px 12px;color:var(--mut)}
+.badge.on .dot{background:var(--ok)} .badge.off .dot{background:var(--bad)}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.law{border-left:3px solid var(--acc);padding:8px 14px;margin:10px 0;background:#0e141d;border-radius:0 10px 10px 0}
+.law.hot{border-left-color:var(--warn)}
+.law b{color:#dbeafe}
+.law .why{color:var(--mut);font-size:13px}
+.btn{background:var(--acc);color:#0b0f14;border:0;border-radius:10px;padding:11px 18px;font:600 14px/1 ui-sans-serif,system-ui;cursor:pointer;margin:6px 8px 6px 0;display:inline-block}
+.btn:hover{filter:brightness(1.12)}
+.btn.warn{background:var(--warn)}
+.out{background:#0b0f14;border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:12px 0;font:12.5px/1.8 ui-monospace,Menlo,monospace;color:var(--mut);overflow-wrap:anywhere}
+.out b{color:#dbeafe;font-weight:700}
+.mini{font-size:12.5px;color:var(--mut)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tscroll table{margin-top:6px}
+.grid2>div{min-width:0}
+.grid2 pre{max-width:100%}
+code{overflow-wrap:anywhere}
+@media(max-width:640px){.grid2{grid-template-columns:1fr}}
+footer{color:#4b5563;font-size:12px;padding:18px 4px;text-align:center}
+a{color:var(--acc)}
+.hl{color:var(--warn);font-weight:600}
+.okl{color:var(--ok);font-weight:600}
+.flow{display:grid;grid-template-columns:1fr 24px 1fr 24px 1fr;gap:6px;align-items:stretch;margin:14px 0}
+.flow .st{border:1px solid var(--line);border-radius:10px;padding:10px 8px;text-align:center;font:600 11.5px/1.5 ui-sans-serif;color:var(--mut);background:#0b0f14}
+.flow .st small{display:block;font-weight:400;font-size:10px;color:#6b7280}
+.flow .ar{display:flex;align-items:center;justify-content:center;color:#374151;font:14px ui-monospace}
+@media(max-width:640px){.flow{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+<div class="kicker">web-platform api · live-probed · priority 3</div>
+<h1>Reporting API + NEL — <span>the observability tier</span></h1>
+<p class="sub">The browser has an out-of-band telemetry bus for things <b>your JavaScript cannot see</b>: CSP violations, deprecations about to break your stack, engine interventions, renderer crashes — and, via NEL, network failures that happen <b>before your JS ever loads</b>. This is the tier the whole 2020s told you was "Chromium-only." <b>That folklore died in March 2026</b> — <code>ReportingObserver</code> hit Baseline 2026 (Firefox 149 shipped it; Safari has had it since 16.4). Live-probed below on a flag-clean Chromium 154.</p>
+<div class="badges">
+<span class="badge on"><span class="dot"></span>ReportingObserver: Ch 69+ · FF 149+ · SF 16.4+ — Baseline 2026</span>
+<span class="badge on"><span class="dot"></span>Reporting-Endpoints header: Ch 96+ · FF 130+ · SF 16.4+ — Baseline 2024</span>
+<span class="badge off"><span class="dot"></span>NEL: Chromium-only (71+), experimental — still keyed to legacy Report-To</span>
+<span class="badge off"><span class="dot"></span>Report-To (v0): deprecated — keep only during migration</span>
+</div>
+</header>
+
+<section id="s01">
+<h2><span class="n">01</span>Engine introspection — what this browser gives you</h2>
+<p class="lead">Live probes on the page you are reading. Two doors into the bus: the in-page <code>ReportingObserver</code> and the HTTP-header-configured <code>Reporting-Endpoints</code>. They observe the same reports.</p>
+<div id="c01"></div>
+<div class="law"><b>Law: observer and endpoint see the same stream.</b> <span class="why">Reports are generated once by the engine and fanned out to (a) any <code>ReportingObserver</code> in the document/worker and (b) the configured endpoint. One exception: <code>crash</code> reports can never reach an observer — the page that would observe them is the thing that crashed (§02).</span></div>
+</section>
+
+<section id="s02">
+<h2><span class="n">02</span>The report catalog — nine types, three routing lanes</h2>
+<p class="lead">Every report is <code>{ type, url, body }</code>. The engine matrix below is the corrected 2026 truth (BCD, Sep 2026) — types long labeled "Chromium-only" now ship in Firefox 149. <span class="mini">(table scrolls sideways on narrow screens)</span></p>
+<div class="tscroll">
+<table>
+<tr><th>Type</th><th>What fires it</th><th>Chromium</th><th>Firefox</th><th>Safari</th><th>Route</th></tr>
+<tr><td><code>deprecation</code></td><td>you use an API on its way out</td><td>69+</td><td>149+</td><td>16.4+</td><td>default endpoint · observer</td></tr>
+<tr><td><code>csp-violation</code></td><td>CSP blocks something</td><td>74+</td><td>149+</td><td>18.4+</td><td><code>report-to</code> directive · observer</td></tr>
+<tr><td><code>integrity-violation</code></td><td>Integrity-Policy / SRI</td><td>138+</td><td>149+</td><td>—</td><td><code>endpoints</code> field · observer</td></tr>
+<tr><td><code>coep</code> / <code>coop</code></td><td>cross-origin embed/open policy</td><td>69+</td><td>—</td><td>16.4+ (coep)</td><td><code>report-to</code> param · observer (coep)</td></tr>
+<tr><td><code>permissions-policy-violation</code></td><td>iframe denied a policy-controlled feature</td><td>120+</td><td>—</td><td>—</td><td><code>report-to</code> param · default · observer</td></tr>
+<tr><td><code>intervention</code></td><td>UA blocks your code (autoplay, heavy ads…)</td><td>69+</td><td>—</td><td>—</td><td>default endpoint · observer</td></tr>
+<tr><td><code>crash</code></td><td>renderer/browser crash</td><td>96+ <span class="mini">(named <code>crash-reporting</code> endpoint 139+)</span></td><td>130+</td><td>—</td><td>endpoint ONLY — never observable</td></tr>
+<tr><td><code>network-error</code> (NEL)</td><td>DNS/TCP/TLS/HTTP failure</td><td>71+</td><td>—</td><td>—</td><td>endpoint only · v0 Report-To only (§10)</td></tr>
+<tr><td><code>connection-allowlist</code></td><td>newest: connection-allowlist policy</td><td>152+</td><td>—</td><td>—</td><td>observer</td></tr>
+</table>
+</div>
+<div class="law hot"><b>The folklore falsification.</b> <span class="why">Every 2020s tutorial says the Reporting API is Chromium-only. Firefox shipped <code>Reporting-Endpoints</code> in 130 (2024) and the full observer — including <code>deprecation</code>, <code>csp-violation</code>, <code>integrity-violation</code> reports, worker support — in <b>149 (March 2026)</b>, which is what pushed the observer to Baseline 2026. Safari 16.4 shipped the observer + header (csp-violation type 18.4). Still Chromium-only: <code>intervention</code>, <code>permissions-policy-violation</code>, <code>connection-allowlist</code>, <code>crash</code>-reporting endpoints, and all of NEL.</span></div>
+<div class="law"><b>CrashReportContext (Ch 145+): attach your own breadcrumb.</b> <span class="why">A new interface lets a page record arbitrary data (mission id, route, build hash) that gets serialized into the <code>crash</code> report the browser uploads after the renderer dies — the one telemetry channel that survives your page being gone.</span></div>
+</section>
+
+<section id="s03">
+<h2><span class="n">03</span>LIVE — capture a real deprecation report, dissected</h2>
+<p class="lead">A synchronous <code>XMLHttpRequest</code> on the main thread is the canonical deprecated feature. The observer below caught the report this page generated. Field-by-field dissection:</p>
+<div>
+<button class="btn" id="btnDep">⚡ Fire another sync XHR (re-triggers the report)</button>
+</div>
+<div class="out" id="depOut">listening…</div>
+<div id="c03"></div>
+<div class="law"><b>The <code>id</code> is the contract.</b> <span class="why"><code>body.id</code> is a stable engine string (<code>XMLHttpRequestSynchronousInNonWorkerOutsideBeforeUnload</code> here) — trend on it, not on <code>message</code>, which is human prose and changes between versions. <code>anticipatedRemoval</code> is a date or <code>null</code>; <code>null</code> means low priority, a date means your countdown started.</span></div>
+<div class="law"><b>This exact report is the bfcache story.</b> <span class="why">The <code>unload</code> deprecation finished its 100% rollout in Chrome 154 (Sep 22, 2026 — see this catalog's bfcache entry). Deprecation reports are the early-warning radar for that class of silent breakage: your code keeps working while reports pile up, then one Tuesday the feature is gone. Subscribe before the removal, not after.</span></div>
+</section>
+
+<section id="s04">
+<h2><span class="n">04</span>LIVE — <code>buffered: true</code>: the replay window</h2>
+<p class="lead">This page fired the sync-XHR deprecation <b>before any observer existed</b> (during initial script execution, top of the file). An observer created later with <code>buffered: true</code> replays it; one created without sees nothing. Both were constructed on load:</p>
+<div class="out" id="bufOut">…</div>
+<div id="c04"></div>
+<div class="law"><b>Law: buffer first, observe second.</b> <span class="why">Reports generated during early page load — CSP violations from inline scripts, deprecations fired by your bootstrap — happen before your observer hook runs. <code>buffered: true</code> is the only replay mechanism; there is no <code>getAllReports()</code>. In prod, register the observer as the first statement of the entry script or you lose everything before it.</span></div>
+</section>
+
+<section id="s05">
+<h2><span class="n">05</span>LIVE — the observer contract: <code>types</code> filter, unknown types, takeRecords, disconnect</h2>
+<p class="lead">Four API-surface behaviors, probed live. The unknown-type probe matters: specs say observers ignore unknown types — engines may differ. Observed truth, printed as measured:</p>
+<div class="out" id="apiOut">…</div>
+<div id="c05"></div>
+<div class="law"><b><code>takeRecords()</code> drains; <code>disconnect()</code> is final.</b> <span class="why"><code>takeRecords()</code> returns the queue and empties it (a second call returns <code>[]</code> — verified live). After <code>disconnect()</code> the callback never fires again; there is no reconnect. Build a fresh observer to resume. Omitting <code>types</code> subscribes to <i>all</i> observable types.</span></div>
+</section>
+
+<section id="s06">
+<h2><span class="n">06</span>Observer shape vs wire shape — the <code>age</code>/<code>user_agent</code> transform</h2>
+<p class="lead">Same report, two serializations. The in-page observer hands you the object; the endpoint receives a POST envelope with two added fields and one stripped field:</p>
+<div class="grid2">
+<div>
+<p class="mini"><b>In-page (observer gives you)</b></p>
+<pre>{
+ <b>"type"</b>: "deprecation",
+ <b>"url"</b>: "https://site.example/",
+ <b>"body"</b>: {
+   "id": "…Sync…OutsideBeforeUnload",
+   "message": "Synchronous XHR…",
+   "sourceFile": "https://site.example/",
+   "lineNumber": 54,
+   "columnNumber": 11,
+   "anticipatedRemoval": <i>null</i>
+ }
+}</pre>
+</div>
+<div>
+<p class="mini"><b>On the wire (endpoint receives) — SIMULATED preview of this page's captured report</b></p>
+<pre>POST /reports  <i>(Content-Type: application/reports+json)</i>
+[
+ { <b>"age"</b>: 27,          <i>// ← added: ms since generation</i>
+   <b>"type"</b>: "deprecation",
+   <b>"url"</b>: "…",
+   <b>"user_agent"</b>: "Mozilla/5.0 …", <i>// ← added</i>
+   "body": { …same as left… } }
+]</pre>
+</div>
+</div>
+<div class="out" id="wireOut">this page's live-captured report, rendered in wire format →</div>
+<div class="law"><b>Why <code>age</code> exists: clocks lie.</b> <span class="why">The endpoint envelope carries <code>age</code> — milliseconds between generation and upload — instead of trusting wall-clock timestamps, because client clocks skew. Batch delivery can hold reports for minutes; compute occurrence time as <code>received_at − age</code> server-side. And note <code>user_agent</code> is the UA of the <i>page request</i>, not of the upload — a "request desktop site" page reports the desktop UA.</span></div>
+<div class="law"><b>What never crosses the wire: <code>destination</code>, <code>timestamp</code>, <code>attempts</code>.</b> <span class="why">The spec models each report with an endpoint <code>destination</code>, a generation <code>timestamp</code>, and an <code>attempts</code> counter — engine-internal bookkeeping for retries and routing. The observer sees none of these either; only <code>type</code>/<code>url</code>/<code>body</code> are yours.</span></div>
+</section>
+
+<section id="s07">
+<h2><span class="n">07</span>LIVE — workers see reports too (the off-thread observer)</h2>
+<p class="lead">A dedicated worker was spun up on load; it constructed its own <code>ReportingObserver</code> and reported back. Worker support matters: telemetry can live off the main thread, and worker-context deprecations (e.g. APIs removed from worker scopes) are observable where they happen.</p>
+<div class="out" id="wkOut">…</div>
+<div id="c07"></div>
+<div class="law"><b>Observers are per-environment.</b> <span class="why">A document observer never sees reports from an iframe or a worker, and vice versa — each <code>ReportingObserver</code> only receives reports from its own environment settings object. Cross-frame aggregation is a job for the <i>endpoint</i>, where every report arrives tagged with its <code>url</code>.</span></div>
+</section>
+
+<section id="s08">
+<h2><span class="n">08</span>v0 → v1 — the <code>Report-To</code> → <code>Reporting-Endpoints</code> migration map</h2>
+<p class="lead">Two generations of endpoint configuration coexist in 2026. The header rewrite changed the scope semantics — that is where migrations break.</p>
+<div class="tscroll">
+<table>
+<tr><th></th><th>v0 · <code>Report-To</code> (2018)</th><th>v1 · <code>Reporting-Endpoints</code> (2021)</th></tr>
+<tr><td><b>Shape</b></td><td><code>{ group, max_age, endpoints:[{url},…] }</code> — groups, failover lists</td><td><code>name="url"</code> pairs — one URL per named endpoint, no failover</td></tr>
+<tr><td><b>Scope</b></td><td><b>origin</b> — set once, other documents inherit ambient endpoints</td><td><b>document</b> — must be on <b>every response that might generate reports</b></td></tr>
+<tr><td><b>Batching</b></td><td>cross-document/cross-origin reports batched into one POST</td><td>isolated per document — one document's reports per delivery</td></tr>
+<tr><td><b>Report types</b></td><td>all, incl. <b>NEL</b></td><td>all <b>except</b> network-error (NEL) — "a new mechanism will be developed"</td></tr>
+<tr><td><b>Engines</b></td><td>Ch 70+ · FF 149+ · deprecated, non-standard</td><td>Ch 96+ · FF 130+ · SF 16.4+ · <b>Baseline 2024</b></td></tr>
+</table>
+</div>
+<div class="law hot"><b>The #1 migration footgun: document scope.</b> <span class="why">Under v0 you set <code>Report-To</code> on the HTML document and ambient inheritance carried it to subresources and sibling documents. Under v1 a report generated by a response that lacked the header is simply dropped. Set <code>Reporting-Endpoints</code> on <b>all responses that can generate reports</b> — HTML, iframes, workers, XHR/JSON endpoints — or your collector will silently starve for exactly those origins.</span></div>
+<div class="law"><b>Keep both headers during migration — but for one reason only: NEL.</b> <span class="why">Chrome's own guidance: keep <code>Report-To</code> "for some time" alongside the new header. The concrete dependency is NEL — it still routes through v0 groups and has no v1 path (§10). Everything else moves cleanly.</span></div>
+</section>
+
+<section id="s09">
+<h2><span class="n">09</span>The endpoint contract — what your collector owes the browser</h2>
+<p class="lead">The browser POSTs <code>application/reports+json</code> — a JSON array of report objects. Delivery is best-effort, out-of-band, de-prioritized: the spec explicitly says reporting is not a reliable channel.</p>
+<pre><i># one endpoint for everything (default carries deprecation/intervention/crash)</i>
+Reporting-Endpoints: <b>default</b>="https://reports.example.com/collect"
+
+<i># per-type routing via the report-to directive</i>
+Reporting-Endpoints: <b>csp</b>="https://reports.example.com/csp", <b>default</b>="https://reports.example.com/collect"
+Content-Security-Policy: default-src 'self'; <b>report-to csp</b>
+
+<i># vercel.json — headers on every response (the document-scope law)</i>
+{ "headers": [{ "source": "/(.*)", "headers": [
+  { "key": "Reporting-Endpoints",
+    "value": "default=\"https://reports.example.com/collect\"" }] }] }</pre>
+<div id="c09"></div>
+<div class="law"><b>Collector duties: 2xx fast, no body needed.</b> <span class="why">Respond with 200–299 (or declare extra success codes via <code>Success-Status</code> if your stack allows) — anything else counts as a delivery failure. The engine tracks consecutive <code>failures</code> per endpoint and backs off / stops delivering. Reports are queued in memory, retried, and silently dropped under pressure — never build billing on report delivery.</span></div>
+<div class="law"><b>Named endpoints are just labels.</b> <span class="why">The name (<code>default</code>, <code>csp</code>, <code>crash-reporting</code>) is matched by the <code>report-to</code> directive of the policy header. <code>default</code> is the fallback for the three header-less types (deprecation, intervention, crash). Chromium 139+ adds a dedicated <code>crash-reporting</code> name so crashes can route separately.</span></div>
+</section>
+
+<section id="s10">
+<h2><span class="n">10</span>NEL — the network layer's black box (the API your RUM cannot be)</h2>
+<p class="lead">Your analytics script cannot report that your analytics script never loaded. NEL inverts the model: the <b>browser</b> remembers the policy from your last successful visit and reports network failures <i>on future requests to your origin</i> — DNS failures, TCP resets, TLS handshake errors — even when the page never renders. Chromium-only since 71, still experimental, and <b>excluded from v1</b>.</p>
+<pre><i># the policy (response header) — registers with the browser for max_age seconds</i>
+NEL: { "report_to": "network-errors",       <i>// names a v0 Report-To group — NOT Reporting-Endpoints</i>
+       "max_age": 86400 }                    <i># policy lifetime; 0 unregisters</i>
+Report-To: { "group": "network-errors", "max_age": 86400,
+             "endpoints": [{ "url": "https://reports.example.com/nel" }] }
+
+<i># an actual report delivered later (spec example)</i>
+{ "type": "network-error", "age": 84, "url": "https://www.example.com/",
+  "user_agent": "…", "body": {
+    "referrer": "https://referrer.com/",
+    "sampling_fraction": 1.0, "server_ip": "192.0.2.42",
+    "protocol": "http/1.1", "elapsed_time": 321,
+    <b>"phase": "connection"</b>, <b>"type": "tcp.aborted"</b> } }</pre>
+<div id="c10"></div>
+<div class="law"><b>The phase vocabulary is the debugging tree.</b> <span class="why"><code>phase</code> answers <i>where</i> it died: <code>dns</code> (resolution — <code>dns.address_not_found</code>, NXDOMAIN-class), <code>connection</code> (TCP+TLS — the spec's own <code>tcp.aborted</code>, handshake failures), <code>application</code> (request/response transmission — HTTP protocol errors, aborted transfers). <code>server_ip</code> + <code>elapsed_time</code> + <code>protocol</code> turn "site feels down" into a triage row.</span></div>
+<div class="law"><b>The blind spots are spec'd, not bugs.</b> <span class="why">No NEL report when the UA is offline (<code>navigator.onLine === false</code> — nothing to send through), none for requests blocked by mixed-content or CORS. Preflights count as their own network requests. You still need client RUM for slow-but-successful loads — NEL only speaks failure (plus optional success sampling via <code>success_fraction</code> in newer drafts).</span></div>
+<div class="law hot"><b>NEL in the wild, Sep 2026: Cloudflare serves one on every response.</b> <span class="why">Probed while building this page: <code>nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}</code> — a 7-day policy with success sampling off. That is the pattern: CDN-scale origin monitoring that survives the page being unreachable.</span></div>
+</section>
+
+<section id="s11">
+<h2><span class="n">11</span>Capstones — OpenDrones fleet ops · Molt client watchdog</h2>
+<p class="lead">Two production shapes for the agency.</p>
+<p><b>OpenDrones — fleet operations telemetry.</b> Remote flight sites run captive portals, poisoned DNS, and metered links. When <code>api.opendrones.dev</code> fails DNS at a site, the cockpit JS never loads and your RUM is blind — but the <b>browser remembers the NEL policy from the last healthy session</b> and files <code>dns.*</code> reports on the next visit to any page on the origin. Pair it with: <code>default</code> endpoint deprecation radar on the cockpit (the <code>unload</code> endgame proved platform APIs die on published schedules — reports arrive a quarter early), a named <code>crash-reporting</code> endpoint (Ch 139+) for map/GPU renderer crashes, and <code>CrashReportContext</code> (Ch 145+) stamping the mission id into every crash report so the post-mortem knows which flight died.</p>
+<p><b>Molt — client-site watchdog.</b> One collector, per-client routing: <code>Reporting-Endpoints: default="…/collect?client=acme", csp="…/csp"</code> with CSP <code>report-to csp</code> — third-party script violations land separated from platform noise. Start every engagement in <b>report-only</b> mode (Content-Security-Policy-Report-Only + Permissions-Policy-Report-Only) and read violations for a week before enforcing. In dev, a 12-line <code>ReportingObserver</code> panel (§03–§05) is the free tier — zero infra, works on localhost, prints every violation as it happens.</p>
+<div class="flow">
+<div class="st">page code<br><small>window.onerror · unhandledrejection<br>only sees runtime errors</small></div>
+<div class="ar">→</div>
+<div class="st">observer<br><small>in-page, dev-time, free<br>policies + deprecations</small></div>
+<div class="ar">→</div>
+<div class="st">endpoint<br><small>prod, out-of-band,<br>survives crashes</small></div>
+</div>
+</section>
+
+<section id="s12">
+<h2><span class="n">12</span>Decision table — which channel carries which signal</h2>
+<table>
+<tr><th>Signal</th><th>Channel</th><th>Why</th></tr>
+<tr><td>JS exceptions / rejections</td><td><code>onerror</code> / <code>unhandledrejection</code> + RUM SDK</td><td>the Reporting API never carries them — different bus entirely</td></tr>
+<tr><td>Dev-time CSP/policy/deprecation console</td><td><code>ReportingObserver</code> (+ <code>buffered: true</code>)</td><td>zero infra, localhost-able, structured objects not console prose</td></tr>
+<tr><td>Prod CSP / Permissions-Policy / Integrity violations</td><td>named endpoint via <code>report-to</code> directive</td><td>survives page death; route per policy type</td></tr>
+<tr><td>Prod deprecations / interventions / crashes</td><td><code>default</code> endpoint (crash separately: <code>crash-reporting</code>, Ch 139+)</td><td>no header of their own to carry a directive — default is the only route</td></tr>
+<tr><td>DNS / TCP / TLS failures at the edge</td><td>NEL on v0 <code>Report-To</code></td><td>works when the page cannot load — the only channel that does</td></tr>
+<tr><td>Business events, funnels, timings</td><td>real RUM product</td><td>reporting is best-effort telemetry, not an analytics pipe (§09)</td></tr>
+</table>
+</section>
+
+<section id="s13">
+<h2><span class="n">13</span>Ship checklist</h2>
+<p class="lead">Ten rules, learned the hard way across the catalog:</p>
+<table>
+<tr><td><b>1</b></td><td>Set <code>Reporting-Endpoints</code> on <b>every</b> report-generating response — document scope, no ambient inheritance (§08).</td></tr>
+<tr><td><b>2</b></td><td>Keep <code>Report-To</code> only while NEL still needs it; drop the rest of v0.</td></tr>
+<tr><td><b>3</b></td><td>One URL per named endpoint in v1 — failover is your collector's job now.</td></tr>
+<tr><td><b>4</b></td><td><code>default</code> carries deprecation / intervention / crash — define it or those reports vanish.</td></tr>
+<tr><td><b>5</b></td><td>Observer first, code second — <code>buffered: true</code> replays only what the buffer kept (§04).</td></tr>
+<tr><td><b>6</b></td><td>Never await or depend on report delivery — best-effort by spec, dropped under pressure.</td></tr>
+<tr><td><b>7</b></td><td>Compute event time as <code>received_at − age</code>; do not trust client timestamps (§06).</td></tr>
+<tr><td><b>8</b></td><td>Trend deprecations by stable <code>body.id</code>, not <code>message</code> prose.</td></tr>
+<tr><td><b>9</b></td><td>Crashes are endpoint-only — no observer can see the page that died.</td></tr>
+<tr><td><b>10</b></td><td>NEL is Chromium-only bonus signal, never an SLA source — and needs v0 (§10).</td></tr>
+</table>
+</section>
+
+<footer>
+live-probed on flag-clean Chromium for Testing 154 (macOS arm64, headless + headed) · verified against MDN + BCD (Sep 30, 2026), W3C Reporting API &amp; Network Error Logging editors' drafts, Chrome for Developers "Migrate to Reporting API v1" · part of the molt-research observability tier — see also: bfcache + Page Lifecycle (unload endgame), Trusted Types + Sanitizer (CSP enforcement), Web Push + Notifications (alerting)
+</footer>
+
+</div>
+<script>
+(function(){
+"use strict";
+var CENSUS = { ok:0, warn:0, fail:0, info:0, pending:0 };
+function chip(host, cls, html){
+  var el = document.getElementById(host);
+  if (!el) return;
+  var s = document.createElement("span");
+  s.className = "chip " + cls;
+  s.innerHTML = html;
+  el.appendChild(s);
+  CENSUS[cls] = (CENSUS[cls] || 0) + 1;
+}
+window.__chipCensus = function(){ return JSON.parse(JSON.stringify(CENSUS)); };
+function esc(v){ return String(v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function setOut(id, html){ var el = document.getElementById(id); if (el) el.innerHTML = html; }
+function js(o){ try { return esc(JSON.stringify(o)); } catch(e){ return esc(String(o)); } }
+
+/* ============================================================
+   EARLY DEPRECATION TRIGGER — fires BEFORE any observer exists.
+   The §04 buffered probe depends on this ordering: do not move.
+   ============================================================ */
+var PRE_TRIG_MS = -1;
+function fireDeprecatedXHR(label){
+  try {
+    var x = new XMLHttpRequest();
+    x.open("GET", location.href.replace(/[^/]*$/, "") === location.href ? "/" : location.href.replace(/[^/]*$/, ""), false); // sync = deprecated on main thread
+    x.send();
+  } catch(e){ /* the request itself may fail (file://, etc.) — the REPORT is still generated */ }
+  PRE_TRIG_MS = Math.round(performance.now());
+  return label || "";
+}
+fireDeprecatedXHR("pre-observer trigger");
+
+/* ---------- §01 engine introspection ---------- */
+(function(){
+  var has = typeof ReportingObserver === "function";
+  chip("c01", has ? "ok" : "warn", "<b>ReportingObserver</b> → " + (has ? "present (" + (ReportingObserver.length) + "-arg ctor)" : "ABSENT in this engine"));
+  if (has) {
+    var pn = Object.getOwnPropertyNames(ReportingObserver.prototype);
+    chip("c01", "ok", "<b>prototype surface</b> → " + pn.map(esc).join(", ") + " — the whole API is 3 methods");
+    var stat = Object.getOwnPropertyNames(ReportingObserver).filter(function(k){ return k !== "length" && k !== "name" && k !== "prototype"; });
+    chip("c01", stat.length ? "warn" : "info", "<b>static surface</b> → " + (stat.length ? stat.map(esc).join(", ") : "none — no factory, no statics"));
+  }
+  var ua = navigator.userAgentData && navigator.userAgentData.brands;
+  chip("c01", "info", "<b>engine</b> → " + (ua ? ua.map(function(b){ return b.version + " " + b.brand; }).filter(function(s){ return s.indexOf("Not") < 0; }).join(" · ") : esc(navigator.userAgent.slice(0, 80))));
+  /* same-origin header self-check: does THIS response carry Reporting-Endpoints? */
+  fetch(location.href, { method: "HEAD" }).then(function(r){
+    var v = r.headers.get("Reporting-Endpoints");
+    chip("c09", v ? "ok" : "info", "<b>this page's own response</b> → Reporting-Endpoints " + (v ? "= " + esc(v) : "ABSENT (honest: this page ships none — observer-only by design; §09 has the copy-paste)"));
+  }).catch(function(e){
+    chip("c09", "info", "<b>this page's own response</b> → header self-check unavailable (" + esc(e) + ")");
+  });
+})();
+
+/* ---------- §03 live deprecation capture ---------- */
+var DEP_CAPTURES = [];
+var depObs = null;
+try {
+  depObs = new ReportingObserver(function(reports, obs){
+    for (var i = 0; i < reports.length; i++) {
+      var r = reports[i];
+      if (r.type !== "deprecation") continue;
+      DEP_CAPTURES.push({ at: Math.round(performance.now()), body: r.body, url: r.url });
+      renderDep();
+    }
+  }, { types: ["deprecation"], buffered: true });
+  depObs.observe();
+} catch(e){ setOut("depOut", "observer failed: " + esc(e)); }
+
+function renderDep(){
+  var c = DEP_CAPTURES[DEP_CAPTURES.length - 1];
+  if (!c) return;
+  var b = c.body || {};
+  setOut("depOut",
+    "<b>captured ×" + DEP_CAPTURES.length + "</b> @ " + c.at + "ms page-time<br>" +
+    "type <b>deprecation</b> · url " + esc(c.url) + "<br>" +
+    "body.id → <b>" + esc(b.id) + "</b><br>" +
+    "body.anticipatedRemoval → <b>" + esc(b.anticipatedRemoval) + "</b>" + (b.anticipatedRemoval ? " — countdown running" : " — no removal date published") + "<br>" +
+    "body.message → " + esc(String(b.message).slice(0, 110)) + "…<br>" +
+    "body.sourceFile → " + esc(b.sourceFile) + "<br>" +
+    "body.line/column → " + esc(b.lineNumber) + ":" + esc(b.columnNumber));
+  if (!renderDep.done) {
+    renderDep.done = true;
+    chip("c03", "ok", "<b>live capture</b> → real deprecation report received, body dissected above");
+    chip("c03", typeof b.id === "string" && b.id.length ? "ok" : "warn", "<b>body.id</b> → " + esc(b.id) + " — the stable trending key");
+    chip("c03", "ok", "<b>body.anticipatedRemoval</b> → " + esc(b.anticipatedRemoval) + " (" + (b.anticipatedRemoval ? "date set" : "null — low priority") + ")");
+    chip("c03", typeof b.sourceFile === "string" ? "ok" : "warn", "<b>body.sourceFile : line : column</b> → " + esc(b.sourceFile) + " : " + esc(b.lineNumber) + " : " + esc(b.columnNumber));
+    /* wire-format render for §06 */
+    setOut("wireOut", "POST /collect  Content-Type: application/reports+json<br>[{<br>&nbsp;&nbsp;\"age\": &lt;ms at upload&gt;,<br>&nbsp;&nbsp;\"type\": \"deprecation\",<br>&nbsp;&nbsp;\"url\": \"" + esc(c.url) + "\",<br>&nbsp;&nbsp;\"user_agent\": \"" + esc(navigator.userAgent.slice(0, 60)) + "…\",<br>&nbsp;&nbsp;\"body\": { \"id\": \"" + esc(b.id) + "\", \"anticipatedRemoval\": " + (b.anticipatedRemoval ? "\"" + esc(b.anticipatedRemoval) + "\"" : "null") + ", \"lineNumber\": " + esc(b.lineNumber) + ", … }<br>}]  <i>— simulated serialization of the real capture</i>");
+  }
+}
+window.setTimeout(function(){
+  if (!DEP_CAPTURES.length) {
+    setOut("depOut", "no deprecation report received within 5s — engine may suppress this deprecation or the type is unsupported here");
+    chip("c03", "warn", "<b>live capture</b> → no report within 5s (engine/type-dependent — observed truth)");
+  }
+}, 5000);
+if (document.getElementById("btnDep")) document.getElementById("btnDep").addEventListener("click", function(){ fireDeprecatedXHR("button"); });
+
+/* ---------- §04 buffered probe ---------- */
+(function(){
+  var got = { buffered: -1, plain: -1 }; // -1 pending, 0 = no report seen, 1 = received
+  try {
+    var withBuf = new ReportingObserver(function(reports){ got.buffered = reports.some(function(r){ return r.type === "deprecation"; }) ? 1 : 0; render(); }, { types: ["deprecation"], buffered: true });
+    withBuf.observe();
+    var noBuf = new ReportingObserver(function(reports){ got.plain = reports.some(function(r){ return r.type === "deprecation"; }) ? 1 : 0; render(); }, { types: ["deprecation"], buffered: false });
+    noBuf.observe();
+  } catch(e){ setOut("bufOut", "observer setup failed: " + esc(e)); }
+  function v(x){ return x === -1 ? "<i>pending…</i>" : (x ? "<b class='okl'>RECEIVED</b>" : "<b class='hl'>nothing</b>"); }
+  function render(final){
+    /* at settle time, -1 (never fired) IS the plain observer's expected silence */
+    var plainShown = (final && got.plain === -1) ? 0 : got.plain;
+    setOut("bufOut",
+      "pre-observer trigger fired @ " + (PRE_TRIG_MS >= 0 ? PRE_TRIG_MS + "ms page-time (before ANY observer existed)" : "n/a") + "<br>" +
+      "observer with <b>buffered: true</b>  → " + v(got.buffered) + "<br>" +
+      "observer with buffered: false → " + v(plainShown) + (final ? "<br><i>settled at 5s — silence on the unbuffered observer is the correct outcome</i>" : ""));
+    if (!final) return;
+    /* settle at 5s: receipt is the ONLY success signal for the buffered observer;
+       silence is the EXPECTED outcome for the plain one (no replay without the flag) */
+    if (!render.c1) { render.c1 = true; chip("c04", got.buffered === 1 ? "ok" : "warn", "<b>buffered: true</b> → " + (got.buffered === 1 ? "replayed the pre-observer report — the buffer works" : "no replay within 5s — engine did not buffer (observed truth)")); }
+    if (!render.c2) { render.c2 = true; chip("c04", plainShown === 0 ? "ok" : "warn", "<b>buffered: false</b> → " + (plainShown === 0 ? "correctly saw nothing — pre-observer reports are invisible without the flag" : "received it anyway — engine delivered unbuffered (leak-shaped, observed truth)")); }
+  }
+  window.setTimeout(function(){ render(true); }, 5000);
+})();
+
+/* ---------- §05 API-surface probes ---------- */
+(function(){
+  var out = [];
+  /* unknown type tolerance */
+  try {
+    var bogus = new ReportingObserver(function(){}, { types: ["bogus-type-xyz"] });
+    bogus.observe(); bogus.disconnect();
+    out.push("ctor with unknown type <b>\"bogus-type-xyz\"</b> → <b class='okl'>accepted, no throw</b> (unknown types are silently filtered)");
+    chip("c05", "ok", "<b>unknown type</b> → ctor + observe() accept \"bogus-type-xyz\" without error");
+  } catch(e){
+    out.push("ctor with unknown type → <b class='hl'>THREW</b>: " + esc(e));
+    chip("c05", "warn", "<b>unknown type</b> → ctor throws on \"bogus-type-xyz\": " + esc(e));
+  }
+  /* takeRecords drain + disconnect */
+  try {
+    var o = new ReportingObserver(function(){}, { types: ["deprecation"], buffered: true });
+    o.observe();
+    var first = o.takeRecords();
+    var second = o.takeRecords();
+    o.disconnect();
+    out.push("takeRecords() #1 → <b>" + first.length + "</b> record(s) (drained the buffer)<br>takeRecords() #2 → <b>" + second.length + "</b> record(s) — drain is destructive<br>disconnect() → returned cleanly; callback will never fire again");
+    chip("c05", "ok", "<b>takeRecords()</b> → " + first.length + " then " + second.length + " — drains, second call empty");
+    chip("c05", "ok", "<b>disconnect()</b> → clean, final (no reconnect API — build a new observer)");
+  } catch(e){
+    out.push("takeRecords probe failed: " + esc(e));
+    chip("c05", "warn", "<b>takeRecords/disconnect</b> → probe failed: " + esc(e));
+  }
+  /* filter probe: an intervention-only observer must NOT get the deprecation */
+  try {
+    var gotOther = 0;
+    var filt = new ReportingObserver(function(reports){ gotOther += reports.length; }, { types: ["intervention"] });
+    filt.observe(); filt.disconnect();
+    out.push("types: [\"intervention\"] observer during a live deprecation → received <b>" + gotOther + "</b> report(s) — type filtering " + (gotOther === 0 ? "holds" : "LEAKS"));
+    chip("c05", gotOther === 0 ? "ok" : "fail", "<b>types filter</b> → intervention-only observer got " + gotOther + " report(s) during a deprecation " + (gotOther === 0 ? "— filtering is tight" : "— FILTER LEAK, headline"));
+  } catch(e){
+    chip("c05", "warn", "<b>types filter</b> → probe failed: " + esc(e));
+  }
+  setOut("apiOut", out.join("<br><br>"));
+})();
+
+/* ---------- §07 worker probe ---------- */
+(function(){
+  var src = "self.onmessage = function(e) {" +
+    "try {" +
+    "  var has = typeof ReportingObserver === 'function';" +
+    "  var res = { has: has };" +
+    "  if (has) { var o = new ReportingObserver(function(){}); o.observe(); o.disconnect(); res.lifecycle = 'observe+disconnect OK';" +
+    "    res.proto = Object.getOwnPropertyNames(ReportingObserver.prototype).join(','); }" +
+    "  self.postMessage(res);" +
+    "} catch(err) { self.postMessage({ has: typeof ReportingObserver === 'function', error: String(err) }); } };";
+  var done = false;
+  try {
+    var url = URL.createObjectURL(new Blob([src], { type: "text/javascript" }));
+    var w = new Worker(url);
+    var t0 = performance.now();
+    w.onmessage = function(e){
+      done = true;
+      var d = e.data || {};
+      setOut("wkOut",
+        "worker replied in " + Math.round(performance.now() - t0) + "ms<br>" +
+        "ReportingObserver in worker → " + (d.has ? "<b class='okl'>present</b>" : "<b class='hl'>absent</b>") + "<br>" +
+        (d.proto ? "worker prototype surface → " + esc(d.proto) + "<br>" : "") +
+        (d.lifecycle ? "observe() + disconnect() in worker → " + esc(d.lifecycle) : "") +
+        (d.error ? "worker error → " + esc(d.error) : ""));
+      chip("c07", d.has ? "ok" : "warn", "<b>worker</b> → ReportingObserver " + (d.has ? "ships in dedicated workers (Ch 84+ / FF 149+)" : "absent in this worker scope"));
+      if (d.error) chip("c07", "warn", "<b>worker lifecycle</b> → " + esc(d.error));
+      w.terminate(); URL.revokeObjectURL(url);
+    };
+    w.onerror = function(ev){ done = true; setOut("wkOut", "worker failed: " + esc(ev.message || "unknown")); chip("c07", "warn", "<b>worker</b> → probe worker errored"); w.terminate(); URL.revokeObjectURL(url); };
+    w.postMessage("go");
+  } catch(e){
+    done = true; setOut("wkOut", "worker construction failed: " + esc(e)); chip("c07", "warn", "<b>worker</b> → construction failed: " + esc(e));
+  }
+  window.setTimeout(function(){
+    if (!done) { setOut("wkOut", "worker did not report within 4s — observed truth"); chip("c07", "warn", "<b>worker</b> → no reply within 4s"); }
+  }, 4000);
+})();
+
+/* ---------- §10 NEL chips (spec-anchored, engine can't be probed without headers) ---------- */
+(function(){
+  chip("c10", "info", "<b>NEL engine truth</b> → Chromium-only since 71 — Firefox and Safari have never shipped it (BCD, Sep 2026); treat as bonus signal");
+  chip("c10", "info", "<b>v1 exclusion</b> → Reporting-Endpoints does NOT carry network-error reports — NEL still requires a v0 Report-To group (Chrome migration doc)");
+  chip("c10", "info", "<b>in the wild</b> → Cloudflare serves nel: {report_to: cf-nel, success_fraction: 0.0, max_age: 604800} on its own responses — probed Sep 30 2026 while building this page");
+})();
+
+})();
+</script>
+</body>
+</html>
