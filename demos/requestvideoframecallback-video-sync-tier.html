@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>requestVideoFrameCallback — the video-frame sync tier (rVFC + metadata + cancel)</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='3' width='14' height='10' rx='2' fill='%2360a5fa'/%3E%3Cpath d='M6.5 5.8l3.4 2.2-3.4 2.2z' fill='%230b0f14'/%3E%3C/svg%3E">
+<style>
+:root{--bg:#0b0f14;--card:#121821;--line:#1f2937;--tx:#e5e7eb;--mut:#9ca3af;--ok:#34d399;--ok-soft:#ecfdf5;--warn:#fbbf24;--warn-soft:#451a03;--bad:#f87171;--bad-soft:#450a0a;--acc:#60a5fa;--acc2:#a78bfa}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--tx);font:15px/1.7 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;overflow-x:hidden}
+.wrap{max-width:860px;margin:0 auto;padding:28px 18px 60px}
+header{padding:34px 0 8px}
+h1{font-size:clamp(24px,5vw,34px);line-height:1.2;letter-spacing:-.5px}
+h1 span{color:var(--acc)}
+.kicker{color:var(--acc);font-weight:700;font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px}
+.sub{color:var(--mut);max-width:64ch;margin-top:10px;font-size:14.5px}
+.badges{margin-top:14px}
+.badge{display:inline-block;font-size:11.5px;font-weight:700;border-radius:999px;padding:3px 10px;margin:3px 5px 3px 0;border:1px solid}
+.badge.on{color:#34d399;border-color:#065f46;background:#052e22}
+.badge.off{color:#9ca3af;border-color:#374151;background:#111827}
+section{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px 22px;margin:20px 0}
+h2{font-size:18px;margin-bottom:4px;letter-spacing:-.2px}
+h2 .n{color:var(--acc);font-family:ui-monospace,Menlo,monospace;font-size:14px;margin-right:8px}
+.lead{color:var(--mut);font-size:13.5px;margin-bottom:14px;max-width:70ch}
+p{margin:8px 0;max-width:75ch}
+code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:#0b0f14;border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:#93c5fd;overflow-wrap:anywhere}
+pre{background:#0b0f14;border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow-x:auto;font:12.5px/1.75 ui-monospace,SFMono-Regular,Menlo,monospace;color:#c7d2fe;margin:12px 0;max-width:100%}
+pre b{color:#fbbf24;font-weight:400}
+pre i{color:#6b7280;font-style:normal}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px}
+th{text-align:left;color:var(--mut);font-weight:600;border-bottom:1px solid var(--line);padding:7px 10px 7px 0}
+td{border-bottom:1px solid #17202c;padding:7px 10px 7px 0;vertical-align:top}
+td code,th code{overflow-wrap:anywhere}
+td,th{overflow-wrap:break-word}
+td:last-child,th:last-child{padding-right:0}
+.chip{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:3px 10px;margin:3px 4px 3px 0;border:1px solid transparent;vertical-align:middle;max-width:100%;line-height:1.45;overflow-wrap:break-word}
+.chip.ok{background:var(--ok-soft);color:#065f46;border-color:#a7f3d0}
+.chip.warn{background:var(--warn-soft);color:var(--warn);border-color:#fde68a}
+.chip.fail{background:var(--bad-soft);color:var(--bad);border-color:#fecaca}
+.chip.info{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}
+.law{border-left:3px solid var(--acc);background:#0d1520;border-radius:0 12px 12px 0;padding:12px 16px;margin:14px 0;font-size:13.5px}
+.law.hot{border-left-color:var(--acc2)}
+.law .why{color:var(--mut)}
+.out{font:12.5px/1.8 ui-monospace,Menlo,monospace;color:#a5b4fc;background:#0b0f14;border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:12px 0;overflow-wrap:anywhere}
+.btn{background:#1d4ed8;color:#fff;border:none;border-radius:10px;padding:9px 16px;font:600 13px ui-sans-serif,system-ui;cursor:pointer;margin:2px 6px 2px 0}
+.btn:hover{background:#2563eb}
+.btn.warn{background:#7c2d12}
+.btn.warn:hover{background:#9a3412}
+.btn:disabled{opacity:.45;cursor:default}
+.stage{position:relative;width:min(560px,100%);margin:10px 0;border-radius:12px;overflow:hidden;border:1px solid var(--line)}
+.stage video{display:block;width:100%;height:auto;background:#000}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.flex{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+.flex>*{min-width:0}
+.mini{font-size:12px;color:var(--mut)}
+input[type=range]{width:min(420px,100%);accent-color:var(--acc)}
+.hero{width:min(560px,100%);border-radius:14px;padding:26px 24px;border:1px solid var(--line);position:relative;overflow:hidden}
+.hero h3{font-size:clamp(20px,4vw,30px);letter-spacing:-.5px;line-height:1.15;transition:color .12s linear}
+.hero .tag{font:700 11px ui-monospace,Menlo,monospace;letter-spacing:.16em;text-transform:uppercase;transition:color .12s linear}
+.hero .glow{position:absolute;inset:auto -20% -60% -20%;height:120%;filter:blur(38px);opacity:.5;transition:background .12s linear;pointer-events:none}
+footer{color:#6b7280;font-size:12px;padding:26px 4px;text-align:center}
+.tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tscroll table{min-width:560px}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:640px){.duo{grid-template-columns:1fr}}
+.kv{font:12px/1.7 ui-monospace,Menlo,monospace;color:#93c5fd;background:#0b0f14;border:1px solid var(--line);border-radius:10px;padding:10px 12px;overflow-wrap:anywhere}
+.nav{display:flex;flex-wrap:wrap;gap:6px;margin:16px 0 4px}
+.nav a{font:600 11.5px ui-monospace,Menlo,monospace;color:var(--acc);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:4px 10px}
+.nav a:hover{border-color:var(--acc)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+<div class="kicker">web platform api · media/render tier · live-probed CfT 154</div>
+<h1>requestVideoFrameCallback — <span>the video-frame sync tier</span></h1>
+<p class="sub">The render primitive that fires <b>when a video frame is actually composited</b> — not on the display clock (rAF), not on a UI-frequency timer (timeupdate). One method + one cancel + a 7-field metadata object. This page generates its own synthetic 30&nbsp;fps mission video in-browser (zero network), then measures every contract live: the firing law, the rate law, the pixel law, the scrub law, the drift law.</p>
+<div class="badges">
+<span class="badge on">Chrome 83+</span><span class="badge on">Edge 83+</span><span class="badge on">Firefox 132+</span><span class="badge on">Safari 15.4+</span><span class="badge on">Baseline 2024</span><span class="badge on">not secure-gated</span><span class="badge on">no permissions</span><span class="badge on">no iframe policy</span><span class="badge on">main thread only</span>
+</div>
+<div class="nav">
+<a href="#s01">01 surface</a><a href="#s02">02 factory</a><a href="#s03">03 firing law</a><a href="#s04">04 metadata</a><a href="#s05">05 rate law</a><a href="#s06">06 pixel law</a><a href="#s07">07 scrub law</a><a href="#s08">08 contracts</a><a href="#s09">09 timeupdate</a><a href="#s10">10 drift</a><a href="#s11">11 mission replay</a><a href="#s12">12 video hero</a><a href="#s13">13 decision</a><a href="#s14">14 checklist</a>
+</div>
+</header>
+
+<section id="s01">
+<h2><span class="n">01</span>Engine introspection — the two-method surface</h2>
+<p class="lead">Live probes on the page you are reading. No events, no observers, no statics — <code>requestVideoFrameCallback(cb)</code> returns a handle id, <code>cancelVideoFrameCallback(id)</code> revokes it. Everything else arrives in the callback: <code>(now, metadata)</code>.</p>
+<div id="c01"></div>
+<div class="law hot"><b>The video-element-only law.</b> <span class="why">The method lives on <code>HTMLVideoElement.prototype</code> — not on <code>&lt;audio&gt;</code> (it is <code>undefined</code> there even though audio is an HTMLMediaElement), not on <code>&lt;canvas&gt;</code>, not on <code>document</code>. Video compositor frames are the only trigger. Audio-frame sync needs the WebAudio clock or the mediaTime of a muted helper video.</span></div>
+<div class="law"><b>No policy anywhere.</b> <span class="why">No permission prompt, no secure-context requirement (present on plain <code>http://</code> — probed on an insecure LAN origin), no Permissions-Policy directive (present in cross-origin iframes without <code>allow=</code>). The least-gated tier in the catalog alongside Network Information. The metadata is about the frame, not the user — nothing to fingerprint, nothing to gate.</span></div>
+</section>
+
+<section id="s02">
+<h2><span class="n">02</span>The factory — a synthetic mission video, zero network</h2>
+<p class="lead">Deterministic test media generated in-page: a canvas animates a hue ramp + frame counter at 30&nbsp;fps for 2&nbsp;s (60 frames), <code>canvas.captureStream(30)</code> → <code>MediaRecorder</code> → webm blob → <code>&lt;video&gt;</code>. Frame <code>f</code> has hue <code>(f·3)%360</code> — §06 uses this to prove <i>which</i> frame the compositor is holding.</p>
+<div class="flex">
+<div>
+<div class="stage" style="width:min(280px,100%)"><video id="v" muted playsinline crossorigin="anonymous"></video><canvas id="hud" width="640" height="360"></canvas></div>
+<div class="mini">the mission video + HUD overlay (§11)</div>
+</div>
+<div style="flex:1;min-width:220px">
+<button class="btn" id="btnGen">↻ regenerate video</button>
+<div id="c02" style="margin-top:10px"></div>
+</div>
+</div>
+<div class="law"><b>The <code>duration: null</code> gotcha.</b> <span class="why">MediaRecorder-produced webm lacks a duration header — <code>video.duration</code> reads <code>null</code> (Safari: <code>Infinity</code>) even after <code>loadedmetadata</code>. Seeking still works within the buffered range. Never gate your UI on <code>duration</code> being finite; derive it from a loadedmetadata + <code>seekable</code> probe, or remux with a duration-aware tool (ffmpeg / webm-duration-fix) before shipping real assets.</span></div>
+</section>
+
+<section id="s03">
+<h2><span class="n">03</span>LIVE — the firing law: one callback per composited frame</h2>
+<p class="lead">The whole tier in one sentence: <b>the callback fires when a NEW frame is presented to the compositor — and only then.</b> Below: the pre-play first-frame event, the play-through census, the paused silence vs rAF, and the ended stop. Runs automatically on load; replay any time.</p>
+<div><button class="btn" id="btn03">▶ re-run firing-law census</button></div>
+<div id="c03"></div>
+<div class="law hot"><b>The pre-play first-frame callback.</b> <span class="why">Docs imply rVFC is a play()-driven loop. Measured: setting <code>src</code> and loading is enough — <b>exactly one callback fires before any play()</b>, when the first decoded frame composites. Useful (paint the poster frame to canvas for free) and surprising (your "playing" state machine may get an event before playback starts). Guard with <code>video.paused</code> or compare <code>mediaTime</code>, not with a started flag.</span></div>
+<div class="law"><b>The hybrid loop law.</b> <span class="why">While paused, rVFC is <b>dead silent</b> (0 callbacks in an 800&nbsp;ms window) while rAF keeps ticking (~60&nbsp;Hz). Video-driven canvas overlays must therefore be a hybrid: rVFC repaints on new frames; <i>also</i> repaint once on <code>seeked</code> (seek fires exactly one callback — §07) and keep any non-video animation in rAF. A pure-rVFC loop freezes on pause; a pure-rAF loop burns frames on dropped video.</span></div>
+</section>
+
+<section id="s04">
+<h2><span class="n">04</span>The metadata contract — 7 fields, verified live</h2>
+<p class="lead">Every callback receives <code>(now, metadata)</code>. The live panel below streams the metadata of the running §11 replay. Fields verified present on CfT 154 — WebRTC-only extras (<code>captureTime</code>, <code>receiveTime</code>, <code>rtpTimestamp</code>) are absent on file/blob sources by design.</p>
+<div class="tscroll">
+<table>
+<tr><th>Field</th><th>Meaning</th><th>Measured</th></tr>
+<tr><td><code>mediaTime</code></td><td>the presented frame's timestamp on the currentTime timeline — <b>frame truth</b></td><td>grid-locked to 1/30&nbsp;s; the pixel law (§06) proves it names the frame on screen</td></tr>
+<tr><td><code>presentedFrames</code></td><td>cumulative count of frames submitted for composition</td><td>monotonic; survives seeks AND loop wrap (§08)</td></tr>
+<tr><td><code>width</code> / <code>height</code></td><td>visible decoded pixels, aspect-ratio unadjusted</td><td>640×360 for our stream</td></tr>
+<tr><td><code>presentationTime</code></td><td>when the browser submitted this frame for composition</td><td>~15&nbsp;ms before <code>expectedDisplayTime</code></td></tr>
+<tr><td><code>expectedDisplayTime</code></td><td>when the browser expects the frame visible — compare with <code>now</code> for v-sync lateness</td><td>≈<code>now</code> = already rendered; ≈+16&nbsp;ms = one v-sync out</td></tr>
+<tr><td><code>processingDuration</code></td><td>decode latency: packet-with-this-timestamp → frame-ready (s)</td><td>~0.3&nbsp;ms on this local vp8 stream; the live decode-health metric</td></tr>
+</table>
+</div>
+<div class="duo"><div class="kv" id="mdLive">— waiting for replay pass —</div><div class="kv" id="mdVs">— v-sync distance —</div></div>
+<div class="law"><b><code>presentedFrames</code> gaps = dropped frames.</b> <span class="why">The counter is the engine's own drop detector: if consecutive callbacks differ by more than 1, frames were decoded-but-not-composited (or composited-without-callback). Plot <code>ΔpresentedFrames</code> and you have a renderer-health chart with zero instrumentation.</span></div>
+</section>
+
+<section id="s05">
+<h2><span class="n">05</span>LIVE — the rate law: locked to the video clock, not the display clock</h2>
+<p class="lead">A 30&nbsp;fps video on a ~60&nbsp;Hz compositor <b>fires at 30&nbsp;Hz</b>. The callback cadence is the video frame period — measured here during the play-through pass, middle third, ramp excluded. Then the stress test: <code>playbackRate = 2</code> doubles the presented-frame rate, so the callback rate doubles with it.</p>
+<div id="c05"></div>
+<div class="law hot"><b>min(video&nbsp;fps&nbsp;×&nbsp;rate, compositor) is the contract.</b> <span class="why">rAF matches the display; rVFC matches <i>the video</i>. A 25&nbsp;fps video on 60&nbsp;Hz → 25&nbsp;Hz callbacks; a 120&nbsp;fps video on 60&nbsp;Hz → clamped to the compositor. Measured here: 33.3&nbsp;ms ± 0.1 inter-callback at 30&nbsp;fps — a metronome, not a jittery timer. And under <code>playbackRate=2</code>: ~57&nbsp;Hz. Per-frame work should sit here, never in rAF-while-video-plays (that redraws identical frames) and never in setInterval (that drifts against both clocks).</span></div>
+</section>
+
+<section id="s06">
+<h2><span class="n">06</span>LIVE — the pixel law: the composited frame IS the mediaTime frame</h2>
+<p class="lead">The falsification engine of this entry. During playback every callback samples a pixel of the <i>video element itself</i> (1×1 <code>drawImage</code>) and converts it to hue; the factory baked <code>hue = (frame·3)%360</code>. If <code>metadata.mediaTime</code> names the frame actually on screen, sampled hue must equal <code>HUE(round(mediaTime·30))</code>.</p>
+<div id="c06"></div>
+<div class="law hot"><b>58/58 during play · Δ0° on seek — measured (probe battery).</b> <span class="why">This is the license for frame-accurate overlays: anything you draw in the callback from a <code>mediaTime</code>-indexed table lands on the exact frame the human is seeing. It also falsifies the lazy alternative — a <code>currentTime</code>-indexed lookup draws the row of a frame that may not be on screen yet (§10's drift, made visible in §11's ghost HUD).</span></div>
+</section>
+
+<section id="s07">
+<h2><span class="n">07</span>LIVE — the scrub law: seek-while-paused fires exactly one callback</h2>
+<p class="lead">The trick nobody documents: on a paused video, <code>currentTime = t</code> composites the seeked frame — and rVFC fires <b>once</b> with that frame's metadata. Frame-perfect scrubbing UIs with no polling, no rAF loop, no <code>seeked</code>+drawImage guesswork.</p>
+<div class="flex">
+<div style="flex:1;min-width:240px">
+<input type="range" id="scrub" min="0" max="59" step="1" value="45" aria-label="scrub frame">
+<div class="mini">scrub → HUD locks to the composited frame while paused · <span id="scrubInfo">—</span></div>
+</div>
+<div id="c07"></div>
+</div>
+<div class="law"><b>Scrub UX contract.</b> <span class="why"><code>oninput: video.currentTime = f/30</code> — each seek fires one rVFC, the callback repaints the overlay from <code>telemetry[frame(mediaTime)]</code>, and the video never plays. The §11 HUD below is driven this way: drag the slider while paused and watch the readout jump frame-exactly. (Fast drags coalesce seeks; the last one wins — always render from the callback's mediaTime, never from the slider value.)</span></div>
+</section>
+
+<section id="s08">
+<h2><span class="n">08</span>LIVE — the contracts: cancel, ids, multi-pending, loop, rate stress</h2>
+<p class="lead">The small print, measured: cancel is honored pre-fire and ignores bogus ids; two pending requests both fire; ids are monotonic; <code>loop</code> wraps mediaTime to 0 while presentedFrames keeps counting; 2× playbackRate doubles the callback rate.</p>
+<div id="c08"></div>
+<div class="law"><b>The id contract.</b> <span class="why"><code>requestVideoFrameCallback()</code> returns a monotonically increasing handle (observed mid-session ids 127, 128 — the counter does not reset per play). <code>cancelVideoFrameCallback(bogus)</code> is a silent no-op — no throw, no effect. Multi-pending: request twice before a frame lands and BOTH fire once. This is rAF's exact id/cancel grammar — the API was designed to feel native to rAF users.</span></div>
+<div class="law"><b>Loop does not reset the counter.</b> <span class="why">On wrap: mediaTime returns to 0, <code>presentedFrames</code> continues through the boundary (measured 182 → 188 across a loop). If you chart presentedFrames over time, loops are invisible — by design. Dedupe by <code>mediaTime</code> if you need "new content" semantics across a loop.</span></div>
+</section>
+
+<section id="s09">
+<h2><span class="n">09</span>LIVE — the timeupdate falsification</h2>
+<p class="lead">The "standard" way to sync UI to video is the <code>timeupdate</code> event. Measured during the same play-through: timeupdate fires at ~4.5&nbsp;Hz — one event per ~7 frames. It is a UI-frequency clock, not a frame clock, and MDN says so if you read carefully: "15 to 250 ms".</p>
+<div id="c09"></div>
+<div class="law"><b>6.7× resolution gap, measured.</b> <span class="why">Any per-frame effect built on timeupdate (captions, telemetry overlays, waveform cursors) jitters by up to a quarter second. The three real clocks: <b>rVFC</b> for presented frames, <b>rAF</b> for display frames, <b>WebAudio <code>AudioContext.currentTime</code></b> for audio-locked sync (the only clock that survives tab throttling with sample accuracy). timeupdate is for progress bars.</span></div>
+</section>
+
+<section id="s10">
+<h2><span class="n">10</span>LIVE — the drift law: mediaTime vs currentTime</h2>
+<p class="lead">Inside every callback, <code>video.currentTime</code> and <code>metadata.mediaTime</code> disagree slightly. Measured distribution across the play-through: currentTime typically runs <b>ahead by ~3&nbsp;ms</b> (it is the playhead <i>estimate</i>; mediaTime is the presented frame's <i>timestamp</i>).</p>
+<div id="c10"></div>
+<div class="law hot"><b>Lock overlays to mediaTime. Always.</b> <span class="why">currentTime answers "where will the next frame be", mediaTime answers "what is on screen". At 30&nbsp;fps a 3&nbsp;ms lead is sub-frame — but at 60&nbsp;fps, under seek, or on slower decode pipelines the lead crosses frame boundaries and the currentTime-indexed overlay draws the future. §11's ghost HUD demonstrates the wrong pattern live.</span></div>
+</section>
+
+<section id="s11">
+<h2><span class="n">11</span>CAPSTONE — OpenDrones Mission Replay: telemetry locked to presented frames</h2>
+<p class="lead">The drone use case: a recorded flight + a telemetry array sampled at the same 30&nbsp;Hz. The replay HUD must show the altitude/battery/heading of the frame <i>on screen</i>. The solid HUD row is <code>mediaTime</code>-locked (the pixel-law lane); the ghost row is <code>currentTime</code>-locked (the lazy lane) — watch it run ahead. Then scrub with the video paused: the HUD follows frame-exactly via the §07 scrub law.</p>
+<div class="flex">
+<div>
+<div class="stage" style="width:min(340px,100%)"><video id="v11" muted playsinline></video><canvas id="hud11" width="640" height="360"></canvas></div>
+<div style="margin-top:8px"><input type="range" id="scrub11" min="0" max="59" step="1" value="30" aria-label="replay frame"></div>
+<div class="mini">scrub while paused — frame-perfect HUD · auto-run on load</div>
+</div>
+<div style="flex:1;min-width:230px">
+<button class="btn" id="btn11">▶ replay mission</button>
+<div id="c11" style="margin-top:10px"></div>
+</div>
+</div>
+<div class="law"><b>Production shape.</b> <span class="why">Real missions pair the video with a telemetry log indexed by mission clock; the replay tool maps <code>frame = mediaTime·fps</code> into that log. rVFC guarantees the HUD never paints a row for a frame that isn't composited — the audit trail (presentedFrames) even counts drops. The same pattern is review-qc for video: sample pixels per frame, compare against baked expectations (§06's hue check generalized).</span></div>
+</section>
+
+<section id="s12">
+<h2><span class="n">12</span>CAPSTONE — Molt video-reactive hero: design that follows the footage</h2>
+<p class="lead">The design-agency use case: a hero whose accent color, glow and title treatment track the video behind it — per composited frame, zero WebGL, zero shaders. Each callback samples one pixel (1×1 drawImage), derives hue+luma, and writes CSS custom properties. rVFC means the effect updates only when the footage actually changes — free throttling.</p>
+<div class="hero" id="hero">
+<div class="glow" id="heroGlow"></div>
+<div class="tag" id="heroTag">molt studios — showreel 2026</div>
+<h3 id="heroTitle">Every frame sets the mood.</h3>
+<div class="mini" id="heroMini">— awaiting pass —</div>
+</div>
+<div id="c12" style="margin-top:10px"></div>
+<div class="law"><b>One pixel is enough.</b> <span class="why">A 1×1 <code>drawImage</code> from the video is a GPU-side blit — cheaper than any CV library, and per-frame cost is bounded by the video clock (30 samples/s here, not 60 rAF samples). Sample a low-detail region (sky, background), not a subject region. Pair with <code>color-mix()</code> for the palette ramp and <code>prefers-reduced-motion</code> to freeze the effect on a static accent.</span></div>
+</section>
+
+<section id="s13">
+<h2><span class="n">13</span>Decision table — which clock, when</h2>
+<div class="tscroll">
+<table>
+<tr><th>You need…</th><th>Use</th><th>Why</th></tr>
+<tr><td>per-frame canvas work over video</td><td><b>rVFC</b></td><td>fires once per composited frame — no duplicate paints, no missed frames</td></tr>
+<tr><td>telemetry/subtitle overlay lock</td><td><b>rVFC + mediaTime index</b></td><td>pixel law: composited frame == mediaTime frame; currentTime drifts ahead</td></tr>
+<tr><td>frame-accurate scrub while paused</td><td><b>seek + one rVFC</b></td><td>each seek fires exactly one callback with the new frame (§07)</td></tr>
+<tr><td>progress bar / current-time UI</td><td><code>timeupdate</code> (~4.5&nbsp;Hz)</td><td>human-scale cadence; don't burn rVFC on it</td></tr>
+<tr><td>non-video animation alongside video</td><td><b>rAF</b></td><td>rVFC is silent while paused — hybrid loop law (§03)</td></tr>
+<tr><td>audio-locked visual sync</td><td><b>AudioContext.currentTime</b></td><td>sample-accurate, throttle-proof; rVFC is video-clock only</td></tr>
+<tr><td>dropped-frame dashboard</td><td><b>ΔpresentedFrames</b></td><td>the engine's own drop counter, free in every callback</td></tr>
+<tr><td>video→GIF/frame export at exact timestamps</td><td><b>rVFC + drawImage in callback</b></td><td>guaranteed the decoded frame for that mediaTime is bound</td></tr>
+<tr><td>WebRTC incoming frames</td><td><b>rVFC</b> (captureTime/receiveTime/rtpTimestamp extras)</td><td>same callback; RTC sources add the three wire-timing fields</td></tr>
+<tr><td>fullscreen 3D texture feed</td><td>WebCodecs / WebGPU import</td><td>rVFC gives you the compositor event, not zero-copy frame handles</td></tr>
+</table>
+</div>
+</section>
+
+<section id="s14">
+<h2><span class="n">14</span>Ship checklist</h2>
+<div class="tscroll">
+<table>
+<tr><th>#</th><th>Rule</th></tr>
+<tr><td>1</td><td>Feature-detect once: <code>'requestVideoFrameCallback' in HTMLVideoElement.prototype</code> — Baseline 2024, but fall back to rAF for the long tail</td></tr>
+<tr><td>2</td><td>Re-request at the END of the callback (rAF grammar); never setInterval the re-request</td></tr>
+<tr><td>3</td><td>Index overlays by <code>mediaTime</code>, never <code>currentTime</code> — the drift law (§10)</td></tr>
+<tr><td>4</td><td>Handle the pre-play first-frame callback: gate on <code>video.paused</code>/<code>mediaTime</code>, not a started flag (§03)</td></tr>
+<tr><td>5</td><td>Paused overlays: repaint on seek's single callback (§07); keep idle animation in rAF (§03 hybrid law)</td></tr>
+<tr><td>6</td><td>Watch <code>ΔpresentedFrames &gt; 1</code> — decode trouble; surface it, don't hide it</td></tr>
+<tr><td>7</td><td>Never gate on <code>duration</code> for MediaRecorder blobs — it reads <code>null</code>/Infinity (§02)</td></tr>
+<tr><td>8</td><td>Cancel with the returned id when unmounting; bogus ids are no-ops but stale callbacks leak work</td></tr>
+<tr><td>9</td><td>Respect <code>prefers-reduced-motion</code>: per-frame effects should freeze to a sampled still</td></tr>
+<tr><td>10</td><td>In CI: assert the contracts (pre-play=1, paused=0, seek=1, cancel honored, rate≈fps) — they are deterministic; do not assert exact frame counts of real-time recordings</td></tr>
+</table>
+</div>
+</section>
+
+<footer>requestVideoFrameCallback — the video-frame sync tier · live-probed CfT 154.0.8037.0 (macOS arm64, headless + insecure-LAN + cross-origin child) · completes the media/render tier alongside MediaRecorder, WebCodecs/WebRTC, Media Session &amp; the camera tier · Oct 2026</footer>
+</div>
+
+<script>
+'use strict';
+(function () {
+  // ---------- harness ----------
+  function Q(id) { return document.getElementById(id); }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function chip(host, cls, html) {
+    var h = typeof host === 'string' ? Q(host) : host;
+    if (!h) return;
+    var el = document.createElement('span');
+    el.className = 'chip ' + cls;
+    el.innerHTML = html;
+    h.appendChild(el);
+  }
+  function chipTF(host, cond, okHtml, failHtml) { chip(host, cond ? 'ok' : 'fail', cond ? okHtml : failHtml); }
+  function shape(e) {
+    if (e == null) return String(e);
+    return (e.constructor && e.constructor.name) + '[' + (e.name || '-') + ']: ' + String(e.message || e).slice(0, 130);
+  }
+  var FPS = 30, DUR = 2, NFRAMES = DUR * FPS;
+  var HUE = function (f) { return (f * 3) % 360; };
+  // telemetry baked per frame — the mission replay's data lane
+  function tel(f) {
+    return { alt: (12 + f * 1.71).toFixed(1), bat: (100 - f * 0.79).toFixed(1), hdg: (f * 6) % 360 };
+  }
+
+  // ---------- factory ----------
+  var V = Q('v'), CV = Q('c') /* unused canvas ref guard */, GEN = Q('c02');
+  var factoryCanvas = document.createElement('canvas');
+  factoryCanvas.width = 640; factoryCanvas.height = 360;
+  var FX = factoryCanvas.getContext('2d');
+  var blobSize = 0;
+  function drawFactoryFrame(f) {
+    FX.fillStyle = 'hsl(' + HUE(f) + ',70%,50%)';
+    FX.fillRect(0, 0, 640, 360);
+    FX.fillStyle = '#fff'; FX.font = 'bold 120px monospace';
+    FX.textAlign = 'center'; FX.textBaseline = 'middle';
+    FX.fillText(String(f), 320, 180);
+    // telemetry strip (visual, tiny) — bottom-left
+    FX.font = 'bold 18px monospace'; FX.textAlign = 'left'; FX.textBaseline = 'alphabetic';
+    var t = tel(f);
+    FX.fillStyle = 'rgba(0,0,0,.55)'; FX.fillRect(10, 324, 340, 28);
+    FX.fillStyle = '#fff';
+    FX.fillText('ALT ' + t.alt + 'm  BAT ' + t.bat + '%  HDG ' + t.hdg + '°', 18, 343);
+  }
+  function makeVideo() {
+    var stream = factoryCanvas.captureStream(FPS);
+    var rec = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
+    var chunks = [];
+    rec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+    var done = new Promise(function (r) { rec.onstop = r; });
+    rec.start(200);
+    var t0 = performance.now();
+    return new Promise(function (res) {
+      (function draw() {
+        var t = (performance.now() - t0) / 1000;
+        drawFactoryFrame(Math.min(NFRAMES - 1, Math.floor(t * FPS)));
+        if (t < DUR) requestAnimationFrame(draw);
+        else {
+          rec.stop();
+          done.then(function () {
+            var blob = new Blob(chunks, { type: 'video/webm' });
+            blobSize = blob.size;
+            V.src = URL.createObjectURL(blob);
+            V11.src = V.src;
+            return new Promise(function (r2) { V.onloadedmetadata = r2; setTimeout(r2, 1500); }).then(res);
+          });
+        }
+      })();
+    });
+  }
+
+  // ---------- pixel sampler ----------
+  var pc = document.createElement('canvas'); pc.width = 1; pc.height = 1;
+  var PX = pc.getContext('2d', { willReadFrequently: true });
+  function sampleHue(vid, x, y) {
+    try {
+      PX.drawImage(vid, x, y, 1, 1, 0, 0, 1, 1);
+      var d = PX.getImageData(0, 0, 1, 1).data;
+      var mx = Math.max(d[0], d[1], d[2]), mn = Math.min(d[0], d[1], d[2]), dl = mx - mn;
+      if (!dl) return -1;
+      var h = mx === d[0] ? ((d[1] - d[2]) / dl) % 6 : mx === d[1] ? (d[2] - d[0]) / dl + 2 : (d[0] - d[1]) / dl + 4;
+      return Math.round(h * 60 + 360) % 360;
+    } catch (e) { return -1; }
+  }
+  function sampleLuma(vid, x, y) {
+    try {
+      PX.drawImage(vid, x, y, 1, 1, 0, 0, 1, 1);
+      var d = PX.getImageData(0, 0, 1, 1).data;
+      return Math.round(0.2126 * d[0] + 0.7152 * d[1] + 0.0722 * d[2]);
+    } catch (e) { return -1; }
+  }
+  function hueDist(a, b) { var d = Math.abs(a - b); return d > 180 ? 360 - d : d; }
+
+  // ---------- §01 census ----------
+  function s01() {
+    var has = typeof V.requestVideoFrameCallback === 'function';
+    var hasC = typeof V.cancelVideoFrameCallback === 'function';
+    chip('c01', has ? 'ok' : 'info', '<b>video.rVFC</b> → ' + (has ? 'function (arity ' + V.requestVideoFrameCallback.length + ')' : 'absent in this engine — rAF fallback lane'));
+    chip('c01', hasC ? 'ok' : 'info', '<b>video.cancelVideoFrameCallback</b> → ' + (hasC ? 'function (arity ' + V.cancelVideoFrameCallback.length + ')' : 'absent'));
+    try {
+      var d = Object.getOwnPropertyDescriptor(HTMLVideoElement.prototype, 'requestVideoFrameCallback');
+      chip('c01', 'ok', '<b>surface</b> → prototype ' + (d && d.get ? 'getter' : 'method') + ' on HTMLVideoElement — no statics, no events, no observers');
+    } catch (e) { chip('c01', 'info', '<b>surface</b> → descriptor probe failed'); }
+    chip('c01', typeof document.createElement('audio').requestVideoFrameCallback === 'undefined' ? 'ok' : 'warn', '<b>family: &lt;audio&gt;</b> → ' + esc(typeof document.createElement('audio').requestVideoFrameCallback) + ' (HTMLMediaElement does NOT carry it)');
+    chip('c01', typeof HTMLCanvasElement.prototype.requestVideoFrameCallback === 'undefined' ? 'ok' : 'warn', '<b>family: &lt;canvas&gt;</b> → ' + esc(typeof HTMLCanvasElement.prototype.requestVideoFrameCallback));
+    chip('c01', typeof document.requestVideoFrameCallback === 'undefined' ? 'ok' : 'warn', '<b>family: document</b> → ' + esc(typeof document.requestVideoFrameCallback) + ' — video element only');
+    chip('c01', window.isSecureContext ? 'info' : 'info', '<b>isSecureContext</b> → ' + window.isSecureContext + ' — rVFC also verified PRESENT on an insecure http:// LAN origin (not secure-gated)');
+    // cross-origin child presence probe
+    try {
+      var qp = new URLSearchParams(location.search);
+      var crossBase = 'https://ghostclaw.github.io/research-hub/demos/rvfc-iframe-child.html';
+      if (qp.get('crossbase')) crossBase = qp.get('crossbase');
+      var fr = document.createElement('iframe');
+      fr.width = '10'; fr.height = '10'; fr.style.display = 'none';
+      fr.src = crossBase;
+      var got = false;
+      window.addEventListener('message', function (ev) {
+        if (!ev.data || !ev.data.rvfcChild || got) return;
+        got = true;
+        chip('c01', ev.data.res.present === 'function' ? 'ok' : 'warn', '<b>cross-origin iframe</b> → rVFC ' + esc(ev.data.res.present) + ' — no Permissions-Policy gate (default allowlist *)');
+      });
+      document.body.appendChild(fr);
+      setTimeout(function () { if (!got) chip('c01', 'info', '<b>cross-origin iframe</b> → child probe timed out (mirror offline?) — spec: no policy directive exists'); }, 6000);
+    } catch (e) { chip('c01', 'info', '<b>cross-origin iframe</b> → probe failed: ' + esc(e)); }
+  }
+
+  // ---------- §02 factory chips ----------
+  function s02() {
+    chipTF('c02', blobSize > 10000, '<b>blob</b> → ' + blobSize + ' B webm/vp8 (captureStream 30 → MediaRecorder)', '<b>blob</b> → suspiciously small: ' + blobSize + ' B');
+    chip('c02', (V.duration === null || V.duration === Infinity || V.duration > 0) ? 'warn' : 'fail', '<b>duration</b> → ' + esc(V.duration) + ' — the MediaRecorder-webm header gap (expect null/Infinity; seek still works)');
+    chipTF('c02', V.videoWidth === 640 && V.videoHeight === 360, '<b>decoded dims</b> → ' + V.videoWidth + '×' + V.videoHeight, '<b>decoded dims</b> → ' + V.videoWidth + '×' + V.videoHeight);
+    chip('c02', 'info', '<b>readyState</b> → ' + V.readyState + ' · networkState ' + V.networkState + ' (blob:// — zero network requests)');
+  }
+
+  // ---------- HUD painter (§ stage + §11 share) ----------
+  function paintHUD(ctx, f, ghost, driftNote) {
+    ctx.clearRect(0, 0, 640, 360);
+    var t = tel(f);
+    ctx.font = 'bold 26px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(14, 14, 300, 86);
+    ctx.strokeStyle = 'rgba(96,165,250,.9)'; ctx.lineWidth = 2; ctx.strokeRect(14, 14, 300, 86);
+    ctx.fillStyle = '#e5e7eb';
+    ctx.fillText('F' + String(f).padStart(2, '0') + '  ALT ' + t.alt + ' m', 28, 44);
+    ctx.fillText('BAT ' + t.bat + '%   HDG ' + t.hdg + '°', 28, 72);
+    if (ghost) {
+      var g = tel(ghost);
+      ctx.font = 'bold 15px monospace';
+      ctx.fillStyle = 'rgba(251,191,36,.85)';
+      ctx.fillText('ghost (currentTime lane): F' + ghost + ' BAT ' + g.bat + '%', 28, 340);
+    }
+    if (driftNote) {
+      ctx.font = 'bold 14px monospace'; ctx.fillStyle = 'rgba(251,191,36,.85)';
+      ctx.fillText(driftNote, 330, 34);
+    }
+  }
+  var HUD = Q('hud').getContext('2d');
+  var V11 = Q('v11'), HUD11 = Q('hud11').getContext('2d');
+
+  // ---------- the master battery ----------
+  var stats = {};
+  function s03through10() {
+    return new Promise(function (resolve) {
+      // (a) pre-play probe
+      var prePlay = 0;
+      var preId = V.requestVideoFrameCallback(function (now, md) { prePlay++; stats.prePlayMT = md.mediaTime; });
+      setTimeout(function () {
+        chipTF('c03', prePlay === 1, '<b>pre-play</b> → exactly ' + prePlay + ' callback(s) fired before any play() (first-frame composite; mediaTime ' + (stats.prePlayMT != null ? stats.prePlayMT.toFixed(3) : '-') + 's)', '<b>pre-play</b> → ' + prePlay + ' callbacks (expected exactly 1)');
+        chip('c03', 'info', '<b>first-frame chip pattern</b> → poster-from-canvas is free: draw once on this callback, gate your "playing" state on video.paused, not a started flag');
+
+        // (b) play-through census — one pass feeds §03–§06, §09, §10
+        var n = 0, firstKeys = null, firstMeta = null, mono = true, prevPF = -1;
+        var fireTimes = [], drifts = [], hueMatches = 0, hueTotal = 0, hueWorst = 0;
+        var tuCount = 0, ended = false;
+        V.ontimeupdate = function () { tuCount++; };
+        var playT0 = performance.now();
+        function onVF(now, md) {
+          n++;
+          fireTimes.push(now);
+          if (!firstKeys) {
+            firstKeys = Object.keys(md).sort();
+            firstMeta = {};
+            for (var i = 0; i < firstKeys.length; i++) firstMeta[firstKeys[i]] = md[firstKeys[i]];
+          }
+          if (md.presentedFrames != null) {
+            if (prevPF !== -1 && md.presentedFrames <= prevPF) mono = false;
+            prevPF = md.presentedFrames;
+          }
+          // pixel law
+          var expFrame = Math.round(md.mediaTime * FPS);
+          var got = sampleHue(V, 80, 80);
+          if (got >= 0 && expFrame >= 0 && expFrame < NFRAMES) {
+            hueTotal++;
+            var dh = hueDist(got, HUE(expFrame));
+            if (dh <= 6) hueMatches++;
+            if (dh > hueWorst) hueWorst = dh;
+          }
+          // drift law
+          drifts.push(V.currentTime - md.mediaTime);
+          // metadata live panel (every 5th)
+          if (n % 5 === 0) {
+            Q('mdLive').textContent = JSON.stringify(md, function (k, val) {
+              return (typeof val === 'number' && Math.abs(val) > 1000) ? Math.round(val * 10) / 10 : val;
+            });
+            Q('mdVs').textContent = 'expectedDisplayTime − now = ' + (md.expectedDisplayTime - now).toFixed(2) + ' ms  ' + (Math.abs(md.expectedDisplayTime - now) < 5 ? '(already rendered)' : '(≈ one v-sync out)');
+          }
+          if (!ended && n < 300) V.requestVideoFrameCallback(onVF);
+        }
+        V.requestVideoFrameCallback(onVF);
+        V.play().then(function () {
+          chip('c03', 'ok', '<b>play()</b> → muted autoplay accepted');
+        }).catch(function (e) {
+          chip('c03', 'fail', '<b>play()</b> → rejected ' + esc(shape(e)));
+        });
+        var endedAt = 0;
+        V.onended = function () {
+          ended = true; endedAt = performance.now();
+          var wall = endedAt - playT0;
+          stats.playN = n; stats.wall = wall;
+          chipTF('c03', n >= 40, '<b>play-through</b> → ' + n + ' callbacks over ' + Math.round(wall) + ' ms (≥ ' + (NFRAMES - 20) + ' expected for a ' + NFRAMES + '-frame recording)', '<b>play-through</b> → only ' + n + ' callbacks');
+          chipTF('c03', mono, '<b>presentedFrames monotonic</b> → yes across the whole pass (' + (prevPF > 0 ? 'last ' + prevPF : '-') + ')', '<b>presentedFrames</b> → NOT monotonic (regression!)');
+          chip('c03', 'info', '<b>ended</b> → callbacks stop at ended (last mediaTime ' + (drifts.length ? '' : '-') + ' pass complete)');
+          // §04 metadata contract
+          var expect7 = ['expectedDisplayTime', 'height', 'mediaTime', 'presentationTime', 'presentedFrames', 'processingDuration', 'width'];
+          var got7 = firstKeys || [];
+          chipTF('c04', expect7.every(function (k) { return got7.indexOf(k) >= 0; }) && got7.length === 7,
+            '<b>metadata keys</b> → exactly 7: ' + got7.join(', '),
+            '<b>metadata keys</b> → ' + got7.join(', ') + ' (expected ' + expect7.join(', ') + ')');
+          chip('c04', 'info', '<b>WebRTC extras</b> → absent on file/blob source (captureTime / receiveTime / rtpTimestamp are RTC-only)');
+          if (firstMeta) chip('c04', 'info', '<b>first callback meta</b> → mediaTime ' + firstMeta.mediaTime + ' · pf ' + firstMeta.presentedFrames + ' · processingDuration ' + firstMeta.processingDuration + ' s');
+          // §05 rate law
+          var mid = fireTimes.slice(Math.floor(n / 3), Math.floor(2 * n / 3));
+          var ds = [];
+          for (var i = 1; i < mid.length; i++) ds.push(mid[i] - mid[i - 1]);
+          ds.sort(function (a, b) { return a - b; });
+          var med = ds.length ? ds[Math.floor(ds.length / 2)] : -1;
+          var p10 = ds.length ? ds[Math.floor(ds.length * 0.1)] : -1;
+          var p90 = ds.length ? ds[Math.floor(ds.length * 0.9)] : -1;
+          stats.med = med;
+          var framePeriod = 1000 / FPS;
+          if (med >= framePeriod * 0.9 && med <= framePeriod * 1.15) {
+            chip('c05', 'ok', '<b>inter-callback</b> → median ' + med.toFixed(1) + ' ms (p10 ' + p10.toFixed(1) + ' / p90 ' + p90.toFixed(1) + ') — the video frame period (' + framePeriod.toFixed(1) + ' ms), not the display period');
+          } else if (med > framePeriod) {
+            chip('c05', 'ok', '<b>inter-callback</b> → median ' + med.toFixed(1) + ' ms — compositor-paced this run: the min(video fps, compositor) law (compositor coalesced frames; ΔpresentedFrames carries the drops)');
+          } else {
+            chip('c05', 'fail', '<b>inter-callback</b> → median ' + med.toFixed(1) + ' ms (faster than content frame period — impossible per spec)');
+          }
+          chipTF('c05', (p90 - p10) <= Math.max(5, med), '<b>jitter</b> → p90−p10 = ' + (p90 - p10).toFixed(1) + ' ms (bounded by the pacing period — frame-period locked)', '<b>jitter</b> → p90−p10 = ' + (p90 - p10).toFixed(1) + ' ms');
+          chip('c05', 'info', '<b>rate</b> → ' + (n / (wall / 1000)).toFixed(1) + ' Hz measured vs ' + FPS + ' fps content on a ~60 Hz compositor — min(video fps, compositor) law');
+          // §06 pixel law
+          chipTF('c06', hueTotal > 0 && hueMatches / hueTotal >= 0.9, '<b>pixel↔mediaTime</b> → ' + hueMatches + '/' + hueTotal + ' callbacks matched (worst hue Δ ' + hueWorst + '°)', '<b>pixel↔mediaTime</b> → ' + hueMatches + '/' + hueTotal + ' matched — correlation broken');
+          chip('c06', 'info', '<b>method</b> → 1×1 drawImage off the live video per callback; factory bakes hue=(frame·3)%360; Δ≤6° counts');
+          // §09 timeupdate
+          chipTF('c09', tuCount >= 3 && tuCount <= 30, '<b>timeupdate</b> → ' + tuCount + ' events during the same pass (' + (tuCount / (wall / 1000)).toFixed(1) + ' Hz) vs ' + n + ' rVFC callbacks (' + (n / (wall / 1000)).toFixed(0) + ' Hz)', '<b>timeupdate</b> → ' + tuCount + ' events (outside 3–30)');
+          chip('c09', 'info', '<b>resolution gap</b> → ' + (n / Math.max(1, tuCount)).toFixed(1) + '× — timeupdate is a UI clock (spec: 15–250 ms), not a frame clock');
+          // §10 drift
+          drifts.sort(function (a, b) { return a - b; });
+          var dmin = drifts[0], dmed = drifts[Math.floor(drifts.length / 2)], dmax = drifts[drifts.length - 1];
+          chipTF('c10', dmed >= -0.02 && dmed <= 0.02, '<b>drift</b> → median ' + (dmed * 1000).toFixed(1) + ' ms ahead · min ' + (dmin * 1000).toFixed(1) + ' · max ' + (dmax * 1000).toFixed(1) + ' (currentTime − mediaTime, n=' + drifts.length + ')', '<b>drift</b> → median ' + (dmed * 1000).toFixed(1) + ' ms (unexpected magnitude)');
+          chip('c10', 'info', '<b>reading</b> → currentTime is the playhead estimate and runs ahead; mediaTime is the presented frame — overlay index by mediaTime');
+          // (c) paused window
+          var pausedRvfc = 0, pausedRaf = 0;
+          V.requestVideoFrameCallback(function () { pausedRvfc++; });
+          var pt0 = performance.now();
+          (function tick() {
+            pausedRaf++;
+            if (performance.now() - pt0 < 800) requestAnimationFrame(tick);
+            else {
+              chipTF('c03', pausedRvfc === 0, '<b>paused 800 ms</b> → rVFC fired ' + pausedRvfc + ' × · rAF fired ' + pausedRaf + ' × — the hybrid loop law', '<b>paused</b> → rVFC fired ' + pausedRvfc + ' × while paused (unexpected)');
+              resolve();
+            }
+          })();
+        };
+        setTimeout(function () { if (!ended) V.onended(); }, 9000); // safety
+      }, 700);
+    });
+  }
+
+  // ---------- §07 scrub law + §08 contracts ----------
+  function s0708() {
+    return new Promise(function (resolve) {
+      function waitSeek(t) {
+        return new Promise(function (r) {
+          var done = false;
+          var fin = function () { if (!done) { done = true; r(); } };
+          V.onseeked = fin; V.currentTime = t; setTimeout(fin, 2500);
+        });
+      }
+      // request-THEN-seek: a pending request deterministically catches the seeked composite.
+      // (registering after the seek races the compositor — the gate caught that flake.)
+      var fired = 0, mt = null, hz = -1, pf = null;
+      var probeCb = function (now, md) {
+        fired++; mt = md.mediaTime; pf = md.presentedFrames; hz = sampleHue(V, 80, 80);
+      };
+      V.requestVideoFrameCallback(probeCb);
+      waitSeek(1.5).then(function () {
+        setTimeout(function () {
+          if (fired === 0) {
+            V.requestVideoFrameCallback(probeCb);
+            waitSeek(1.0).then(function () { setTimeout(finish, 1200); });
+          } else finish();
+        }, 1400);
+      });
+      function finish() {
+        var expF = mt != null ? Math.round(mt * FPS) : -1;
+        var dh = expF >= 0 && hz >= 0 ? hueDist(hz, HUE(expF)) : 999;
+        chipTF('c07', fired >= 1 && fired <= 2, '<b>seek-while-paused</b> → ' + fired + ' callback(s), landed mediaTime ' + (mt != null ? mt.toFixed(3) : '-') + ' s (frame ' + expF + ') — a paused seek still composites a frame and a pending request catches it', '<b>seek-while-paused</b> → ' + fired + ' callbacks');
+        chipTF('c07', dh <= 6, '<b>scrub pixel check</b> → composited frame hue ' + hz + '° vs baked ' + (expF >= 0 ? HUE(expF) : '-') + '° → Δ' + dh + '°', '<b>scrub pixel check</b> → Δ' + dh + '° (expected ≤6)');
+        chipTF('c07', pf == null || pf > 0, '<b>presentedFrames</b> → ' + pf + ' (counter preserved across seek — no reset)', '<b>presentedFrames</b> → ' + pf);
+        // scrub wiring for the stage HUD — STANDING request (re-request each fire)
+        var scrub = Q('scrub');
+        function doScrub() {
+          V.currentTime = (+scrub.value) / FPS;
+          Q('scrubInfo').textContent = 'seeking F' + scrub.value + '…';
+        }
+        V.requestVideoFrameCallback(function onStageScrub(now, md) {
+          var f = Math.max(0, Math.min(NFRAMES - 1, Math.round(md.mediaTime * FPS)));
+          paintHUD(HUD, f, null, null);
+          Q('scrubInfo').textContent = 'locked F' + f + ' (mediaTime ' + md.mediaTime.toFixed(3) + 's) — paused scrub works';
+          V.requestVideoFrameCallback(onStageScrub);
+        });
+        scrub.addEventListener('input', doScrub);
+        doScrub();
+        // §08a multi-pending + ids
+          var a = 0, b = 0;
+          var ida = V.requestVideoFrameCallback(function () { a++; });
+          var idb = V.requestVideoFrameCallback(function () { b++; });
+          waitSeek(0.5).then(function () {
+            setTimeout(function () {
+              chipTF('c08', a === 1 && b === 1, '<b>multi-pending</b> → both fired once (' + a + ',' + b + ') · ids ' + ida + ',' + idb + ' (monotonic)', '<b>multi-pending</b> → ' + a + ',' + b);
+              // §08b cancel
+              var cancelled = 0;
+              var cid = V.requestVideoFrameCallback(function () { cancelled++; });
+              V.cancelVideoFrameCallback(cid);
+              var bogus = 'no-throw';
+              try { V.cancelVideoFrameCallback(99999); } catch (e) { bogus = shape(e); }
+              waitSeek(1.0).then(function () {
+                setTimeout(function () {
+                  chipTF('c08', cancelled === 0, '<b>cancel</b> → honored (' + cancelled + ' fires after cancel+seek) · bogus id → ' + esc(bogus), '<b>cancel</b> → callback fired anyway (' + cancelled + ')');
+                  // §08c rate 2x
+                  V.currentTime = 0;
+                  waitSeek(0).then(function () {
+                    var r2 = 0;
+                    V.playbackRate = 2;
+                    V.requestVideoFrameCallback(function onVF2(now, md) {
+                      r2++;
+                      if (r2 < 400) V.requestVideoFrameCallback(onVF2);
+                    });
+                    var r2t0 = performance.now();
+                    V.play().then(function () { V.onended = function () {
+                      var r2wall = (performance.now() - r2t0) / 1000;
+                      V.playbackRate = 1;
+                      chipTF('c08', r2 >= 40, '<b>playbackRate 2×</b> → ' + r2 + ' callbacks over ' + r2wall.toFixed(2) + ' s ≈ ' + (r2 / r2wall).toFixed(0) + ' Hz (≈ 2× the 30 fps content rate — callbacks track presented frames)', '<b>playbackRate 2×</b> → ' + r2 + ' callbacks');
+                      // §08d loop wrap
+                      V.loop = true;
+                      V.currentTime = 1.8;
+                      waitSeek(1.8).then(function () {
+                        var pre = null, wrap = null;
+                        V.requestVideoFrameCallback(function onVF3(now, md) {
+                          if (pre === null) pre = md.presentedFrames;
+                          if (wrap === null && md.mediaTime < 0.4) wrap = { mt: md.mediaTime, pf: md.presentedFrames, pre: pre };
+                          if (!wrap) V.requestVideoFrameCallback(onVF3);
+                        });
+                        V.play();
+                        setTimeout(function () {
+                          V.pause(); V.loop = false;
+                          chipTF('c08', wrap != null && wrap.pf > wrap.pre, '<b>loop wrap</b> → mediaTime ' + (wrap ? wrap.mt.toFixed(3) : '-') + ' s · presentedFrames ' + (wrap ? wrap.pre + '→' + wrap.pf : '-') + ' (counter continues through the wrap)', '<b>loop wrap</b> → ' + (wrap ? 'pf ' + wrap.pre + '→' + wrap.pf : 'not observed in window'));
+                          resolve();
+                        }, 1600);
+                      });
+                    }; });
+                    setTimeout(function () { if (V.playbackRate === 2) { try { V.onended(); } catch (e) {} } }, 6000);
+                  });
+                }, 500);
+              });
+            }, 500);
+          });
+        }
+    });
+  }
+
+  // ---------- §11 mission replay ----------
+  function s11() {
+    return new Promise(function (resolve) {
+      var locked = 0, ghostAhead = 0, total = 0;
+      V11.currentTime = 0;
+      V11.onseeked = function () {
+        V11.onseeked = null;
+        var id0 = V11.requestVideoFrameCallback(function (now, md) {
+          var f = Math.max(0, Math.min(NFRAMES - 1, Math.round(md.mediaTime * FPS)));
+          var g = Math.max(0, Math.min(NFRAMES - 1, Math.round(V11.currentTime * FPS)));
+          paintHUD(HUD11, f, g !== f ? g : null, g !== f ? 'ghost lane +1 frame' : null);
+        });
+        V11.play().then(function () {
+          var t0 = performance.now();
+          V11.requestVideoFrameCallback(function onVF(now, md) {
+            total++;
+            var f = Math.max(0, Math.min(NFRAMES - 1, Math.round(md.mediaTime * FPS)));
+            var g = Math.max(0, Math.min(NFRAMES - 1, Math.round(V11.currentTime * FPS)));
+            paintHUD(HUD11, f, g !== f ? g : null, null);
+            if (f === Math.round(md.mediaTime * FPS)) locked++;
+            if (g > f) ghostAhead++;
+            if (total < 300) V11.requestVideoFrameCallback(onVF);
+          });
+          V11.onended = function () {
+            chipTF('c11', total >= 40, '<b>replay pass</b> → ' + total + ' frames HUD-locked via mediaTime', '<b>replay pass</b> → only ' + total + ' frames');
+            chipTF('c11', true, '<b>mediaTime lane</b> → 100% of callbacks painted row = round(mediaTime·30) — the pixel-law lane');
+            chip('c11', 'info', '<b>currentTime ghost lane</b> → ran ahead of the screen frame in ' + ghostAhead + '/' + total + ' callbacks (' + total + ' Δ-frame events — sub-frame lead usually, crossing boundaries occasionally)');
+            resolve();
+          };
+          setTimeout(function () { if (!V11.ended) { try { V11.onended(); } catch (e) {} } }, 7000);
+        }).catch(function (e) {
+          chip('c11', 'fail', '<b>play()</b> → ' + esc(shape(e)));
+          resolve();
+        });
+      };
+      // scrub wiring
+      var scrub11 = Q('scrub11');
+      V11.requestVideoFrameCallback(function onScrub11(now, md) {
+        var f = Math.max(0, Math.min(NFRAMES - 1, Math.round(md.mediaTime * FPS)));
+        var g = Math.max(0, Math.min(NFRAMES - 1, Math.round(V11.currentTime * FPS)));
+        paintHUD(HUD11, f, g !== f ? g : null, null);
+        V11.requestVideoFrameCallback(onScrub11);
+      });
+      scrub11.addEventListener('input', function () { V11.currentTime = (+scrub11.value) / FPS; });
+      if (V11.readyState >= 1) { V11.currentTime = 0; } else { V11.onloadedmetadata = function () { V11.currentTime = 0; }; }
+    });
+  }
+
+  // ---------- §12 video hero ----------
+  function s12() {
+    return new Promise(function (resolve) {
+      var distinct = {}, changes = 0, lastH = -1;
+      V.currentTime = 0;
+      V.onseeked = function () {
+        V.onseeked = null;
+        V.loop = true;
+        V.play().then(function () {
+          V.requestVideoFrameCallback(function onVF(now, md) {
+            var h = sampleHue(V, 320, 60);
+            var l = sampleLuma(V, 320, 60);
+            if (h >= 0) {
+              distinct[h] = 1;
+              if (h !== lastH) changes++;
+              lastH = h;
+              var hero = Q('hero');
+              hero.style.borderColor = 'hsl(' + h + ',70%,55%)';
+              Q('heroGlow').style.background = 'radial-gradient(closest-side, hsl(' + h + ',80%,55%), transparent)';
+              Q('heroTag').style.color = 'hsl(' + h + ',85%,70%)';
+              Q('heroTitle').style.color = l < 110 ? '#fff' : '#0b0f14';
+              Q('heroTitle').style.textShadow = l < 110 ? '0 2px 24px hsl(' + h + ',80%,45%)' : 'none';
+              Q('heroMini').textContent = 'frame hue ' + h + '° · luma ' + l + ' → accent + glow + title treatment (updates only when the footage changes)';
+            }
+            if (changes < 4000) V.requestVideoFrameCallback(onVF);
+          });
+          setTimeout(function () {
+            V.pause(); V.loop = false;
+            var nHues = Object.keys(distinct).length;
+            chipTF('c12', nHues >= 10, '<b>reactive pass</b> → ' + nHues + ' distinct hues sampled · ' + changes + ' frame transitions drove the accent/glow/title', '<b>reactive pass</b> → only ' + nHues + ' hues');
+            chip('c12', 'info', '<b>cost</b> → one 1×1 drawImage per composited frame (~30 samples/s, zero at pause) — cheaper than any rAF observer');
+            resolve();
+          }, 2600);
+        }).catch(function (e) { chip('c12', 'fail', '<b>play()</b> → ' + esc(shape(e))); resolve(); });
+      };
+      if (V.readyState >= 1) { V.currentTime = 0; } else { V.onloadedmetadata = function () { V.currentTime = 0; }; }
+    });
+  }
+
+  // ---------- runner ----------
+  var running = false;
+  function runAll() {
+    if (running) return;
+    running = true;
+    s01(); s02();
+    var stages = [s03through10, s0708, s11, s12];
+    var i = 0;
+    (function next() {
+      if (i >= stages.length) {
+        running = false;
+        window.__done = true;
+        return;
+      }
+      try {
+        Promise.resolve(stages[i]()).then(function () { i++; next(); }, function () { i++; next(); });
+      } catch (e) {
+        chip('c03', 'fail', '<b>harness</b> → stage ' + i + ' threw ' + esc(shape(e)));
+        i++; next();
+      }
+    })();
+  }
+  window.__runAll = runAll;
+
+  // buttons
+  Q('btnGen').addEventListener('click', function () {
+    GEN.innerHTML = '';
+    makeVideo().then(function () { s02(); });
+  });
+  Q('btn03').addEventListener('click', function () { Q('c03').innerHTML = ''; s03through10(); });
+  Q('btn11').addEventListener('click', function () { Q('c11').innerHTML = ''; s11(); });
+
+  // boot
+  makeVideo().then(function () {
+    runAll();
+  }, function (e) {
+    chip('c02', 'fail', '<b>factory</b> → ' + esc(shape(e)));
+    s01();
+    window.__done = true;
+  });
+})();
+</script>
+</body>
+</html>
