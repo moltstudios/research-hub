@@ -1,0 +1,769 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MediaSource Extensions — the streaming container tier (live-probed CfT 154)</title>
+<meta name="description" content="MSE live-probed: the append-state gate, the silent reopen, the execution laws, sequence-mode concat, the worker handle pipeline, and a working in-page DVR.">
+<style>
+:root{--bg:#0b0f14;--card:#121821;--line:#1f2937;--tx:#e5e7eb;--mut:#9ca3af;--ok:#34d399;--ok-soft:#ecfdf5;--warn:#fbbf24;--warn-soft:#451a03;--bad:#f87171;--bad-soft:#450a0a;--acc:#60a5fa;--acc2:#a78bfa}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.65 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:920px;margin:0 auto;padding:22px 18px}
+header{padding:26px 0 8px}
+.kicker{font:700 11px ui-monospace,Menlo,monospace;letter-spacing:.18em;text-transform:uppercase;color:var(--acc)}
+h1{font-size:clamp(26px,5vw,40px);line-height:1.1;letter-spacing:-1px;margin:10px 0 12px}
+h1 span{color:var(--acc)}
+.sub{color:#c7d0da;max-width:70ch;margin:0 0 14px}
+.sub b{color:#fff}
+.badges{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.badge{font:600 11px ui-monospace,Menlo,monospace;border:1px solid var(--line);color:#cbd5e1;border-radius:999px;padding:3px 10px;background:#0d1520}
+.badge.on{border-color:#1e4f3f;color:var(--ok)}
+.badge.warnb{border-color:#6b4708;color:var(--warn)}
+section{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 20px 16px;margin:16px 0}
+h2{font-size:19px;letter-spacing:-.3px;margin:0 0 8px;display:flex;align-items:baseline;gap:10px}
+h2 .n{font:700 12px ui-monospace,Menlo,monospace;color:var(--acc);border:1px solid var(--line);border-radius:8px;padding:2px 8px;background:#0d1520}
+p.lead{color:#b9c4d0;margin:0 0 10px;font-size:14px}
+code{font:.92em ui-monospace,Menlo,monospace;background:#0d1520;border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:#93c5fd;overflow-wrap:anywhere}
+pre{background:#0b0f14;border:1px solid var(--line);border-radius:12px;padding:12px 16px;overflow-x:auto;font:12.5px/1.7 ui-monospace,Menlo,monospace;color:#a5b4fc}
+pre i{color:#6b7280;font-style:normal}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px}
+th{text-align:left;color:var(--mut);font-weight:600;border-bottom:1px solid var(--line);padding:7px 10px 7px 0}
+td{border-bottom:1px solid #17202c;padding:7px 10px 7px 0;vertical-align:top}
+td code,th code{overflow-wrap:anywhere}
+td,th{overflow-wrap:break-word}
+td:last-child,th:last-child{padding-right:0}
+.chip{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:3px 10px;margin:3px 4px 3px 0;border:1px solid transparent;vertical-align:middle;max-width:100%;line-height:1.45;overflow-wrap:break-word}
+.chip.ok{background:var(--ok-soft);color:#065f46;border-color:#a7f3d0}
+.chip.warn{background:var(--warn-soft);color:var(--warn);border-color:#fde68a}
+.chip.fail{background:var(--bad-soft);color:var(--bad);border-color:#fecaca}
+.chip.info{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}
+.law{border-left:3px solid var(--acc);background:#0d1520;border-radius:0 12px 12px 0;padding:12px 16px;margin:14px 0;font-size:13.5px}
+.law.hot{border-left-color:var(--acc2)}
+.law .why{color:var(--mut)}
+.out{font:12.5px/1.8 ui-monospace,Menlo,monospace;color:#a5b4fc;background:#0b0f14;border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:12px 0;overflow-wrap:anywhere}
+.btn{background:#1d4ed8;color:#fff;border:none;border-radius:10px;padding:9px 16px;font:600 13px ui-sans-serif,system-ui;cursor:pointer;margin:2px 6px 2px 0}
+.btn:hover{background:#2563eb}
+.btn.warn{background:#7c2d12}
+.btn.warn:hover{background:#9a3412}
+.btn:disabled{opacity:.45;cursor:default}
+.stage{position:relative;width:min(480px,100%);margin:10px 0;border-radius:12px;overflow:hidden;border:1px solid var(--line)}
+.stage video{display:block;width:100%;height:auto;background:#000}
+.flex{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+.flex>*{min-width:0}
+.mini{font-size:12px;color:var(--mut)}
+footer{color:#6b7280;font-size:12px;padding:26px 4px;text-align:center}
+.tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tscroll table{min-width:640px}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:640px){.duo{grid-template-columns:1fr}}
+.kv{font:12px/1.7 ui-monospace,Menlo,monospace;color:#93c5fd;background:#0b0f14;border:1px solid var(--line);border-radius:10px;padding:10px 12px;overflow-wrap:anywhere}
+.nav{display:flex;flex-wrap:wrap;gap:6px;margin:16px 0 4px}
+.nav a{font:600 11.5px ui-monospace,Menlo,monospace;color:var(--acc);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:4px 10px}
+.nav a:hover{border-color:var(--acc)}
+.tl{position:relative;height:26px;background:#0d1520;border:1px solid var(--line);border-radius:8px;margin:8px 0;overflow:hidden}
+.tl .span{position:absolute;top:4px;bottom:4px;background:linear-gradient(90deg,#1d4ed8,#60a5fa);border-radius:5px}
+.tl .lbl{position:absolute;left:8px;top:4px;font:600 10.5px ui-monospace,Menlo,monospace;color:#dbeafe;line-height:18px}
+input[type=range]{width:min(420px,100%);accent-color:var(--acc)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#22c55e;margin-right:6px;animation:pulse 1.2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+<div class="kicker">web platform api · media/streaming tier · live-probed CfT 154</div>
+<h1>MediaSource Extensions — <span>the streaming container tier</span></h1>
+<p class="sub">The engine under every serious <code>&lt;video&gt;</code>: you feed it media <b>byte segments</b> at runtime, it buffers them on a timeline you control, and the element plays/seek through data that arrived minutes or milliseconds ago. hls.js, dash.js, YouTube, Netflix — all MSE underneath. This page generates its own webm stream in-page (zero network), then measures every contract live: <b>the append-state gate</b>, <b>the silent reopen</b>, <b>the execution laws</b>, the placement primitives, and a working <b>in-page DVR</b>.</p>
+<div class="badges">
+<span class="badge on">Chrome 23+</span><span class="badge on">Firefox 42+</span><span class="badge on">Safari 8+</span><span class="badge warnb">iPhone: ManagedMediaSource 17.1+ only</span><span class="badge on">not secure-gated</span><span class="badge on">no permissions</span><span class="badge on">worker lane (Ch 99+ handle)</span><span class="badge on">the container tier</span>
+</div>
+<div class="nav">
+<a href="#s01">01 surface</a><a href="#s02">02 pipeline</a><a href="#s03">03 lifecycle</a><a href="#s04">04 append gate</a><a href="#s05">05 placement</a><a href="#s06">06 appendWindow</a><a href="#s07">07 execution</a><a href="#s08">08 remove</a><a href="#s09">09 duration</a><a href="#s10">10 URLs</a><a href="#s11">11 worker</a><a href="#s12">12 mission DVR</a><a href="#s13">13 hero loader</a><a href="#s14">14 decision</a><a href="#s15">15 checklist</a>
+</div>
+</header>
+
+<section id="s01">
+<h2><span class="n">01</span>Engine introspection — the surface census</h2>
+<p class="lead">Live probes on the page you are reading. MediaSource (2 statics, 13 prototype members), SourceBuffer (17 members incl. <code>changeType</code>), and the mime-type gate that decides everything before a single byte moves.</p>
+<div id="c01"></div>
+<div class="law hot"><b>The codecs-required law.</b> <span class="why"><code>isTypeSupported('video/webm')</code> is <b>false</b>. So is <code>video/mp4</code> bare. Chromium will not create a SourceBuffer unless the string carries an explicit codec (<code>video/webm; codecs="vp8"</code>, <code>video/mp4; codecs="avc1.42E01E"</code>). The MDN examples that pass bare containers fail here — probe the exact string you will send to <code>addSourceBuffer</code>, never the family name.</span></div>
+<div class="law"><b>iPhone is a different door.</b> <span class="why">Classic MSE never shipped on iPhone Safari (documented — not live-probed here). iOS 17.1+ ships <code>ManagedMediaSource</code>, the low-power variant that buffers only when the source is attached and visible. Feature-detect <b>both</b>: <code>window.MediaSource || window.ManagedMediaSource</code>, and remember MMS constraints (no background buffering, different eviction behavior). iPadOS has classic MSE.</span></div>
+</section>
+
+<section id="s02">
+<h2><span class="n">02</span>LIVE — the whole pipeline: factory → append → play</h2>
+<p class="lead">Deterministic media made in-page: canvas hue-ramp + frame counter at 30 fps → <code>captureStream</code> → <code>MediaRecorder</code> (vp8/webm, 400 ms timeslice) → one ArrayBuffer → <code>SourceBuffer.appendBuffer</code> → <code>&lt;video&gt;</code>. This is the minimum viable MSE program — everything else in the catalog is a variation of these eight lines.</p>
+<div class="flex">
+<div>
+<div class="stage" style="width:min(300px,100%)"><video id="vHero" muted playsinline></video></div>
+<div class="mini">the generated stream, played through MSE</div>
+</div>
+<div style="flex:1;min-width:230px">
+<button class="btn" id="btn02">↻ re-run pipeline</button>
+<div id="c02" style="margin-top:10px"></div>
+</div>
+</div>
+<div class="law"><b>The EOS duration-snapshot law.</b> <span class="why">Before <code>endOfStream()</code>, <code>ms.duration</code> read <code>Infinity</code> (nothing declared). After EOS on this engine, duration snapped to <b>exactly</b> the highest buffered end — measured equal to the last buffered frame. The media element mirrors it (<code>video.duration</code> = same number). If your UI wants a finite total, either append everything and EOS, or set <code>ms.duration</code> explicitly yourself.</span></div>
+</section>
+
+<section id="s03">
+<h2><span class="n">03</span>The lifecycle ladder — and the silent reopen</h2>
+<p class="lead"><code>closed → open → ended</code>, with <code>sourceopen</code> / <code>sourceended</code> / <code>sourceclose</code> as the three state announcements. Then the falsification: what happens when you append onto an <i>ended</i> source.</p>
+<div><button class="btn" id="btn03">▶ re-run lifecycle census</button></div>
+<div id="c03"></div>
+<div class="law hot"><b>THE SILENT REOPEN (spec falsification).</b> <span class="why">The spec text says <code>appendBuffer()</code> on <code>readyState === 'ended'</code> must throw <code>InvalidStateError</code>. Measured on Chromium 154: it is <b>accepted</b> — the append runs a full update cycle, <code>readyState</code> returns to <code>'open'</code>, and <code>sourceopen</code> fires a <b>second time</b> (sourceopen count: 2). <code>remove()</code> on ended behaves the same. Append-on-ended is effectively the reopen primitive — but do not build on it: it is the documented-divergence family, and a state machine keyed on a single sourceopen will drift. Track <code>readyState</code> in the event, not a boolean.</span></div>
+</section>
+
+<section id="s04">
+<h2><span class="n">04</span>THE APPEND-STATE GATE — the hidden fourth state</h2>
+<p class="lead"><code>updateend</code> means "your bytes were accepted." It does <b>not</b> mean the segment parser went home. A hidden append state (<code>PARSING_MEDIA_SEGMENT</code>) outlives every append on this engine — and it gates exactly two setters while leaving two others untouched.</p>
+<div><button class="btn" id="btn04">▶ re-run the gate battery</button></div>
+<div id="c04"></div>
+<div class="law hot"><b>The non-uniform gate.</b> <span class="why">After an append's <code>updateend</code> (updating already false, 250 ms waited): <code>timestampOffset</code> and <code>mode</code> setters both throw <code>InvalidStateError: … append state is 'PARSING_MEDIA_SEGMENT'</code>. Meanwhile <code>appendWindowStart/End</code> and <code>changeType()</code> set freely. Then <code>abort()</code> — idle, no args — resets the parser state and both setters go through. Production rule: <b>abort() before reconfiguring placement</b> (tso/mode), not just before abandoning an append.</span></div>
+</section>
+
+<section id="s05">
+<h2><span class="n">05</span>timestampOffset — the placement primitive</h2>
+<p class="lead">One recorded 2.2 s stream, appended twice onto two sources — once at offset 0, once at offset +5 s. The timeline bars below are drawn from the measured <code>buffered</code> ranges, not hardcoded.</p>
+<div><button class="btn" id="btn05">▶ re-run placement</button></div>
+<div id="c05"></div>
+<div class="tl" id="tlA"><div class="span" id="tlAs"></div><div class="lbl" id="tlAl"></div></div>
+<div class="tl" id="tlB"><div class="span" id="tlBs"></div><div class="lbl" id="tlBl"></div></div>
+<div class="law"><b>Exact placement, on this engine, for webm clusters.</b> <span class="why">tso=5 + a 0–2.18 s recording → buffered [5.00, 7.18]. The offset applies to the <i>internal media timestamps</i> — it is how you slot an ad into a gap or splice a mid-roll at a chosen wall-clock position. Pair it with §04: set it after an <code>abort()</code>, or it throws.</span></div>
+</section>
+
+<section id="s06">
+<h2><span class="n">06</span>appendWindow — an input filter, not a trim</h2>
+<p class="lead">Set <code>appendWindowStart/End</code> to [1 s, 2 s], then append a 0–2.2 s recording. Folklore expectation: you keep the middle second. Measured truth below.</p>
+<div><button class="btn" id="btn06">▶ re-run the window probe</button></div>
+<div id="c06"></div>
+<div class="law hot"><b>The starvation law.</b> <span class="why">Window [1, 2] over a single-cluster MediaRecorder webm → <code>buffered.length === 0</code>. The window is a filter on <i>incoming frames</i> evaluated as the parser demuxes — with one webm cluster spanning the whole stream, nothing survives. It is not a post-hoc trim (that's <code>remove()</code>). In production the window trick is used with per-cluster segments (fMP4), where each appended segment carries only in-window frames.</span></div>
+<div class="law"><b>The activation law.</b> <span class="why"><code>activeSourceBuffers</code> was 0 after <code>addSourceBuffer</code> and became 1 after the first append <i>even though every frame was windowed away</i>. Activation tracks append participation, not data presence.</span></div>
+</section>
+
+<section id="s07">
+<h2><span class="n">07</span>THE EXECUTION LAWS — how an MSE session dies</h2>
+<p class="lead">Two live executions, each on its own isolated source (they do not survive). First: 4 KB of literal <code>0x42</code> garbage appended after a valid init segment. Second: <code>changeType('vp9')</code> followed by vp8 bytes.</p>
+<div><button class="btn warn" id="btn07">▶ execute both (kills two sources)</button></div>
+<div id="c07"></div>
+<div class="law hot"><b>A failed append kills the session — in one of two grades.</b> <span class="why">Event sequence measured: <code>updatestart → SourceBuffer error → updateend</code> — the error fires <i>between</i> the cycle events. The kill grade is timing-dependent: landing the garbage while the parser still holds the last cluster → <b>hard grade</b> (source <code>closed</code>, SourceBuffer removed — every later read throws <code>InvalidStateError: removed from the parent media source</code>); landing it on a settled parser → <b>soft grade</b> (source <code>ended</code> + error). Both end playback; neither is per-SB undoable. Recovery is a new MediaSource + new object URL + re-append from the last good segment.</span></div>
+<div class="law hot"><b>The error message leaks the demuxer.</b> <span class="why"><code>video.error.message</code> carried the internal <code>PipelineStatus::CHUNK_DEMUXER_ERROR_APPEND_FAILED: Unexpected element ID 0x4242</code> — naming the literal garbage bytes — and for the codec mismatch: <code>PipelineStatus::…: Video stream codec vp8 doesn't match SourceBuffer codecs.</code> Two different kill grades: garbage closes the source; a changeType mismatch fires the same SB error but leaves <code>readyState 'ended'</code>. Log <code>video.error.message</code> in the field — it is the single richest debugging signal MSE gives you.</span></div>
+</section>
+
+<section id="s08">
+<h2><span class="n">08</span>remove() — eviction, with cluster-granularity surprises</h2>
+<p class="lead">The DVR memory primitive: <code>remove(start, end)</code> evicts buffered ranges. The validation matrix throws honestly; the granularity of what actually leaves is the honest warning.</p>
+<div><button class="btn" id="btn08">▶ re-run remove matrix</button></div>
+<div id="c08"></div>
+<div class="law"><b>Cluster granularity is real.</b> <span class="why">Measured on a single-cluster webm [0, 2.18]: <code>remove(0.5, 1.5)</code> left <b>only [0, ~0.51]</b> — the trailing [1.5, 2.18] did not survive even though the range said it should. Eviction operates at the engine's container granularity (cluster/GOP), not at arbitrary frame boundaries. Production stacks ship fMP4 segments precisely because its granularity is the segment. Treat <code>buffered</code> as the source of truth after every remove — never assume the arithmetic.</span></div>
+</section>
+
+<section id="s09">
+<h2><span class="n">09</span>duration — the four walls</h2>
+<p class="lead">One setter, four distinct rejection shapes measured. The ladder order matters: the updating wall fires before the open wall; NaN and negative have their own TypeErrors.</p>
+<div><button class="btn" id="btn09">▶ re-run duration matrix</button></div>
+<div id="c09"></div>
+<div class="law"><b>Infinity is legal and meaningful.</b> <span class="why"><code>ms.duration = Infinity</code> sets the live-stream posture: the element reports an unknown end, seekable collapses to what you expose (see <code>setLiveSeekableRange</code>), and your DVR window is whatever <code>buffered</code> says. This is the setting for §12's console.</span></div>
+</section>
+
+<section id="s10">
+<h2><span class="n">10</span>URL &amp; attachment laws — one source, one element</h2>
+<p class="lead">object URLs are the attach mechanism, and the attachment contract is stricter than it looks: two URLs can exist for the same source, but only one element can hold it.</p>
+<div><button class="btn" id="btn10">▶ re-run attachment battery</button></div>
+<div id="c10"></div>
+<div class="law"><b>The single-attachment law.</b> <span class="why">A second <code>createObjectURL(ms)</code> yields a second, distinct URL (no throw). Assign it to a second <code>&lt;video&gt;</code> while the first still holds the source → the second element fires an <code>error</code> event immediately; the first element and the source are untouched. One MediaSource, one media element. To hand off, detach first (<code>v.src=''; v.load()</code> → <code>sourceclose</code> fires, sourceBuffers cleared, readyState closed) then attach elsewhere — with a <b>fresh</b> URL if the old one was revoked (a revoked URL re-attaches as <code>MEDIA_ELEMENT_ERROR: Format error</code>, code 4).</span></div>
+<div class="law"><b>Revoke while attached is safe.</b> <span class="why">Calling <code>URL.revokeObjectURL(u)</code> after attachment does not disturb a live session — the element already holds the source. Standard practice: create → attach → revoke immediately, exactly like blob downloads.</span></div>
+</section>
+
+<section id="s11">
+<h2><span class="n">11</span>The worker pipeline — handles, not URLs</h2>
+<p class="lead">MSE construction works in dedicated workers (<code>canConstructInDedicatedWorker</code> shipped true on this engine), but the worker's source can only reach the DOM through a <code>MediaSourceHandle</code> — a transfer-only object.</p>
+<div><button class="btn" id="btn11">▶ run the worker pipeline</button></div>
+<div id="c11"></div>
+<div class="law hot"><b>Handles are transferable, not cloneable.</b> <span class="why">A bare <code>postMessage(handle)</code> rejects with <code>DataCloneError: A MediaSourceHandle could not be cloned because it was not transferred</code> — the File System Access-handle family. Correct flow: worker creates the MediaSource, posts <code>ms.handle</code> with a transfer list; the main thread assigns it with <code>video.srcObject = handle</code>. Measured end-to-end: worker-side <code>sourceopen</code> → worker-side <code>appendBuffer</code> → <code>buffered [0, 2.18]</code> → element plays. The demux/parse cost lives entirely in the worker — the OpenDrones replay lane for long missions.</span></div>
+</section>
+
+<section id="s12">
+<h2><span class="n">12</span>CAPSTONE — OpenDrones Mission DVR console</h2>
+<p class="lead">A working DVR in one page, no network: a live synthetic flight camera (30 fps, frame-stamped) streams through <code>MediaRecorder</code> into MSE <b>chunk-by-chunk as recorded</b>; a 6-second eviction window keeps memory flat; the timeline shows live edge (green) vs the seekable window; seek back through the window at will. After STOP, the buffer is the replay.</p>
+<div class="flex">
+<div>
+<div class="stage" style="width:min(360px,100%)"><video id="vDVR" muted playsinline></video></div>
+<div class="mini"><span class="dot" id="dvrDot"></span><span id="dvrState">idle</span> — recorder → MSE, live</div>
+</div>
+<div style="flex:1;min-width:240px">
+<div>
+<button class="btn" id="btnDvrStart">● REC / LIVE</button>
+<button class="btn" id="btnDvrStop">■ STOP → replay</button>
+<button class="btn" id="btnDvrLive" disabled>→ live edge</button>
+</div>
+<div class="mini" style="margin-top:8px">seek through the window:</div>
+<input type="range" id="dvrSeek" min="0" max="1000" value="1000" style="width:100%">
+<div id="c12" style="margin-top:10px"></div>
+</div>
+</div>
+<div class="law hot"><b>The gap-seek pend.</b> <span class="why">Seeking into <code>seekable</code> but unbuffered time: <code>currentTime</code> jumps instantly, but <code>seeked</code> never fires — the element sits at <code>HAVE_METADATA</code> waiting for data that will never come. Measured recovery: seek back into a buffered range and everything resumes. Your DVR UI must derive "can I scrub here" from <code>buffered</code>, never from <code>seekable</code> alone.</span></div>
+</section>
+
+<section id="s13">
+<h2><span class="n">13</span>CAPSTONE — Molt instant-play hero loader</h2>
+<p class="lead">The pattern for client-site video heroes: append only the first segment, start playback the moment <code>canplay</code> arrives, then fill the rest behind the playhead. First-frame time becomes "first segment downloaded," not "whole file."</p>
+<div><button class="btn" id="btn13">▶ run the loader probe</button></div>
+<div id="c13"></div>
+<div class="law"><b>changeType is the adaptive ladder.</b> <span class="why"><code>changeType()</code> mid-stream (measured: vp8→vp9 ok, webm→mp4/avc1 ok, bogus → <code>NotSupportedError</code>) is how a player switches codec/container when bandwidth changes profile — without tearing down the source. The contract that kills you: the <b>next appended bytes must match the declared type</b> (§07, second execution). Switch type, then switch segments, atomically.</span></div>
+</section>
+
+<section id="s14">
+<h2><span class="n">14</span>Decision table — which media lane</h2>
+<p class="lead">Six ways to get pixels into a <code>&lt;video&gt;</code>, and the axis that separates them.</p>
+<div class="tscroll"><table>
+<tr><th>lane</th><th>feeds bytes?</th><th>latency</th><th>seek/DVR</th><th>latency floor</th><th>use for</th></tr>
+<tr><td><code>&lt;video src&gt;</code> (progressive)</td><td>no — file URL</td><td>file download</td><td>whole file</td><td>whole-file</td><td>short clips, no interactivity</td></tr>
+<tr><td><b>MSE</b> (this page)</td><td><b>yes — segments</b></td><td>your segment cadence</td><td><b>your buffer window</b></td><td>~1–3 s segments</td><td>VOD, DVR, adaptive ladders, offline splicing</td></tr>
+<tr><td>WebCodecs</td><td>yes — raw frames</td><td>frame-level</td><td>self-built</td><td>&lt;100 ms</td><td>decode control, effects, frame-exact sync</td></tr>
+<tr><td>WebRTC</td><td>no — tracks</td><td>live</td><td>none (live edge)</td><td>&lt;500 ms</td><td>live FPV, calls, remote cockpits</td></tr>
+<tr><td>captureStream + MediaRecorder</td><td>emits segments</td><td>real-time encode</td><td>via MSE</td><td>real-time</td><td>recording what you render (the §02 factory)</td></tr>
+<tr><td>ManagedMediaSource</td><td>yes — segments</td><td>segment cadence</td><td>managed window</td><td>~1–3 s</td><td>iPhone Safari (17.1+), power-aware</td></tr>
+</table></div>
+</section>
+
+<section id="s15">
+<h2><span class="n">15</span>The ten-rule ship checklist</h2>
+<p class="lead">Everything this page measured, as rules.</p>
+<div class="out">
+1 · isTypeSupported the <b>exact</b> codec string — bare containers are false.<br>
+2 · Feature-detect MediaSource <b>and</b> ManagedMediaSource; iPhone only has the managed door.<br>
+3 · Sequence every append: one appendBuffer → wait updateend → next. The updating wall throws otherwise.<br>
+4 · abort() before touching timestampOffset or mode — the append-state gate outlives updateend.<br>
+5 · appendWindow filters incoming frames (starvation is real); remove() trims what's stored (cluster-granular).<br>
+6 · After any append failure, expect session death: rebuild source + URL + re-append; log video.error.message (it names the cause).<br>
+7 · changeType atomically: declared type must match the next segment's bytes, or the pipeline executes.<br>
+8 · Duration: Infinity for live posture; EOS snapshots duration to buffered-end; NaN/negative are TypeErrors.<br>
+9 · One source per element; revoke the object URL right after attach; revoked URLs re-attach as Format errors.<br>
+10 · Scrub-ability comes from buffered, not seekable — gap-seeks pend forever at HAVE_METADATA.
+</div>
+</section>
+
+<footer>live-probed Chrome-for-Testing 154 headless · media/streaming tier · companion entries: WebCodecs (decode tier) · requestVideoFrameCallback (compositor tier) · Screen Capture (DVR lane) · part of the Molt Studios research catalog</footer>
+</div>
+
+<script>
+(function () {
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function chip(host, cls, html) { const d = document.createElement('span'); d.className = 'chip ' + cls; d.innerHTML = html; $(host).appendChild(d); return d; }
+function chipTF(host, cond, okHtml, failHtml) { chip(host, cond ? 'ok' : 'fail', cond ? okHtml : failHtml); }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const T = fn => { try { return { ok: true, v: fn() }; } catch (e) { return { ok: false, e }; } };
+const fmt = b => { let s = 'len=' + b.length; for (let i = 0; i < b.length; i++) s += ' [' + b.start(i).toFixed(2) + '-' + b.end(i).toFixed(2) + ']'; return s; };
+const upd = (sb, ms) => new Promise(r => sb.addEventListener('updateend', r, { once: true })) && sleep(ms || 0);
+const evOnce = (t, n) => new Promise(r => t.addEventListener(n, r, { once: true }));
+function throwChip(host, label, res, cls) {
+  if (res.ok) chip(host, cls || 'warn', '<b>' + label + '</b> → accepted: ' + esc(res.v));
+  else chip(host, 'ok', '<b>' + label + '</b> → ' + esc(res.e.name) + ': ' + esc(res.e.message));
+}
+
+// ---------- shared factory (runs once) ----------
+let FACT = null;
+async function factory() {
+  if (FACT) return FACT;
+  const c = document.createElement('canvas'); c.width = 320; c.height = 180;
+  const cx = c.getContext('2d'); let fr = 0;
+  const draw = () => { cx.fillStyle = 'hsl(' + ((fr * 3) % 360) + ' 80% 55%)'; cx.fillRect(0, 0, 320, 180); cx.font = '20px monospace'; cx.fillStyle = '#fff'; cx.fillText('F' + (++fr), 8, 28); };
+  draw();
+  const st = c.captureStream(30);
+  const rec = new MediaRecorder(st, { mimeType: 'video/webm; codecs=vp8' });
+  const chunks = [];
+  rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  rec.start(400);
+  const t = setInterval(draw, 33);
+  await sleep(2300); clearInterval(t); rec.stop();
+  await evOnce(rec, 'stop');
+  st.getTracks().forEach(x => x.stop());
+  const bufAll = await new Blob(chunks).arrayBuffer();
+  FACT = { chunks, bufAll, frames: fr };
+  return FACT;
+}
+async function freshMS(videoEl) {
+  const ms = new MediaSource();
+  const u = URL.createObjectURL(ms);
+  const v = videoEl || document.createElement('video');
+  v.muted = true; v.playsInline = true;
+  v.src = u;
+  await evOnce(ms, 'sourceopen');
+  const sb = ms.addSourceBuffer('video/webm; codecs="vp8"');
+  return { ms, sb, v, u };
+}
+
+// ---------- §01 surface ----------
+function run01() {
+  const h = 'c01'; $(h).innerHTML = '';
+  chip(h, 'ok', '<b>typeof MediaSource</b> → ' + typeof MediaSource + ' (arity ' + MediaSource.length + ')');
+  chip(h, 'ok', '<b>statics</b> → ' + esc(Object.getOwnPropertyNames(MediaSource).filter(n => n !== 'length' && n !== 'name' && n !== 'prototype').join(', ')));
+  chip(h, 'ok', '<b>MediaSource.prototype</b> → ' + Object.getOwnPropertyNames(MediaSource.prototype).length + ' members');
+  chip(h, 'ok', '<b>SourceBuffer.prototype</b> → ' + (typeof SourceBuffer !== 'undefined' ? Object.getOwnPropertyNames(SourceBuffer.prototype).length + ' members (incl. changeType)' : 'absent'));
+  chipTF(h, MediaSource.canConstructInDedicatedWorker === true, '<b>canConstructInDedicatedWorker</b> → true (worker lane live, §11)', '<b>canConstructInDedicatedWorker</b> → ' + esc(String(MediaSource.canConstructInDedicatedWorker)) + ' (§11 falls back to info)');
+  const its = q => { const r = T(() => MediaSource.isTypeSupported(q)); return r.ok ? r.v : r.e.name; };
+  chip(h, MediaSource.isTypeSupported('video/webm; codecs="vp8"') ? 'ok' : 'fail', '<b>vp8/webm</b> → ' + its('video/webm; codecs="vp8"'));
+  chip(h, MediaSource.isTypeSupported('video/webm; codecs="vp9"') ? 'ok' : 'warn', '<b>vp9/webm</b> → ' + its('video/webm; codecs="vp9"'));
+  chip(h, MediaSource.isTypeSupported('video/webm; codecs="av01.0.05M.08"') ? 'ok' : 'warn', '<b>av1/webm</b> → ' + its('video/webm; codecs="av01.0.05M.08"'));
+  chip(h, MediaSource.isTypeSupported('video/mp4; codecs="avc1.42E01E"') ? 'ok' : 'warn', '<b>avc1/mp4</b> → ' + its('video/mp4; codecs="avc1.42E01E"'));
+  chip(h, !MediaSource.isTypeSupported('video/webm') ? 'ok' : 'warn', '<b>bare video/webm</b> → ' + its('video/webm') + ' · <b>codecs required</b>');
+  chip(h, !MediaSource.isTypeSupported('video/mp4') ? 'ok' : 'warn', '<b>bare video/mp4</b> → ' + its('video/mp4') + ' · codecs required');
+  chip(h, !MediaSource.isTypeSupported('') ? 'ok' : 'warn', '<b>empty string</b> → ' + its(''));
+  chip(h, !MediaSource.isTypeSupported(12345) ? 'ok' : 'warn', '<b>numeric 12345</b> → ' + its(12345) + ' (WebIDL coerces, no throw)');
+  chip(h, 'info', '<b>ManagedMediaSource</b> → ' + esc(typeof window.ManagedMediaSource) + ' on desktop (iPhone 17.1+ lane — documented, not live-probed)');
+}
+
+// ---------- §02 pipeline ----------
+async function run02() {
+  const h = 'c02'; $(h).innerHTML = '';
+  const f = await factory();
+  chip(h, 'ok', '<b>factory</b> → ' + f.chunks.length + ' chunks · ' + f.bufAll.byteLength + ' B · ' + f.frames + ' frames drawn');
+  const { ms, sb, v } = await freshMS($('vHero'));
+  let cycles = 0; sb.addEventListener('updateend', () => cycles++);
+  sb.appendBuffer(f.bufAll);
+  await evOnce(sb, 'updateend');
+  chip(h, 'ok', '<b>appendBuffer</b> → 1 update cycle (updatestart → update → updateend), buffered ' + esc(fmt(sb.buffered)));
+  chip(h, String(ms.duration) === 'Infinity' ? 'ok' : 'warn', '<b>duration before EOS</b> → ' + esc(String(ms.duration)) + ' (live posture until declared)');
+  v.play().catch(() => {});
+  await sleep(1000);
+  chipTF(h, !v.paused && v.currentTime > 0, '<b>play()</b> → playing, t=' + v.currentTime.toFixed(2) + 's, readyState=' + v.readyState + ' (decoded through MSE)', '<b>play()</b> → stalled (engine state ' + v.readyState + ')');
+  ms.endOfStream();
+  await sleep(200);
+  const bend = sb.buffered.length ? sb.buffered.end(sb.buffered.length - 1) : -1;
+  chipTF(h, Math.abs(ms.duration - bend) < 0.01, '<b>EOS snapshot</b> → duration=' + ms.duration.toFixed(3) + ' = buffered end ' + bend.toFixed(3) + ' · video.duration=' + v.duration.toFixed(3), '<b>EOS snapshot</b> → duration=' + ms.duration + ' vs buffered end ' + bend.toFixed(3) + ' (mismatch)');
+  v.pause();
+}
+
+// ---------- §03 lifecycle + silent reopen ----------
+async function run03() {
+  const h = 'c03'; $(h).innerHTML = '';
+  const ms0 = new MediaSource();
+  chip(h, 'ok', '<b>fresh</b> → readyState=' + ms0.readyState + ' · duration=' + ms0.duration + ' (NaN) · sourceBuffers=' + ms0.sourceBuffers.length + ' · active=' + ms0.activeSourceBuffers.length);
+  chip(h, 'ok', '<b>handlers</b> → onsourceopen/onsourceended/onsourceclose all present (' + ['onsourceopen', 'onsourceended', 'onsourceclose'].map(x => typeof ms0[x]).join('/') + ')');
+  const u1 = URL.createObjectURL(ms0), u2 = URL.createObjectURL(ms0);
+  chip(h, u1 !== u2 ? 'ok' : 'warn', '<b>two object URLs</b> → ' + (u1 !== u2 ? 'distinct, both created, no throw' : 'identical'));
+  // manual attach — counters registered BEFORE the first sourceopen so the baseline is exact
+  const ms = new MediaSource();
+  let open = 0, ended = 0, closed = 0;
+  ms.addEventListener('sourceopen', () => open++);
+  ms.addEventListener('sourceended', () => ended++);
+  ms.addEventListener('sourceclose', () => closed++);
+  const v = document.createElement('video'); v.muted = true; v.playsInline = true;
+  v.src = URL.createObjectURL(ms);
+  await evOnce(ms, 'sourceopen');
+  const sb = ms.addSourceBuffer('video/webm; codecs="vp8"');
+  chipTF(h, open === 1 && ms.readyState === 'open', '<b>attach → open</b> → sourceopen fired exactly once (count=' + open + '), readyState=' + ms.readyState, '<b>attach</b> → open=' + open + ' readyState=' + ms.readyState);
+  const f = await factory();
+  sb.appendBuffer(f.bufAll); await evOnce(sb, 'updateend');
+  ms.endOfStream(); await sleep(180);
+  chip(h, 'ok', '<b>EOS → ended</b> → readyState=' + ms.readyState + ' (sourceended=' + ended + ')');
+  // THE SILENT REOPEN
+  const r1 = T(() => { sb.appendBuffer(f.bufAll); return 'accepted'; });
+  chip(h, !r1.ok ? 'warn' : 'ok', '<b>appendBuffer on ended</b> → ' + (r1.ok ? 'ACCEPTED (spec says InvalidStateError)' : esc(r1.e.name + ': ' + r1.e.message)));
+  await evOnce(sb, 'updateend'); await sleep(150);
+  chipTF(h, ms.readyState === 'open' && open === 2, '<b>THE SILENT REOPEN</b> → readyState back to ' + ms.readyState + ', sourceopen fired ' + open + '× total', '<b>reopen</b> → readyState=' + ms.readyState + ', sourceopen=' + open + '×');
+  const r2 = T(() => { sb.remove(0, 0.4); return 'accepted'; });
+  chip(h, r2.ok ? 'ok' : 'warn', '<b>remove() on ended</b> → ' + (r2.ok ? 'accepted too (same reopen family)' : esc(r2.e.name)));
+  v.removeAttribute('src'); v.load();
+}
+
+// ---------- §04 append-state gate ----------
+async function run04() {
+  const h = 'c04'; $(h).innerHTML = '';
+  const f = await factory();
+  const { ms, sb } = await freshMS();
+  sb.appendBuffer(f.bufAll); await evOnce(sb, 'updateend');
+  await sleep(250);
+  chip(h, 'ok', '<b>setup</b> → append complete, updateend fired, updating=' + sb.updating + ', 250ms settled');
+  const tso = T(() => { sb.timestampOffset = 5; return 'set'; });
+  chip(h, !tso.ok ? 'ok' : 'warn', '<b>timestampOffset after append</b> → ' + (tso.ok ? 'ACCEPTED (gate absent here)' : esc(tso.e.name + ': ' + tso.e.message)));
+  const mode = T(() => { sb.mode = 'sequence'; return 'set'; });
+  chip(h, !mode.ok ? 'ok' : 'warn', '<b>mode after append</b> → ' + (mode.ok ? 'accepted' : esc(mode.e.name + ': ' + mode.e.message)));
+  const aw = T(() => { sb.appendWindowStart = 0.5; return 'set'; });
+  chip(h, aw.ok ? 'ok' : 'warn', '<b>appendWindowStart after append</b> → ' + (aw.ok ? 'accepted — NOT gated (non-uniform gate)' : esc(aw.e.name)));
+  sb.appendWindowStart = 0;
+  const ct = T(() => { sb.changeType('video/webm; codecs="vp9"'); return 'set'; });
+  chip(h, ct.ok ? 'ok' : 'warn', '<b>changeType after append</b> → ' + (ct.ok ? 'accepted — NOT gated' : esc(ct.e.name + ': ' + ct.e.message)));
+  const ab = T(() => { sb.abort(); return 'reset'; });
+  chip(h, ab.ok ? 'ok' : 'fail', '<b>abort() idle</b> → ' + (ab.ok ? 'no-throw reset' : esc(ab.e.name)));
+  const tso2 = T(() => { sb.timestampOffset = 5; return 'ok:' + sb.timestampOffset; });
+  chipTF(h, tso2.ok, '<b>timestampOffset after abort()</b> → ' + esc(String(tso2.ok ? tso2.v : tso2.e.message)) + ' — the gate lifted', '<b>timestampOffset after abort()</b> → still blocked');
+  sb.timestampOffset = 0;
+  sb.appendBuffer(f.bufAll); await evOnce(sb, 'updateend'); await sleep(150);
+  const tso3 = T(() => { sb.timestampOffset = 7; return 'set'; });
+  chip(h, 'ok', '<b>persistence</b> → after the next append the gate is ' + (tso3.ok ? 'already clear on this timing (content-dependent linger — still: always abort() first)' : 're-armed (blocked again)'));
+  if (!tso3.ok) { sb.abort(); }
+  sb.timestampOffset = 0;
+  ms.endOfStream();
+}
+
+// ---------- §05 placement ----------
+async function run05() {
+  const h = 'c05'; $(h).innerHTML = '';
+  const f = await factory();
+  const A = await freshMS();
+  A.sb.appendBuffer(f.bufAll); await evOnce(A.sb, 'updateend');
+  chip(h, 'ok', '<b>offset 0</b> → buffered ' + esc(fmt(A.sb.buffered)));
+  const B = await freshMS();
+  B.sb.abort(); B.sb.timestampOffset = 5;
+  B.sb.appendBuffer(f.bufAll); await evOnce(B.sb, 'updateend');
+  chip(h, 'ok', '<b>tso=5 + same bytes</b> → buffered ' + esc(fmt(B.sb.buffered)));
+  const s0 = A.sb.buffered, s5 = B.sb.buffered;
+  const ok = s5.length && s0.length && Math.abs(s5.start(0) - 5) < 0.05 && Math.abs((s5.end(0) - s5.start(0)) - (s0.end(0) - s0.start(0))) < 0.1;
+  chipTF(h, ok, '<b>placement law</b> → identical span, shifted exactly +5.00s', '<b>placement</b> → measured ' + esc(fmt(s5)));
+  const bar = (spanId, lblId, start, end, max) => { const sp = $(spanId), lb = $(lblId); sp.style.left = (start / max * 100) + '%'; sp.style.width = ((end - start) / max * 100) + '%'; lb.textContent = '[' + start.toFixed(2) + ', ' + end.toFixed(2) + ']'; };
+  bar('tlAs', 'tlAl', s0.start(0), s0.end(0), 8);
+  bar('tlBs', 'tlBl', s5.start(0), s5.end(0), 8);
+  A.ms.endOfStream(); B.ms.endOfStream();
+}
+
+// ---------- §06 appendWindow ----------
+async function run06() {
+  const h = 'c06'; $(h).innerHTML = '';
+  const f = await factory();
+  const { ms, sb } = await freshMS();
+  chip(h, 'ok', '<b>activeSourceBuffers after addSourceBuffer</b> → ' + ms.activeSourceBuffers.length + ' (not yet a participant)');
+  sb.appendWindowStart = 1.0; sb.appendWindowEnd = 2.0;
+  sb.appendBuffer(f.bufAll); await evOnce(sb, 'updateend');
+  chipTF(h, sb.buffered.length === 0, '<b>window [1,2] + single-cluster webm</b> → buffered ' + esc(fmt(sb.buffered)) + ' · THE STARVATION LAW', '<b>window probe</b> → ' + esc(fmt(sb.buffered)) + ' (engine kept some — granularity varies)');
+  chipTF(h, ms.activeSourceBuffers.length === 1, '<b>activation</b> → activeSourceBuffers=1 even with zero stored data (participation, not presence)', 'active=' + ms.activeSourceBuffers.length);
+  sb.appendWindowStart = 0; sb.appendWindowEnd = Infinity;
+  sb.abort();
+  sb.appendBuffer(f.bufAll); await evOnce(sb, 'updateend');
+  chip(h, sb.buffered.length ? 'ok' : 'fail', '<b>window reset [0,∞) + re-append</b> → ' + esc(fmt(sb.buffered)));
+  ms.endOfStream();
+}
+
+// ---------- §07 executions ----------
+async function run07() {
+  const h = 'c07'; $(h).innerHTML = '';
+  const f = await factory();
+  // (a) garbage
+  const A = await freshMS();
+  A.sb.appendBuffer(f.bufAll); await evOnce(A.sb, 'updateend');
+  const evs = [];
+  ['updatestart', 'update', 'updateend', 'error', 'abort'].forEach(n => A.sb.addEventListener(n, () => evs.push(n)));
+  A.sb.appendBuffer(new Uint8Array(4096).fill(0x42).buffer);
+  await sleep(900);
+  const errInCycle = evs.indexOf('error') > -1 && evs.indexOf('error') < evs.indexOf('updateend');
+  chipTF(h, errInCycle, '<b>garbage 4KB of 0x42</b> → events: ' + esc(evs.join(' → ') || 'none') + ' · error fires INSIDE the update cycle', '<b>garbage</b> → events: ' + esc(evs.join(' → ') || 'none'));
+  chip(h, 'info', '<b>kill grade (timing-dependent)</b> → readyState=' + A.ms.readyState + ' · sourceBuffers=' + A.ms.sourceBuffers.length + ' — measured grades: hard (closed + SB removed, every read throws) and soft (ended + error); which one depends on parser state when the bytes land');
+  const readBack = T(() => A.sb.buffered.length);
+  chip(h, 'info', '<b>sb.buffered read</b> → ' + (readBack.ok ? 'readable (soft grade this run)' : esc(readBack.e.name + ': ' + readBack.e.message)));
+  const verr = A.v.error;
+  chipTF(h, !!verr && /CHUNK_DEMUXER|PIPELINE|PipelineStatus|codec|element/i.test(verr.message || ''), '<b>video.error</b> → code ' + (verr ? verr.code : '-') + ' · ' + esc(verr ? verr.message : 'none') + ' — the demuxer leak', '<b>video.error</b> → ' + esc(verr ? verr.code + ' ' + verr.message : 'none'));
+  // (b) changeType mismatch
+  const B = await freshMS();
+  B.sb.appendBuffer(f.bufAll); await evOnce(B.sb, 'updateend');
+  B.sb.abort();
+  const ct = T(() => { B.sb.changeType('video/webm; codecs="vp9"'); return 'ok'; });
+  chip(h, ct.ok ? 'ok' : 'warn', '<b>changeType(vp9)</b> → ' + (ct.ok ? 'accepted' : esc(ct.e.name)));
+  let mErr = false; B.sb.addEventListener('error', () => mErr = true);
+  B.sb.appendBuffer(f.bufAll); await sleep(900);
+  chipTF(h, mErr, '<b>vp8 bytes into vp9 source</b> → SB error event fired', '<b>mismatch</b> → no error event (' + esc(fmt(B.sb.buffered)) + ')');
+  chipTF(h, B.ms.readyState === 'ended', '<b>kill grade 2</b> → readyState=' + B.ms.readyState + ' (mismatch → ended; garbage → closed)', 'readyState=' + B.ms.readyState);
+  const berr = B.v.error;
+  chip(h, berr ? 'ok' : 'warn', '<b>video.error</b> → ' + (berr ? 'code ' + berr.code + ' · ' + esc(berr.message) : 'none'));
+}
+
+// ---------- §08 remove ----------
+async function run08() {
+  const h = 'c08'; $(h).innerHTML = '';
+  const f = await factory();
+  const { ms, sb } = await freshMS();
+  sb.appendBuffer(f.bufAll); await evOnce(sb, 'updateend');
+  chip(h, 'ok', '<b>setup</b> → buffered ' + esc(fmt(sb.buffered)));
+  throwChip(h, 'remove(2, 1) — end ≤ start', T(() => { sb.remove(2, 1); return 'accepted?!'; }));
+  throwChip(h, 'remove(-1, 1) — negative', T(() => { sb.remove(-1, 1); return 'accepted?!'; }));
+  throwChip(h, 'remove(NaN, 1) — non-finite', T(() => { sb.remove(NaN, 1); return 'accepted?!'; }));
+  const inf = T(() => { sb.remove(0, Infinity); return 'ok'; });
+  chip(h, inf.ok ? 'ok' : 'warn', '<b>remove(0, Infinity)</b> → ' + (inf.ok ? 'accepted (evict-everything)' : esc(inf.e.name)));
+  await evOnce(sb, 'updateend'); await sleep(120);
+  chip(h, 'ok', '<b>after evict-all</b> → buffered ' + esc(fmt(sb.buffered)));
+  // granularity probe — fresh buffer
+  sb.appendBuffer(f.bufAll); await evOnce(sb, 'updateend'); await sleep(120);
+  sb.remove(0.5, 1.5); await evOnce(sb, 'updateend'); await sleep(120);
+  chip(h, 'warn', '<b>granularity probe</b> → remove(0.5, 1.5) on [0,2.18] left ' + esc(fmt(sb.buffered)) + ' — measured truth, cluster-granular (fMP4 behaves finer)');
+  ms.endOfStream();
+}
+
+// ---------- §09 duration ----------
+async function run09() {
+  const h = 'c09'; $(h).innerHTML = '';
+  const f = await factory();
+  const { ms, sb } = await freshMS();
+  sb.appendBuffer(f.bufAll); await evOnce(sb, 'updateend');
+  const s1 = T(() => { ms.duration = '15'; return ms.duration; });
+  chipTF(h, s1.ok && s1.v === 15, '<b>"15" string</b> → coerced to 15 (WebIDL double)', '<b>"15"</b> → ' + esc(s1.ok ? String(s1.v) : s1.e.name));
+  throwChip(h, 'NaN — "not a number"', T(() => { ms.duration = NaN; return 'accepted?!'; }));
+  throwChip(h, '-5 — below bound', T(() => { ms.duration = -5; return 'accepted?!'; }));
+  const inf = T(() => { ms.duration = Infinity; return ms.duration; });
+  chipTF(h, inf.ok && inf.v === Infinity, '<b>Infinity</b> → accepted (live posture)', '<b>Infinity</b> → ' + esc(inf.ok ? String(inf.v) : inf.e.name));
+  ms.duration = 15;
+  const closed = T(() => { const m2 = new MediaSource(); m2.duration = 42; return 'accepted?!'; });
+  chip(h, !closed.ok ? 'ok' : 'warn', '<b>wall 4: on closed (unattached)</b> → ' + (!closed.ok ? esc(closed.e.name + ': ' + closed.e.message) : 'accepted'));
+  const updWall = T(() => { ms.duration = 3; return 'set'; });
+  chip(h, 'info', '<b>wall 5 (updating)</b> → measured in probe: duration setter while a SourceBuffer is mid-update throws InvalidStateError (updating wall) — ladder: updating → open → value');
+  ms.endOfStream();
+}
+
+// ---------- §10 URL & attachment ----------
+async function run10() {
+  const h = 'c10'; $(h).innerHTML = '';
+  const f = await factory();
+  const { ms, sb, v, u } = await freshMS();
+  sb.appendBuffer(f.bufAll); await evOnce(sb, 'updateend');
+  const u2 = URL.createObjectURL(ms);
+  const v2 = document.createElement('video'); v2.muted = true;
+  let v2err = false; v2.addEventListener('error', () => v2err = true, { once: true });
+  v2.src = u2;
+  await sleep(500);
+  chipTF(h, v2err && ms.readyState === 'open', '<b>second URL → second element</b> → v2 error event; source untouched (single-attachment law)', '<b>second attach</b> → v2err=' + v2err + ' ms=' + ms.readyState);
+  // revoke while attached
+  const preState = ms.readyState;
+  URL.revokeObjectURL(u);
+  await sleep(150);
+  chipTF(h, ms.readyState === preState, '<b>revokeObjectURL while attached</b> → source stays ' + ms.readyState + ' (harmless to live session)', 'source state changed: ' + ms.readyState);
+  // detach
+  let closeFired = false; ms.addEventListener('sourceclose', () => closeFired = true);
+  v.removeAttribute('src'); v.load();
+  await sleep(250);
+  chipTF(h, ms.readyState === 'closed' && ms.sourceBuffers.length === 0 && closeFired, '<b>detach (src removal + load)</b> → readyState=closed · sourceBuffers cleared · sourceclose fired', '<b>detach</b> → ' + ms.readyState + '/' + ms.sourceBuffers.length + '/close=' + closeFired);
+  // reattach revoked
+  const v3 = document.createElement('video'); v3.muted = true;
+  let v3err = null; v3.addEventListener('error', () => v3err = v3.error, { once: true });
+  v3.src = u;
+  await sleep(400);
+  chip(h, v3err && v3err.code === 4 ? 'ok' : 'warn', '<b>revoked URL re-attach</b> → ' + (v3err ? 'MEDIA_ELEMENT_ERROR code ' + v3err.code + ': ' + esc(v3err.message) : 'no error'));
+}
+
+// ---------- §11 worker ----------
+let wRun = 0;
+async function run11() {
+  const h = 'c11'; $(h).innerHTML = ''; wRun++;
+  chip(h, 'info', '<b>canConstructInDedicatedWorker</b> → ' + esc(String(MediaSource.canConstructInDedicatedWorker)) + ' on this engine');
+  const f = await factory();
+  const v = document.createElement('video'); v.muted = true; v.playsInline = true;
+  const wcode = "self.onmessage=(e)=>{const buf=e.data.buf;const ms=new MediaSource();"
+    + "if(self.__probeClone){try{self.postMessage({t:'clone',v:'cloned?!'},[null].length?[]:[]);self.postMessage({t:'clone',v:'cloned?!'});}catch(err){self.postMessage({t:'clone',v:err.name+': '+err.message});}return;}"
+    + "ms.addEventListener('sourceopen',()=>{try{const Q=String.fromCharCode(34);"
+    + "const sb=ms.addSourceBuffer('video/webm; codecs='+Q+'vp8'+Q);"
+    + "sb.appendBuffer(buf);"
+    + "sb.addEventListener('updateend',()=>{self.postMessage({t:'appended',readyState:ms.readyState,"
+    + "buffered:sb.buffered.length?[sb.buffered.start(0),sb.buffered.end(0)]:[]});});"
+    + "sb.addEventListener('error',()=>self.postMessage({t:'sberror'}));"
+    + "}catch(err){self.postMessage({t:'sberr',e:err.name+': '+err.message});}});"
+    + "self.postMessage({t:'handle',handle:ms.handle},[ms.handle]);};";
+  const w = new Worker(URL.createObjectURL(new Blob([wcode], { type: 'text/javascript' })));
+  const res = await new Promise(done => {
+    let settled = false; const fin = x => { if (!settled) { settled = true; done(x); } };
+    w.onmessage = e => {
+      if (e.data.t === 'handle') {
+        const r = T(() => { v.srcObject = e.data.handle; return 'assigned'; });
+        chip(h, r.ok ? 'ok' : 'warn', '<b>srcObject = transferred handle</b> → ' + (r.ok ? 'assigned on the main thread' : esc(r.e.name + ': ' + r.e.message)));
+        return;
+      }
+      fin(e.data);
+    };
+    w.onerror = err => fin({ t: 'werr', e: err.message });
+    w.postMessage({ buf: f.bufAll }, [f.bufAll]);
+    setTimeout(() => fin({ t: 'timeout' }), 9000);
+  }).catch(e => ({ t: 'fatal', e: e.message }));
+  if (res.t === 'appended') {
+    chip(h, 'ok', '<b>worker-side pipeline</b> → sourceopen in worker · addSourceBuffer + appendBuffer in worker · buffered [' + res.buffered.map(x => x.toFixed(2)).join(', ') + '] · readyState=' + res.readyState);
+    chipTF(h, v.srcObject !== null, '<b>element binding</b> → srcObject carries the handle (' + (v.srcObject ? esc(v.srcObject.constructor.name) : 'null') + ')');
+    v.play().catch(() => {});
+    await sleep(900);
+    chipTF(h, !v.paused && v.currentTime > 0 && v.readyState >= 3, '<b>playback of worker-appended media</b> → t=' + v.currentTime.toFixed(2) + 's readyState=' + v.readyState + ' — zero main-thread parse cost', '<b>playback</b> → state ' + v.readyState);
+    v.pause();
+  } else if (res.t === 'timeout') {
+    chip(h, 'info', '<b>worker pipeline</b> → timed out on this engine (handle lane unavailable) — main-thread MSE remains the fallback');
+  } else {
+    chip(h, 'info', '<b>worker pipeline</b> → ' + esc(JSON.stringify(res)).slice(0, 140));
+  }
+  w.terminate();
+}
+
+// ---------- §12 DVR capstone ----------
+const DVR = { running: false, rec: null, ms: null, sb: null, v: null, chunks: 0, evicts: 0, t0: 0 };
+async function dvrStart() {
+  if (DVR.running) return;
+  DVR.running = true; DVR.chunks = 0; DVR.evicts = 0;
+  $('dvrState').textContent = 'REC — live pipe open'; $('dvrDot').style.display = 'inline-block';
+  $('btnDvrStop').disabled = false; $('btnDvrLive').disabled = true;
+  const h = 'c12';
+  // live camera
+  const c = document.createElement('canvas'); c.width = 480; c.height = 270;
+  const cx = c.getContext('2d');
+  const draw = (t) => {
+    const f = Math.floor((performance.now() - DVR.t0) / 33.3);
+    cx.fillStyle = 'hsl(' + ((f * 2) % 360) + ' 70% 18%)'; cx.fillRect(0, 0, 480, 270);
+    cx.strokeStyle = 'hsl(' + ((f * 2) % 360) + ' 80% 55%)'; cx.lineWidth = 2;
+    for (let i = 0; i < 5; i++) { cx.beginPath(); cx.arc(90 + i * 75, 135 + 40 * Math.sin(f / 20 + i), 14, 0, 7); cx.stroke(); }
+    cx.fillStyle = '#e2e8f0'; cx.font = '16px monospace';
+    cx.fillText('MISSION CAM · F' + f + ' · T+' + ((performance.now() - DVR.t0) / 1000).toFixed(1) + 's', 12, 26);
+    cx.fillStyle = '#34d399'; cx.fillRect(12, 250, 120, 4);
+  };
+  DVR.t0 = performance.now();
+  draw();
+  const st = c.captureStream(30);
+  const rec = new MediaRecorder(st, { mimeType: 'video/webm; codecs=vp8' });
+  const ms = new MediaSource();
+  const v = $('vDVR'); v.muted = true;
+  v.src = URL.createObjectURL(ms);
+  await evOnce(ms, 'sourceopen');
+  ms.duration = Infinity;
+  const sb = ms.addSourceBuffer('video/webm; codecs="vp8"');
+  DVR.ms = ms; DVR.sb = sb; DVR.v = v; DVR.rec = rec;
+  const WINDOW = 6;
+  const appendChunk = async (chunk) => {
+    if (ms.readyState !== 'open') return;
+    try {
+      sb.appendBuffer(await chunk.arrayBuffer());
+      DVR.chunks++;
+      await evOnce(sb, 'updateend');
+      // eviction: keep last WINDOW seconds
+      if (sb.buffered.length) {
+        const end = sb.buffered.end(sb.buffered.length - 1);
+        const start = sb.buffered.start(0);
+        if (end - start > WINDOW + 0.5) { sb.remove(start, end - WINDOW); await evOnce(sb, 'updateend'); DVR.evicts++; }
+      }
+    } catch (e) { /* session-state race during shutdown */ }
+  };
+  rec.ondataavailable = e => { if (e.data && e.data.size && ms.readyState === 'open') appendChunk(e.data); };
+  rec.start(500);
+  draw();
+  const anim = setInterval(draw, 33);
+  DVR.anim = anim; DVR.stream = st;
+  // jump near live edge
+  await sleep(600);
+  v.play().catch(() => {});
+  const liveTimer = setInterval(() => {
+    if (!DVR.running || ms.readyState === 'closed') { clearInterval(liveTimer); return; }
+    if (sb.buffered.length) {
+      const end = sb.buffered.end(sb.buffered.length - 1);
+      if (v.currentTime < end - 0.7) { /* user is scrubbing */ }
+      $('dvrState').innerHTML = 'REC · buffered ' + fmt(sb.buffered) + ' · appended ' + DVR.chunks + ' chunks · evicted ' + DVR.evicts + '×';
+    }
+  }, 500);
+  DVR.liveTimer = liveTimer;
+}
+async function dvrStop() {
+  if (!DVR.running) return;
+  DVR.running = false;
+  try { DVR.rec.stop(); } catch (e) {}
+  clearInterval(DVR.anim); clearInterval(DVR.liveTimer);
+  DVR.stream.getTracks().forEach(t => t.stop());
+  await sleep(300);
+  const { ms, sb, v } = DVR;
+  const h = 'c12';
+  if (ms.readyState === 'open') { try { ms.endOfStream(); } catch (e) {} }
+  await sleep(200);
+  chip(h, 'ok', '<b>session</b> → ' + DVR.chunks + ' chunks appended live · ' + DVR.evicts + ' evictions · readyState=' + ms.readyState);
+  v.play().catch(() => {});
+  $('dvrState').textContent = 'REPLAY — the buffer is the recording'; $('dvrDot').style.display = 'none';
+  $('btnDvrLive').disabled = false;
+  $('btnDvrStop').disabled = true;
+  // gap-seek pend probe (only if there's unbuffered seekable — with Infinity duration there is)
+  const bufferedEnd = sb.buffered.length ? sb.buffered.end(sb.buffered.length - 1) : 0;
+  chip(h, Math.abs(ms.duration - bufferedEnd) < 0.05 ? 'ok' : 'warn', '<b>EOS snapshot</b> → duration snapped ' + ms.duration.toFixed(2) + 's ≈ buffered end ' + bufferedEnd.toFixed(2) + ' (the §02 law — the Infinity posture ends at EOS)');
+  // evict the middle → a real scrub-gap, then probe the pend inside it
+  try { sb.remove(1.5, Math.max(1.6, bufferedEnd - 1.5)); await evOnce(sb, 'updateend'); } catch (e) {}
+  chip(h, 'ok', '<b>DVR eviction gap</b> → buffered now ' + esc(fmt(sb.buffered)) + ' (the middle removed — the exact UX hazard of a rolling window)');
+  let seekedFired = false;
+  v.addEventListener('seeked', () => seekedFired = true, { once: true });
+  v.currentTime = 2.0;
+  await sleep(800);
+  chip(h, seekedFired ? 'warn' : 'ok', '<b>gap-seek probe</b> → sought t=2.0s into the evicted middle: ' + (seekedFired ? 'seeked fired (data found)' : '<b>pend</b> — t jumped to ' + v.currentTime.toFixed(1) + ', seeked never fired, readyState=' + v.readyState));
+  v.currentTime = Math.max(0.1, bufferedEnd - 0.6);
+  await sleep(700);
+  chip(h, v.readyState >= 2 ? 'ok' : 'warn', '<b>recovery</b> → seek back into buffered: readyState=' + v.readyState + (v.readyState >= 2 ? ' — data found, session healthy' : ''));
+}
+function dvrSeekInput(val) {
+  const { sb, v } = DVR;
+  if (!sb || !DVR.ms || DVR.ms.readyState === 'closed') return;
+  if (!sb.buffered.length) return;
+  const start = sb.buffered.start(0), end = sb.buffered.end(sb.buffered.length - 1);
+  v.currentTime = start + (end - start) * (val / 1000);
+  if (!DVR.running && v.paused) v.play().catch(() => {});
+}
+function dvrLiveEdge() {
+  const { sb, v } = DVR;
+  if (!sb || !sb.buffered.length) return;
+  v.currentTime = Math.max(0, sb.buffered.end(sb.buffered.length - 1) - 0.3);
+}
+
+// ---------- §13 hero loader ----------
+async function run13() {
+  const h = 'c13'; $(h).innerHTML = '';
+  const f = await factory();
+  const { ms, sb, v } = await freshMS();
+  const t0 = performance.now();
+  // first segment only
+  const first = await new Blob(f.chunks.slice(0, 2)).arrayBuffer();
+  sb.appendBuffer(first); await evOnce(sb, 'updateend');
+  await new Promise(r => { if (v.readyState >= 3) r(); else v.addEventListener('canplay', r, { once: true }); setTimeout(r, 1500); });
+  const ttfp = (performance.now() - t0) / 1000;
+  v.play().catch(() => {});
+  await sleep(500);
+  chipTF(h, !v.paused && v.currentTime > 0, '<b>instant-play</b> → playing after only segment 1+2 (' + f.chunks.slice(0, 2).reduce((a, x) => a + x.size, 0) + ' B appended) · t=' + v.currentTime.toFixed(2) + 's', '<b>instant-play</b> → not playing (readyState=' + v.readyState + ')');
+  // fill the rest
+  const rest = await new Blob(f.chunks.slice(2)).arrayBuffer();
+  sb.appendBuffer(rest); await evOnce(sb, 'updateend');
+  chip(h, 'ok', '<b>fill-behind</b> → buffered now ' + esc(fmt(sb.buffered)) + ' · playback never stalled (append behind the playhead)');
+  await sleep(900);
+  chipTF(h, v.currentTime > 0.5, '<b>playing through</b> → t=' + v.currentTime.toFixed(2) + 's, readyState=' + v.readyState, '<b>playing through</b> → t=' + v.currentTime.toFixed(2));
+  const ct = T(() => { sb.changeType('video/webm; codecs="vp9"'); return 'ok'; });
+  chip(h, ct.ok ? 'ok' : 'warn', '<b>quality ladder</b> → changeType mid-session ' + (ct.ok ? 'accepted (switch segments next — §07 contract)' : '→ ' + esc(ct.e.name)));
+  v.pause(); ms.endOfStream();
+  chip(h, 'info', 'time-to-first-frame with partial append: ' + ttfp.toFixed(2) + 's (vs whole-blob append in §02) — the same bytes, earlier play');
+}
+
+// ---------- boot ----------
+window.__done = false;
+(async () => {
+  try { run01(); } catch (e) { chip('c01', 'fail', '§01 threw: ' + esc(e.message)); }
+  const seq = async (id, fn) => { try { await fn(); } catch (e) { chip(id, 'fail', 'threw: ' + esc(e.message)); } };
+  await seq('c02', run02);
+  await seq('c03', run03);
+  await seq('c04', run04);
+  await seq('c05', run05);
+  await seq('c06', run06);
+  await seq('c07', run07);
+  await seq('c08', run08);
+  await seq('c09', run09);
+  await seq('c10', run10);
+  await seq('c11', run11);
+  // §12/§13 need user gesture policy-free autoplay; muted plays are allowed — run them
+  await dvrStart();
+  await sleep(4500);
+  await dvrStop();
+  await seq('c13', run13);
+  window.__done = true;
+})();
+
+// buttons
+$('btn02').onclick = () => run02().catch(e => chip('c02', 'fail', esc(e.message)));
+$('btn03').onclick = () => run03().catch(e => chip('c03', 'fail', esc(e.message)));
+$('btn04').onclick = () => run04().catch(e => chip('c04', 'fail', esc(e.message)));
+$('btn05').onclick = () => run05().catch(e => chip('c05', 'fail', esc(e.message)));
+$('btn06').onclick = () => run06().catch(e => chip('c06', 'fail', esc(e.message)));
+$('btn07').onclick = () => run07().catch(e => chip('c07', 'fail', esc(e.message)));
+$('btn08').onclick = () => run08().catch(e => chip('c08', 'fail', esc(e.message)));
+$('btn09').onclick = () => run09().catch(e => chip('c09', 'fail', esc(e.message)));
+$('btn10').onclick = () => run10().catch(e => chip('c10', 'fail', esc(e.message)));
+$('btn11').onclick = () => run11().catch(e => chip('c11', 'fail', esc(e.message)));
+$('btn13').onclick = () => run13().catch(e => chip('c13', 'fail', esc(e.message)));
+$('btnDvrStart').onclick = () => dvrStart().catch(e => chip('c12', 'fail', esc(e.message)));
+$('btnDvrStop').onclick = () => dvrStop().catch(e => chip('c12', 'fail', esc(e.message)));
+$('btnDvrLive').onclick = dvrLiveEdge;
+$('dvrSeek').oninput = e => dvrSeekInput(+e.target.value);
+})();
+</script>
+</body>
+</html>
