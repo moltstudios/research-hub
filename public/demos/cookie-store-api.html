@@ -99,14 +99,14 @@ await cookieStore.get('mrt_a');
 <pre><code>await cookieStore.set({name:'x', value:'v', secure:false});  // accepted… silent ignore
 await cookieStore.get('x');   // → { secure:true, … }   ← forced, no error, no warning
 
-// document.cookie contrast (the __Host- prefix needs Secure there):
-document.cookie = '__Host_doc=1; path=/';        // REJECTED silently (needs Secure)
-document.cookie = '__Host_doc=1; path=/; Secure'; // stored
+// document.cookie contrast (prefix rules NOT enforced on the string path — CfT 154):
+document.cookie = '__Host_doc=1; path=/';         // STORED — but as a NON-Secure cookie!
+document.cookie = '__Host_doc=1; path=/; Secure'; // stored, Secure
 
 // but via cookieStore the prefix is trivially satisfied (Secure auto-appended,
 // defaults domain:null + path:"/" already comply):
 await cookieStore.set('__Host_cs', 'v');          // stored. __Host- for free.</code></pre>
-<div class="note"><b>Production consequence:</b> cookies written via <code>cookieStore.set()</code> are <b>never sent over plain HTTP</b>. On an <code>http://</code> LAN control plane (OpenDrones ground stations!), cookieStore-written session cookies will simply not ride the requests — while <code>document.cookie</code>-written non-Secure ones will. Pick your writer API to match your transport, or half your auth will silently vanish.</div>
+<div class="note"><b>The prefix-posture contrast:</b> <code>cookieStore.set()</code> always writes Secure (prefix claims are always true by construction), while <code>document.cookie</code> will happily store a non-Secure cookie <em>wearing</em> a <code>__Host-</code> name — never trust a prefix name as proof of attributes when mixed writers touch the jar. <br><b>Production consequence:</b> cookies written via <code>cookieStore.set()</code> are <b>never sent over plain HTTP</b>. On an <code>http://</code> LAN control plane (OpenDrones ground stations!), cookieStore-written session cookies will simply not ride the requests — while <code>document.cookie</code>-written non-Secure ones will. Pick your writer API to match your transport, or half your auth will silently vanish.</div>
 </section>
 
 <section id="s04">
@@ -286,7 +286,7 @@ async function s03(){
   var hostFreeGet = await E(cookieStore.get('__Host_mrt_cs'));
   chips('c03', [
     a.ok && b.ok && b.v && b.v.secure === true ? ['ok','set({secure:false}) accepted → readback <b>secure:true</b> (member ignored + forced)'] : ['fail','unexpected: ' + esc((b.v && b.v.secure) + '')],
-    docNoSec ? ['info','document.cookie __Host- without Secure: <b>stored on loopback</b> (http://127.0.0.1 trust waiver) — REJECTED on real https (headless-probed CfT 154)'] : ['ok','document.cookie __Host- without Secure: <b>rejected</b> (silent)'],
+    docNoSec ? ['info','document.cookie __Host- without Secure: <b>stored NON-Secure</b> — prefix rules NOT enforced on the string path (triple-probed: vercel-https / loopback / LAN-https, CfT 154)'] : ['ok','document.cookie __Host- without Secure: rejected'],
     docSec ? ['ok','document.cookie __Host- + Secure: stored (the contrast — same prefix, different writer)'] : ['warn','doc __Host- + Secure not visible'],
     hostFree.ok && hostFreeGet.ok && hostFreeGet.v ? ['ok','cookieStore.set("__Host_…") with no attrs: stored — <b>auto-Secure satisfies the prefix for free</b>'] : ['fail','host prefix via cookieStore failed']
   ]);
