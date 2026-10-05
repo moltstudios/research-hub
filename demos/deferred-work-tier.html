@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deferred Work Tier — Background Sync · Periodic Sync · Background Fetch · Molt Research</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --bg:#faf9f7; --card:#ffffff; --ink:#1c1917; --muted:#78716c; --line:#e7e2dc;
+  --accent:#b45309; --accent-deep:#92400e; --accent-soft:#fffbeb;
+  --ok:#047857; --ok-soft:#ecfdf5; --warn:#b45309; --warn-soft:#fffbeb;
+  --bad:#b91c1c; --bad-soft:#fef2f2; --skip:#57534e; --skip-soft:#f5f5f4;
+  --code:#f5f2ee;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.62 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:0;background:radial-gradient(600px 340px at 92% -4%,rgba(180,83,9,.09),transparent 62%),radial-gradient(520px 300px at 4% 4%,rgba(4,120,87,.07),transparent 60%);pointer-events:none;z-index:0}
+.wrap{max-width:1060px;margin:0 auto;padding:28px 22px 90px;position:relative;z-index:1}
+h1{font-size:clamp(30px,4.5vw,42px);line-height:1.12;letter-spacing:-.02em;margin:16px 0 10px;font-weight:800}
+h2{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+h3{font-size:15.5px;margin:18px 0 6px}
+p{margin:8px 0}
+.lede{font-size:17px;color:var(--muted);max-width:78ch;margin:0 0 14px}
+.kicker{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-deep)}
+section{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px 26px;margin:20px 0;box-shadow:0 1px 2px rgba(28,25,23,.04),0 8px 28px -18px rgba(28,25,23,.12)}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr))}
+.card{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:#fff}
+.card h3{margin-top:0}
+code,pre{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12.6px}
+code{background:var(--code);padding:1px 5px;border-radius:6px;overflow-wrap:anywhere}
+pre{background:#1c1917;color:#e7e5e4;padding:14px 16px;border-radius:12px;overflow-x:auto;line-height:1.5}
+pre code{background:none;padding:0;color:inherit}
+.chip{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:3px 10px;margin:3px 4px 3px 0;border:1px solid transparent;vertical-align:middle;max-width:100%;line-height:1.45;overflow-wrap:break-word}
+.chip.ok{background:#ecfdf5;color:#065f46;border-color:#a7f3d0}
+.chip.warn{background:var(--warn-soft);color:var(--warn);border-color:#fde68a}
+.chip.fail{background:var(--bad-soft);color:var(--bad);border-color:#fecaca}
+.chip.info{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}
+.chip.pending{background:var(--code);color:var(--muted);border-color:var(--line)}
+.chip b{font-weight:800}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;border:1px solid var(--line);border-radius:999px;padding:4px 11px;background:#fff;color:var(--muted);margin:0 6px 8px 0}
+.badge.a{color:var(--accent-deep);background:var(--accent-soft);border-color:#fde68a}
+.badge.g{color:var(--ok);background:var(--ok-soft);border-color:#a7f3d0}
+table{border-collapse:collapse;width:100%;font-size:13px;margin:10px 0}
+.tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap}
+td code{white-space:nowrap}
+button{font:inherit;font-weight:650;font-size:13.5px;border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--ink);padding:8px 14px;margin:4px 6px 4px 0;cursor:pointer;box-shadow:0 1px 2px rgba(28,25,23,.06)}
+button:hover{border-color:var(--accent);color:var(--accent-deep)}
+button:disabled{opacity:.45;cursor:default}
+button.primary{background:var(--accent-deep);border-color:var(--accent-deep);color:#fff}
+button.primary:hover{color:#fff;filter:brightness(1.08)}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12.3px}
+.log{border:1px solid var(--line);border-radius:12px;background:#fff;padding:10px 14px;max-height:230px;overflow-y:auto;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12px;line-height:1.7}
+.log div{border-bottom:1px dashed #efeae4;padding:2px 0}
+.log div:last-child{border-bottom:0}
+.log .sw{color:var(--accent-deep);font-weight:700}
+.log .dim{color:var(--muted)}
+.bar{height:10px;border-radius:999px;background:var(--code);overflow:hidden;border:1px solid var(--line)}
+.bar>span{display:block;height:100%;width:0%;background:linear-gradient(90deg,#047857,#34d399);transition:width .25s}
+.note{font-size:13px;color:var(--muted)}
+.lane{border-left:3px solid var(--accent);padding:2px 0 2px 12px;margin:10px 0}
+.lane.sim{border-color:#6366f1}
+.lane b{font-size:13px}
+.lane .note{display:block}
+ul{margin:8px 0;padding-left:22px}
+li{margin:4px 0}
+.check li{list-style:none;padding-left:26px;position:relative}
+.check li::before{content:"✓";position:absolute;left:0;top:0;color:var(--ok);font-weight:800}
+.kbd{font-size:11px;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:1px 6px;background:#fff}
+footer{margin-top:26px;color:var(--muted);font-size:12.5px;text-align:center}
+a{color:var(--accent-deep)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="kicker">Molt Research · Web Platform Field Guide · Live-probed CfT 154 headless ×2 probe suites (2026-10-05)</div>
+<h1>Deferred Work — the Background Sync / Periodic Sync / Background Fetch tier</h1>
+<p class="lede">The three lanes that keep work alive after the click: <b>one-shot retry</b> (Background Sync), <b>scheduled wake-ups</b> (Periodic Background Sync), and <b>resumable large downloads</b> (Background Fetch). All three hang off <code>ServiceWorkerRegistration</code> — no service worker, no deferred work. This page runs the real APIs live (a service worker is registering right now) and documents the engine truths found by probing: the any-string tag law, the dup-fire law, the two-network-truths offline law, the periodic install wall, and the background-fetch eviction &amp; silent-stall laws.</p>
+<div>
+<span class="badge a">Chromium-family 42+ / 74+ / 74+</span>
+<span class="badge">FF &amp; Safari: never shipped any of the three</span>
+<span class="badge">Secure context only (via the SW container)</span>
+<span class="badge g">LIVE lanes on this page</span>
+<span class="badge">Demo: dw-sw.js scope /demos/</span>
+</div>
+
+<section id="s1">
+<h2>01 · The three lanes</h2>
+<div class="grid g3">
+<div class="card"><h3>🔁 Background Sync</h3><p class="note"><code>reg.sync.register(tag)</code> — ask the browser to fire a <code>sync</code> event in the SW "when connectivity allows." One-shot per registration, browser-owned retry. The reconnect-work primitive: form sends, telemetry flushes, draft uploads.</p></div>
+<div class="card"><h3>⏰ Periodic Background Sync</h3><p class="note"><code>reg.periodicSync.register(tag, {minInterval})</code> — the browser wakes your SW on a schedule <b>only for installed, engaged PWAs</b>. The strongest gate in the platform: <code>NotAllowedError</code> without install + engagement.</p></div>
+<div class="card"><h3>📦 Background Fetch</h3><p class="note"><code>reg.backgroundFetch.fetch(id, requests)</code> — OS-level resumable download with progress, its own UI, and SW lifecycle events. For payloads too big for a <code>fetch()</code>: firmware, media packs, map tiles.</p></div>
+</div>
+<p class="note">All three: Chromium-only in practice (FF and Safari declined the whole family), reachable only through a service-worker registration, and — measured live below — far more permissive on identifiers and far weirder on offline than the docs imply.</p>
+</section>
+
+<section id="s2">
+<h2>02 · Surface census — live</h2>
+<p class="note">Registers <code>dw-sw.js</code>, waits for <code>ready</code>, then reads the managers, the permission states, and the method names the engine actually ships.</p>
+<div id="census-chips"><span class="chip pending">census pending…</span></div>
+<h3>The docs-drift probe: <code>getIDs()</code> vs <code>getIds()</code></h3>
+<p class="note">MDN's page was <code>getIDs()</code> for years (the URL still redirects). The engine ships <code>getIds()</code> — lowercase s. Every older sample calling <code>getIDs()</code> dies with <code>TypeError: bf.getIDs is not a function</code>. Live, on your engine, right now:</p>
+<div id="docs-chips"><span class="chip pending">probe pending…</span></div>
+<h3>The permission readback duality (5th member of the family)</h3>
+<p class="note">Query with hyphens, read back underscores — same law as <code>idle-detection</code> and <code>local-fonts</code>. Live:</p>
+<div id="perm-chips"><span class="chip pending">probe pending…</span></div>
+</section>
+
+<section id="s3">
+<h2>03 · THE ANY-STRING TAG LAW — live</h2>
+<p class="note">Tutorials describe sync tags as sanitized identifiers. Measured on CfT 154: <code>sync.register()</code> accepts <b>any string</b> — empty, spaces, punctuation, 4 000 chars — coerces objects, and fires the tag back <b>verbatim</b>. The tag is an opaque cookie, not a validated key. Try it (each button registers, the SW fires, the log shows what came back):</p>
+<div>
+<button class="primary" data-tag="">register "" (empty)</button>
+<button data-tag="bad tag!">register "bad tag!"</button>
+<button data-tag="flight/β-✈-22">register "flight/β-✈-22"</button>
+<button data-tag="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">register "x"×110</button>
+</div>
+<div class="log" id="tag-log"><div class="dim">— sync event log (messages from dw-sw.js) —</div></div>
+<div id="tag-chips"><span class="chip info">click a register button to run this lane</span></div>
+</section>
+
+<section id="s4">
+<h2>04 · THE DUP-FIRE LAW — live</h2>
+<p class="note"><code>getTags()</code> dedupes the pending list — but the event queue does not. Registering the same tag twice (while still pending) fires the SW's <code>sync</code> handler <b>twice</b>, verified server-side in the probes (two POST beacons 2 ms apart). If your handler isn't idempotent, "register again to be safe" doubles your side effects. The mitigation is a done-set <b>inside the handler</b> (this demo's SW carries one; it reports <code>seenBefore</code> — honest label: an in-memory set only survives while this worker instance lives; production dedupe belongs in IndexedDB).</p>
+<button class="primary" id="dup-btn">register "dup-demo" ×2 in one click</button>
+<div class="log" id="dup-log"><div class="dim">— dup lane log —</div></div>
+<div id="dup-chips"><span class="chip info">run the double register to verify</span></div>
+</section>
+
+<section id="s5">
+<h2>05 · THE TWO NETWORK TRUTHS — the offline-fire law</h2>
+<div class="lane sim"><b>SIM / probe-transcript lane</b><span class="note">CDP emulation cannot be driven from a page — this section transcribes the measured probe runs verbatim (dw-probe2, CfT 154 headless, 2026-10-05).</span></div>
+<p>The textbook model: register offline → the browser holds the event → connectivity returns → it fires. The probe tried to verify that with CDP <code>Network.emulateNetworkConditions({offline:true})</code> and found something stranger — <b>one browser, two network truths</b>:</p>
+<div class="tscroll"><table>
+<tr><th>During emulated offline</th><th>Result</th></tr>
+<tr><td>page <code>navigator.onLine</code></td><td><code>false</code></td></tr>
+<tr><td>page <code>fetch('/report')</code></td><td>⛔ <code>TypeError: Failed to fetch</code></td></tr>
+<tr><td><code>sync.register('ofl-proof-2')</code></td><td>✅ resolves — no throw</td></tr>
+<tr><td>…1.5 s later, still "offline"</td><td><code>sync</code> event <b>FIRED</b> in the SW (t+2054 ms)</td></tr>
+<tr><td>SW handler's <code>fetch('/beacon')</code></td><td>✅ <b>HTTP 204 from the real server</b> — the SW lane was never offline</td></tr>
+</table></div>
+<p class="note"><b>Engine truth:</b> CDP page-level network emulation does not gate the service-worker network lane, and the sync scheduler's connectivity check ignores it entirely — the event fired and its fetch reached the server while the page itself could not fetch. Practical consequences: (1) you cannot test "deferred until online" by emulating offline in Playwright/Puppeteer — the sync fires anyway; (2) the sync scheduler's notion of connectivity is a <i>separate signal</i> from <code>navigator.onLine</code> — never assume the two agree; (3) handlers must be idempotent because "it already fired once" is not observable from the page. Real-offline testing needs a real network kill (Wi-Fi off / interface down), not emulation.</p>
+</section>
+
+<section id="s6">
+<h2>06 · THE PERIODIC WALL — live</h2>
+<p class="note">Periodic Background Sync is the most permission-gated surface in the family: no PWA install + engagement → <code>NotAllowedError: Permission denied.</code> And unlike Web Share's validation-first ladder, <b>every</b> argument shape — missing <code>minInterval</code>, bogus tag — hits the permission wall first. Nothing about your arguments is even looked at. Live attempts on this uninstalled page:</p>
+<div id="ps-chips"><span class="chip pending">probe pending…</span></div>
+<p class="note">The permission state itself reads <code>denied</code> on a fresh profile with name readback <code>periodic_background_sync</code> (underscores). Even installed-and-engaged, you don't choose the schedule — <code>minInterval</code> is a hint; the browser decides from engagement and battery. If you need dependable periodic work on the open web, this API is not it (see decision table §10).</p>
+</section>
+
+<section id="s7">
+<h2>07 · Background Fetch — live download &amp; THE COMPLETION-EVICTION LAW</h2>
+<p class="note">Launches a real background fetch of <code>/demos/dw-asset.bin</code> (65 536 B) with an exact <code>downloadTotal</code>. Watch <code>onprogress</code>, then the SW's <code>backgroundfetchsuccess</code> — and then the registration <b>evaporates</b>: <code>getIds()</code> → <code>[]</code>, <code>get(id)</code> → <code>undefined</code>. Completed fetches are cleaned up after the event: <b>the only audit window is inside the event handler</b> (<code>recordsAvailable</code> is true there). There is no post-hoc "list my downloads" lane.</p>
+<button class="primary" id="bf-btn">launch background fetch (64 KB)</button>
+<div class="bar"><span id="bf-bar"></span></div>
+<div class="log" id="bf-log"><div class="dim">— background fetch lane —</div></div>
+<div id="bf-chips"><span class="chip info">launch to run this lane</span></div>
+<p class="note">Also measured: <code>fetch(id)</code> with a duplicate pending id → <code>TypeError</code> "There already is a registration for the given id"; empty requests array → <code>TypeError</code> "At least one request must be given"; <code>get()</code> of a never-existed id resolves <code>undefined</code> (miss = undefined, not null, not rejection); ids accept arbitrary strings (<code>'bf bad!'</code> registered fine — the any-string law again); <code>result</code>/<code>failureReason</code> start as <b>empty strings</b>, not <code>undefined</code>; <code>onprogress</code> is <code>null</code>-initialized (typeof <code>'object'</code>). Records expose <code>request</code> + <code>responseReady</code> on this engine — the plain <code>response</code> getter MDN documents was absent in the probe.</p>
+</section>
+
+<section id="s8">
+<h2>08 · THE SILENT EXCEED STALL — live zombie</h2>
+<p class="note">Declare <code>downloadTotal: 1024</code>, download 64 KB: spec says the fetch should fail with a total-exceeded reason. Measured (twice, 15+ s windows): <b>zero bytes ever move</b> — <code>downloaded</code> stays 0, no <code>backgroundfetchfail</code>, no <code>failureReason</code>, no cleanup. An invisible zombie registration that blocks its id forever. <code>downloadTotal</code> is a display hint, never a cap — but a <i>wrong</i> one can wedge the fetch entirely. Live:</p>
+<button id="zombie-btn">launch exceed-stall fetch (declare 1 KB, serve 64 KB)</button>
+<div class="log" id="zombie-log"><div class="dim">— zombie lane —</div></div>
+<div id="zombie-chips"><span class="chip info">launch to watch the stall (8 s honest window)</span></div>
+<p class="note">The demo also demonstrates the persistence + cleanup path: at page load it lists and <code>abort()</code>s any leftover <code>dw-</code> fetches from previous visits — registrations outlive the tab, so a re-launch without cleanup would hit the duplicate-id TypeError.</p>
+</section>
+
+<section id="s9">
+<h2>09 · THE WORKER JAIL + the insecure door — live</h2>
+<p class="note">Dedicated workers see all three manager <b>constructors</b> (they parse, they exist) — but <code>self.registration</code>, <code>self.serviceWorker</code> and <code>self.clients</code> are all <code>undefined</code> there: constructors present, door absent. Same law on insecure origins: the constructors exist on plain HTTP, but <code>navigator.serviceWorker</code> is <code>undefined</code>, so the entire tier is unreachable <i>by construction</i> — object-absence, never a rejection. Live worker probe:</p>
+<div id="worker-chips"><span class="chip pending">probe pending…</span></div>
+<p class="note">And the event classes (<code>SyncEvent</code>, <code>PeriodicSyncEvent</code>, <code>BackgroundFetchEvent</code>) are <code>undefined</code> in the window but real constructors inside the SW — the census chip in §02 carries the SW-side answer, relayed by the worker itself.</p>
+</section>
+
+<section id="s10">
+<h2>10 · Decision table — which lane for which job</h2>
+<div class="tscroll"><table>
+<tr><th>Job</th><th>Right lane</th><th>Why</th></tr>
+<tr><td>Send form/draft/telemetry once connectivity returns</td><td><b>Background Sync</b></td><td>One-shot, browser-retried, no install gate. Dedupe inside the handler (dup-fire law).</td></tr>
+<tr><td>Retry a failed sync later</td><td>Do nothing</td><td>The browser owns retry (cadence opaque — measured: no retry in 10.5 s, tag stays pending). Handlers must be idempotent.</td></tr>
+<tr><td>Daily refresh for an installed PWA</td><td><b>Periodic Sync</b></td><td>Only after install + engagement; treat minInterval as a hint. Uninstalled → NotAllowedError, always.</td></tr>
+<tr><td>Periodic work on the open web</td><td>❌ neither</td><td>Use visibility/online listeners while open, push (with consent) for server-initiated wakes.</td></tr>
+<tr><td>Big resumable download</td><td><b>Background Fetch</b></td><td>OS-integrated UI, progress, survives page close. Exact or absent downloadTotal — never a lowball (§08).</td></tr>
+<tr><td>Audit finished downloads</td><td>inside the event only</td><td>Completion = eviction (§07). Persist what you need in backgroundfetchsuccess.</td></tr>
+<tr><td>Deferred work off the main thread</td><td>❌ workers</td><td>Worker jail (§09): managers exist, registration doesn't. Queue from the page, execute in the SW.</td></tr>
+</table></div>
+</section>
+
+<section id="s11">
+<h2>11 · Capstones</h2>
+<div class="card" style="margin-bottom:14px">
+<h3>🛩️ OpenDrones — Mission Outbox</h3>
+<div class="lane"><b>Flush-on-reconnect telemetry</b><span class="note">The ground station writes each telemetry batch to IndexedDB with a monotonic batch id, then <code>sync.register('flush-' + missionId)</code>. The SW handler reads pending batches, POSTs them with the batch id, and records the last-acked id in the same store — so the dup-fire law and the browser's opaque retries are both harmless (same batches re-POST, server dedupes on id). Firmware/artifact downloads go through Background Fetch with exact <code>downloadTotal</code> and an in-event progress audit; the exceed-stall law makes "estimate small, hope for the best" a wedged download.</span></div>
+</div>
+<div class="card">
+<h3>🎨 Molt — Draft Send</h3>
+<div class="lane"><b>Contact-form / draft uploads that never lose a click</b><span class="note">Client sites where a submission must survive a flaky link: persist the draft locally → register a sync tag → optimistic UI ("will send when you're back online") → the SW sends and the confirmation flips. The any-string law means user-scoped tags like <code>draft-1874</code> are safe as-is — but escape nothing and validate nothing: the tag round-trips verbatim, including on retry.</span></div>
+</div>
+</section>
+
+<section id="s12">
+<h2>12 · Field checklist</h2>
+<ul class="check">
+<li>No service worker → no deferred work. All three managers live on <code>ServiceWorkerRegistration</code> (page or SW scope — never a dedicated worker).</li>
+<li>Treat sync tags as opaque cookies: any string legal, fires verbatim, objects coerce to <code>"[object Object]"</code>. Don't parse, don't sanitize — just mirror.</li>
+<li>Dedupe inside the sync handler (IndexedDB). getTags() lies about delivery; every register() is a future fire.</li>
+<li>Never test offline deferral with emulated offline — the SW lane ignores it (two network truths). Kill the real network or don't claim it.</li>
+<li>Failed sync handlers leave the tag pending with opaque retry timing. Idempotent handlers or bust.</li>
+<li>Periodic Sync: expect NotAllowedError until installed + engaged; minInterval is a hint; don't build load-bearing schedules on it.</li>
+<li>Background Fetch: exact downloadTotal or omit it. A low total doesn't cap — it wedges (silent stall, no events).</li>
+<li>Persist audit data inside backgroundfetchsuccess — the registration evaporates on completion.</li>
+<li>Cleanup on boot: getIds() → abort() your app's leftovers, or relaunches hit duplicate-id TypeErrors.</li>
+<li><code>getIds()</code> not <code>getIDs()</code> — modern name, lowercase s. Feature-detect both if you support old codepaths.</li>
+</ul>
+</section>
+
+<section id="gate">
+<h2>Self-gate</h2>
+<div id="gate-chips"><span class="chip pending">gate running…</span></div>
+<p class="note" id="gate-note">Counts chips, console errors, page errors, failed requests, horizontal overflow.</p>
+</section>
+
+<footer>Deferred Work tier · live-probed Chromium for Testing 154 headless, dw-probe1 + dw-probe2 (2026-10-05) · Molt Research · <span class="mono" id="foot-eng"></span></footer>
+</div>
+
+<script>
+(function(){
+'use strict';
+// ---------- gate plumbing ----------
+var G = { ok:0, warn:0, fail:0, info:0, pending:0, consoleErrors:0, pageErrors:0, failedReqs:0 };
+window.addEventListener('error', function(){ G.pageErrors++; });
+window.addEventListener('unhandledrejection', function(e){ e.preventDefault && e.preventDefault(); G.pageErrors++; });
+(function(){
+  var oe = console.error; console.error = function(){ G.consoleErrors++; oe.apply(console, arguments); };
+})();
+(function(){
+  var orig = window.fetch; window.fetch = function(){ return orig.apply(this, arguments).then(function(r){ if(!r.ok && r.status !== 204) G.failedReqs++; return r; }, function(){ G.failedReqs++; throw arguments[0]; }); };
+})();
+function chip(container, cls, html){ var c = document.getElementById(container); if(!c) { G[cls]++; return null; } var ph = c.querySelectorAll('.chip.pending'); if(ph.length && cls !== 'pending'){ Array.prototype.forEach.call(ph, function(x){ x.remove(); }); } var s = document.createElement('span'); s.className = 'chip ' + cls; s.innerHTML = html; c.appendChild(s); G[cls]++; return s; }
+function logLine(id, html, cls){ var c = document.getElementById(id); if(!c) return; var d = document.createElement('div'); if(cls) d.className = cls; d.innerHTML = html; c.appendChild(d); c.scrollTop = c.scrollHeight; }
+function settleGate(){
+  var pend = document.querySelectorAll('.chip.pending').length;
+  var parts = [];
+  parts.push('<b>' + (G.ok + G.warn + G.fail + G.info) + '</b> chips');
+  parts.push(G.ok + ' ok'); parts.push(G.warn + ' warn'); parts.push(G.fail + ' fail'); parts.push(G.info + ' info');
+  if(pend) parts.push(pend + ' pending');
+  var cls = (G.fail === 0 && pend === 0) ? 'ok' : (G.fail ? 'fail' : 'warn');
+  var el = document.getElementById('gate-chips'); if(el) el.innerHTML = '';
+  chip('gate-chips', cls, parts.join(' · '));
+  chip('gate-chips', G.consoleErrors ? 'fail' : 'ok', G.consoleErrors + ' console errors');
+  chip('gate-chips', G.pageErrors ? 'fail' : 'ok', G.pageErrors + ' page errors');
+  chip('gate-chips', G.failedReqs ? 'warn' : 'ok', G.failedReqs + ' failed requests');
+  var ow = document.documentElement.scrollWidth - document.documentElement.clientWidth;
+  chip('gate-chips', ow > 1 ? 'fail' : 'ok', (ow > 0 ? ow + 'px ' : 'no ') + 'h-overflow @' + innerWidth);
+  var note = document.getElementById('gate-note'); if(note) note.textContent = 'Chips settle as lanes finish. Honesty labels: SIM lanes marked, engine-truth warns expected.';
+}
+var E = function(v){ try { return JSON.stringify(v); } catch(e){ return String(v); } };
+var SAFE = function(p, ms){ return Promise.race([ Promise.resolve(p).then(function(v){ return { ok:true, v:v }; }, function(e){ return { ok:false, e:(e && e.constructor && e.constructor.name) + (e && e.name ? ' [' + e.name + ']' : '') + ': ' + String(e && e.message).slice(0, 150) }; }), new Promise(function(res){ setTimeout(function(){ res({ ok:false, timeout:true }); }, ms || 5000); }) ]); };
+var $ = function(id){ return document.getElementById(id); };
+
+// ---------- boot ----------
+var REG = null, evlog = [];
+navigator.serviceWorker.addEventListener('message', function(e){
+  var d = e.data; if(!d || !d.__dw) return;
+  evlog.push(d);
+  if(d.type === 'sync'){
+    logLine('tag-log', '<span class="sw">sync</span> tag=<b>' + (d.tag === '' ? '<i>(empty string)</i>' : String(d.tag).slice(0, 60) + (String(d.tag).length > 60 ? '…' + String(d.tag).length + 'ch' : '')) + '</b>' + (d.seenBefore !== undefined ? ' <span class="dim">seenBefore=' + d.seenBefore + ' lastChance=' + d.lastChance + ' ' + d.evtName + '</span>' : ''), d.seenBefore ? 'dim' : '');
+    if(d.tag === 'dup-demo') handleDupEvent(d);
+    handleTagEvent(d);
+  }
+  if(d.type === 'periodicsync') logLine('tag-log', '<span class="sw">periodicsync</span> tag=' + E(d.tag));
+  if(d.type === 'backgroundfetchsuccess' || d.type === 'backgroundfetchfail' || d.type === 'backgroundfetchabort'){
+    logLine('bf-log', '<span class="sw">' + d.type + '</span> id=' + d.id + ' downloaded=' + d.downloaded + ' result="' + d.result + '" failureReason="' + d.failureReason + '" recordsAvailable=' + d.recordsAvailable + ' <span class="dim">updateUI=' + d.hasUpdateUI + '</span>');
+    if(d.type === 'backgroundfetchsuccess' && d.id === BFID) handleBfSuccess(d);
+  }
+  if(d.type === 'sw-census'){
+    chip('census-chips', 'ok', 'SW-scope: sync=<b>' + d.syncMgr + '</b> periodicSync=<b>' + d.periodicSyncMgr + '</b> backgroundFetch=<b>' + d.backgroundFetchMgr + '</b>');
+    chip('census-chips', d.SyncEvent === 'function' ? 'ok' : 'info', 'SW-scope event ctors: SyncEvent=<b>' + d.SyncEvent + '</b> PeriodicSyncEvent=<b>' + d.PeriodicSyncEvent + '</b> BackgroundFetchEvent=<b>' + d.BackgroundFetchEvent + '</b> (window-scope: all undefined)');
+  }
+});
+
+var anyString = { fired: {}, n: 0 };
+function handleTagEvent(d){
+  var key = 'k' + (++anyString.n);
+  anyString.fired[key] = d.tag;
+  if(d.tag === '' ) chip('tag-chips', 'ok', 'empty tag <b>""</b> registered AND fired verbatim');
+  else if(d.tag === 'bad tag!') chip('tag-chips', 'ok', '"bad tag!" fired <b>verbatim</b> (space + bang intact)');
+  else if(d.tag.indexOf('✈') !== -1) chip('tag-chips', 'ok', 'unicode tag fired verbatim (' + d.tagLen + ' chars)');
+  else if(d.tag.length > 100) chip('tag-chips', 'ok', d.tagLen + '-char tag fired verbatim (probe-verified at 4 000)');
+}
+var dupState = { fires: 0, seenBefore: false };
+function handleDupEvent(d){
+  dupState.fires++; if(d.seenBefore) dupState.seenBefore = true;
+  if(dupState.fires === 2){
+    chip('dup-chips', 'ok', 'double register → <b>2 sync events</b> (getTags dedupes the list, not the fires)');
+    chip('dup-chips', dupState.seenBefore ? 'ok' : 'warn', 'handler dedupe: second fire seenBefore=<b>' + dupState.seenBefore + '</b> — work skipped in-handler' + (dupState.seenBefore ? '' : ' (would double-send without it)'));
+  }
+}
+
+var BFID = 'dw-live-' + Date.now().toString(36);
+var bfDone = false;
+function handleBfSuccess(d){
+  if(bfDone) return; bfDone = true;
+  chip('bf-chips', 'ok', 'backgroundfetchsuccess fired · downloaded=<b>' + d.downloaded + '/' + d.downloadTotal + '</b> result="<b>' + d.result + '</b>"');
+  setTimeout(function(){
+    var bf = REG.backgroundFetch;
+    SAFE(bf.getIds()).then(function(r){
+      var leftover = (r.ok && r.v || []).filter(function(x){ return x === BFID; });
+      chip('bf-chips', leftover.length === 0 ? 'ok' : 'warn', 'completion-eviction: getIds() <b>' + (leftover.length === 0 ? 'no longer contains the id' : 'STILL contains id?!') + '</b> · list=' + E(r.ok ? r.v : r.e).slice(0, 80));
+      return SAFE(bf.get(BFID));
+    }).then(function(r2){
+      chip('bf-chips', r2.ok && r2.v === undefined ? 'ok' : 'warn', 'get(id) after completion → <b>' + (r2.ok ? E(r2.v) : 'rejected') + '</b> — audit window was the event itself');
+      settleGate();
+    });
+  }, 600);
+}
+
+// ---------- census lane ----------
+navigator.serviceWorker.register('dw-sw.js').then(function(){
+  return navigator.serviceWorker.ready;
+}).then(function(reg){
+  REG = reg;
+  chip('census-chips', 'ok', 'service worker <b>ready</b> · controller=' + (navigator.serviceWorker.controller ? 'yes (2nd visit)' : 'no (1st visit — managers work regardless)'));
+  var sync = reg.sync, ps = reg.periodicSync, bf = reg.backgroundFetch;
+  chip('census-chips', 'ok', 'managers: sync=<b>' + typeof sync + '</b> periodicSync=<b>' + typeof ps + '</b> backgroundFetch=<b>' + typeof bf + '</b>');
+  chip('census-chips', 'ok', 'SyncManager proto: <b>' + Object.getOwnPropertyNames(Object.getPrototypeOf(sync)).join(', ') + '</b> — register + getTags only, NO unregister (one-shot by design)');
+  chip('census-chips', 'ok', 'BackgroundFetchManager proto: <b>' + Object.getOwnPropertyNames(Object.getPrototypeOf(bf)).join(', ') + '</b>');
+  // docs-drift chip
+  SAFE(Promise.resolve().then(function(){ return bf.getIDs(); })).then(function(r){
+    chip('docs-chips', 'warn', 'legacy <b>getIDs()</b> → ' + (r.ok ? 'PRESENT on this engine (' + E(r.v).slice(0, 60) + ')' : String(r.e).slice(0, 90)));
+    return SAFE(bf.getIds());
+  }).then(function(r2){
+    chip('docs-chips', r2.ok ? 'ok' : 'fail', 'shipped <b>getIds()</b> → resolves ' + E(r2.ok ? r2.v : r2.e).slice(0, 70) + ' — lowercase s (MDN\'s getIDs URL redirects here)');
+    settleGate();
+  });
+  // SW census
+  if(navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage({ __census: 1 });
+  else { chip('census-chips', 'info', 'SW-scope census needs the controller — reload once (2nd visit) to light it up'); }
+  // permission duality
+  var names = ['background-sync', 'periodic-background-sync', 'background-fetch'];
+  Promise.all(names.map(function(n){ return SAFE(navigator.permissions.query({ name: n })).then(function(r){ return r.ok ? r.v : null; }); })).then(function(states){
+    states.forEach(function(st, i){
+      if(!st){ chip('perm-chips', 'warn', names[i] + ' → query failed'); return; }
+      var cls = st.state === 'granted' ? 'ok' : (st.state === 'denied' ? 'warn' : 'info');
+      chip('perm-chips', cls, 'query "<b>' + names[i] + '</b>" → state=<b>' + st.state + '</b> · readback name="<b>' + st.name + '</b>" (hyphen in, underscore out)');
+    });
+    settleGate();
+  });
+  // periodic wall
+  var psProbe = reg.periodicSync;
+  SAFE(psProbe.register('dw-periodic', { minInterval: 86400000 })).then(function(r){
+    chip('ps-chips', 'warn', 'register (valid args) → <b>' + (r.ok ? 'GRANTED?!' : String(r.e).slice(0, 80)) + '</b> — expected on an uninstalled page');
+    return SAFE(psProbe.register('bad tag!', {}));
+  }).then(function(r2){
+    chip('ps-chips', r2.ok ? 'fail' : 'warn', 'register (bogus tag, no minInterval) → same <b>permission wall first</b> — no validation layer (anti-Web-Share)');
+    return SAFE(psProbe.getTags());
+  }).then(function(r3){
+    chip('ps-chips', 'ok', 'getTags() → ' + E(r3.ok ? r3.v : r3.e).slice(0, 60));
+    settleGate();
+  });
+  // bgfetch leftover cleanup + honesty chip
+  SAFE(bf.getIds()).then(function(r){
+    if(!r.ok){ chip('bf-chips', 'warn', 'boot getIds failed: ' + String(r.e).slice(0, 80)); return; }
+    var leftovers = (r.v || []).filter(function(x){ return String(x).indexOf('dw-') === 0; });
+    if(leftovers.length){
+      return Promise.all(leftovers.map(function(x){ return SAFE(REG.backgroundFetch.get(x).then(function(g){ return g && g.abort(); })); })).then(function(){
+        chip('bf-chips', 'info', 'boot cleanup: aborted ' + leftovers.length + ' leftover dw- fetch(es) from previous visits — registrations outlive the tab');
+      });
+    } else {
+      chip('bf-chips', 'info', 'boot getIds(): no leftovers (fresh scope or previous cleanup)');
+    }
+    settleGate();
+  }).catch(function(){});
+}).catch(function(err){
+  chip('census-chips', 'fail', 'SW registration failed: ' + String(err).slice(0, 120));
+  settleGate();
+});
+
+// insecure-origin chip (informational, only true on http)
+if(!window.isSecureContext){
+  chip('census-chips', 'fail', 'INSECURE CONTEXT — the SW container is absent; the whole tier is unreachable here');
+} else {
+  chip('census-chips', 'info', 'secure context ✓ (the tier\'s only gate: navigator.serviceWorker exists)');
+}
+
+// ---------- worker jail lane ----------
+(function(){
+  var src = 'postMessage({ SyncManager: typeof SyncManager, PeriodicSyncManager: typeof PeriodicSyncManager, BackgroundFetchManager: typeof BackgroundFetchManager, registration: typeof self.registration, serviceWorker: typeof self.serviceWorker, clients: typeof self.clients });';
+  var w;
+  try { w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' }))); }
+  catch(e){ chip('worker-chips', 'fail', 'worker spawn failed'); return; }
+  var to = setTimeout(function(){ chip('worker-chips', 'warn', 'worker probe timeout'); settleGate(); }, 4000);
+  w.onmessage = function(e){
+    clearTimeout(to); var d = e.data;
+    chip('worker-chips', (d.SyncManager === 'function') ? 'warn' : 'info', 'worker: ctors SyncManager=<b>' + d.SyncManager + '</b> PeriodicSyncManager=<b>' + d.PeriodicSyncManager + '</b> BackgroundFetchManager=<b>' + d.BackgroundFetchManager + '</b>');
+    chip('worker-chips', (d.registration === 'undefined') ? 'ok' : 'warn', 'worker: registration=<b>' + d.registration + '</b> serviceWorker=<b>' + d.serviceWorker + '</b> clients=<b>' + d.clients + '</b> — constructors present, door absent');
+    w.terminate(); settleGate();
+  };
+  w.onerror = function(){ clearTimeout(to); chip('worker-chips', 'warn', 'worker probe errored'); w.terminate(); settleGate(); };
+})();
+
+// ---------- any-string lane ----------
+Array.prototype.forEach.call(document.querySelectorAll('[data-tag]'), function(btn){
+  btn.addEventListener('click', function(){
+    if(!REG){ logLine('tag-log', '<span class="dim">SW not ready yet — one moment…</span>'); return; }
+    var tag = btn.getAttribute('data-tag');
+    SAFE(REG.sync.register(tag)).then(function(r){
+      logLine('tag-log', '<span class="dim">click → register(' + (tag === '' ? '""' : E(tag).slice(0, 40)) + ') → ' + (r.ok ? 'resolved (no validation)' : 'threw: ' + String(r.e).slice(0, 80)) + '</span>');
+    });
+  });
+});
+
+// ---------- dup lane ----------
+$('dup-btn').addEventListener('click', function(){
+  if(!REG) return;
+  dupState = { fires: 0, seenBefore: false };
+  var el = $('dup-chips'); if(el) el.innerHTML = '';
+  REG.sync.register('dup-demo').then(function(){
+    return REG.sync.register('dup-demo');
+  }).then(function(){
+    logLine('dup-log', 'registered "dup-demo" ×2 — awaiting fires…', 'dim');
+    return SAFE(REG.sync.getTags());
+  }).then(function(r){
+    logLine('dup-log', 'getTags() while events in flight: ' + E(r.ok ? r.v : r.e).slice(0, 80) + ' — <b>the list dedupes</b>', 'dim');
+  }).catch(function(e){ logLine('dup-log', 'register failed: ' + String(e).slice(0, 100)); });
+});
+
+// ---------- background fetch live lane ----------
+$('bf-btn').addEventListener('click', function(){
+  if(!REG) return;
+  var el = $('bf-chips'); if(el){ var keep = el.querySelectorAll('.chip.info'); el.innerHTML = ''; Array.prototype.forEach.call(keep, function(k){ el.appendChild(k); }); }
+  var bar = $('bf-bar'), launched = false;
+  var id2 = 'dw-live-' + Date.now().toString(36);
+  BFID = id2;
+  SAFE(REG.backgroundFetch.fetch(id2, ['dw-asset.bin'], { downloadTotal: 65536, title: 'Deferred Work demo asset' })).then(function(r){
+    if(!r.ok){ chip('bf-chips', 'fail', 'launch rejected: ' + String(r.e).slice(0, 110)); settleGate(); return; }
+    launched = true; logLine('bf-log', 'launched ' + id2 + ' (64 KB, exact downloadTotal) — onprogress wired', 'dim');
+    var g = r.v;
+    g.onprogress = function(){
+      var pct = g.downloadTotal ? Math.min(100, Math.round(g.downloaded / g.downloadTotal * 100)) : 0;
+      if(bar) bar.style.width = pct + '%';
+      logLine('bf-log', '<span class="dim">onprogress: ' + g.downloaded + ' / ' + g.downloadTotal + ' B (' + pct + '%)</span>');
+    };
+    // poll fallback in case onprogress is quiet
+    var iv = setInterval(function(){
+      if(bfDone || !launched){ clearInterval(iv); return; }
+      var pct = g.downloadTotal ? Math.min(100, Math.round(g.downloaded / g.downloadTotal * 100)) : 0;
+      if(bar && pct > 0) bar.style.width = pct + '%';
+    }, 400);
+    setTimeout(function(){ clearInterval(iv); }, 30000);
+  });
+});
+
+// ---------- zombie lane ----------
+$('zombie-btn').addEventListener('click', function(){
+  if(!REG) return;
+  var el = $('zombie-chips'); if(el) el.innerHTML = '';
+  var zid = 'dw-zombie-' + Date.now().toString(36);
+  REG.backgroundFetch.fetch(zid, ['dw-asset.bin'], { downloadTotal: 1024 }).then(function(g){
+    logLine('zombie-log', 'launched ' + zid + ' — declared downloadTotal=1024, asset is 65 536 B', 'dim');
+    var t0 = Date.now();
+    var iv = setInterval(function(){
+      var dt = Date.now() - t0;
+      if(dt >= 8000){
+        clearInterval(iv);
+        var dl = g.downloaded, res = g.result, fr = g.failureReason;
+        if(dl === 0 && res === '' && fr === ''){
+          chip('zombie-chips', 'warn', '<b>SILENT EXCEED STALL</b> — 8 s: downloaded=0, result="", failureReason="", no fail event. Zombie confirmed (probe-stable at 15+ s)');
+        } else {
+          chip('zombie-chips', 'ok', 'engine moved bytes after all: downloaded=' + dl + ' result="' + res + '" — stall law did NOT reproduce on this run (report it)');
+        }
+        chip('zombie-chips', 'info', 'downloadTotal is a display hint, never a cap — but a lowball one wedges the fetch');
+        // cleanup
+        g.abort().then(function(){
+          logLine('zombie-log', '<span class="dim">abort() → cleaned up; id is free again</span>');
+          chip('zombie-chips', 'ok', 'abort() resolves · registration gone · duplicate-id trap disarmed');
+          settleGate();
+        }).catch(function(){});
+      } else {
+        logLine('zombie-log', '<span class="dim">t+' + (dt / 1000).toFixed(1) + 's downloaded=' + g.downloaded + 'B</span>');
+      }
+    }, 1000);
+  }).catch(function(e){
+    chip('zombie-chips', 'fail', 'zombie launch rejected: ' + String(e).slice(0, 110)); settleGate();
+  });
+});
+
+// ---------- settle + footer ----------
+document.getElementById('foot-eng').textContent = 'UA: ' + navigator.userAgent.match(/(Chrome|Firefox|Safari)\/[\d.]+/g).join(' ');
+setTimeout(settleGate, 2500);
+setTimeout(settleGate, 9000);
+setTimeout(settleGate, 20000);
+window.__gate = G;
+})();
+</script>
+</body>
+</html>
