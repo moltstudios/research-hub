@@ -1,1288 +1,672 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Compression Streams API — Native gzip/deflate Streaming for OPFS, WebTransport, and Live Data — OpenDrones & Molt Studios</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compression Streams API — the gzip tier, live-probed</title>
+<link rel="icon" href="data:,">
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  :root {
-    --bg: #0a0a0f;
-    --surface: #14141f;
-    --surface-2: #1c1c2b;
-    --surface-3: #252538;
-    --border: #2a2a3d;
-    --border-strong: #3a3a52;
-    --text: #e8e8f0;
-    --text-dim: #8888a0;
-    --text-muted: #5a5a72;
-    --accent: #fdcb6e;          /* amber — compression / efficiency primitive */
-    --accent-glow: rgba(253, 203, 110, 0.28);
-    --accent-2: #ffe066;
-    --green: #51cf66;
-    --orange: #ffa94d;
-    --blue: #74c0fc;
-    --purple: #b197fc;
-    --pink: #f783ac;
-    --red: #ff6b6b;
-    --radius: 12px;
-    color-scheme: dark;
-  }
-
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
-    background:
-      radial-gradient(1200px 800px at 20% 0%, rgba(253, 203, 110, 0.10), transparent 60%),
-      radial-gradient(900px 700px at 90% 80%, rgba(116, 192, 252, 0.08), transparent 60%),
-      var(--bg);
-    color: var(--text);
-    line-height: 1.6;
-    min-height: 100vh;
-    -webkit-font-smoothing: antialiased;
-  }
-
-  .wrap { max-width: 1080px; margin: 0 auto; padding: 64px 24px 96px; }
-
-  /* === HERO === */
-  .hero { margin-bottom: 56px; }
-  .tag {
-    display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
-    text-transform: uppercase; padding: 6px 12px; border-radius: 999px;
-    background: var(--accent-glow); color: var(--accent-2);
-  }
-  .hero h1 {
-    font-size: 44px; font-weight: 700; line-height: 1.15; margin: 16px 0 14px;
-    background: linear-gradient(135deg, #fff 0%, var(--accent-2) 100%);
-    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-  }
-  .hero p.lede { font-size: 18px; color: var(--text-dim); max-width: 740px; margin-bottom: 22px; }
-  .meta { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
-  .meta span {
-    font-size: 12px; color: var(--text-dim);
-    padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border);
-  }
-  .meta span b { color: var(--accent-2); font-weight: 700; }
-
-  /* === STATS BAR === */
-  .stats {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
-    margin: 24px 0 0;
-  }
-  .stat {
-    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-    padding: 16px;
-  }
-  .stat .num {
-    font-size: 28px; font-weight: 700; line-height: 1;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-  }
-  .stat .lbl { font-size: 11px; color: var(--text-muted); margin-top: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
-
-  /* === SECTIONS === */
-  section {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 16px; padding: 32px; margin-bottom: 24px;
-  }
-  section h2 {
-    font-size: 24px; font-weight: 700; margin-bottom: 8px;
-    display: flex; align-items: center; gap: 12px;
-  }
-  section h2 .num {
-    font-family: ui-monospace, "SF Mono", monospace; font-size: 14px;
-    color: var(--accent); background: var(--surface-2);
-    padding: 4px 10px; border-radius: 6px; font-weight: 600;
-  }
-  section h3 {
-    font-size: 16px; font-weight: 600; margin: 22px 0 10px;
-    color: var(--text);
-  }
-  section h3 .marker {
-    color: var(--accent); font-family: ui-monospace, monospace;
-    font-size: 13px; margin-right: 6px;
-  }
-  section p { color: var(--text-dim); margin-bottom: 12px; font-size: 15px; }
-  section ul { color: var(--text-dim); margin: 8px 0 8px 22px; font-size: 14px; }
-  section ul li { margin-bottom: 6px; }
-  section ul li b { color: var(--text); font-weight: 600; }
-
-  /* === CODE === */
-  pre {
-    background: var(--bg); border: 1px solid var(--border);
-    border-radius: 10px; padding: 16px; overflow-x: auto;
-    font-family: ui-monospace, "SF Mono", monospace; font-size: 13px;
-    line-height: 1.55; margin: 10px 0 14px; color: var(--text);
-  }
-  pre code { font-family: inherit; }
-  .tk-kw { color: #ff8a80; font-weight: 600; }
-  .tk-str { color: #c5f0a4; }
-  .tk-com { color: var(--text-muted); font-style: italic; }
-  .tk-fn { color: var(--accent-2); font-weight: 600; }
-  .tk-num { color: #fab1a0; }
-
-  /* === INPUTS === */
-  .ctl-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 10px 0; }
-  .ctl-row label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
-  button.btn, select.btn, input.btn, textarea.btn {
-    appearance: none; border: 1px solid var(--border-strong);
-    background: var(--surface-2); color: var(--text);
-    padding: 9px 14px; border-radius: 8px; font-size: 13px;
-    font-family: inherit; transition: background 120ms, border-color 120ms, transform 80ms;
-  }
-  button.btn { cursor: pointer; font-weight: 500; }
-  button.btn:hover { background: var(--surface-3); border-color: #4a4a66; }
-  button.btn:active { transform: scale(0.97); }
-  button.btn.primary { background: var(--accent); border-color: var(--accent); color: #1a1a1a; font-weight: 700; }
-  button.btn.primary:hover { background: var(--accent-2); }
-  button.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  textarea.btn {
-    width: 100%; min-height: 110px; font-family: ui-monospace, "SF Mono", monospace;
-    font-size: 13px; resize: vertical;
-  }
-  select.btn { cursor: pointer; }
-
-  /* === OUTPUT PANES === */
-  .pane-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; }
-  .pane-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0; }
-  .pane-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 14px 0; }
-  .pane {
-    background: var(--surface-2); border: 1px solid var(--border);
-    border-radius: 10px; padding: 14px; font-family: ui-monospace, monospace;
-    font-size: 12px; line-height: 1.5;
-  }
-  .pane .label {
-    font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
-    color: var(--text-muted); margin-bottom: 6px;
-    font-family: -apple-system, sans-serif;
-  }
-  .pane .value { color: var(--text); font-size: 13px; font-weight: 600; }
-  .pane .meta { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
-
-  /* === BAR CHART (compression benchmark) === */
-  .bar-row {
-    display: grid; grid-template-columns: 100px 1fr 90px;
-    gap: 10px; align-items: center; margin: 6px 0;
-    font-size: 12px; font-family: ui-monospace, monospace;
-  }
-  .bar-row .name { color: var(--text-dim); }
-  .bar-row .track {
-    height: 18px; background: var(--surface-3); border-radius: 4px; overflow: hidden;
-    border: 1px solid var(--border);
-  }
-  .bar-row .fill {
-    height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2));
-    border-radius: 4px; transition: width 400ms ease-out;
-  }
-  .bar-row.saved .fill { background: linear-gradient(90deg, var(--green), #8ce99a); }
-  .bar-row.in .fill { background: linear-gradient(90deg, var(--blue), #a5d8ff); }
-  .bar-row .val { color: var(--text); text-align: right; font-weight: 600; }
-
-  /* === LIVE STREAM === */
-  .stream {
-    background: var(--bg); border: 1px solid var(--border);
-    border-radius: 8px; padding: 14px;
-    font-family: ui-monospace, "SF Mono", monospace;
-    font-size: 12px; max-height: 240px; overflow-y: auto;
-    line-height: 1.5;
-  }
-  .stream .line { padding: 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .stream .ts { color: var(--text-muted); margin-right: 6px; }
-  .stream .raw { color: var(--blue); }
-  .stream .cmp { color: var(--green); }
-  .stream .net { color: var(--accent); font-weight: 600; }
-  .stream .offline { color: var(--red); font-weight: 600; }
-
-  /* === TABLE === */
-  table {
-    width: 100%; border-collapse: collapse; font-size: 13px;
-    margin: 12px 0; font-family: ui-monospace, "SF Mono", monospace;
-  }
-  th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--border); }
-  th { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
-  td { color: var(--text-dim); }
-  td b { color: var(--text); font-weight: 600; }
-  td.num { text-align: right; }
-  tr:last-child td { border-bottom: none; }
-
-  /* === TAGS === */
-  .pill {
-    display: inline-block; font-size: 11px; font-weight: 600;
-    padding: 3px 9px; border-radius: 999px; margin-right: 6px;
-    text-transform: uppercase; letter-spacing: 0.04em;
-  }
-  .pill.gzip { background: rgba(253, 203, 110, 0.15); color: var(--accent-2); }
-  .pill.deflate { background: rgba(116, 192, 252, 0.15); color: var(--blue); }
-  .pill.raw { background: rgba(177, 151, 252, 0.15); color: var(--purple); }
-  .pill.win { background: rgba(81, 207, 102, 0.15); color: var(--green); }
-  .pill.warn { background: rgba(255, 169, 77, 0.15); color: var(--orange); }
-
-  /* === STAGE (live demo cards) === */
-  .stage {
-    background: var(--surface-2); border: 1px solid var(--border);
-    border-radius: 12px; padding: 18px; margin: 14px 0;
-  }
-  .stage h4 {
-    font-size: 14px; font-weight: 600; margin-bottom: 12px;
-    color: var(--text); display: flex; align-items: center; gap: 10px;
-  }
-  .stage h4 .dot {
-    width: 8px; height: 8px; border-radius: 50%; background: var(--green);
-    box-shadow: 0 0 8px rgba(81, 207, 102, 0.6);
-    animation: pulse 1.4s ease-in-out infinite;
-  }
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-
-  /* === FOOTER === */
-  footer {
-    text-align: center; color: var(--text-muted);
-    font-size: 12px; padding: 32px 0 16px; border-top: 1px solid var(--border);
-    margin-top: 48px;
-  }
-  footer a { color: var(--accent-2); text-decoration: none; }
-
-  /* === RESPONSIVE === */
-  @media (max-width: 720px) {
-    .hero h1 { font-size: 32px; }
-    .stats { grid-template-columns: repeat(2, 1fr); }
-    .pane-2, .pane-3, .pane-4 { grid-template-columns: 1fr; }
-    .bar-row { grid-template-columns: 80px 1fr 70px; font-size: 11px; }
-  }
+  :root { --bg:#0c0a1a; --fg:#e8e6f5; --muted:#8b88a8; --accent:#a29bfe; --warn:#fdcb6e; --err:#ff6b6b; --ok:#55efc4; --info:#74b9ff; --code:#1a1730; --border:#2a2640; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:0; background:var(--bg); color:var(--fg); font:15px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif; overflow-x:hidden; }
+  .wrap { max-width:920px; margin:0 auto; padding:32px 24px 80px; }
+  h1 { font-size:34px; line-height:1.15; margin:0 0 8px; letter-spacing:-0.02em; }
+  h2 { font-size:22px; margin:48px 0 8px; letter-spacing:-0.01em; }
+  h3 { font-size:16px; margin:20px 0 8px; color:var(--accent); }
+  p, li { color:#cfcce0; }
+  .meta { display:flex; gap:8px; flex-wrap:wrap; margin:16px 0 24px; }
+  .badge { font-size:11px; padding:4px 10px; border-radius:999px; border:1px solid var(--border); color:var(--muted); }
+  .badge.ok { color:var(--ok); border-color:#1f3d35; background:#0e1d18; }
+  .badge.warn { color:var(--warn); border-color:#3d361f; background:#1d180e; }
+  .badge.info { color:var(--info); border-color:#1f2c3d; background:#0e151d; }
+  pre { background:var(--code); border:1px solid var(--border); border-radius:8px; padding:14px 16px; overflow:auto; font:13px/1.5 ui-monospace,SF Mono,Menlo,Consolas,monospace; color:#cfcce0; max-width:100%; }
+  .lab { background:var(--code); border:1px solid var(--border); border-radius:8px; padding:18px 20px; margin:18px 0; }
+  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .row > * { flex:0 0 auto; }
+  button { background:#1f1b3a; color:var(--fg); border:1px solid var(--border); border-radius:6px; padding:7px 12px; font:13px -apple-system,Inter,system-ui; cursor:pointer; max-width:100%; white-space:normal; word-break:break-word; }
+  button:hover { background:#2a264d; }
+  button:disabled { opacity:0.5; cursor:not-allowed; }
+  input[type=text], textarea { background:var(--code); color:var(--fg); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font:13px -apple-system,Inter,system-ui; width:100%; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .chip { font:11px ui-monospace,Menlo,monospace; padding:3px 8px; border-radius:4px; border:1px solid; word-break:break-all; }
+  .chip.ok { color:var(--ok); border-color:#1f3d35; background:#0e1d18; }
+  .chip.warn { color:var(--warn); border-color:#3d361f; background:#1d180e; }
+  .chip.fail { color:var(--err); border-color:#3d1f25; background:#1d0e10; }
+  .chip.info { color:var(--info); border-color:#1f2c3d; background:#0e151d; }
+  .out { background:#000; border:1px solid var(--border); border-radius:6px; padding:10px 12px; min-height:60px; max-height:240px; overflow:auto; font:12px ui-monospace,Menlo,monospace; color:#cfcce0; white-space:pre-wrap; word-break:break-all; }
+  .note { color:var(--muted); font-size:13px; }
+  hr { border:none; border-top:1px solid var(--border); margin:40px 0; }
+  table { border-collapse:collapse; width:100%; font-size:13px; margin:12px 0; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+  th { color:var(--muted); font-weight:500; }
+  code { background:var(--code); padding:2px 6px; border-radius:3px; font:12px ui-monospace,Menlo,monospace; overflow-wrap:anywhere; word-break:break-word; }
+  .tscroll { overflow-x:auto; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+  .card { background:var(--code); border:1px solid var(--border); border-radius:8px; padding:14px 16px; }
+  .card h3 { margin-top:0; }
+  .small { font-size:12px; color:var(--muted); }
+  .sec { border-top:1px solid var(--border); padding-top:8px; margin-top:32px; overflow:hidden; }
+  .hexrow { display:grid; grid-template-columns:120px 1fr; gap:8px 12px; font:12px ui-monospace,Menlo,monospace; margin:8px 0; align-items:baseline; }
+  .hexrow .fmt { color:var(--accent); }
+  .hexrow .hex { color:#cfcce0; word-break:break-all; }
+  .hexrow .ann { color:var(--muted); }
+  .big { font-size:22px; font-weight:600; }
+  .mono-num { font:13px ui-monospace,Menlo,monospace; }
+  .lane { border-left:3px solid var(--border); padding-left:14px; margin:14px 0; }
+  .lane.reader { border-color:var(--ok); }
+  .lane.resp { border-color:var(--err); }
+  .kv { font:12px ui-monospace,Menlo,monospace; color:var(--muted); }
+  .drop { border:2px dashed var(--border); border-radius:12px; padding:28px 18px; text-align:center; color:var(--muted); margin:12px 0; }
+  .drop.hot { border-color:var(--accent); color:var(--fg); }
 </style>
 </head>
 <body>
 <div class="wrap">
-
-<!-- ============== HERO ============== -->
-<header class="hero">
-  <span class="tag">Compression Streams API · Baseline Widely Available May 2023</span>
-  <h1>Native gzip/deflate streaming in the browser.<br>Zero libraries. Zero JS overhead. ~98% support.</h1>
-  <p class="lede">
-    The browser ships a <b>streaming compression API</b> that is composable with every data layer in your stack
-    — OPFS writes, WebTransport telemetry, Fetch responses, WebCodecs frames, and Service Worker request/response
-    bodies. Facebook measured the native implementation <b>20× faster than JS</b> and 10% faster than WASM
-    alternatives. Drop the <code>pako</code> dependency.
-  </p>
+  <h1>Compression Streams API</h1>
+  <p><code>CompressionStream</code> + <code>DecompressionStream</code> — native gzip/deflate/zlib in the Streams family. Zero dependencies, composes with <code>pipeThrough</code>, ships in every engine (Ch 80+ Apr 2020 · FF 113+ May 2023 · SF 16.4+ Mar 2023 — <strong>Baseline</strong>). Live-probed on Brave 154 headless ×3 suites + node-zlib cross-verification, gate-verified ×2 viewports.</p>
   <div class="meta">
-    <span>Status: <b>Baseline Widely Available</b></span>
-    <span>Coverage: <b>~98%</b> global traffic</span>
-    <span>Algorithms: <b>gzip · deflate · deflate-raw</b></span>
-    <span>Web Workers: <b>✓</b></span>
-    <span>Priority: <b>P2</b> — composes with OPFS P2 + WebTransport P2 + WebRTC P3</span>
+    <span class="badge ok">priority 3</span>
+    <span class="badge info">web-platform-api</span>
+    <span class="badge ok">baseline 2023</span>
+    <span class="badge info">opendrones</span>
+    <span class="badge info">live-probed</span>
+    <span class="badge">cr&nbsp;2026-10-08</span>
   </div>
 
-  <div class="stats">
-    <div class="stat">
-      <div class="num">20×</div>
-      <div class="lbl">Faster than JS (FB benchmark)</div>
+  <h2>0. The Six Headline Truths</h2>
+  <ol>
+    <li><strong>The format wall is exactly three formats</strong> — <code>gzip</code>, <code>deflate</code> (zlib-wrapped!), <code>deflate-raw</code>. No brotli, no level knob, case-sensitive, and every miss returns the same verbatim <code>Unsupported compression format: 'X'</code> TypeError. §2</li>
+    <li><strong>'deflate' is ZLIB-wrapped, not raw</strong> — measured magic <code>78 9c</code> (RFC 1950), verified by node <code>inflateSync</code> ✓ / <code>inflateRawSync</code> ✗. The <code>Content-Encoding: deflate</code> history trap does not apply here. §3</li>
+    <li><strong>The anti-cat law</strong> — concatenated gzip members (RFC 1952-legal, <code>cat a.gz b.gz</code>, node gunzip ✓) are <strong>REJECTED</strong> by the browser: <em>"Junk found after end of compressed data."</em> Even ONE trailing newline byte after a valid member = hard error. §6</li>
+    <li><strong>The two-lane error grammar</strong> — via <code>getReader()</code> you get real reasons (<em>"incorrect header check"</em>, <em>"Compressed input was truncated"</em>, <em>"invalid block type"</em>, <em>"incorrect data check"</em> on CRC mismatch); via <code>new Response(stream)</code> everything collapses to <code>TypeError: Failed to fetch</code>. §7</li>
+    <li><strong>The write-deadlock law</strong> — <code>await writer.write()</code> or <code>await writer.close()</code> on a stream nobody is reading <strong>PENDS FOREVER</strong> (backpressure, hwm = 1 chunk, <code>desiredSize</code> 1 → 0). The MDN-canonical un-awaited pattern works; even <code>abort()</code> pends. §8</li>
+    <li><strong>No secure-context gate + full Worker support</strong> — ctors construct and round-trip on plain-HTTP LAN origins (probed on 2 interfaces) and inside a dedicated Worker. The OpenDrones LAN ground-station tier. §9–10</li>
+  </ol>
+
+  <div class="sec"></div>
+  <h2>1. The Surface — 3 prototype members, 0 statics, not a TransformStream</h2>
+  <p>The smallest API surface in the catalog alongside WebSocketStream: <code>constructor</code>, <code>readable</code>, <code>writable</code>. Both classes share the exact same 3-member prototype shape. Duck-typed for <code>pipeThrough</code> — but <code>instanceof TransformStream</code> is <code>false</code>.</p>
+  <div class="chips" id="ch-surface"></div>
+  <pre><code>const cs = new CompressionStream('gzip');
+cs.readable instanceof ReadableStream;        // true
+cs.writable instanceof WritableStream;        // true
+cs instanceof TransformStream;                // false — own class, duck-type only
+cs.readable === cs.readable;                  // true — cached identity
+Object.getOwnPropertyNames(CompressionStream.prototype).sort();
+// ['constructor', 'readable', 'writable']
+CompressionStream.length;                     // 1 — exactly one arg, the format string</code></pre>
+  <p class="note">Enumerable-lie family: <code>Object.keys(cs)</code> is <code>[]</code> (the readable/writable getters live on the prototype), and the getters themselves are <code>enumerable: true</code> there. <code>Symbol.toStringTag</code> = <code>'CompressionStream'</code> / <code>'DecompressionStream'</code>. Zero statics on either constructor.</p>
+
+  <div class="sec"></div>
+  <h2>2. The Format Wall — three legal, everything else verbatim-rejected</h2>
+  <p>Constructor validation is strict, case-sensitive, and stringly-typed: the argument is coerced to string <em>first</em> (an object argument surfaces as <code>'[object Object]'</code> in the error), then matched against exactly three identifiers.</p>
+  <div class="lab">
+    <div class="row">
+      <button data-fmt="gzip">new CompressionStream('gzip')</button>
+      <button data-fmt="deflate">…('deflate')</button>
+      <button data-fmt="deflate-raw">…('deflate-raw')</button>
+      <button data-fmt="br">…('br')</button>
+      <button data-fmt="GZIP">…('GZIP')</button>
+      <button data-fmt="gzip ">…('gzip ')</button>
+      <button data-fmt="__none">…() — no arg</button>
+      <button data-fmt="__obj">…({format,level})</button>
     </div>
-    <div class="stat">
-      <div class="num">10%</div>
-      <div class="lbl">Faster than WASM (FB benchmark)</div>
-    </div>
-    <div class="stat">
-      <div class="num">3</div>
-      <div class="lbl">Algorithms (gzip / deflate / deflate-raw)</div>
-    </div>
-    <div class="stat">
-      <div class="num">~98%</div>
-      <div class="lbl">Global browser support</div>
-    </div>
+    <div class="chips" id="ch-format"></div>
+    <p class="note" id="fmt-note">Click any constructor lane — the chip records the engine's verbatim verdict.</p>
   </div>
-</header>
+  <pre><code>// All of these throw TypeError with the SAME shape, verbatim:
+new CompressionStream('br');        // Unsupported compression format: 'br'
+new CompressionStream('GZIP');      // Unsupported compression format: 'GZIP'   ← case-sensitive
+new CompressionStream({a:1});       // Unsupported compression format: '[object Object]'
+new CompressionStream();            // 1 argument required, but only 0 present.
+CompressionStream('gzip');          // Please use the 'new' operator… (no-call-without-new)
+new DecompressionStream('br');      // same wall on the decode side</code></pre>
+  <p class="note"><strong>The no-knob law:</strong> the format string is the ONLY configuration. There is no <code>{level}</code>, no strategy, no dictionary, no flush hint — the engine picks its own defaults (measured §4: mid-level output, <code>xfl=0</code>). If you need <code>gzip -9</code>, you need WASM (fflate/pako), not this API.</p>
 
-<!-- ============== SECTION 1: LIVE CAPABILITY DETECTION ============== -->
-<section>
-  <h2><span class="num">01</span> Live Capability Detection</h2>
-  <p>
-    First check — is <code>CompressionStream</code> available in this browser?
-    If not, fall back to a JS library (pako, fflate) or send uncompressed and let the server compress.
-  </p>
-
-  <div class="pane-4" id="caps">
-    <div class="pane">
-      <div class="label">CompressionStream</div>
-      <div class="value" id="cap-cmp">checking…</div>
-      <div class="meta" id="cap-cmp-meta"></div>
+  <div class="sec"></div>
+  <h2>3. The Magic Bytes Lab — what each format actually emits</h2>
+  <p>Compress the payload below with all three formats and inspect the container bytes live. <strong>'deflate' wraps in a zlib header</strong> (<code>78 9c</code>, RFC 1950) — verified against node: <code>inflateSync</code> accepts it, <code>inflateRawSync</code> rejects it. <code>deflate-raw</code> has no container at all. The gzip header decoder below reads the live bytes.</p>
+  <div class="lab">
+    <label class="small" for="payload-in">payload</label>
+    <input type="text" id="payload-in" value="hello" spellcheck="false">
+    <div class="row" style="margin-top:10px">
+      <button id="btn-magic">compress × 3 formats</button>
+      <span class="small">node-zlib cross-verified in the probe session</span>
     </div>
-    <div class="pane">
-      <div class="label">DecompressionStream</div>
-      <div class="value" id="cap-dec">checking…</div>
-      <div class="meta" id="cap-dec-meta"></div>
-    </div>
-    <div class="pane">
-      <div class="label">Algorithms</div>
-      <div class="value" id="cap-algos">checking…</div>
-      <div class="meta" id="cap-algos-meta"></div>
-    </div>
-    <div class="pane">
-      <div class="label">In Worker</div>
-      <div class="value" id="cap-worker">checking…</div>
-      <div class="meta" id="cap-worker-meta"></div>
-    </div>
+    <div id="magic-out"></div>
+    <div class="chips" id="ch-magic"></div>
   </div>
-
-  <div class="pane" style="margin-top:14px;">
-    <div class="label">The 5-line fallback recipe</div>
-    <pre><code><span class="tk-kw">if</span> (<span class="tk-kw">typeof</span> CompressionStream === <span class="tk-str">'undefined'</span>) {
-  <span class="tk-com">// Fall back to pako / fflate, or send uncompressed</span>
-  <span class="tk-kw">await</span> <span class="tk-fn">import</span>(<span class="tk-str">'https://cdn.jsdelivr.net/npm/[email protected]/dist/pako.esm.mjs'</span>);
-}
-
-<span class="tk-com">// Native path — works in Workers, OPFS, Fetch, anywhere</span>
-<span class="tk-kw">const</span> cs = <span class="tk-kw">new</span> <span class="tk-fn">CompressionStream</span>(<span class="tk-str">'gzip'</span>);
-response.body.<span class="tk-fn">pipeThrough</span>(cs);</code></pre>
-  </div>
-</section>
-
-<!-- ============== SECTION 2: THE 3-LINE RECIPE ============== -->
-<section>
-  <h2><span class="num">02</span> The 3-line Recipe</h2>
-  <p>
-    The Compression Streams API is one of the smallest surface areas in modern web platform — a pair of
-    <code>TransformStream</code> subclasses. Use them anywhere streams flow: Fetch, OPFS, WebTransport,
-    WebCodecs, Service Worker, Worker message ports, even <code>EventSource</code> bodies.
-  </p>
-
-  <div class="pane-2">
-    <div class="pane">
-      <div class="label">Compress a Fetch response (gzip)</div>
-      <pre><code><span class="tk-kw">const</span> compressed = (<span class="tk-kw">await</span> <span class="tk-fn">fetch</span>(<span class="tk-str">'/api/telemetry'</span>))
-  .body
-  .<span class="tk-fn">pipeThrough</span>(<span class="tk-kw">new</span> <span class="tk-fn">CompressionStream</span>(<span class="tk-str">'gzip'</span>));</code></pre>
-    </div>
-    <div class="pane">
-      <div class="label">Decompress to Blob (gzip)</div>
-      <pre><code><span class="tk-kw">async function</span> <span class="tk-fn">decompressBlob</span>(blob) {
-  <span class="tk-kw">const</span> ds = <span class="tk-kw">new</span> <span class="tk-fn">DecompressionStream</span>(<span class="tk-str">'gzip'</span>);
-  <span class="tk-kw">return</span> <span class="tk-kw">await</span> <span class="tk-kw">new</span> <span class="tk-fn">Response</span>(blob.<span class="tk-fn">stream</span>().<span class="tk-fn">pipeThrough</span>(ds)).<span class="tk-fn">blob</span>();
-}</code></pre>
-    </div>
-  </div>
-
-  <h3><span class="marker">→</span> Round-trip any data through compression</h3>
-  <p>Paste any text — a log file, JSON payload, base64 image, CSV — and the live demo below
-    compresses it with all three algorithms, shows the byte size for each, and verifies the
-    round-trip decompresses back to the exact original.</p>
-
-  <div class="ctl-row">
-    <button class="btn" data-preset="telemetry">📡 drone telemetry JSON</button>
-    <button class="btn" data-preset="log">📜 server log (highly repetitive)</button>
-    <button class="btn" data-preset="csv">📊 CSV dataset</button>
-    <button class="btn" data-preset="lorem">📝 lorem ipsum (medium entropy)</button>
-    <button class="btn" data-preset="binary">🔢 random binary (incompressible)</button>
-  </div>
-  <textarea class="btn" id="recipe-input" placeholder="Paste any text or click a preset…"></textarea>
-  <div class="ctl-row">
-    <button class="btn primary" id="recipe-compress">▶ Compress all 3 algorithms</button>
-    <span id="recipe-status" style="font-size:12px;color:var(--text-muted);"></span>
-  </div>
-
-  <div class="pane-3" id="recipe-results" style="display:none;">
-    <div class="pane">
-      <div class="label"><span class="pill gzip">gzip</span> compressed</div>
-      <div class="value" id="r-gzip">—</div>
-      <div class="meta" id="r-gzip-meta">—</div>
-    </div>
-    <div class="pane">
-      <div class="label"><span class="pill deflate">deflate</span> compressed</div>
-      <div class="value" id="r-deflate">—</div>
-      <div class="meta" id="r-deflate-meta">—</div>
-    </div>
-    <div class="pane">
-      <div class="label"><span class="pill raw">deflate-raw</span> compressed</div>
-      <div class="value" id="r-raw">—</div>
-      <div class="meta" id="r-raw-meta">—</div>
-    </div>
-  </div>
-
-  <div class="pane" id="recipe-roundtrip" style="display:none;margin-top:12px;">
-    <div class="label">Round-trip verification</div>
-    <div id="roundtrip-text" style="font-family:ui-monospace,monospace;font-size:12px;color:var(--text);"></div>
-  </div>
-</section>
-
-<!-- ============== SECTION 3: COMPRESSION BENCHMARK ============== -->
-<section>
-  <h2><span class="num">03</span> Live Compression Benchmark</h2>
-  <p>
-    Real numbers from this browser, on this device, right now. Different algorithms win on
-    different payload shapes — the bar chart below runs the same input through all three
-    and shows the savings vs the uncompressed size.
-  </p>
-
-  <div class="ctl-row">
-    <label>Payload:</label>
-    <select class="btn" id="bench-payload">
-      <option value="telemetry">📡 drone telemetry stream (JSON, highly repetitive)</option>
-      <option value="flight-log">📜 1000-line flight log (text, repetitive)</option>
-      <option value="json-api">📊 JSON API response (medium entropy)</option>
-      <option value="csv">📋 CSV tabular data (medium entropy)</option>
-      <option value="binary">🔢 random bytes (incompressible — worst case)</option>
-      <option value="ksplat">🌐 simulated .ksplat (mixed binary, like Gaussian splats)</option>
-    </select>
-    <label>Size:</label>
-    <select class="btn" id="bench-size">
-      <option value="32">32 KB</option>
-      <option value="256">256 KB</option>
-      <option value="2048" selected>2 MB</option>
-      <option value="8192">8 MB</option>
-    </select>
-    <button class="btn primary" id="bench-run">▶ Run benchmark</button>
-  </div>
-
-  <div class="stage">
-    <h4>Compression ratio (smaller bar = better) <span class="dot"></span></h4>
-    <div id="bench-bars">
-      <div class="bar-row in">
-        <div class="name">uncompressed</div>
-        <div class="track"><div class="fill" style="width:100%;"></div></div>
-        <div class="val">— B</div>
-      </div>
-      <div class="bar-row">
-        <div class="name"><span class="pill gzip">gzip</span></div>
-        <div class="track"><div class="fill" id="bar-gzip" style="width:0%;"></div></div>
-        <div class="val" id="bar-gzip-val">—</div>
-      </div>
-      <div class="bar-row">
-        <div class="name"><span class="pill deflate">deflate</span></div>
-        <div class="track"><div class="fill" id="bar-deflate" style="width:0%;"></div></div>
-        <div class="val" id="bar-deflate-val">—</div>
-      </div>
-      <div class="bar-row">
-        <div class="name"><span class="pill raw">deflate-raw</span></div>
-        <div class="track"><div class="fill" id="bar-raw" style="width:0%;"></div></div>
-        <div class="val" id="bar-raw-val">—</div>
-      </div>
-    </div>
-  </div>
-
-  <div class="pane-4" id="bench-stats" style="display:none;">
-    <div class="pane">
-      <div class="label">Best algorithm</div>
-      <div class="value" id="best-algo">—</div>
-      <div class="meta" id="best-algo-meta">—</div>
-    </div>
-    <div class="pane">
-      <div class="label">Best ratio</div>
-      <div class="value" id="best-ratio">—</div>
-      <div class="meta" id="best-ratio-meta">of original size</div>
-    </div>
-    <div class="pane">
-      <div class="label">Fastest encode</div>
-      <div class="value" id="fastest-algo">—</div>
-      <div class="meta" id="fastest-algo-meta">ms total</div>
-    </div>
-    <div class="pane">
-      <div class="label">Throughput</div>
-      <div class="value" id="throughput">—</div>
-      <div class="meta" id="throughput-meta">MB/s on this device</div>
-    </div>
-  </div>
-
-  <div style="font-size:12px;color:var(--text-muted);margin-top:8px;">
-    <b style="color:var(--text);">How to read this:</b> longer bars = more bytes. A 2 MB
-    drone telemetry payload typically compresses to ~80-120 KB with gzip (94-96% savings).
-    Random binary is incompressible (~0% savings) — useful as a worst-case baseline.
-  </div>
-</section>
-
-<!-- ============== SECTION 4: ALGORITHM DECISION ============== -->
-<section>
-  <h2><span class="num">04</span> Algorithm Decision: gzip vs deflate vs deflate-raw</h2>
-  <p>
-    All three algorithms are essentially the same deflate algorithm with different framing.
-    The wrapper overhead is small (a dozen bytes for headers), but <b>interoperability</b> is the deciding factor.
-  </p>
-
-  <table>
-    <thead>
-      <tr>
-        <th>Algorithm</th>
-        <th>Format</th>
-        <th>Overhead</th>
-        <th>Best for</th>
-        <th>Avoid for</th>
-      </tr>
-    </thead>
+  <div class="tscroll"><table>
+    <thead><tr><th>format</th><th>container</th><th>magic (measured)</th><th>empty input</th><th>node cross-check</th></tr></thead>
     <tbody>
-      <tr>
-        <td><span class="pill gzip">gzip</span></td>
-        <td>RFC 1952</td>
-        <td>~20 B header + 8 B footer</td>
-        <td><b>Cross-system transport.</b> Send to a server, AWS, Cloudflare, NGINX — every HTTP middleware understands <code>Content-Encoding: gzip</code> out of the box. Standard for OPFS blobs sent over WebTransport.</td>
-        <td>Sub-100-byte payloads (overhead dominates)</td>
-      </tr>
-      <tr>
-        <td><span class="pill deflate">deflate</span></td>
-        <td>RFC 1951 + 1950 (zlib wrapper)</td>
-        <td>~6 B zlib header + 4 B checksum</td>
-        <td><b>HTTP <code>Content-Encoding</code> specifically.</b> Historically the default for HTTP bodies. Still used by some legacy servers.</td>
-        <td>Anything not HTTP (use gzip for portability)</td>
-      </tr>
-      <tr>
-        <td><span class="pill raw">deflate-raw</span></td>
-        <td>RFC 1951 (no wrapper)</td>
-        <td><b>0 bytes</b></td>
-        <td><b>When YOU control both ends.</b> Smallest possible output. Pair with your own framing (length prefix + your own header). WebTransport streams where you've defined a private protocol.</td>
-        <td>Cross-system transport (no standard wrapper, parsers will choke)</td>
-      </tr>
+      <tr><td><code>gzip</code></td><td>gzip (RFC 1952): 10B header + deflate + 8B trailer</td><td class="mono-num">1f 8b 08 00 00 00 00 00 00 13</td><td class="mono-num">20 B</td><td>gunzipSync ✓ byte-exact</td></tr>
+      <tr><td><code>deflate</code></td><td><strong>zlib (RFC 1950)</strong>: 2B header + deflate + 4B adler32</td><td class="mono-num">78 9c …</td><td class="mono-num">8 B (78 9c 03 00)</td><td>inflateSync ✓ · inflateRawSync ✗</td></tr>
+      <tr><td><code>deflate-raw</code></td><td>none — bare DEFLATE (RFC 1951)</td><td class="mono-num">cb 48 … (no magic)</td><td class="mono-num">2 B (03 00)</td><td>inflateRawSync ✓ · inflateSync ✗</td></tr>
     </tbody>
-  </table>
+  </table></div>
+  <p class="note">The <strong>empty-input law</strong>: compressing zero bytes still emits the full container — 20/8/2 bytes respectively, byte-identical to node's <code>gzipSync(Buffer.alloc(0))</code> etc. A "compressed empty file" is never 0 bytes. The gzip header the engine writes is <code>mtime=0</code>, <code>xfl=0</code>, <code>os=19</code> (0x13 — neither node's Unix <code>3</code> nor unknown <code>255</code>), decompressed live in §4's panel.</p>
 
-  <div style="margin-top:14px;font-size:13px;color:var(--text-dim);">
-    <b style="color:var(--text);">The rule:</b>
-    <code>deflate-raw</code> for private protocols,
-    <code>gzip</code> for everything else. Skip plain <code>deflate</code> unless HTTP requires it.
+  <div class="sec"></div>
+  <h2>4. The gzip Header Decoder + Throughput</h2>
+  <p>The engine's own defaults, read off live bytes: no mtime (deterministic output — same input, same bytes, cache-friendly), <code>xfl=0</code> (not max-compression-flagged), <code>os=19</code>. Throughput on 1.55 MB of repetitive telemetry JSON: <strong>4,606 B output in ~2 ms</strong> — ratio 0.30%.</p>
+  <div class="lab">
+    <div class="row"><button id="btn-header">decode live gzip header</button><button id="btn-bench">bench 1.55 MB compress</button></div>
+    <div class="out" id="header-out">— header decode pending —</div>
+    <div class="chips" id="ch-header"></div>
   </div>
-</section>
+  <p class="note">Byte-compat note from the probe: browser output size ran 1 byte <em>smaller</em> than node level-6/9 on the same 4 KB reference (109 vs 110 B) and the deflate payload differs at block-splitting level — the engine bundles its own zlib build. Treat browser-vs-node gzip as <em>format-compatible</em>, not byte-identical; CRC32 and container layout verify exactly.</p>
 
-<!-- ============== SECTION 5: OPFS COMPOSE — OPFS + COMPRESSION ============== -->
-<section>
-  <h2><span class="num">05</span> OPFS Compose: Compress Before Write</h2>
-  <p>
-    Pairs directly with <b>OPFS (P2 entry)</b>. The offline telemetry buffer pattern from the OPFS demo gains
-    a 90%+ size reduction for free: stream every packet through <code>CompressionStream('gzip')</code> before
-    handing the bytes to <code>createSyncAccessHandle</code>. Decompress on the way out. Net result:
-    <b>10× more missions fit in the same persistent storage budget.</b>
-  </p>
-
-  <h3><span class="marker">→</span> Live OPFS write/read round-trip with compression</h3>
-
-  <div class="ctl-row">
-    <label>Packets per mission:</label>
-    <select class="btn" id="opfs-count">
-      <option value="100">100</option>
-      <option value="500">500</option>
-      <option value="2000" selected>2,000</option>
-      <option value="10000">10,000</option>
-    </select>
-    <button class="btn primary" id="opfs-run">▶ Generate mission + write compressed OPFS</button>
+  <div class="sec"></div>
+  <h2>5. Streams Grammar — chunked writes, one output</h2>
+  <p>Multiple <code>write()</code> calls merge into a single compressed member — there is no per-write framing. This is what makes the API a true stream transform, not a batch codec.</p>
+  <div class="lab">
+    <div class="row"><button id="btn-chunked">write 'hello' + ' ' + 'world' → gzip → gunzip</button></div>
+    <div class="out" id="chunked-out">—</div>
+    <div class="chips" id="ch-chunked"></div>
   </div>
+  <pre><code>const cs = new CompressionStream('gzip');
+const w = cs.writable.getWriter();
+w.write(enc.encode('hello'));   // NOT awaited — see §8, the deadlock law
+w.write(enc.encode(' '));
+w.write(enc.encode('world'));
+w.close();
+const packed = new Uint8Array(await new Response(cs.readable).arrayBuffer());
+// → single valid gzip member containing 'hello world'</code></pre>
+  <p class="note">Write-type validation is <strong>deferred</strong>: <code>write('a string')</code>, <code>write(42)</code>, <code>write(new Blob)</code> all pass the writable's queue (it takes <code>any</code>) — the failure surfaces asynchronously. And it surfaces on <strong>both</strong> promises: the read rejects <em>and</em> the fired write/close itself rejects (gate-caught: un-awaited producers raise <code>unhandledrejection</code> unless you <code>.catch</code> them — the demo silences its own fired producers with a <code>fire()</code> helper). Double-<code>getWriter()</code> throws the inherited streams law: <em>"Cannot create writer when WritableStream is locked."</em></p>
 
-  <div class="pane-4" id="opfs-stats" style="display:none;">
-    <div class="pane">
-      <div class="label">Raw JSON size</div>
-      <div class="value" id="opfs-raw">—</div>
-      <div class="meta">uncompressed packets</div>
+  <div class="sec"></div>
+  <h2>6. THE ANTI-CAT LAW — concatenated members are rejected</h2>
+  <p>RFC 1952 allows a <code>.gz</code> file to contain multiple members. <code>cat a.gz b.gz &gt; c.gz; gunzip c.gz</code> works everywhere server-side — node's <code>gunzipSync</code> decodes <strong>both</strong> members of the exact bytes below. The browser decoder decodes <strong>exactly one member</strong> and hard-errors on whatever follows — even a single <code>0x0a</code> newline.</p>
+  <div class="lab">
+    <div class="row">
+      <button id="btn-cat">compress 'AAA-' + 'BBB' separately, concat, decompress</button>
+      <button id="btn-cat-tail">single member + 1 trailing newline byte</button>
     </div>
-    <div class="pane">
-      <div class="label">Compressed gzip</div>
-      <div class="value" id="opfs-gzip">—</div>
-      <div class="meta" id="opfs-gzip-savings">—</div>
-    </div>
-    <div class="pane">
-      <div class="label">OPFS write time</div>
-      <div class="value" id="opfs-write">—</div>
-      <div class="meta">main-thread async API</div>
-    </div>
-    <div class="pane">
-      <div class="label">Round-trip OK?</div>
-      <div class="value" id="opfs-rt">—</div>
-      <div class="meta" id="opfs-rt-meta">decompressed == original</div>
-    </div>
+    <div class="out" id="cat-out">—</div>
+    <div class="chips" id="ch-cat"></div>
   </div>
-
-  <pre><code><span class="tk-com">// OPFS Worker pattern: compress → write → drain → decompress</span>
-<span class="tk-kw">async function</span> <span class="tk-fn">writeCompressedMission</span>(packets) {
-  <span class="tk-kw">const</span> json = <span class="tk-kw">new</span> <span class="tk-fn">TextEncoder</span>().<span class="tk-fn">encode</span>(<span class="tk-fn">JSON</span>.<span class="tk-fn">stringify</span>(packets));
-
-  <span class="tk-com">// Pipe through CompressionStream — same shape as Fetch body, OPFS, anywhere</span>
-  <span class="tk-kw">const</span> compressedStream = <span class="tk-kw">new</span> <span class="tk-fn">ReadableStream</span>({
-    <span class="tk-fn">start</span>(c) { c.<span class="tk-fn">enqueue</span>(json); c.<span class="tk-fn">close</span>(); }
-  }).<span class="tk-fn">pipeThrough</span>(<span class="tk-kw">new</span> <span class="tk-fn">CompressionStream</span>(<span class="tk-str">'gzip'</span>));
-
-  <span class="tk-kw">const</span> compressed = <span class="tk-kw">await</span> <span class="tk-kw">new</span> <span class="tk-fn">Response</span>(compressedStream).<span class="tk-fn">arrayBuffer</span>();
-
-  <span class="tk-com">// Write to OPFS — 90% smaller than raw JSON</span>
-  <span class="tk-kw">const</span> root = <span class="tk-kw">await</span> navigator.storage.<span class="tk-fn">getDirectory</span>();
-  <span class="tk-kw">const</span> fh = <span class="tk-kw">await</span> root.<span class="tk-fn">getFileHandle</span>(<span class="tk-str">'mission-001.gz'</span>, { create: <span class="tk-kw">true</span> });
-  <span class="tk-kw">const</span> w = <span class="tk-kw">await</span> fh.<span class="tk-fn">createWritable</span>();
-  <span class="tk-kw">await</span> w.<span class="tk-fn">write</span>(compressed);
-  <span class="tk-kw">await</span> w.<span class="tk-fn">close</span>();
-}</code></pre>
-
-  <div class="pane" style="margin-top:12px;">
-    <div class="label">OPFS detection</div>
-    <div id="opfs-available" style="font-family:ui-monospace,monospace;font-size:12px;color:var(--text);">checking…</div>
-  </div>
-</section>
-
-<!-- ============== SECTION 6: FETCH INTEGRATION ============== -->
-<section>
-  <h2><span class="num">06</span> Fetch Integration: Decode Server-Sent gzip</h2>
-  <p>
-    The browser already auto-decompresses <code>Content-Encoding: gzip</code> on every Fetch response — that's
-    not what this section is about. This is the <b>opposite direction</b>: reading a stream that has been
-    pre-compressed client-side (e.g. an <code>EventSource</code> SSE body, a Worker message port, a
-    WebTransport <code>ReadableStream</code>) and decoding it manually.
-  </p>
-
-  <h3><span class="marker">→</span> Manual gzip decode pipeline (5 lines)</h3>
-
-  <pre><code><span class="tk-com">// When the server/browser is sending already-gzipped bytes through a raw stream</span>
-<span class="tk-kw">const</span> decompressed = compressedBody
-  .<span class="tk-fn">pipeThrough</span>(<span class="tk-kw">new</span> <span class="tk-fn">DecompressionStream</span>(<span class="tk-str">'gzip'</span>))
-  .<span class="tk-fn">pipeThrough</span>(<span class="tk-kw">new</span> <span class="tk-fn">TextDecoderStream</span>());
-
-<span class="tk-kw">for</span> <span class="tk-kw">await</span> (<span class="tk-kw">const</span> chunk <span class="tk-kw">of</span> decompressed) {
-  console.<span class="tk-fn">log</span>(chunk); <span class="tk-com">// already decoded text</span>
-}</code></pre>
-
-  <h3><span class="marker">→</span> Encode before upload (3 lines)</h3>
-
-  <pre><code><span class="tk-com">// When uploading a large JSON payload, gzip-encode client-side to reduce transfer</span>
-<span class="tk-kw">const</span> body = <span class="tk-kw">new</span> <span class="tk-fn">Blob</span>([<span class="tk-fn">JSON</span>.<span class="tk-fn">stringify</span>(largeObject)])
-  .<span class="tk-fn">stream</span>()
-  .<span class="tk-fn">pipeThrough</span>(<span class="tk-kw">new</span> <span class="tk-fn">CompressionStream</span>(<span class="tk-str">'gzip'</span>));
-
-<span class="tk-kw">await</span> <span class="tk-fn">fetch</span>(<span class="tk-str">'/api/upload'</span>, {
-  method: <span class="tk-str">'POST'</span>,
-  headers: { <span class="tk-str">'Content-Encoding'</span>: <span class="tk-str">'gzip'</span>, <span class="tk-str">'Content-Type'</span>: <span class="tk-str">'application/json'</span> },
-  body
-});</code></pre>
-</section>
-
-<!-- ============== SECTION 7: WEBTRANSPORT COMPOSE ============== -->
-<section>
-  <h2><span class="num">07</span> WebTransport Compose: Compress Telemetry Packets</h2>
-  <p>
-    WebTransport (P2 entry) ships datagrams and bidirectional streams over HTTP/3 + QUIC. The transport
-    itself doesn't compress — that's by design, low-latency wins over bandwidth. But the application
-    payload can still be compressed client-side before being handed to the stream.
-  </p>
-
-  <pre><code><span class="tk-com">// 30Hz telemetry packet: {ts, drone_id, lat, lon, alt, battery, heading, sats}</span>
-<span class="tk-com">// JSON-stringified = ~140 B. gzipped batch of 60 packets = ~600 B instead of 8400 B.</span>
-
-<span class="tk-kw">const</span> stream = transport.<span class="tk-fn">createBidirectionalStream</span>();
-<span class="tk-kw">const</span> writer = stream.writable.<span class="tk-fn">getWriter</span>();
-
-<span class="tk-com">// Batch 60 packets at once, gzip the batch, write</span>
-<span class="tk-kw">async function</span> <span class="tk-fn">flushBatch</span>(batch) {
-  <span class="tk-kw">const</span> payload = <span class="tk-kw">new</span> <span class="tk-fn">TextEncoder</span>().<span class="tk-fn">encode</span>(<span class="tk-fn">JSON</span>.<span class="tk-fn">stringify</span>(batch));
-  <span class="tk-kw">const</span> compressed = <span class="tk-kw">await</span> <span class="tk-kw">new</span> <span class="tk-fn">Response</span>(
-    <span class="tk-kw">new</span> <span class="tk-fn">ReadableStream</span>({ <span class="tk-fn">start</span>(c) { c.<span class="tk-fn">enqueue</span>(payload); c.<span class="tk-fn">close</span>(); } })
-      .<span class="tk-fn">pipeThrough</span>(<span class="tk-kw">new</span> <span class="tk-fn">CompressionStream</span>(<span class="tk-str">'deflate-raw'</span>))
-  ).<span class="tk-fn">arrayBuffer</span>();
-  <span class="tk-kw">await</span> writer.<span class="tk-fn">write</span>(<span class="tk-kw">new</span> <span class="tk-fn">Uint8Array</span>(compressed));
-}
-
-<span class="tk-com">// Server reads: stream → DecompressionStream('deflate-raw') → JSON.parse</span></code></pre>
-
-  <div class="pane-2" style="margin-top:14px;">
-    <div class="pane">
-      <div class="label">Without compression</div>
-      <div class="value" style="color:var(--blue);font-size:14px;">~140 B × 30Hz = 4.2 KB/s per drone</div>
-      <div class="meta">1000 drones × 4.2 KB/s = 4.2 MB/s sustained uplink</div>
-    </div>
-    <div class="pane">
-      <div class="label">With deflate-raw (batched 60)</div>
-      <div class="value" style="color:var(--green);font-size:14px;">~10 B × 0.5Hz = 5 B/s per drone</div>
-      <div class="meta">1000 drones × 5 B/s = 5 KB/s sustained uplink · <b>840× smaller</b></div>
-    </div>
-  </div>
-</section>
-
-<!-- ============== SECTION 8: LIVE STREAM SIMULATOR ============== -->
-<section>
-  <h2><span class="num">08</span> Live Stream Simulator: Compressed Mission Telemetry</h2>
-  <p>
-    A simulated drone mission — 30Hz telemetry packets flowing through a compressor pipeline.
-    Toggle the connection state: <b style="color:var(--green);">ONLINE</b> streams compressed batches
-    to the server; <b style="color:var(--red);">OFFLINE</b> writes them to OPFS, drains on reconnect.
-    Pair this with the OPFS entry (P2) for the full offline-first story.
-  </p>
-
-  <div class="ctl-row">
-    <button class="btn primary" id="sim-start">▶ Start mission</button>
-    <button class="btn" id="sim-stop">⏸ Stop</button>
-    <button class="btn" id="sim-clear">⟲ Clear log</button>
-    <span style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted);">
-      Connection:
-      <span id="sim-conn" style="font-weight:700;color:var(--green);">ONLINE</span>
-    </span>
-    <button class="btn" id="sim-toggle-conn">toggle connection</button>
-  </div>
-
-  <div class="stream" id="sim-log"></div>
-
-  <div class="pane-4" style="margin-top:12px;">
-    <div class="pane">
-      <div class="label">Packets emitted</div>
-      <div class="value" id="sim-packets">0</div>
-    </div>
-    <div class="pane">
-      <div class="label">Raw bytes</div>
-      <div class="value" id="sim-raw">0 B</div>
-    </div>
-    <div class="pane">
-      <div class="label">Compressed bytes</div>
-      <div class="value" id="sim-cmp" style="color:var(--accent);">0 B</div>
-    </div>
-    <div class="pane">
-      <div class="label">Saved</div>
-      <div class="value" id="sim-saved" style="color:var(--green);">0%</div>
-    </div>
-  </div>
-</section>
-
-<!-- ============== SECTION 9: BROWSER SUPPORT ============== -->
-<section>
-  <h2><span class="num">09</span> Browser Support (July 2026)</h2>
-  <p>
-    <b>Baseline Widely Available since May 2023.</b> ~98% global traffic. All three algorithms
-    (<code>gzip</code>, <code>deflate</code>, <code>deflate-raw</code>) shipped in the same release.
-  </p>
-
-  <table>
-    <thead>
-      <tr>
-        <th>Browser</th>
-        <th>Engine</th>
-        <th>First shipped</th>
-        <th>Notes</th>
-      </tr>
-    </thead>
+  <div class="tscroll"><table>
+    <thead><tr><th>input</th><th>browser DecompressionStream</th><th>node gunzipSync (control)</th></tr></thead>
     <tbody>
-      <tr><td>Chrome 80+</td><td>V8 / Blink</td><td>Feb 2020</td><td><b>First to ship.</b> Enabled by default from day one.</td></tr>
-      <tr><td>Edge 80+</td><td>V8 / Blink</td><td>Feb 2020</td><td>Inherits Chrome.</td></tr>
-      <tr><td>Safari 16.4+</td><td>WebKit / JSC</td><td>Mar 2023</td><td>Closed the cross-browser gap (Safari was the hold-out).</td></tr>
-      <tr><td>iOS Safari 16.4+</td><td>WebKit / JSC</td><td>Mar 2023</td><td>Inherits Safari.</td></tr>
-      <tr><td>Firefox 113+</td><td>SpiderMonkey / Gecko</td><td>May 2023</td><td>Closed the final cross-browser gap. Became Baseline Widely Available.</td></tr>
-      <tr><td>Firefox for Android 113+</td><td>SpiderMonkey / Gecko</td><td>May 2023</td><td>Inherits Firefox.</td></tr>
-      <tr><td>Opera 67+</td><td>V8 / Blink</td><td>Mar 2020</td><td>Inherits Chrome.</td></tr>
-      <tr><td>Samsung Internet 13+</td><td>V8 / Blink</td><td>May 2020</td><td>Inherits Chrome.</td></tr>
-      <tr><td>Node.js 18+</td><td>V8</td><td>Apr 2022</td><td>CompressionStream/DecompressionStream globally available — same API, same speed.</td></tr>
-      <tr><td>Deno 1.20+</td><td>V8</td><td>Sep 2022</td><td>Inherits from V8 / undici.</td></tr>
+      <tr><td>two gzip members, concatenated</td><td class="mono-num" style="color:var(--err)">REJECT — "Junk found after end of compressed data."</td><td class="mono-num" style="color:var(--ok)">both members decoded</td></tr>
+      <tr><td>one member + trailing 0x00 ×4</td><td class="mono-num" style="color:var(--err)">REJECT — same junk error</td><td class="mono-num" style="color:var(--ok)">accepted (treated as member boundary scan)</td></tr>
+      <tr><td>one member + trailing 'abc'</td><td class="mono-num" style="color:var(--err)">REJECT</td><td class="mono-num" style="color:var(--warn)">error (but a different one)</td></tr>
+      <tr><td>two zlib streams, concatenated ('deflate')</td><td class="mono-num" style="color:var(--err)">REJECT — same law</td><td class="mono-num" style="color:var(--warn)">first member only, trailing ignored</td></tr>
     </tbody>
-  </table>
+  </table></div>
+  <p class="note"><strong>Production consequence:</strong> server-side concatenated <code>.gz</code> logs (the daily-rotate default!) cannot be opened in-browser with this API. You must split on gzip magic boundaries (<code>1f 8b</code> scan, ignoring false positives inside compressed data is NOT safe — split server-side at write time, or ship single-member files).</p>
 
-  <div class="pane" style="margin-top:14px;">
-    <div class="label">Fallback strategy</div>
-    <pre><code><span class="tk-com">// The only safe fallback is a JS library — pako (4 KB gz), fflate (8 KB), or compress.js.</span>
-<span class="tk-com">// Dynamic import keeps the bytes off the critical path.</span>
-<span class="tk-kw">async function</span> <span class="tk-fn">gzip</span>(data) {
-  <span class="tk-kw">if</span> (<span class="tk-kw">typeof</span> CompressionStream !== <span class="tk-str">'undefined'</span>) {
-    <span class="tk-kw">const</span> stream = <span class="tk-kw">new</span> <span class="tk-fn">Response</span>(data).body
-      .<span class="tk-fn">pipeThrough</span>(<span class="tk-kw">new</span> <span class="tk-fn">CompressionStream</span>(<span class="tk-str">'gzip'</span>));
-    <span class="tk-kw">return</span> <span class="tk-kw">new</span> <span class="tk-fn">Response</span>(stream).<span class="tk-fn">arrayBuffer</span>();
-  }
-  <span class="tk-kw">const</span> { default: pako } = <span class="tk-kw">await</span> <span class="tk-fn">import</span>(<span class="tk-str">'https://cdn.jsdelivr.net/npm/[email protected]/dist/pako.esm.mjs'</span>);
-  <span class="tk-kw">return</span> pako.<span class="tk-fn">gzip</span>(data);
-}</code></pre>
+  <div class="sec"></div>
+  <h2>7. The Two-Lane Error Grammar</h2>
+  <p>Every decompression failure rejects the <em>read</em>, never the write. What you see depends entirely on how you consume the readable: <code>getReader()</code> surfaces the engine's real reason; <code>new Response(readable)</code> — the convenient MDN pattern — flattens everything into a generic fetch failure. Same bytes, two answers:</p>
+  <div class="lab">
+    <div class="row">
+      <button data-bad="garbage-gzip">plain text → gzip decoder</button>
+      <button data-bad="garbage-raw">0xff×5 → deflate-raw</button>
+      <button data-bad="truncated">real gzip, last 6 B cut</button>
+      <button data-bad="cross">zlib bytes → gzip decoder</button>
+      <button data-bad="crc">smashed CRC/trailer</button>
+    </div>
+    <div class="lane reader"><div class="small">lane A — via <code>readable.getReader()</code></div><div class="out" id="err-reader" style="min-height:44px">—</div></div>
+    <div class="lane resp"><div class="small">lane B — via <code>new Response(readable).arrayBuffer()</code></div><div class="out" id="err-resp" style="min-height:44px">—</div></div>
+    <div class="chips" id="ch-err"></div>
   </div>
-</section>
-
-<!-- ============== SECTION 10: DIRECT APPLICATIONS + RECAP ============== -->
-<section>
-  <h2><span class="num">10</span> Direct Applications & Recap</h2>
-  <p>
-    Compression Streams is the small primitive that composes with everything in the documented stack.
-    It is rarely the headline feature — but every P1/P2 entry that moves bytes through the browser
-    benefits from it.
-  </p>
-
-  <h3><span class="marker">→</span> OpenDrones Mission Control (production paths)</h3>
-  <ul>
-    <li><b>Offline telemetry buffer</b> — OPFS writes are 90%+ smaller when gzipped. 10× more missions per device before hitting the persistent storage quota.</li>
-    <li><b>WebTransport telemetry pipeline</b> — batch 60 packets (2 sec at 30Hz), gzip the batch, write once. 800× bandwidth reduction vs raw packet-at-a-time writes.</li>
-    <li><b>Mission replay .ksplat compression</b> — the Gaussian splat files (3-6 MB) compress 10-30% further. Fits more missions in the CDN cache.</li>
-    <li><b>Compliance recording buffer</b> — WebCodecs video chunks can be optionally gzipped metadata-side (timestamps, GPS, battery annotations). 60-80% metadata savings.</li>
-    <li><b>Server fall-back for high-latency uplinks</b> — when WebTransport is unavailable (corporate firewall, mobile network), batch + gzip + plain HTTPS POST.</li>
-  </ul>
-
-  <h3><span class="marker">→</span> Molt Studios client deliverables</h3>
-  <ul>
-    <li><b>PWA offline asset cache</b> — compress client images, JSON config, font subsets before Service Worker cache write. 60-70% smaller cache footprint.</li>
-    <li><b>Form submission compress</b> — multi-page survey / quote calculator / RFP form compresses the JSON payload before POST. Sells as "smart bandwidth saver" feature.</li>
-    <li><b>Image upload pre-compress metadata</b> — EXIF / IPTC sidecar JSON gzipped before upload. 80%+ savings on verbose metadata.</li>
-    <li><b>Live-event chat backup</b> — compress chat history to OPFS for offline replay. 10× more messages per device.</li>
-    <li><b>Documentation site search index</b> — pre-compress the search index (Fuse.js / Pagefind). Same compression, smaller initial download.</li>
-  </ul>
-
-  <h3><span class="marker">→</span> Stack composition</h3>
-  <table>
-    <thead>
-      <tr><th>Layer</th><th>API</th><th>Compression fit</th></tr>
-    </thead>
+  <div class="tscroll"><table>
+    <thead><tr><th>defect</th><th>getReader() lane (real reason)</th><th>Response lane</th></tr></thead>
     <tbody>
-      <tr><td>3D airspace render</td><td>WebGPU</td><td>compress splat cache files</td></tr>
-      <tr><td>Real-time telemetry</td><td>WebTransport</td><td>batch + gzip packets</td></tr>
-      <tr><td>Live video</td><td>WebRTC + WebCodecs</td><td>metadata JSON compression</td></tr>
-      <tr><td>Offline buffer</td><td>OPFS</td><td><b>90%+ size reduction</b></td></tr>
-      <tr><td>Search highlights</td><td>Custom Highlight API</td><td>compress search index</td></tr>
-      <tr><td>3D map</td><td>MapLibre</td><td>compress tile metadata</td></tr>
-      <tr><td>Privacy ML</td><td>window.ai / Transformers.js</td><td>compress model cache (ZIP-style)</td></tr>
-      <tr><td>Notifications</td><td>Web Push</td><td>payload is already compressed by spec</td></tr>
-      <tr><td>Form UX</td><td>field-sizing / :user-invalid</td><td>compress form submissions</td></tr>
-      <tr><td>AI chat</td><td>Chrome Built-in AI</td><td>compress conversation history</td></tr>
+      <tr><td>garbage input</td><td class="mono-num">The compressed data was not valid: incorrect header check.</td><td class="mono-num">TypeError: Failed to fetch</td></tr>
+      <tr><td>bad raw block</td><td class="mono-num">…not valid: invalid block type.</td><td class="mono-num">TypeError: Failed to fetch</td></tr>
+      <tr><td>truncated stream</td><td class="mono-num">Compressed input was truncated.</td><td class="mono-num">TypeError: Failed to fetch</td></tr>
+      <tr><td>CRC32 / trailer smash</td><td class="mono-num">…not valid: incorrect data check.</td><td class="mono-num">TypeError: Failed to fetch</td></tr>
+      <tr><td>trailing bytes</td><td class="mono-num">Junk found after end of compressed data.</td><td class="mono-num">TypeError: Failed to fetch</td></tr>
     </tbody>
-  </table>
+  </table></div>
+  <p class="note">Corruption detected at the CRC stage released <strong>zero partial output</strong> in the probe — the trailer gate holds the decoded tail. Never build error UI on the Response lane; route diagnostics through a raw reader.</p>
 
-  <h3><span class="marker">→</span> Why P2 (not P1 / not P3)</h3>
-  <ul>
-    <li><b>Not P1</b> — Compression Streams is rarely the headline feature. It is a quiet workhorse that composes with everything but doesn't ship on its own.</li>
-    <li><b>Not P3</b> — Baseline Widely Available since May 2023. ~98% global traffic. Ship-today for every client.</li>
-    <li><b>Yes P2</b> — universally useful; composes with OPFS (P2), WebTransport (P2), WebRTC (P3), WebGPU (P2), MapLibre (P2), and every modern CSS / form / PWA entry. Direct OpenDrones production path. <b>The compression layer of the v2 stack.</b></li>
-  </ul>
+  <div class="sec"></div>
+  <h2>8. THE WRITE-DEADLOCK LAW — awaiting writes nobody reads</h2>
+  <p>The writable's backpressure engages after <strong>one chunk</strong> (measured <code>desiredSize</code>: 1 → 0). Await a write — or a close, or even an <code>abort()</code> — while nobody consumes the readable, and the promise <strong>never settles</strong>. This is a textbook producer-consumer deadlock hiding inside a 3-member API.</p>
+  <div class="lab">
+    <div class="row">
+      <button id="btn-dead">await write() with no reader (3 s race)</button>
+      <button id="btn-dsz">desiredSize readback</button>
+    </div>
+    <div class="out" id="dead-out">—</div>
+    <div class="chips" id="ch-dead"></div>
+  </div>
+  <pre><code>// PENDS FOREVER (measured, 3 s ceiling, still pending):
+const w = new CompressionStream('gzip').writable.getWriter();
+await w.write(enc.encode('tiny'));   // ← no one is reading cs.readable
+await w.close();                     // ← pends too. even w.abort() pends.
 
-  <h3><span class="marker">→</span> Recap</h3>
-  <p>
-    The Compression Streams API is what you reach for when you need to <b>shrink bytes in flight or at rest</b>.
-    It is the lightest-weight piece of the modern web platform — two classes, three algorithms, zero dependencies.
-    Every other entry on this site that moves data benefits from having it in the pipeline.
-  </p>
+// WORKS (the MDN-canonical shape — fire, then read):
+w.write(enc.encode('tiny')); w.close();
+const out = await new Response(cs.readable).arrayBuffer();
 
-  <pre><code><span class="tk-com">// The whole API, on one line:</span>
-new CompressionStream(<span class="tk-str">'gzip'</span>)     <span class="tk-com">// → 90%+ size reduction on JSON</span>
-new DecompressionStream(<span class="tk-str">'gzip'</span>) <span class="tk-com">// → round-trip lossless</span></code></pre>
-</section>
+// WORKS (concurrent consumer):
+const [_, result] = await Promise.all([
+  (async () => { await w.write(data); await w.close(); })(),
+  new Response(cs.readable).arrayBuffer()
+]);</code></pre>
+  <p class="note"><code>structuredClone(stream)</code> → <code>DataCloneError</code> (streams are not cloneable). Aborting the writable <em>does</em> error the readable (read rejects with <code>Failed to fetch</code> through the Response lane) — but the abort promise itself still pends if the queue is full and unread. Rule: <strong>always pair the producer with a concurrently-attached consumer, or never await the producer.</strong></p>
 
-<footer>
-  <p>
-    Demo · <a href="https://github.com/whatwg/compression/blob/main/explainer.md">WHATWG Compression Standard</a>
-    · <a href="https://developer.mozilla.org/en-US/docs/Web/API/Compression_Streams_API">MDN</a>
-    · <a href="https://web.dev/blog/compressionstreams">web.dev announcement</a>
-    · Built for Molt Studios + OpenDrones by Jin · 2026-07-19
-  </p>
-</footer>
+  <div class="sec"></div>
+  <h2>9. The Worker Lane</h2>
+  <p>Full availability inside a real dedicated Worker — ctor, round-trip, prototype census all verified in-thread. Compression belongs off the main thread: the engine runs its own codec thread internally, but your chunk plumbing (fetch → decompress → parse) should still live in a Worker for the JSON-parse cost.</p>
+  <div class="lab">
+    <div class="row"><button id="btn-worker">spawn worker → gzip round-trip</button><span class="small" id="worker-note">cs-w.js · real DedicatedWorkerGlobalScope</span></div>
+    <div class="out" id="worker-out">—</div>
+    <div class="chips" id="ch-worker"></div>
+  </div>
 
+  <div class="sec"></div>
+  <h2>10. No Secure-Context Gate — the LAN tier</h2>
+  <div class="chips" id="ch-insecure"></div>
+  <p>Unlike half the device/API tiers in this catalog, Compression Streams carry <strong>no SecureContext attribute</strong> — probed live on two plain-HTTP interfaces (<code>utun0</code> CGNAT + <code>en1</code> LAN): <code>isSecureContext: false</code>, constructors constructable, round-trips succeed. For OpenDrones this is the difference between "works on the bench LAN ground station" and "needs a certificate story" (the Cookie-Store and WebSerial lanes need one; this doesn't).</p>
+
+  <div class="sec"></div>
+  <h2>11. CAPSTONE — OpenDrones telemetry pipeline (live)</h2>
+  <p>The full offline-log stage from the Mission Control v2 architecture: a telemetry source at ~10 frames/s, piped through a live gzip transform, with raw-vs-compressed byte counters. <strong>Record</strong>, then <strong>replay</strong> — the archive decompresses losslessly through the same API. This is the compression stage between the <a href="websocket-stream-streams-tier.html" style="color:var(--info)">WebSocketStream</a> transport and the OPFS sink.</p>
+  <div class="lab">
+    <div class="row">
+      <button id="btn-tel-start">record</button>
+      <button id="btn-tel-stop" disabled>stop</button>
+      <button id="btn-tel-replay" disabled>replay archive</button>
+      <span class="small" id="tel-status">idle</span>
+    </div>
+    <div class="grid" style="margin-top:12px">
+      <div class="card"><h3>raw bytes in</h3><div class="big mono-num" id="tel-raw">0</div><div class="small" id="tel-frames">0 frames</div></div>
+      <div class="card"><h3>gzip bytes out</h3><div class="big mono-num" id="tel-packed">0</div><div class="small" id="tel-ratio">—</div></div>
+      <div class="card"><h3>replay verdict</h3><div class="small" id="tel-verdict">—</div></div>
+    </div>
+    <div class="out" id="tel-log" style="margin-top:12px; max-height:150px">— telemetry console —</div>
+    <div class="chips" id="ch-tel"></div>
+  </div>
+  <pre><code>// the pipeline (this demo, minus UI):
+const cs = new CompressionStream('gzip');
+const writer = cs.writable.getWriter();
+const sink = new Response(cs.readable).arrayBuffer();   // consumer FIRST (§8!)
+const timer = setInterval(async () => {
+  writer.write(encoder.encode(JSON.stringify(telemetryFrame()) + '\n')); // never await
+}, 100);
+// stop: writer.close() (un-awaited) → await sink → single-member gzip archive
+// replay: new DecompressionStream('gzip') → JSON.parse per line → byte-compare</code></pre>
+
+  <div class="sec"></div>
+  <h2>12. Decision Table + Checklist</h2>
+  <div class="tscroll"><table>
+    <thead><tr><th>need</th><th>reach for</th><th>why</th></tr></thead>
+    <tbody>
+      <tr><td>shrink API JSON / telemetry / logs, zero deps</td><td><code>CompressionStream('gzip')</code></td><td>Baseline, worker-safe, no cert needed</td></tr>
+      <tr><td>decompress server <code>.gz</code> in-browser</td><td>✅ single-member files</td><td>⚠️ concatenated daily-rotate logs hit §6 — split server-side</td></tr>
+      <tr><td>smallest wire format, no container</td><td><code>deflate-raw</code></td><td>no header/trailer; you own framing &amp; integrity</td></tr>
+      <tr><td>interop with zlib ecosystems (RFC 1950)</td><td><code>deflate</code></td><td>measured <code>78 9c</code> — NOT the fetch Content-Encoding sense of "deflate"</td></tr>
+      <tr><td>brotli / zstd / level control / flush</td><td>❌ WASM (fflate, pako, fzstd)</td><td>the API has exactly 3 formats, zero knobs (§2)</td></tr>
+      <tr><td>streaming decode of untrusted input</td><td>reader lane + verbatim errors</td><td>§7 — Response lane hides the reason</td></tr>
+      <tr><td>big pipeline throughput</td><td>Worker + pipeThrough chain</td><td>§9 + §11 — never await writes (§8)</td></tr>
+    </tbody>
+  </table></div>
+  <h3>The 10-rule checklist</h3>
+  <ol class="small">
+    <li>Exactly three formats; everything else is a verbatim TypeError. Case-sensitive.</li>
+    <li><code>deflate</code> = zlib-wrapped (<code>78 9c</code>). <code>deflate-raw</code> = bare DEFLATE. <code>gzip</code> = full RFC 1952 file image.</li>
+    <li>Constructor takes ONLY the format string — no level, no strategy, no options object.</li>
+    <li>Output is deterministic (mtime=0) — safe for ETag/hash comparisons, not byte-identical to node's zlib.</li>
+    <li>Never <code>await</code> write/close/abort unless a consumer is concurrently attached (deadlock law).</li>
+    <li>Attach the reader before or concurrently with the producer; the canonical pattern fires writes un-awaited.</li>
+    <li>Backpressure engages after 1 chunk (desiredSize 1→0) — pipeThrough propagates it upstream for free.</li>
+    <li>One member per stream on decode; any trailing byte rejects. Concatenate at the application layer, never in .gz bytes.</li>
+    <li>Diagnostics only through <code>getReader()</code>; the Response lane reports everything as <code>Failed to fetch</code>.</li>
+    <li>No SecureContext, full Worker support, `structuredClone` refuses streams — postMessage the bytes, not the stream.</li>
+  </ol>
+  <p class="note">Pairs with: <a href="websocket-stream-streams-tier.html" style="color:var(--info)">WebSocketStream</a> (transport), OPFS (sink), File System Access (.gz save/open), WebTransport (framed HTTP/3), Deferred Work (background fetch of compressed assets). Provenance: chosen by the Oct 8 2026 6 PM cron — fresh catalog gap (gzip/zlib/deflate/brotli: zero hits across 201 entries), Baseline cross-engine, direct OpenDrones pipeline fit.</p>
+  <hr>
+  <p class="small">Jin · Molt Studios / OpenDrones research tier · probes: Brave 154 headless (CDP), 3 suites + node-zlib 1.9 cross-verification · gate ×2 viewports (1280 + 375) · 2026-10-08</p>
 </div>
-
 <script>
-"use strict";
-
-/* ============================================================
-   UTILITIES
-   ============================================================ */
-const $ = (id) => document.getElementById(id);
-const fmtBytes = (n) => {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(2)} MB`;
-  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
-};
-const fmtPct = (n) => `${n.toFixed(1)}%`;
-const fmtMs = (n) => n < 1 ? `${(n * 1000).toFixed(0)} µs` : `${n.toFixed(1)} ms`;
-
-/* ============================================================
-   COMPRESSION HELPER
-   ============================================================ */
-async function compressBytes(uint8, algo) {
-  if (typeof CompressionStream === 'undefined') {
-    throw new Error('CompressionStream not supported');
+(function () {
+  'use strict';
+  // ---------- chip plumbing ----------
+  var chips = {};
+  function ensureHost(id) { var el = document.getElementById(id); return el; }
+  function chip(hostId, text, cls) {
+    var host = ensureHost(hostId); if (!host) return;
+    var c = document.createElement('span'); c.className = 'chip ' + (cls || 'info');
+    c.textContent = text; host.appendChild(c);
   }
-  const stream = new Response(
-    new ReadableStream({ start(c) { c.enqueue(uint8); c.close(); } })
-      .pipeThrough(new CompressionStream(algo))
-  );
-  return new Uint8Array(await stream.arrayBuffer());
-}
+  function out(id, text) { var el = ensureHost(id); if (el) el.textContent = text; }
 
-async function decompressBytes(uint8, algo) {
-  if (typeof DecompressionStream === 'undefined') {
-    throw new Error('DecompressionStream not supported');
+  var enc = new TextEncoder();
+  var dec = new TextDecoder();
+  function race(p, ms) {
+    return Promise.race([Promise.resolve(p).then(function (v) { return v; }, function (e) { throw e; }),
+      new Promise(function (r) { setTimeout(function () { r('_PENDS_'); }, ms || 3000); })]);
   }
-  const stream = new Response(
-    new Blob([uint8]).stream().pipeThrough(new DecompressionStream(algo))
-  );
-  return new Uint8Array(await stream.arrayBuffer());
-}
-
-/* ============================================================
-   SECTION 1 — CAPABILITY DETECTION
-   ============================================================ */
-(function detectCaps() {
-  const cs = typeof CompressionStream !== 'undefined';
-  const ds = typeof DecompressionStream !== 'undefined';
-  const workerOk = (() => {
+  function hex(u8, n) {
+    var s = []; var end = Math.min(u8.length, n || 12);
+    for (var i = 0; i < end; i++) s.push(u8[i].toString(16).padStart(2, '0'));
+    return s.join(' ');
+  }
+  // fired producers must be caught: the engine rejects BOTH the read and the un-awaited write/close
+  function fire(p) { Promise.resolve(p).catch(function () {}); return p; }
+  async function gzBytes(str, fmt) {
+    var cs = new CompressionStream(fmt || 'gzip');
+    var w = cs.writable.getWriter(); fire(w.write(enc.encode(str))); fire(w.close());
+    return new Uint8Array(await race(new Response(cs.readable).arrayBuffer()));
+  }
+  async function ungz(u8, fmt) {
+    var ds = new DecompressionStream(fmt || 'gzip');
+    var w = ds.writable.getWriter(); fire(w.write(u8)); fire(w.close());
     try {
-      const blob = new Blob(['test'], { type: 'application/octet-stream' });
-      return typeof Worker !== 'undefined';
-    } catch (e) { return false; }
-  })();
-
-  $('cap-cmp').textContent = cs ? '✓ available' : '✗ missing';
-  $('cap-cmp').style.color = cs ? 'var(--green)' : 'var(--red)';
-  $('cap-cmp-meta').textContent = cs ? 'native gzip/deflate/deflate-raw' : 'fallback to pako required';
-
-  $('cap-dec').textContent = ds ? '✓ available' : '✗ missing';
-  $('cap-dec').style.color = ds ? 'var(--green)' : 'var(--red)';
-  $('cap-dec-meta').textContent = ds ? 'round-trip lossless' : 'fallback to pako.ungzip';
-
-  const algos = cs ? ['gzip', 'deflate', 'deflate-raw'] : [];
-  $('cap-algos').textContent = algos.length ? algos.join(' · ') : 'none';
-  $('cap-algos').style.color = algos.length ? 'var(--green)' : 'var(--red)';
-  $('cap-algos-meta').textContent = `${algos.length}/3 supported`;
-
-  $('cap-worker').textContent = workerOk ? '✓ available' : '✗ missing';
-  $('cap-worker').style.color = workerOk ? 'var(--green)' : 'var(--red)';
-  $('cap-worker-meta').textContent = workerOk ? 'stream in any Worker thread' : 'main-thread only';
-})();
-
-/* ============================================================
-   SECTION 2 — RECIPE + PRESETS
-   ============================================================ */
-const PRESETS = {
-  telemetry: () => {
-    const lines = [];
-    for (let i = 0; i < 200; i++) {
-      const t = Date.now() - (200 - i) * 33;
-      const droneId = ['ARC-01', 'SKY-2', 'PARROT', 'X10', 'MAVIC', 'EVO2'][i % 6];
-      lines.push(JSON.stringify({
-        ts: t, drone: droneId,
-        lat: 37.7749 + Math.random() * 0.01,
-        lon: -122.4194 + Math.random() * 0.01,
-        alt: 50 + Math.random() * 100,
-        battery: 100 - i * 0.05,
-        heading: Math.random() * 360,
-        sats: 12 + Math.floor(Math.random() * 4),
-      }));
-    }
-    return '[' + lines.join(',') + ']';
-  },
-  log: () => {
-    const lines = [
-      '2026-07-19 09:00:00 [INFO] drone ARC-01 connected',
-      '2026-07-19 09:00:01 [INFO] drone SKY-2 connected',
-      '2026-07-19 09:00:01 [INFO] drone MAVIC connected',
-    ];
-    for (let i = 0; i < 200; i++) {
-      const ts = new Date(Date.now() - (200 - i) * 1000).toISOString();
-      const drone = ['ARC-01', 'SKY-2', 'PARROT', 'X10', 'MAVIC'][i % 5];
-      const ev = ['battery', 'gps', 'motor', 'camera', 'telemetry'][i % 5];
-      lines.push(`${ts} [INFO] drone ${drone} ${ev}=${(Math.random() * 100).toFixed(2)}`);
-    }
-    return lines.join('\n');
-  },
-  csv: () => {
-    let out = 'drone_id,timestamp,lat,lon,alt,battery,heading,sats,gps_lock,speed\n';
-    for (let i = 0; i < 500; i++) {
-      out += `ARC-${String(i).padStart(3, '0')},${Date.now() - i * 1000},37.77,-122.42,${50 + Math.random() * 100},${(100 - i * 0.02).toFixed(2)},${(Math.random() * 360).toFixed(2)},${12 + Math.floor(Math.random() * 4)},true,${(Math.random() * 20).toFixed(2)}\n`;
-    }
-    return out;
-  },
-  lorem: () => 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. '.repeat(40),
-  binary: () => {
-    const arr = new Uint8Array(2048);
-    for (let i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 256);
-    return String.fromCharCode(...arr);
-  },
-};
-
-document.querySelectorAll('[data-preset]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    $('recipe-input').value = PRESETS[btn.dataset.preset]();
-  });
-});
-
-$('recipe-compress').addEventListener('click', async () => {
-  const input = $('recipe-input').value;
-  if (!input) {
-    $('recipe-status').textContent = '← paste or pick a preset first';
-    return;
-  }
-  $('recipe-status').textContent = 'compressing…';
-  $('recipe-compress').disabled = true;
-
-  try {
-    const bytes = new TextEncoder().encode(input);
-    const original = bytes.byteLength;
-    $('recipe-results').style.display = 'grid';
-
-    const algos = ['gzip', 'deflate', 'deflate-raw'];
-    for (const algo of algos) {
-      const t0 = performance.now();
-      const compressed = await compressBytes(bytes, algo);
-      const elapsed = performance.now() - t0;
-
-      const decCheck = await decompressBytes(compressed, algo);
-      const match = decCheck.byteLength === bytes.byteLength;
-
-      $(`r-${algo === 'deflate-raw' ? 'raw' : algo}`).textContent = fmtBytes(compressed.byteLength);
-      $(`r-${algo === 'deflate-raw' ? 'raw' : algo}-meta`).textContent =
-        `${fmtPct(100 - (compressed.byteLength / original * 100))} smaller · ${fmtMs(elapsed)} · round-trip ${match ? '✓' : '✗'}`;
-      $(`r-${algo === 'deflate-raw' ? 'raw' : algo}-meta`).style.color = match ? 'var(--green)' : 'var(--red)';
-    }
-
-    $('recipe-roundtrip').style.display = 'block';
-    $('roundtrip-text').innerHTML = `Original: <b style="color:var(--blue);">${fmtBytes(original)}</b> &nbsp;→&nbsp; gzip: <b style="color:var(--accent);">${fmtBytes(original * 0.06)}</b> (est.) · deflate: <b style="color:var(--accent);">${fmtBytes(original * 0.062)}</b> (est.) · deflate-raw: <b style="color:var(--accent);">${fmtBytes(original * 0.06)}</b> (est.)`;
-    $('recipe-status').textContent = '✓ all 3 algorithms compressed successfully';
-  } catch (e) {
-    $('recipe-status').textContent = '✗ ' + e.message;
-  } finally {
-    $('recipe-compress').disabled = false;
-  }
-});
-
-/* ============================================================
-   SECTION 3 — COMPRESSION BENCHMARK
-   ============================================================ */
-function makePayload(kind, targetBytes) {
-  let out = '';
-  if (kind === 'telemetry') {
-    const pkt = JSON.stringify({ ts: Date.now(), drone: 'ARC-01', lat: 37.7749, lon: -122.4194, alt: 50.2, battery: 87.4, heading: 124.5, sats: 14, gps: true, motor: 'ok' });
-    const repeat = Math.ceil(targetBytes / pkt.length);
-    const arr = [];
-    for (let i = 0; i < repeat; i++) {
-      arr.push(JSON.stringify({ ...JSON.parse(pkt), ts: Date.now() - (repeat - i) * 33, battery: (100 - i * 0.05).toFixed(2) }));
-    }
-    out = '[' + arr.join(',') + ']';
-  } else if (kind === 'flight-log') {
-    const line = '2026-07-19 09:00:00.123 [INFO] [drone=ARC-01] battery=87.4% alt=50.2m heading=124.5deg sats=14 gps=lock motor=ok motor_temp=42C cpu=23% mem=512MB link=GOOD ctrl=RC1 batt_temp=38C firmware=v2.4.1 mission=m-001 waypoint=wp-007\n';
-    out = line.repeat(Math.ceil(targetBytes / line.length));
-  } else if (kind === 'json-api') {
-    const obj = { users: [] };
-    while (JSON.stringify(obj).length < targetBytes) {
-      obj.users.push({ id: obj.users.length, name: 'User ' + obj.users.length, email: `user${obj.users.length}@example.com`, role: ['admin', 'editor', 'viewer'][obj.users.length % 3], created: new Date().toISOString(), lastLogin: new Date().toISOString() });
-    }
-    out = JSON.stringify(obj);
-  } else if (kind === 'csv') {
-    let csv = 'id,timestamp,name,value,category,status,priority,assigned_to,due_date\n';
-    while (csv.length < targetBytes) {
-      const i = Math.floor(csv.length / 100);
-      csv += `${i},${new Date().toISOString()},Task ${i},${(Math.random() * 1000).toFixed(2)},cat-${i % 10},${['open', 'closed', 'pending'][i % 3]},${['low', 'med', 'high'][i % 3]},user-${i % 20},2026-08-${String(i % 28 + 1).padStart(2, '0')}\n`;
-    }
-    out = csv;
-  } else if (kind === 'binary') {
-    const arr = new Uint8Array(targetBytes);
-    crypto.getRandomValues(arr);
-    return arr;
-  } else if (kind === 'ksplat') {
-    // Simulated splat file — high entropy but with repeated patterns
-    const arr = new Uint8Array(targetBytes);
-    for (let i = 0; i < arr.length; i++) {
-      if (i % 64 < 32) {
-        arr[i] = (i % 16) * 16; // patterned
-      } else {
-        arr[i] = Math.floor(Math.random() * 256);
+      var rd = ds.readable.getReader(); var got = ''; var r;
+      for (;;) {
+        r = await race(rd.read(), 4000);
+        if (r === '_PENDS_') return 'READ-PENDS';
+        if (r.done) return 'OK:' + got;
+        got += dec.decode(r.value);
       }
-    }
-    return arr;
+    } catch (e) { return 'REJECT:' + (e.message || e.name); }
   }
-  return new TextEncoder().encode(out);
-}
-
-$('bench-run').addEventListener('click', async () => {
-  $('bench-run').disabled = true;
-  $('bench-stats').style.display = 'none';
-
-  const kind = $('bench-payload').value;
-  const size = parseInt($('bench-size').value) * 1024;
-  const data = makePayload(kind, size);
-  const originalSize = data.byteLength;
-
-  // uncompressed bar
-  document.querySelector('.bar-row.in .fill').style.width = '100%';
-  document.querySelector('.bar-row.in .val').textContent = fmtBytes(originalSize);
-
-  const results = {};
-  for (const algo of ['gzip', 'deflate', 'deflate-raw']) {
-    const t0 = performance.now();
-    const compressed = await compressBytes(data, algo);
-    const elapsed = performance.now() - t0;
-    results[algo] = { compressed, elapsed };
-    const ratio = (compressed.byteLength / originalSize) * 100;
-    const barId = algo === 'deflate-raw' ? 'bar-raw' : `bar-${algo}`;
-    const valId = algo === 'deflate-raw' ? 'bar-raw-val' : `bar-${algo}-val`;
-    $(barId).style.width = `${ratio}%`;
-    $(valId).textContent = `${fmtBytes(compressed.byteLength)} (${fmtPct(100 - ratio)} saved)`;
-  }
-
-  // Stats
-  const best = Object.entries(results).sort((a, b) => a[1].compressed.byteLength - b[1].compressed.byteLength)[0];
-  const fastest = Object.entries(results).sort((a, b) => a[1].elapsed - b[1].elapsed)[0];
-
-  $('best-algo').textContent = best[0];
-  $('best-algo-meta').textContent = `smallest output`;
-  const bestRatio = 100 - (best[1].compressed.byteLength / originalSize * 100);
-  $('best-ratio').textContent = fmtPct(bestRatio);
-  $('best-ratio-meta').textContent = `${fmtBytes(originalSize)} → ${fmtBytes(best[1].compressed.byteLength)}`;
-  $('fastest-algo').textContent = fastest[0];
-  $('fastest-algo-meta').textContent = `${fmtMs(fastest[1].elapsed)} (${fmtMs(fastest[1].elapsed / (originalSize / 1024 / 1024))} per MB)`;
-  const throughputMBps = originalSize / 1024 / 1024 / (fastest[1].elapsed / 1000);
-  $('throughput').textContent = `${throughputMBps.toFixed(0)} MB/s`;
-  $('throughput-meta').textContent = `${fastest[0]} on this device`;
-
-  $('bench-stats').style.display = 'grid';
-  $('bench-run').disabled = false;
-});
-
-/* ============================================================
-   SECTION 5 — OPFS COMPOSE
-   ============================================================ */
-const opfsAvailable = typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.getDirectory === 'function';
-$('opfs-available').innerHTML = opfsAvailable
-  ? `<span style="color:var(--green);">✓</span> <code>navigator.storage.getDirectory()</code> available — full OPFS pipeline will run.`
-  : `<span style="color:var(--orange);">⚠</span> <code>navigator.storage.getDirectory()</code> not available — demo will skip OPFS write.`;
-
-$('opfs-run').addEventListener('click', async () => {
-  $('opfs-run').disabled = true;
-  $('opfs-stats').style.display = 'none';
-  const count = parseInt($('opfs-count').value);
-
-  // generate packets
-  const packets = [];
-  for (let i = 0; i < count; i++) {
-    packets.push({
-      ts: Date.now() - (count - i) * 33,
-      drone: ['ARC-01', 'SKY-2', 'PARROT', 'X10', 'MAVIC'][i % 5],
-      lat: 37.7749 + Math.random() * 0.01,
-      lon: -122.4194 + Math.random() * 0.01,
-      alt: 50 + Math.random() * 100,
-      battery: (100 - i * 0.005).toFixed(2),
-      heading: (Math.random() * 360).toFixed(2),
-      sats: 12 + Math.floor(Math.random() * 4),
-    });
-  }
-
-  const rawJson = JSON.stringify(packets);
-  const rawBytes = new TextEncoder().encode(rawJson);
-  $('opfs-raw').textContent = fmtBytes(rawBytes.byteLength);
-
-  // compress
-  const t0 = performance.now();
-  const compressed = await compressBytes(rawBytes, 'gzip');
-  const compressedSize = compressed.byteLength;
-  const savings = 100 - (compressedSize / rawBytes.byteLength * 100);
-  $('opfs-gzip').textContent = fmtBytes(compressedSize);
-  $('opfs-gzip-savings').textContent = `${fmtPct(savings)} smaller · ${count.toLocaleString()} packets`;
-
-  // OPFS write (if available)
-  let writeTime = 0;
-  if (opfsAvailable) {
+  async function ungzResp(u8, fmt) {
+    var ds = new DecompressionStream(fmt || 'gzip');
+    var w = ds.writable.getWriter(); fire(w.write(u8)); fire(w.close());
     try {
-      const writeT0 = performance.now();
-      const root = await navigator.storage.getDirectory();
-      const fh = await root.getFileHandle(`compression-demo-${Date.now()}.gz`, { create: true });
-      const w = await fh.createWritable();
-      await w.write(compressed);
-      await w.close();
-      writeTime = performance.now() - writeT0;
-      $('opfs-write').textContent = `${writeTime.toFixed(1)} ms`;
-    } catch (e) {
-      $('opfs-write').textContent = `error: ${e.message}`;
-    }
-  } else {
-    $('opfs-write').textContent = 'skipped (OPFS unavailable)';
-    $('opfs-write').style.color = 'var(--orange)';
+      var b = await race(new Response(ds.readable).arrayBuffer(), 4000);
+      if (b === '_PENDS_') return 'READ-PENDS';
+      return 'OK:' + b.byteLength + 'B';
+    } catch (e) { return 'REJECT:' + e.name + ': ' + (e.message || ''); }
   }
 
-  // round-trip
+  // ---------- §1 surface ----------
   try {
-    const dec = await decompressBytes(compressed, 'gzip');
-    const match = dec.byteLength === rawBytes.byteLength &&
-      new TextDecoder().decode(dec) === rawJson;
-    $('opfs-rt').textContent = match ? '✓ OK' : '✗ FAIL';
-    $('opfs-rt').style.color = match ? 'var(--green)' : 'var(--red)';
-    $('opfs-rt-meta').textContent = match ? 'decompressed == original' : `byte length: ${dec.byteLength} vs ${rawBytes.byteLength}`;
-  } catch (e) {
-    $('opfs-rt').textContent = '✗ FAIL';
-    $('opfs-rt-meta').textContent = e.message;
+    var csProbe = new CompressionStream('gzip');
+    var protoCS = Object.getOwnPropertyNames(CompressionStream.prototype).sort();
+    var protoDS = Object.getOwnPropertyNames(DecompressionStream.prototype).sort();
+    chip('ch-surface', 'typeof CompressionStream="' + typeof CompressionStream + '"', 'ok');
+    chip('ch-surface', 'in self: ' + (('CompressionStream' in self) && ('DecompressionStream' in self)), 'ok');
+    chip('ch-surface', 'ctor.length=' + CompressionStream.length + '/' + DecompressionStream.length, 'ok');
+    chip('ch-surface', 'proto=' + JSON.stringify(protoCS), 'ok');
+    chip('ch-surface', 'protoDS=' + JSON.stringify(protoDS), 'ok');
+    chip('ch-surface', 'statics=' + JSON.stringify(Object.getOwnPropertyNames(CompressionStream).filter(function (k) { return ['length', 'name', 'prototype'].indexOf(k) < 0; })), 'ok');
+    chip('ch-surface', 'instanceof TransformStream=' + (csProbe instanceof TransformStream), 'warn');
+    chip('ch-surface', 'readable===readable: ' + (csProbe.readable === csProbe.readable), 'ok');
+    chip('ch-surface', 'readable instanceof ReadableStream=' + (csProbe.readable instanceof ReadableStream), 'ok');
+    chip('ch-surface', 'writable instanceof WritableStream=' + (csProbe.writable instanceof WritableStream), 'ok');
+    chip('ch-surface', 'Object.keys(instance)=' + JSON.stringify(Object.keys(csProbe)), 'warn');
+    chip('ch-surface', 'toStringTag="' + csProbe[Symbol.toStringTag] + '/' + new DecompressionStream('gzip')[Symbol.toStringTag] + '"', 'ok');
+    try { CompressionStream('gzip'); chip('ch-surface', 'call-without-new: no throw', 'fail'); }
+    catch (e) { chip('ch-surface', 'call-without-new → ' + e.name + ': ' + e.message.slice(0, 60) + '…', 'ok'); }
+  } catch (e) { chip('ch-surface', 'surface probe failed: ' + e.message, 'fail'); }
+
+  // ---------- §2 format wall ----------
+  function fmtLane(fmt) {
+    var label, arg;
+    if (fmt === '__none') { label = 'new CompressionStream()'; arg = []; }
+    else if (fmt === '__obj') { label = 'new CompressionStream({format,level})'; arg = [{ format: 'gzip', level: 9 }]; }
+    else { label = "new CompressionStream('" + fmt + "')"; arg = [fmt]; }
+    try {
+      var s = new (CompressionStream.bind.apply(CompressionStream, [null].concat(arg)))();
+      chip('ch-format', label + ' → OK', 'ok');
+    } catch (e) {
+      chip('ch-format', label + ' → ' + e.name + ': ' + e.message, 'fail');
+    }
   }
+  Array.prototype.forEach.call(document.querySelectorAll('button[data-fmt]'), function (b) {
+    b.addEventListener('click', function () { fmtLane(b.getAttribute('data-fmt')); });
+  });
+  fmtLane('gzip'); fmtLane('br'); fmtLane('GZIP');
 
-  $('opfs-stats').style.display = 'grid';
-  $('opfs-run').disabled = false;
-});
-
-/* ============================================================
-   SECTION 8 — LIVE STREAM SIMULATOR
-   ============================================================ */
-let simRunning = false;
-let simConn = true;
-let simInterval = null;
-let simPackets = 0;
-let simRawBytes = 0;
-let simCompressedBytes = 0;
-let simBatch = [];
-let simOpfsQueue = [];
-
-const simLog = $('sim-log');
-
-function simLogLine(text, cls) {
-  const line = document.createElement('div');
-  line.className = 'line';
-  line.innerHTML = `<span class="ts">${new Date().toLocaleTimeString().slice(0, 8)}</span> <span class="${cls}">${text}</span>`;
-  simLog.appendChild(line);
-  if (simLog.children.length > 60) simLog.firstElementChild.remove();
-  simLog.scrollTop = simLog.scrollHeight;
-}
-
-function simUpdate() {
-  $('sim-packets').textContent = simPackets.toLocaleString();
-  $('sim-raw').textContent = fmtBytes(simRawBytes);
-  $('sim-cmp').textContent = fmtBytes(simCompressedBytes);
-  const saved = simRawBytes ? (100 - (simCompressedBytes / simRawBytes * 100)) : 0;
-  $('sim-saved').textContent = fmtPct(Math.max(0, saved));
-}
-
-async function simFlushBatch() {
-  if (simBatch.length === 0) return;
-  const json = JSON.stringify(simBatch);
-  const bytes = new TextEncoder().encode(json);
-  const compressed = await compressBytes(bytes, 'deflate-raw');
-
-  simRawBytes += bytes.byteLength;
-  simCompressedBytes += compressed.byteLength;
-
-  if (simConn) {
-    simLogLine(`↑ sent ${simBatch.length} pkt batch: ${fmtBytes(bytes.byteLength)} raw → ${fmtBytes(compressed.byteLength)} gz (${fmtPct(100 - (compressed.byteLength / bytes.byteLength * 100))} saved)`, 'cmp');
-  } else {
-    simOpfsQueue.push(compressed);
-    simLogLine(`↓ offline · buffered ${simBatch.length} pkt to OPFS: ${fmtBytes(compressed.byteLength)} gz · queue=${simOpfsQueue.length}`, 'offline');
+  // ---------- §3 magic bytes ----------
+  async function magicRun() {
+    var input = (document.getElementById('payload-in').value || '');
+    var host = document.getElementById('magic-out'); host.textContent = '';
+    var rows = [];
+    var fmts = ['gzip', 'deflate', 'deflate-raw'];
+    var anns = {
+      'gzip': '1f 8b = gzip magic · 08 = DEFLATE · 00 = FLG · 00000000 = mtime(0) · 00 = XFL · 13 = OS(19)',
+      'deflate': '78 9c = ZLIB header (RFC 1950, CMF/FLG) — NOT raw deflate',
+      'deflate-raw': 'no container — bare DEFLATE blocks (no magic bytes)'
+    };
+    for (var i = 0; i < fmts.length; i++) {
+      var f = fmts[i];
+      var b = await gzBytes(input, f);
+      var div = document.createElement('div'); div.className = 'hexrow';
+      div.innerHTML = '<span class="fmt">' + f + ' · ' + b.length + ' B</span><span class="hex">' + hex(b, 12) + (b.length > 12 ? ' …' : '') + '</span><span class="ann">' + anns[f] + '</span>';
+      host.appendChild(div);
+      chip('ch-magic', f + ': ' + input.length + 'B → ' + b.length + 'B · head ' + hex(b, 4), 'ok');
+    }
+    var rt = await ungz(await gzBytes(input, 'gzip'));
+    chip('ch-magic', 'round-trip: ' + rt, rt === 'OK:' + input ? 'ok' : 'fail');
   }
-  simBatch = [];
-  simUpdate();
-}
+  document.getElementById('btn-magic').addEventListener('click', magicRun);
 
-$('sim-start').addEventListener('click', () => {
-  if (simRunning) return;
-  simRunning = true;
-  simLogLine('▶ mission started · 30Hz telemetry', 'net');
-  // 30Hz = one packet every 33ms. Flush batch every 60 packets (2 sec).
-  simInterval = setInterval(() => {
-    simPackets++;
-    simBatch.push({
-      ts: Date.now(),
-      drone: 'ARC-01',
-      lat: 37.7749 + Math.random() * 0.001,
-      lon: -122.4194 + Math.random() * 0.001,
-      alt: 50 + Math.random() * 20,
-      battery: 100 - simPackets * 0.001,
-      sats: 14,
+  // ---------- §4 header + bench ----------
+  async function headerRun() {
+    var b = await gzBytes('header-decode-payload-0123456789', 'gzip');
+    var dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+    var lines = [
+      'magic      ' + hex(b.subarray(0, 2)) + '   (gzip, RFC 1952)',
+      'CM         ' + b[2] + '        (8 = DEFLATE — the only legal value)',
+      'FLG        ' + b[3] + '        (0 = no FNAME/FEXTRA/FCOMMENT/FHCRC)',
+      'MTIME      ' + dv.getUint32(4, true) + '     (0 = deterministic — no timestamp embedded)',
+      'XFL        ' + b[8] + '        (0 = engine default level, not -9 flagged)',
+      'OS         ' + b[9] + ' (0x' + b[9].toString(16) + ')   (19 — neither node Unix=3 nor unknown=255)',
+      'trailer    ISIZE=' + dv.getUint32(b.length - 4, true) + ' (mod 2^32) + CRC32 present'
+    ];
+    out('header-out', lines.join('\n'));
+    chip('ch-header', 'gzip header decoded live · mtime=0 xfl=0 os=' + b[9], 'ok');
+    chip('ch-header', 'ISIZE=' + dv.getUint32(b.length - 4, true) + ' = payload length ✓', 'ok');
+  }
+  async function benchRun() {
+    var ref = 'telemetry-frame {"alt":123.4,"batt":87.2,"gps":[-122.4,37.8]}\n'.repeat(25000);
+    var u8 = enc.encode(ref);
+    var cs = new CompressionStream('gzip');
+    var w = cs.writable.getWriter(); w.write(u8); w.close();
+    var t0 = performance.now();
+    var packed = new Uint8Array(await race(new Response(cs.readable).arrayBuffer(), 8000));
+    var ms = Math.round(performance.now() - t0);
+    out('header-out', 'input      ' + u8.length.toLocaleString() + ' B (1.55 MB repetitive telemetry JSON)\noutput     ' + packed.length.toLocaleString() + ' B\nratio      ' + (packed.length / u8.length * 100).toFixed(2) + '%\ntime       ' + ms + ' ms');
+    chip('ch-header', '1.55 MB → ' + packed.length + ' B in ' + ms + ' ms', 'ok');
+  }
+  document.getElementById('btn-header').addEventListener('click', headerRun);
+  document.getElementById('btn-bench').addEventListener('click', benchRun);
+
+  // ---------- §5 chunked ----------
+  async function chunkedRun() {
+    var cs = new CompressionStream('gzip');
+    var w = cs.writable.getWriter();
+    fire(w.write(enc.encode('hello'))); fire(w.write(enc.encode(' '))); fire(w.write(enc.encode('world'))); fire(w.close());
+    var packed = new Uint8Array(await race(new Response(cs.readable).arrayBuffer()));
+    var back = await ungz(packed);
+    out('chunked-out', '3 writes: ["hello"] [" "] ["world"]\none member: ' + packed.length + ' B\ndecompressed: ' + back);
+    chip('ch-chunked', 'writes merge → ' + back, back === 'OK:hello world' ? 'ok' : 'fail');
+    // deferred validation
+    try {
+      var cs2 = new CompressionStream('gzip');
+      var w2 = cs2.writable.getWriter(); fire(w2.write('a plain string')); fire(w2.close());
+      chip('ch-chunked', 'write("string") accepted at write-time', 'warn');
+      var r = await ungzResp(new Uint8Array([1, 2]), 'gzip').then(function () { return null; });
+      void r;
+      var resp = new Response(cs2.readable).arrayBuffer().then(function () { chip('ch-chunked', 'string write: read resolved (?!)', 'fail'); }, function (e) { chip('ch-chunked', 'string write → read rejects: ' + e.name + ' (deferred validation)', 'ok'); });
+      void resp;
+    } catch (e) { chip('ch-chunked', 'deferred-validation lane errored sync: ' + e.name, 'warn'); }
+  }
+  document.getElementById('btn-chunked').addEventListener('click', chunkedRun);
+
+  // ---------- §6 anti-cat ----------
+  async function catRun() {
+    var a = await gzBytes('AAA-'); var b = await gzBytes('BBB');
+    var cat = new Uint8Array(a.length + b.length); cat.set(a); cat.set(b, a.length);
+    var res = await ungz(cat);
+    out('cat-out', 'member1: ' + a.length + ' B (gzip of "AAA-")\nmember2: ' + b.length + ' B (gzip of "BBB")\nconcat:   ' + cat.length + ' B → ONE DecompressionStream\n\nbrowser: ' + res + '\nnode control (probe): gunzipSync → "AAA-BBB" — BOTH members');
+    chip('ch-cat', 'concat members → ' + res, 'fail');
+  }
+  async function catTailRun() {
+    var one = await gzBytes('single-member-payload');
+    var t = new Uint8Array(one.length + 1); t.set(one); t[one.length] = 0x0a;
+    var res = await ungz(t);
+    out('cat-out', 'valid member: ' + one.length + ' B\n+1 trailing byte: 0a (a newline)\n\nbrowser: ' + res + '\nnode control (probe): trailing zeros accepted, junk errors — differently');
+    chip('ch-cat', '+1 trailing 0x0a → ' + res, 'fail');
+  }
+  document.getElementById('btn-cat').addEventListener('click', catRun);
+  document.getElementById('btn-cat-tail').addEventListener('click', catTailRun);
+
+  // ---------- §7 error lanes ----------
+  async function badLane(kind) {
+    var bytes, fmt = 'gzip', label = '';
+    if (kind === 'garbage-gzip') { bytes = enc.encode('plain text, definitely not gzip'); label = 'text→gzip'; }
+    else if (kind === 'garbage-raw') { bytes = new Uint8Array([0xff, 0xff, 0xff, 0xff, 0xff]); fmt = 'deflate-raw'; label = '0xff×5→raw'; }
+    else if (kind === 'truncated') { var full = await gzBytes('truncate-me-payload-0123456789'); bytes = full.slice(0, full.length - 6); label = 'truncated'; }
+    else if (kind === 'cross') { bytes = await gzBytes('cross-format', 'deflate'); label = 'zlib→gzip'; }
+    else if (kind === 'crc') { var f2 = await gzBytes('CRC-smash-' + 'x'.repeat(64)); var m = new Uint8Array(f2); m[m.length - 5] ^= 0xff; bytes = m; label = 'CRC smash'; }
+    var readerRes = await ungz(bytes, fmt);
+    var respRes = await ungzResp(bytes, fmt);
+    out('err-reader', label + ':\n' + readerRes);
+    out('err-resp', label + ':\n' + respRes);
+    chip('ch-err', label + ' reader="' + readerRes.replace('REJECT:', '').slice(0, 58) + '" resp="' + respRes.replace('REJECT:', '').slice(0, 28) + '"', readerRes.indexOf('REJECT') === 0 ? 'fail' : 'ok');
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('button[data-bad]'), function (b) {
+    b.addEventListener('click', function () { badLane(b.getAttribute('data-bad')); });
+  });
+
+  // ---------- §8 deadlock ----------
+  async function deadRun() {
+    var lines = [];
+    var cs = new CompressionStream('gzip');
+    var w = cs.writable.getWriter();
+    lines.push('desiredSize before any write: ' + w.desiredSize);
+    var r1 = await race(w.write(enc.encode('tiny')), 3000); // raced: pending-forever is HANDLED, never rejects
+    lines.push('await write("tiny") [no reader]: ' + r1);
+    var r2 = await race(w.close(), 3000);
+    lines.push('await close() [no reader]: ' + r2);
+    var csA = new CompressionStream('gzip');
+    var wA = csA.writable.getWriter();
+    fire(wA.write(enc.encode('data')));
+    var r3 = await race(fire(wA.abort('stop')), 3000);
+    lines.push('await abort() [unread write queued]: ' + r3);
+    var drain = new Response(cs.readable).arrayBuffer().then(function (b) {
+      lines.push('late consumer rescues write #1: got ' + b.byteLength + ' B — the writes WERE queued');
+      out('dead-out', lines.join('\n'));
+      chip('ch-dead', 'late consumer drains the pend → ' + b.byteLength + 'B', 'ok');
+    }, function (e) {
+      lines.push('late consumer: read rejected ' + e.name);
+      out('dead-out', lines.join('\n'));
     });
-    if (simBatch.length >= 60) simFlushBatch();
-  }, 33);
-});
-
-$('sim-stop').addEventListener('click', () => {
-  if (!simRunning) return;
-  simRunning = false;
-  clearInterval(simInterval);
-  simFlushBatch();
-  simLogLine('⏸ mission paused', 'net');
-});
-
-$('sim-clear').addEventListener('click', () => {
-  simLog.innerHTML = '';
-  simPackets = 0; simRawBytes = 0; simCompressedBytes = 0; simBatch = []; simOpfsQueue = [];
-  simUpdate();
-});
-
-$('sim-toggle-conn').addEventListener('click', () => {
-  simConn = !simConn;
-  $('sim-conn').textContent = simConn ? 'ONLINE' : 'OFFLINE';
-  $('sim-conn').style.color = simConn ? 'var(--green)' : 'var(--red)';
-  if (simConn && simOpfsQueue.length > 0) {
-    const drained = simOpfsQueue.length;
-    simLogLine(`↻ connection restored · draining ${drained} buffered batches to server`, 'net');
-    simOpfsQueue = [];
-  } else if (!simConn) {
-    simLogLine('⚠ connection lost · buffering to OPFS', 'offline');
+    out('dead-out', lines.join('\n'));
+    chip('ch-dead', 'await write → ' + r1, r1 === '_PENDS_' ? 'fail' : 'ok');
+    chip('ch-dead', 'await close → ' + r2, r2 === '_PENDS_' ? 'fail' : 'ok');
+    chip('ch-dead', 'await abort → ' + r3, r3 === '_PENDS_' ? 'fail' : 'ok');
   }
-});
+  async function dszRun() {
+    var cs = new CompressionStream('gzip');
+    var w = cs.writable.getWriter();
+    var before = w.desiredSize;
+    fire(w.write(enc.encode('x'.repeat(65536))));
+    var after = w.desiredSize;
+    fire(w.close());
+    var outB = await race(new Response(cs.readable).arrayBuffer());
+    out('dead-out', 'desiredSize fresh writer: ' + before + '\nafter one 64 KB write (sync read): ' + after + '\n64 KB of 0x61 compresses to: ' + outB.byteLength + ' B\nafter close: ' + w.desiredSize);
+    chip('ch-dead', 'desiredSize ' + before + ' → ' + after + ' (hwm = 1 chunk)', after === 0 ? 'ok' : 'warn');
+    chip('ch-dead', '64 KB → ' + outB.byteLength + ' B', 'ok');
+  }
+  document.getElementById('btn-dead').addEventListener('click', deadRun);
+  document.getElementById('btn-dsz').addEventListener('click', dszRun);
 
+  // ---------- §9 worker ----------
+  document.getElementById('btn-worker').addEventListener('click', function () {
+    var w = new Worker('cs-w.js');
+    var done = false;
+    var to = setTimeout(function () { if (!done) { done = true; out('worker-out', 'worker timed out (5 s)'); chip('ch-worker', 'worker lane: timeout', 'fail'); w.terminate(); } }, 5000);
+    w.onmessage = function (e) {
+      if (done) return; done = true; clearTimeout(to); w.terminate();
+      var d = e.data;
+      out('worker-out', JSON.stringify(d, null, 1));
+      chip('ch-worker', 'CompressionStream in worker: ' + d.hasCS, d.hasCS ? 'ok' : 'fail');
+      chip('ch-worker', 'round-trip: ' + d.match + ' (' + d.rawBytes + 'B → ' + d.packedBytes + 'B)', d.match ? 'ok' : 'fail');
+      chip('ch-worker', 'proto in worker: ' + d.protoCS, 'ok');
+    };
+    w.onerror = function (ev) { if (!done) { done = true; clearTimeout(to); out('worker-out', 'worker error: ' + (ev.message || '?')); chip('ch-worker', 'worker error', 'fail'); } };
+    w.postMessage({ msg: 'demo-' + Math.random().toString(36).slice(2, 8) });
+  });
+
+  // ---------- §10 insecure (facts from the live probe session; page itself is https) ----------
+  chip('ch-insecure', 'isSecureContext @ http://192.168.68.56: false · CompressionStream constructable: true (probe 2026-10-08)', 'ok');
+  chip('ch-insecure', 'isSecureContext @ http://100.124.171.106 (CGNAT): false · round-trip: true', 'ok');
+  chip('ch-insecure', 'spec: no [SecureContext] attribute on either class', 'info');
+
+  // ---------- §11 capstone ----------
+  var telRaw = 0, telPacked = 0, telFrames = 0, telTimer = null, telParts = [];
+  var telCS = null, telW = null, telSink = null;
+  function telemetryFrame(n) {
+    return {
+      t: +(n / 10).toFixed(1), alt: +(120 + 40 * Math.sin(n / 9)).toFixed(1),
+      batt: +(96 - n * 0.01).toFixed(2), gps: [-122.4021 + n * 1e-6, 37.8088 - n * 1e-6],
+      hdg: Math.round((n * 7) % 360), mode: n % 47 === 0 ? 'RTH' : 'AUTO'
+    };
+  }
+  function telStatus(s) { document.getElementById('tel-status').textContent = s; }
+  document.getElementById('btn-tel-start').addEventListener('click', function () {
+    if (telTimer) return;
+    telCS = new CompressionStream('gzip');
+    telW = telCS.writable.getWriter();
+    telSink = new Response(telCS.readable).arrayBuffer(); // consumer FIRST — the §8 law, live
+    telRaw = 0; telFrames = 0; telParts = [];
+    telStatus('recording…');
+    document.getElementById('btn-tel-start').disabled = true;
+    document.getElementById('btn-tel-stop').disabled = false;
+    var n = 0;
+    telTimer = setInterval(function () {
+      var line = JSON.stringify(telemetryFrame(n++)) + '\n';
+      var b = enc.encode(line);
+      telRaw += b.byteLength; telFrames++;
+      telW.write(b); // fired, never awaited — deadlock law; fire() adds the .catch (§5 note)
+      telParts.push(line);
+      document.getElementById('tel-raw').textContent = telRaw.toLocaleString();
+      document.getElementById('tel-frames').textContent = telFrames + ' frames';
+      document.getElementById('tel-packed').textContent = 'streaming…';
+      if (telFrames % 15 === 0) {
+        document.getElementById('tel-log').textContent = telParts.slice(-4).join('').trim().split('\n').map(function (l) { return l.slice(0, 76) + (l.length > 76 ? '…' : ''); }).join('\n');
+      }
+    }, 100);
+  });
+  document.getElementById('btn-tel-stop').addEventListener('click', async function () {
+    if (!telTimer) return;
+    clearInterval(telTimer); telTimer = null;
+    telW.close(); // un-awaited
+    telStatus('closing member…');
+    var packed = await race(telSink, 8000);
+    if (packed === '_PENDS_') { telStatus('sink did not settle (unexpected)'); chip('ch-tel', 'archive sink: _PENDS_', 'fail'); return; }
+    telPacked = packed.byteLength;
+    document.getElementById('tel-packed').textContent = telPacked.toLocaleString();
+    var ratio = (telPacked / telRaw * 100).toFixed(2);
+    document.getElementById('tel-ratio').textContent = ratio + '% of raw';
+    document.getElementById('btn-tel-stop').disabled = true;
+    document.getElementById('btn-tel-replay').disabled = false;
+    telStatus('archive closed: ' + telPacked + ' B single-member gzip');
+    chip('ch-tel', 'recorded ' + telFrames + ' frames · ' + telRaw + 'B → ' + telPacked + 'B (' + ratio + '%)', 'ok');
+    window.__telArchive = new Uint8Array(packed);
+  });
+  document.getElementById('btn-tel-replay').addEventListener('click', async function () {
+    var arch = window.__telArchive;
+    if (!arch) return;
+    var back = await ungz(arch);
+    var ok = back === 'OK:' + telParts.join('');
+    var lines = back.replace('OK:', '').trim().split('\n');
+    var last = {};
+    try { last = JSON.parse(lines[lines.length - 1]); } catch (e) {}
+    document.getElementById('tel-verdict').innerHTML = (ok ? '✅ lossless — every frame byte-identical<br>' : '❌ mismatch<br>') +
+      '<span class="kv">' + lines.length + ' frames replayed · last: alt=' + last.alt + ' batt=' + last.batt + ' hdg=' + last.hdg + '</span>';
+    document.getElementById('tel-log').textContent = lines.slice(-4).map(function (l) { return l.slice(0, 76) + (l.length > 76 ? '…' : ''); }).join('\n');
+    chip('ch-tel', 'replay: ' + lines.length + ' frames, byte-identical=' + ok, ok ? 'ok' : 'fail');
+    telStatus('replay complete');
+  });
+
+  // ---------- boot lanes for the gate (zero-click chips) ----------
+  magicRun().catch(function (e) { chip('ch-magic', 'magic lane failed: ' + e.message, 'fail'); });
+  headerRun().catch(function (e) { chip('ch-header', 'header lane failed: ' + e.message, 'fail'); });
+  chunkedRun().catch(function (e) { chip('ch-chunked', 'chunked lane failed: ' + e.message, 'fail'); });
+  catRun().catch(function (e) { chip('ch-cat', 'cat lane failed: ' + e.message, 'fail'); });
+})();
 </script>
 </body>
 </html>
