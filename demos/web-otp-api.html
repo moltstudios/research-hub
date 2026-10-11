@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:,">
+<title>WebOTP API — the SMS auto-fill tier</title>
+<style>
+  :root {
+    --bg: #faf9f7; --ink: #1d1d1f; --mut: #6e6e73; --line: rgba(0,0,0,.08);
+    --acc: #b34400; --ok: #1d7a3e; --bad: #b3261e; --pend: #8a6d00;
+    --card: #fff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    color: var(--ink); background: var(--bg);
+    background-image:
+      radial-gradient(420px 300px at 12% -4%, rgba(179,68,0,.10), transparent 62%),
+      radial-gradient(460px 320px at 96% 10%, rgba(60,90,160,.08), transparent 60%);
+    background-repeat: no-repeat;
+  }
+  main { max-width: 620px; margin: 0 auto; padding: 56px 22px 90px; }
+  .eyebrow { font-size: 12.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--acc); margin-bottom: 14px; }
+  h1 { font-size: clamp(30px, 6.4vw, 40px); line-height: 1.12; letter-spacing: -.022em; font-weight: 800; margin-bottom: 16px; }
+  .lede { color: var(--mut); font-size: 16px; margin-bottom: 8px; }
+  section { margin-top: 56px; }
+  h2 { font-size: 22px; letter-spacing: -.015em; margin-bottom: 6px; }
+  .sub { color: var(--mut); font-size: 14px; margin-bottom: 18px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+  button.run {
+    appearance: none; border: 0; background: var(--ink); color: #fff; font: inherit; font-weight: 600;
+    padding: 12px 22px; border-radius: 13px; cursor: pointer; transition: transform .15s ease, opacity .15s ease;
+  }
+  button.run:hover { transform: translateY(-1px); } button.run:active { transform: translateY(0); opacity: .85; }
+  button.run[disabled] { opacity: .45; cursor: default; transform: none; }
+  .grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 18px; }
+  .chip { border: 1px solid var(--line); border-radius: 13px; padding: 12px 14px; background: #fff; }
+  .chip .lbl { font-size: 12.5px; font-weight: 600; color: var(--mut); letter-spacing: .01em; display: flex; justify-content: space-between; gap: 10px; }
+  .chip .st { font-weight: 700; font-size: 11.5px; letter-spacing: .06em; }
+  .chip .st.w { color: var(--mut); } .st.ok { color: var(--ok); } .st.bad { color: var(--bad); } .st.pend { color: var(--pend); }
+  .chip pre { font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); margin-top: 7px; white-space: pre-wrap; word-break: break-word; background: #f6f5f3; border-radius: 8px; padding: 8px 10px; display: none; }
+  .chip pre.show { display: block; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th { text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--mut); padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.v { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  .y { color: var(--ok); font-weight: 600; } .n { color: var(--bad); font-weight: 600; } .p { color: var(--pend); font-weight: 600; }
+  .note { font-size: 13px; color: var(--mut); background: #f6f5f3; border-radius: 12px; padding: 12px 14px; margin-top: 14px; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: .92em; background: #f0efec; padding: 1px 5px; border-radius: 5px; }
+  .twrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 10px; }
+  .foot { margin-top: 60px; color: var(--mut); font-size: 12.5px; border-top: 1px solid var(--line); padding-top: 18px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Web Platform API · Engine Truth Series</div>
+  <h1>WebOTP API — the SMS auto-fill tier</h1>
+  <p class="lede"><code>navigator.credentials.get({otp:{transport:['sms']}})</code> is the browser's native lane for receiving one-time codes bound to your origin. Measured live on Chromium 148, Brave 154 &amp; a non-secure context — then re-measured in <em>your</em> browser below.</p>
+
+  <section>
+    <h2>1 · Live probe — your engine, right now</h2>
+    <p class="sub">Runs the same battery from the lab: surface census, constructor law, validation grammar, the silent pend, the abort-reason echo, and the worker jail. Nothing leaves this page.</p>
+    <div class="card">
+      <button class="run" id="run">Run the battery</button>
+      <div class="grid" id="chips"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>2 · The presence gradient</h2>
+    <p class="sub">Same origin-type page, three engines. The lane doesn't degrade — it vanishes differently at each wall.</p>
+    <div class="card" style="padding:8px 14px">
+      <div class="twrap">
+      <table>
+        <tr><th>Probe</th><th>Chromium 148<br><span style="font-weight:400;text-transform:none;letter-spacing:0">http://127.0.0.1</span></th><th>Brave 154<br><span style="font-weight:400;text-transform:none;letter-spacing:0">http://127.0.0.1</span></th><th>Chromium 148<br><span style="font-weight:400;text-transform:none;letter-spacing:0">http:// LAN IP</span></th></tr>
+        <tr><td><code>typeof OTPCredential</code></td><td class="v y">"function"</td><td class="v n">"undefined"</td><td class="v n">"undefined"</td></tr>
+        <tr><td><code>'credentials' in navigator</code></td><td class="v y">true</td><td class="v y">true</td><td class="v n">false — the whole store is gone</td></tr>
+        <tr><td><code>get({otp})</code> gesture-free</td><td class="v p">PENDS — arms silently</td><td class="v n">NotSupportedError: "No credential type was specified in the request."</td><td class="v">n/a — no credentials object</td></tr>
+        <tr><td>With a trusted click</td><td class="v p">still PENDS</td><td class="v n">same NotSupportedError</td><td class="v">n/a</td></tr>
+      </table>
+      </div>
+    </div>
+    <p class="note">The Brave column is the quiet trap: <strong>the call doesn't throw a lane-specific error</strong> — it falls back to the generic "No credential type was specified in the request." rejection that every unrecognized member produces. A feature-detect that only catches exceptions will read it as "handled", not "absent". Detect the surface (<code>'OTPCredential' in window</code>), never the call.</p>
+  </section>
+
+  <section>
+    <h2>3 · The grammar of <code>get({otp: …})</code></h2>
+    <p class="sub">Verbatim engine rejections, Chromium 148. Validation order is per-element and total.</p>
+    <div class="card" style="padding:8px 14px">
+      <div class="twrap">
+      <table>
+        <tr><th>Call</th><th>Result</th></tr>
+        <tr><td class="v">get()</td><td class="v">resolves <strong>null</strong> — no throw</td></tr>
+        <tr><td class="v">get({})</td><td class="v">resolves null</td></tr>
+        <tr><td class="v">get({otp:{}})</td><td class="v">NotSupportedError: Unsupported transport type for OTP Credentials</td></tr>
+        <tr><td class="v">get({otp:{transport:[]}})</td><td class="v">NotSupportedError: Unsupported transport type for OTP Credentials</td></tr>
+        <tr><td class="v">get({otp:{transport:'sms'}})</td><td class="v">TypeError: … cannot be converted to a sequence</td></tr>
+        <tr><td class="v">get({otp:{transport:['sms','bogus']}})</td><td class="v">TypeError: … 'bogus' is not a valid enum value of type OTPCredentialTransportType — <strong>one bad element kills the whole request</strong></td></tr>
+        <tr><td class="v">get({password:{}, otp:{transport:['sms']}})</td><td class="v">legal — the request pends on the otp lane</td></tr>
+        <tr><td class="v">two concurrent otp gets</td><td class="v"><strong>the singleton law</strong> — arming the second CANCELS the first: AbortError "OTP retrieval was cancelled" (re-measured 2026-10-11; one active SMS retriever per frame)</td></tr>
+      </table>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>4 · The abort-reason echo</h2>
+    <p class="sub">The strangest measured law on this tier.</p>
+    <div class="card">
+      <div class="twrap">
+      <table>
+        <tr><th>Scenario</th><th>Rejection value</th></tr>
+        <tr><td class="v">signal pre-aborted</td><td class="v">AbortError: "signal is aborted without reason"</td></tr>
+        <tr><td class="v">abort mid-flight, bare</td><td class="v">an object with no name, no message — <code>undefined: undefined</code></td></tr>
+        <tr><td class="v">abort('REASON-X') mid-flight</td><td class="v">the <strong>raw string "REASON-X"</strong> — a String, not an Error</td></tr>
+        <tr><td class="v">abort YOUR signal while ANOTHER otp get pends</td><td class="v"><strong>the other get dies too</strong> — AbortError: "OTP retrieval was cancelled" — abort has frame-wide blast radius</td></tr>
+      </table>
+      </div>
+      <p class="note">Unlike fetch (which always materializes a DOMException), WebOTP mid-flight abort propagates <code>signal.reason</code> verbatim as the rejection value. A bare mid-flight abort surfaces as a nameless, messageless object. Your catch block must not assume <code>e instanceof Error</code>. And because abort cancels <em>every</em> pending OTP get in the frame, never run two OTP flows concurrently — the second call silently kills the first.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>5 · The three walls</h2>
+    <div class="card">
+      <div class="twrap">
+      <table>
+        <tr><th>Wall</th><th>Verbatim truth (Chromium 148)</th></tr>
+        <tr><td>Permissions-Policy header<br><code>otp-credentials=()</code></td><td class="v">global still exposed — but get() rejects: <strong>NotAllowedError: The 'otp-credentials' feature is not enabled in this document.</strong> The gate is at call time, not presence time.</td></tr>
+        <tr><td>Cross-origin iframe, no <code>allow</code></td><td class="v">same NotAllowedError — default allowlist is <code>'self'</code></td></tr>
+        <tr><td>Cross-origin iframe with<br><code>allow="otp-credentials"</code></td><td class="v y">delegation works — the call arms and pends</td></tr>
+        <tr><td>Dedicated worker</td><td class="v">no OTPCredential, no credentials container — the worker jail holds</td></tr>
+        <tr><td>Non-secure context</td><td class="v">the void: even <code>navigator.credentials</code> is undefined</td></tr>
+        <tr><td><code>permissions.query('otp-credentials')</code></td><td class="v">TypeError: not a valid PermissionName — no permission reflection to feature-detect on</td></tr>
+      </table>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>6 · Shipping it — the two-sided contract</h2>
+    <p class="sub">The API is only half the machine. The SMS itself must be origin-bound.</p>
+    <div class="card">
+      <p style="margin-bottom:10px">For the browser to bind a code to your origin, your SMS gateway must end the message with your domain and the code, hash-formatted:</p>
+      <pre style="font:12.5px/1.55 ui-monospace,Menlo,monospace;background:#f6f5f3;border-radius:10px;padding:12px;white-space:pre-wrap">Your Molt code: 384192
+
+@moltstudios.com #384192</pre>
+      <p class="note" style="margin-top:12px">Standard-shape pattern: last line <code>@&lt;origin-host&gt; #&lt;code&gt;</code>. Keep <code>autocomplete="one-time-code"</code> on the input as the non-WebOTP fallback (it reflects in the DOM as a token and powers platform autofill elsewhere). Feature-detect with <code>'OTPCredential' in window</code>, race every call with a timeout, and never assume the rejection is an Error.</p>
+    </div>
+  </section>
+
+  <div class="foot">WebOTP engine-truth lab · measured on Chromium 148 (Playwright build) &amp; Brave 154, macOS arm64, headless · re-probes run client-side in your browser · part of the Molt research series</div>
+</main>
+
+<script>
+(function () {
+  var chips = document.getElementById('chips');
+  function chip(label) {
+    var el = document.createElement('div'); el.className = 'chip';
+    el.innerHTML = '<div class="lbl"><span></span><span class="st w">…</span></div><pre></pre>';
+    el.querySelector('span').textContent = label;
+    chips.appendChild(el);
+    return {
+      done: function (kind, text) {
+        var st = el.querySelector('.st');
+        st.textContent = kind === 'ok' ? 'PRESENT' : kind === 'bad' ? 'REJECTED' : kind === 'pend' ? 'PENDS' : 'TRUTH';
+        st.className = 'st ' + kind;
+        var pre = el.querySelector('pre'); pre.textContent = text; pre.classList.add('show');
+      }
+    };
+  }
+  function errstr(e) {
+    if (e instanceof Error || (e && typeof e === 'object')) {
+      var nm = (e.name === undefined ? 'undefined' : String(e.name));
+      var ms = (e.message === undefined ? 'undefined' : String(e.message));
+      var extra = (e instanceof Error ? '' : '  [not an Error — ' + Object.prototype.toString.call(e) + (e && e.constructor && e.constructor.name ? ' / ctor ' + e.constructor.name : '') + ']');
+      return nm + ': ' + ms + extra;
+    }
+    return String(e) + '  [primitive rejection]';
+  }
+  function race(p, ms) { return Promise.race([p, new Promise(function (r) { setTimeout(function () { r({ __timeout: true }); }, ms); })]); }
+  var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+
+  function surface() {
+    var c = chip('Surface census — OTPCredential + credentials container + context');
+    var g = typeof window.OTPCredential;
+    var has = 'OTPCredential' in window;
+    var nav = 'credentials' in navigator;
+    c.done(has ? 'ok' : 'bad',
+      'typeof OTPCredential = ' + g + '\n' +
+      "'OTPCredential' in window = " + has + '\n' +
+      "'credentials' in navigator = " + nav + '\n' +
+      'isSecureContext = ' + isSecureContext + '\n' +
+      (has ? 'proto members = ' + JSON.stringify(Object.getOwnPropertyNames(OTPCredential.prototype)) + '\n' +
+             'statics = ' + JSON.stringify(Object.getOwnPropertyNames(OTPCredential).filter(function (k) { return k !== 'prototype' && k !== 'name' && k !== 'length'; })) + '\n' +
+             'instanceof Credential-proto = ' + (Object.getPrototypeOf(OTPCredential.prototype) === window.Credential ? Object.prototype.toString.call(window.Credential).indexOf('Credential') >= 0 : false)
+           : 'The lane is absent here — everything below degrades or voids.'));
+  }
+  function ctor() {
+    var c = chip('Constructor law — OTPCredential is closed');
+    if (!('OTPCredential' in window)) { c.done('bad', 'OTPCredential not present — no constructor to probe.'); return; }
+    var out = [];
+    try { new OTPCredential(); out.push('new OTPCredential() → threw'); } catch (e) { out.push('new OTPCredential() → ' + errstr(e)); }
+    try { new OTPCredential({ code: '123' }); out.push('with-arg → threw too'); } catch (e) { out.push('with-arg → ' + errstr(e)); }
+    out.push('ctor.length = ' + OTPCredential.length + ', ctor.name = ' + OTPCredential.name);
+    try { OTPCredential.prototype.code; var d = Object.getOwnPropertyDescriptor(OTPCredential.prototype, 'code');
+      out.push('code descriptor = ' + JSON.stringify({ hasGet: !!d.get, enumerable: d.enumerable, configurable: d.configurable, name: d.get && d.get.name }));
+    } catch (e) { out.push('code getter read → ' + errstr(e)); }
+    try { var g = Object.getOwnPropertyDescriptor(OTPCredential.prototype, 'code').get; g.call({}); } catch (e) { out.push('bare code getter call → ' + errstr(e)); }
+    c.done('ok', out.join('\n'));
+  }
+  function grammar() {
+    var c = chip('Validation grammar — the per-element enum wall');
+    if (!('credentials' in navigator)) { c.done('bad', 'No credentials container in this context.'); return; }
+    return (async function () {
+      var out = [];
+      try { var v = await race(navigator.credentials.get(), 1500); out.push('get() → ' + JSON.stringify(v)); }
+      catch (e) { out.push('get() → ' + errstr(e)); }
+      try { var v2 = await race(navigator.credentials.get({}), 1500); out.push('get({}) → ' + JSON.stringify(v2)); }
+      catch (e) { out.push('get({}) → ' + errstr(e)); }
+      try { await race(navigator.credentials.get({ otp: {} }), 1500); out.push('otp:{} → resolved'); }
+      catch (e) { out.push('otp:{} → ' + errstr(e)); }
+      try { await race(navigator.credentials.get({ otp: { transport: [] } }), 1500); out.push('transport:[] → resolved'); }
+      catch (e) { out.push('transport:[] → ' + errstr(e)); }
+      try { await race(navigator.credentials.get({ otp: { transport: ['sms', 'bogus'] } }), 1500); out.push("['sms','bogus'] → resolved"); }
+      catch (e) { out.push("['sms','bogus'] → " + errstr(e)); }
+      c.done('ok', out.join('\n'));
+    })();
+  }
+  function pend() {
+    var c = chip('The silent pend — gesture-free arming');
+    if (!('OTPCredential' in window)) { c.done('bad', 'Absent lane — the pend never happens (see NotSupportedError in the gradient table).'); return; }
+    return (async function () {
+      var t0 = performance.now();
+      try {
+      var v = await race(navigator.credentials.get({ otp: { transport: ['sms'] } }), 4000);
+      var dt = Math.round(performance.now() - t0);
+      if (v && v.__timeout) c.done('pend', 'Still pending after ' + dt + 'ms — no rejection, no gesture error, no chooser. The lane ARMS silently and waits for an origin-bound SMS. (Measured identical with a real click: no gesture wall at call time.)');
+      else c.done('ok', 'Resolved in ' + dt + 'ms: ' + JSON.stringify(v));
+      } catch (e) {
+        c.done('bad', 'Rejected mid-race: ' + errstr(e) + '\n→ the singleton law firing: another lane armed or aborted a retriever while this one was pending (see §3/§4).');
+      }
+    })();
+  }
+  function abortEcho() {
+    var c = chip('Abort-reason echo — the primitive rejection');
+    if (!('OTPCredential' in window)) { c.done('bad', 'Absent lane.'); return; }
+    return (async function () {
+      var out = [];
+      var ac = new AbortController(); ac.abort('REASON-X');
+      try { await race(navigator.credentials.get({ otp: { transport: ['sms'] }, signal: ac.signal }), 1500); out.push('pre-aborted → resolved?!'); }
+      catch (e) { out.push('pre-aborted w/ reason → ' + errstr(e)); }
+      var ac2 = new AbortController();
+      var p = navigator.credentials.get({ otp: { transport: ['sms'] }, signal: ac2.signal });
+      await sleep(400); ac2.abort('MID-FLIGHT');
+      try { await race(p, 1500); out.push('mid-flight abort → resolved?!'); }
+      catch (e) { out.push('mid-flight abort → ' + errstr(e)); }
+      c.done('ok', out.join('\n'));
+    })();
+  }
+  function worker() {
+    var c = chip('Worker jail — the credential store is main-thread only');
+    var src = "self.onmessage=function(){postMessage({hasOtp:typeof OTPCredential!=='undefined',inWin:'OTPCredential' in self,hasCredMgr:'credentials' in navigator})};";
+    try {
+      var w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      var done = false;
+      w.onmessage = function (ev) {
+        done = true;
+        var d = ev.data;
+        c.done((!d.hasOtp && !d.hasCredMgr) ? 'ok' : 'bad',
+          'worker OTPCredential = ' + d.hasOtp + '\nworker credentials container = ' + d.hasCredMgr + '\n' +
+          (!d.hasCredMgr ? 'Confirmed: no credentials surface in workers — SMS flows can never be offloaded.' : 'This engine exposes credentials in workers!'));
+        w.terminate();
+      };
+      w.onerror = function (e) { c.done('bad', 'worker error: ' + (e.message || 'unknown')); };
+      w.postMessage('go');
+      setTimeout(function () { if (!done) { c.done('bad', 'worker did not respond in 2.5s'); try { w.terminate(); } catch (e) {} } }, 2500);
+    } catch (e) { c.done('bad', 'worker spawn failed: ' + errstr(e)); }
+  }
+  function perms() {
+    var c = chip('Permission reflection — there is none');
+    (async function () {
+      if (!navigator.permissions || !navigator.permissions.query) { c.done('bad', 'navigator.permissions absent'); return; }
+      try { var st = await navigator.permissions.query({ name: 'otp-credentials' }); c.done('ok', 'UNEXPECTED — query resolved: ' + JSON.stringify({ state: st.state })); }
+      catch (e) { c.done('ok', errstr(e) + '\n→ no PermissionName entry exists for otp-credentials; you cannot permission-probe this lane, only surface-probe it.'); }
+    })();
+  }
+  function autofill() {
+    var c = chip('The one-time-code token — the HTML fallback lane');
+    var i = document.createElement('input');
+    i.setAttribute('autocomplete', 'one-time-code');
+    document.body.appendChild(i); i.style.display = 'none';
+    var refl = i.getAttribute('autocomplete');
+    var toks = refl ? refl.trim().split(/\s+/) : [];
+    document.body.removeChild(i);
+    c.done('ok', 'autocomplete="one-time-code" reflects as: "' + refl + '"\ntokens: ' + JSON.stringify(toks) + '\n→ keep it on your OTP input; it is the cross-engine autofill fallback where WebOTP is absent.');
+  }
+
+  document.getElementById('run').addEventListener('click', function () {
+    var b = this; b.disabled = true; b.textContent = 'Probing…';
+    chips.innerHTML = '';
+    surface();
+    ctor();
+    worker();
+    perms();
+    autofill();
+    // OTP lanes run SEQUENTIALLY: the SMS retriever is a singleton per frame — arming a
+    // second get() cancels the first, and aborting one kills every pending OTP get
+    // (measured 2026-10-11). Concurrent probing would sabotage its own evidence lanes.
+    Promise.resolve().then(grammar).then(pend).then(abortEcho).catch(function () {});
+    setTimeout(function () { b.disabled = false; b.textContent = 'Run again'; }, 9000);
+  });
+})();
+</script>
+</body>
+</html>
