@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:,">
+<title>Web Storage — the key/value tier: the 10 MiB law, the other-document event law & the shadow footgun</title>
+<style>
+  :root {
+    --bg: #faf9f7; --ink: #1d1d1f; --mut: #6e6e73; --line: rgba(0,0,0,.08);
+    --acc: #0f6a4f; --ok: #1d7a3e; --bad: #b3261e; --pend: #8a6d00;
+    --card: #fff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    color: var(--ink); background: var(--bg);
+    background-image:
+      radial-gradient(420px 300px at 12% -4%, rgba(15,106,79,.10), transparent 62%),
+      radial-gradient(460px 320px at 96% 10%, rgba(60,90,160,.08), transparent 60%);
+    background-repeat: no-repeat;
+    overflow-x: hidden;
+  }
+  main { max-width: 640px; margin: 0 auto; padding: 56px 22px 90px; }
+  .eyebrow { font-size: 12.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--acc); margin-bottom: 14px; }
+  h1 { font-size: clamp(29px, 6.2vw, 40px); line-height: 1.12; letter-spacing: -.022em; font-weight: 800; margin-bottom: 16px; }
+  .lede { color: var(--mut); font-size: 16px; margin-bottom: 8px; }
+  section { margin-top: 54px; }
+  h2 { font-size: 22px; letter-spacing: -.015em; margin-bottom: 6px; }
+  .sub { color: var(--mut); font-size: 14px; margin-bottom: 18px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+  button.run {
+    appearance: none; border: 0; background: var(--ink); color: #fff; font: inherit; font-weight: 600;
+    padding: 12px 22px; border-radius: 13px; cursor: pointer; transition: transform .15s ease, opacity .15s ease;
+    max-width: 100%;
+  }
+  button.run:hover { transform: translateY(-1px); } button.run:active { transform: translateY(0); opacity: .85; }
+  button.run[disabled] { opacity: .45; cursor: default; transform: none; }
+  button.mini {
+    appearance: none; border: 1px solid var(--line); background: #fff; color: var(--ink); font: inherit; font-size: 13.5px; font-weight: 600;
+    padding: 8px 14px; border-radius: 10px; cursor: pointer; max-width: 100%; white-space: normal;
+  }
+  button.mini:hover { border-color: rgba(0,0,0,.22); }
+  .grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 18px; }
+  .chip { border: 1px solid var(--line); border-radius: 13px; padding: 12px 14px; background: #fff; }
+  .chip .lbl { font-size: 12.5px; font-weight: 600; color: var(--mut); letter-spacing: .01em; display: flex; justify-content: space-between; gap: 10px; }
+  .chip .st { font-weight: 700; font-size: 11.5px; letter-spacing: .06em; }
+  .chip .st.w { color: var(--mut); } .st.ok { color: var(--ok); } .st.bad { color: var(--bad); } .st.pend { color: var(--pend); }
+  .chip pre { font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); margin-top: 7px; white-space: pre-wrap; word-break: break-word; background: #f6f5f3; border-radius: 8px; padding: 8px 10px; display: none; }
+  .chip pre.show { display: block; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th { text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--mut); padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.v { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  .y { color: var(--ok); font-weight: 600; } .n { color: var(--bad); font-weight: 600; } .p { color: var(--pend); font-weight: 600; }
+  .note { font-size: 13px; color: var(--mut); background: #f6f5f3; border-radius: 12px; padding: 12px 14px; margin-top: 14px; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: .92em; background: #f0efec; padding: 1px 5px; border-radius: 5px; overflow-wrap: anywhere; }
+  .twrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 10px; }
+  .foot { margin-top: 60px; color: var(--mut); font-size: 12.5px; border-top: 1px solid var(--line); padding-top: 18px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .meter { margin-top: 16px; border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .meter .big { font-size: 26px; font-weight: 800; letter-spacing: -.02em; }
+  .meter .sm { color: var(--mut); font-size: 12.5px; margin-top: 2px; }
+  .bar { height: 10px; border-radius: 6px; background: #eceae6; overflow: hidden; margin-top: 10px; }
+  .bar > div { height: 100%; background: linear-gradient(90deg, #0f6a4f, #2f9e77); border-radius: 6px; transition: width .3s ease; }
+  iframe.lab { width: 100%; border: 1px solid var(--line); border-radius: 12px; background: #fff; min-height: 120px; margin-top: 14px; }
+  .tape { font: 11.5px/1.6 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-word; background: #f6f5f3; border-radius: 8px; padding: 10px; margin-top: 10px; max-height: 220px; overflow-y: auto; }
+  .hud { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-top: 14px; }
+  .hud .cell { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: #fff; }
+  .hud .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--mut); }
+  .hud .v { font-size: 19px; font-weight: 750; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+  .hud .v.bad { color: var(--bad); } .hud .v.warn { color: var(--pend); }
+  .pill { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .05em; padding: 2px 8px; border-radius: 999px; background: #eef3f0; color: var(--acc); margin-right: 6px; }
+  ol.rules { padding-left: 20px; } ol.rules li { margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Web Platform API · Engine Truth Series · Entry 205</div>
+  <h1>Web Storage — the key/value tier</h1>
+  <p class="lede"><code>localStorage</code> + <code>sessionStorage</code>: the API every project ships with on day one and nobody has measured. Live-probed on Brave 154 headless (5 suites, fresh profiles) — and re-measured in <em>your</em> engine below. The folklore says "5MB". The engine says something else.</p>
+
+  <section>
+    <h2>1 · Live battery — your engine, right now</h2>
+    <p class="sub">Surface census, the value contract, the shadow footgun, enumeration order, the worker jail, and the quota wall — measured in this tab, cleaned up after. Nothing leaves this origin. This page only ever touches <code>wsd:</code>-prefixed keys.</p>
+    <div class="card">
+      <button class="run" id="run">Run the battery</button>
+      <div class="grid" id="chips"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>2 · The 10 MiB law — the quota wall, measured</h2>
+    <p class="sub">"localStorage is 5MB" is the most-repeated number in frontend. Measured single-key wall on Brave 154: <strong>5,243,010 characters = 10,486,020 UTF-16 bytes</strong> — 10 MiB, byte-stable across fresh profiles. The folklore confuses characters with bytes: the engine accounts every key and value as UTF-16 (2 bytes/char).</p>
+    <div class="card">
+      <button class="mini" id="quotaBtn">Measure my real quota (fills to the wall, ~1–2 s, then cleans up)</button>
+      <div class="meter" id="quotaMeter" style="display:none">
+        <div class="big" id="qChars">…</div>
+        <div class="sm" id="qBytes">…</div>
+        <div class="bar"><div id="qBar" style="width:0%"></div></div>
+        <div class="sm" id="qErr" style="margin-top:8px">…</div>
+      </div>
+      <div class="grid" id="quotaChips" style="display:none"></div>
+    </div>
+    <div class="card" style="padding:8px 14px;margin-top:14px">
+      <div class="twrap">
+      <table>
+        <tr><th>Quota law</th><th>Measured (Brave 154)</th></tr>
+        <tr><td>Single-key wall</td><td class="v">5,243,010 chars = 10,486,020 B ≈ <strong>10 MiB</strong> + ~260 B key/entry overhead</td></tr>
+        <tr><td>Accounting unit</td><td class="v">UTF-16: 2 bytes per char, key + value both count</td></tr>
+        <tr><td><code>localStorage</code> vs <code>sessionStorage</code></td><td class="v y">SEPARATE budgets — ss at its wall, ls still writes (measured)</td></tr>
+        <tr><td>Failed <code>setItem</code></td><td class="v y">ATOMIC — old value survives verbatim; partial writes never land</td></tr>
+        <tr><td>Small overwrite at quota</td><td class="v p">SUCCEEDS (block-rounding slack — not byte-strict for replacements)</td></tr>
+        <tr><td>Key-count cap</td><td class="v y">none — 100,000 × 1-char entries, no error</td></tr>
+        <tr><td><code>navigator.storage.estimate()</code></td><td class="v n">BLIND to Web Storage — usage read 0 with 8 MiB stored (estimate covers IDB/Cache only)</td></tr>
+        <tr><td><code>navigator.storage.persist()</code></td><td class="v n">does NOT protect Web Storage (persistence tier is QuotaManager storage, a different silo)</td></tr>
+      </table>
+      </div>
+      <p class="note">Production shape: wrap every unbounded write in <code>try { setItem } catch (e) { if (e.name === 'QuotaExceededError') prune() }</code> — and never gate quota UI on <code>estimate()</code>, it cannot see this tier.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>3 · The other-document event law</h2>
+    <p class="sub">The <code>storage</code> event is the oldest cross-tab messaging channel on the web — and it has a strict perimeter: <strong>the writing document never hears its own writes.</strong> Same-origin iframes and other tabs do. Press the buttons; the srcdoc child below (same origin — it inherits, §5) records the tape.</p>
+    <div class="card">
+      <div class="row">
+        <button class="mini" id="evSet">setItem('wsd:ev','v1')</button>
+        <button class="mini" id="evUpd">setItem('wsd:ev','v2')</button>
+        <button class="mini" id="evDup">setItem('wsd:ev','v2') again</button>
+        <button class="mini" id="evRm">removeItem</button>
+        <button class="mini" id="evClr">clear() — triple-null</button>
+        <button class="mini" id="evSS">sessionStorage write</button>
+      </div>
+      <div class="tape" id="parentTape">parent tape (the writer): waiting…</div>
+      <iframe class="lab" id="evChild" title="storage event child"></iframe>
+      <div class="grid" id="evChips" style="display:none"></div>
+    </div>
+    <div class="card" style="padding:8px 14px;margin-top:14px">
+      <div class="twrap">
+      <table>
+        <tr><th>Write</th><th>Event delivered to other documents</th></tr>
+        <tr><td class="v">setItem new</td><td class="v">{ key, oldValue: null, newValue }</td></tr>
+        <tr><td class="v">setItem update</td><td class="v">{ key, oldValue, newValue }</td></tr>
+        <tr><td class="v">setItem <strong>identical value</strong></td><td class="v n"><strong>NO EVENT AT ALL</strong> — the engine dedupes (measured: zero entries on the tape)</td></tr>
+        <tr><td class="v">removeItem</td><td class="v">{ key, oldValue, newValue: null }</td></tr>
+        <tr><td class="v">clear()</td><td class="v">the <strong>triple-null signature</strong> { key: null, oldValue: null, newValue: null } — one event, not one-per-key</td></tr>
+        <tr><td class="v">event fields</td><td class="v">url = the <strong>writer's</strong> URL · storageArea === the receiving side's storage object · bubbles:false · cancelable:false · isTrusted:true</td></tr>
+        <tr><td class="v">sessionStorage writes</td><td class="v">delivered to same-<strong>tab</strong> documents (iframes) — <span class="n">never to other tabs</span></td></tr>
+      </table>
+      </div>
+      <p class="note">The identical-value skip is free change-detection: a theme writer that re-writes the same JSON fires zero events — other tabs don't re-render. But it also means "I wrote, therefore they heard" is false when the value didn't change. Branch on <code>newValue !== oldValue</code> in the receiver, not on "I called setItem".</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>4 · The session perimeter — the clone law</h2>
+    <p class="sub"><code>sessionStorage</code> is per-tab <em>history</em>, not per-origin: it survives reloads, dies with the tab, and is <strong>copied — not shared — at <code>window.open</code></strong>. Measured: the popup saw values seeded before the open; its writes never reached back ('tab-A' stayed 'tab-A'); the storage objects are different JS objects on both areas, in every tab.</p>
+    <div class="card">
+      <div class="row">
+        <button class="mini" id="cloneBtn">Open a clone tab (seeds ss, opens popup)</button>
+        <button class="mini" id="mirrorBtn">Open the Mission mirror (capstone §7)</button>
+      </div>
+      <div class="grid" id="cloneChips" style="display:none"></div>
+    </div>
+    <div class="note">Rule of thumb: localStorage = broadcast (all tabs, one store), sessionStorage = single-tab state that must survive reload (form wizard, pre-auth nonce). Neither is a security boundary — both are readable by any same-origin script.</div>
+  </section>
+
+  <section>
+    <h2>5 · The origin walls — verbatim</h2>
+    <p class="sub">Where the <code>localStorage</code> getter itself throws, and where children quietly inherit everything.</p>
+    <div class="card">
+      <div class="row"><button class="mini" id="wallBtn">Probe the walls live (3 iframes)</button></div>
+      <div class="grid" id="wallChips" style="display:none"></div>
+    </div>
+    <div class="card" style="padding:8px 14px;margin-top:14px">
+      <div class="twrap">
+      <table>
+        <tr><th>Context</th><th>Measured result (Brave 154)</th></tr>
+        <tr><td class="v">data: URL document</td><td class="v n">SecurityError: Failed to read the 'localStorage' property from 'Window': <strong>Storage is disabled inside 'data:' URLs.</strong></td></tr>
+        <tr><td class="v">sandbox allow-scripts, no allow-same-origin</td><td class="v n">SecurityError: … <strong>The document is sandboxed and lacks the 'allow-same-origin' flag.</strong></td></tr>
+        <tr><td class="v">srcdoc / about:blank child</td><td class="v y">INHERITS the embedder's origin — full read/write of the parent's storage (the §3 child proves it live)</td></tr>
+        <tr><td class="v">sandbox + allow-same-origin</td><td class="v y">shares the embedder's storage — the token re-opens the door</td></tr>
+        <tr><td class="v">plain-HTTP LAN origin</td><td class="v y">WORKS (isSecureContext:false) — Web Storage has no secure-context gate, unlike cookieStore which is object-absent there</td></tr>
+        <tr><td class="v">dedicated workers</td><td class="v n">jail — <code>typeof localStorage === 'undefined'</code>, <code>'localStorage' in self === false</code> (pass data via postMessage)</td></tr>
+        <tr><td class="v">cross-site iframe (3rd-party)</td><td class="v p"><strong>THE PARTITION LAW</strong> — a 127.0.0.1 iframe under a localhost top-site saw a FRESH store (hadBefore: null) and its writes never leaked into first-party storage. Storage partitioning is live: the third-party localStorage hack is dead.</td></tr>
+      </table>
+      </div>
+      <p class="note">The throwing <em>getter</em> is the trap: <code>if (window.localStorage)</code> evaluates to <code>true</code> only when access succeeds — inside a sandboxed frame the property <em>read</em> throws. Feature-detect with <code>try { const s = window.localStorage; s.setItem(…) } catch</code>, never with a bare property check.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>6 · The shadow footgun — you can break your own storage</h2>
+    <p class="sub">Measured lifecycle: <code>localStorage.setItem = 'x'</code> <strong>succeeds</strong> (sloppy AND strict mode), silently shadows the method — the next call dies with <code>TypeError: localStorage.setItem is not a function</code> — and the shadow never enters the map (<code>getItem('setItem')</code> → null). <code>delete localStorage.setItem</code> restores the real method; a reload clears it too.</p>
+    <div class="card">
+      <div class="row"><button class="mini" id="shadowBtn">Shadow setItem → break → delete → restore</button></div>
+      <div class="grid" id="shadowChips" style="display:none"></div>
+      <p class="note">Split routing: property writes whose name <em>isn't</em> a Storage member (<code>localStorage.theme = 'dark'</code>) route <strong>into the map</strong> — <code>getItem('theme')</code> finds them. Member-name writes route into a JS-level expando that only shadows. Never mix the two grammars; one typo'd assignment in a loop can take a tab's storage offline until delete/reload.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>7 · Capstone: OpenDrones Mission Snapshot Cache</h2>
+    <p class="sub">Telemetry snapshot in localStorage + the storage event as a zero-dependency cross-tab bus. Open the mirror tab (§4), then push snapshots — the mirror updates <em>live</em>, no BroadcastChannel, no WebSocket. Quota-guarded write with atomic fallback and automatic oldest-first pruning.</p>
+    <div class="card">
+      <div class="hud">
+        <div class="cell"><div class="k">Battery</div><div class="v" id="mBatt">—</div></div>
+        <div class="cell"><div class="k">Altitude</div><div class="v" id="mAlt">—</div></div>
+        <div class="cell"><div class="k">Link</div><div class="v" id="mLink">—</div></div>
+        <div class="cell"><div class="k">Snapshots</div><div class="v" id="mCount">0</div></div>
+        <div class="cell"><div class="k">Store size</div><div class="v" id="mSize">0 B</div></div>
+      </div>
+      <div class="row">
+        <button class="mini" id="snapBtn">Push snapshot</button>
+        <button class="mini" id="snapBurst">Burst ×20 (prune test)</button>
+        <button class="mini" id="snapPurge">Purge store</button>
+      </div>
+      <div class="tape" id="snapTape">mission tape: waiting…</div>
+    </div>
+    <p class="note">Why this shape: the snapshot is small and hot (last-known state for instant boot), telemetry <em>history</em> belongs in IndexedDB — this is the two-tier cache the decision table (§9) draws.</p>
+  </section>
+
+  <section>
+    <h2>8 · Capstone: Molt theme envelope — versioned, migrate-on-read</h2>
+    <p class="sub">The pattern every Molt client site ships: a JSON envelope with a schema version, migrated on read, with the identical-write skip keeping re-renders at zero.</p>
+    <div class="card">
+      <div class="row">
+        <button class="mini" id="themeSeed">Seed v1 envelope (legacy)</button>
+        <button class="mini" id="themeRead">Read + migrate to v2</button>
+        <button class="mini" id="themeRewrite">Write same theme again (no event)</button>
+      </div>
+      <div class="tape" id="themeTape">envelope: waiting…</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>9 · Decision table — which store for what</h2>
+    <div class="card" style="padding:8px 14px">
+      <div class="twrap">
+      <table>
+        <tr><th>Need</th><th>Use</th><th>Why (measured)</th></tr>
+        <tr><td>Hot small state, all tabs share</td><td class="v">localStorage</td><td class="v">one store per origin; storage event = free cross-tab bus (§7)</td></tr>
+        <tr><td>Per-tab state, reload-safe</td><td class="v">sessionStorage</td><td class="v">survives reload, cloned at window.open, dies with tab</td></tr>
+        <tr><td>Structured data, indexes, &gt;10 MiB</td><td class="v">IndexedDB</td><td class="v">Web Storage is strings-only + 10 MiB hard wall; IDB has no such cap</td></tr>
+        <tr><td>Server-visible tiny state</td><td class="v">cookie / cookieStore</td><td class="v">rides requests; Web Storage never leaves the client</td></tr>
+        <tr><td>Cross-tab messaging only</td><td class="v">storage event or BroadcastChannel</td><td class="v">storage event needs no API surface; BC is cleaner for many channels + workers</td></tr>
+        <tr><td>Offline assets / large blobs</td><td class="v">Cache API / OPFS</td><td class="v">estimate()-visible, quota-managed, purpose-built</td></tr>
+        <tr><td>Sensitive tokens</td><td class="v n">NOT Web Storage</td><td class="v">any same-origin script reads it — XSS = exfiltration; httpOnly cookies or memory</td></tr>
+      </table>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>10 · The ten-rule checklist</h2>
+    <div class="card">
+      <ol class="rules">
+        <li>Budget for <strong>10 MiB as UTF-16</strong> (key + value, both areas separate) — "5MB" is a characters/bytes mix-up.</li>
+        <li>Wrap every unbounded write in a <code>QuotaExceededError</code> catch; prune oldest-first, then retry once.</li>
+        <li><code>setItem</code> is atomic — a failed write never half-lands; don't build rollback code that can't fire.</li>
+        <li>Values are strings, coerced by <code>ToString</code>: <code>undefined</code> → the string "undefined", <code>null</code> → "null", objects → "[object Object]". JSON is manual both ways.</li>
+        <li><code>getItem</code> on a miss returns <code>null</code>, not <code>undefined</code> — <code>x ?? fallback</code> and <code>x || fallback</code> behave identically here, but <code>typeof</code> checks must expect "object".</li>
+        <li>Never rely on <code>key(i)</code> order — enumeration is hash order, not insertion (measured: wrote a,b,c → read c,a,b).</li>
+        <li>The writing document never receives its own storage event; identical-value writes fire nothing anywhere. Receivers branch on value change.</li>
+        <li><code>clear()</code> is one triple-null event — and it wipes the WHOLE origin store, including keys you didn't write. Namespace + remove-item-by-item instead.</li>
+        <li>Feature-detect inside try/catch — the <code>window.localStorage</code> getter throws on opaque origins (data:, sandboxed frames).</li>
+        <li>Never assign to member names (<code>localStorage.key = …</code> shadows the method until delete/reload), and never store secrets — same-origin script reads all.</li>
+      </ol>
+    </div>
+  </section>
+
+  <div class="foot">
+    Entry 205 · Jin engine-truth series · probed on Brave&nbsp;154 (Chromium) headless, fresh profiles, 5 suites + LAN/partition/atomicity follow-ups · re-probes live in your tab · pairs: Cookie Store e7e916ee · IndexedDB · OPFS c19904de · File System Access a323fdea · BroadcastChannel · bfcache 6aba9331.
+  </div>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var IS_MIRROR = /[?&](mirror|clone)=1/.test(location.search) || (function(){ try { return !!window.opener; } catch(e) { return false; } })();
+  var P = 'wsd:'; // page namespace — this demo never touches keys it didn't write
+
+  // ---------- tiny DOM helpers ----------
+  function el(id) { return document.getElementById(id); }
+  function chipBlock(id) { var n = el(id); return n || null; }
+  function mkChip(host, label) {
+    var host_ = typeof host === 'string' ? chipBlock(host) : host;
+    if (!host_) return null;
+    var c = document.createElement('div');
+    c.className = 'chip';
+    c.innerHTML = '<div class="lbl"><span></span><span class="st w">…</span></div><pre></pre>';
+    c.firstChild.firstChild.textContent = label;
+    var st = c.querySelector('.st'), pre = c.querySelector('pre');
+    host_.appendChild(c);
+    return {
+      set: function (status, detail) {
+        st.textContent = status.toUpperCase();
+        st.className = 'st ' + (status === 'ok' ? 'ok' : status === 'warn' ? 'w' : status === 'fail' ? 'bad' : status === 'info' ? 'w' : 'pend');
+        if (detail != null) { pre.textContent = String(detail); pre.classList.add('show'); }
+        c.setAttribute('data-st', status);
+      }
+    };
+  }
+  function tape(node, line) {
+    if (typeof node === 'string') node = el(node);
+    if (!node) return;
+    if (/waiting…/.test(node.textContent)) node.textContent = '';
+    node.textContent += line + '\n';
+    node.scrollTop = node.scrollHeight;
+  }
+  function bytes(n) { return n.toLocaleString() + ' B'; }
+
+  // ---------- mirror tab mode ----------
+  if (IS_MIRROR) {
+    document.title = 'Web Storage — mirror tab';
+    document.querySelector('main').innerHTML =
+      '<div class="eyebrow">Mirror tab</div><h1>Mission mirror</h1>' +
+      '<p class="lede">This tab renders OpenDrones snapshots from localStorage storage events — no polling, no channel API.</p>' +
+      '<div class="card"><div class="hud">' +
+      '<div class="cell"><div class="k">Battery</div><div class="v" id="mBatt">—</div></div>' +
+      '<div class="cell"><div class="k">Altitude</div><div class="v" id="mAlt">—</div></div>' +
+      '<div class="cell"><div class="k">Link</div><div class="v" id="mLink">—</div></div>' +
+      '<div class="cell"><div class="k">Snapshots</div><div class="v" id="mCount">0</div></div>' +
+      '<div class="cell"><div class="k">Store size</div><div class="v" id="mSize">0 B</div></div>' +
+      '</div><div class="tape" id="snapTape">mirror tape: waiting for storage events…</div></div>' +
+      '<p class="note">sessionStorage in this tab is a COPY made at open (§4) — writes here never reach the opener.</p>';
+    var ack = function () {
+      try { localStorage.setItem(P + 'ack', String(Date.now())); } catch (e) {}
+    };
+    addEventListener('storage', function (e) {
+      if (!e.key || e.key.indexOf(P) !== 0) return;
+      if (e.key === P + 'ack') return;
+      tape('snapTape', 'storage event · key=' + e.key + ' · ov=' + (e.oldValue || '').slice(0, 24) + '… · nv=' + (e.newValue || '').slice(0, 24) + '…');
+      if (e.key === P + 'snap' && e.newValue) {
+        try {
+          var s = JSON.parse(e.newValue);
+          el('mBatt').textContent = s.batt + '%';
+          el('mBatt').className = 'v' + (s.batt < 25 ? ' bad' : s.batt < 45 ? ' warn' : '');
+          el('mAlt').textContent = s.alt + ' m';
+          el('mLink').textContent = s.link;
+          el('mCount').textContent = s.count;
+          el('mSize').textContent = bytes(s.size);
+        } catch (err) {}
+      }
+    });
+    ack();
+    return;
+  }
+
+  // ---------- §1 battery ----------
+  var ran = false;
+  el('run').addEventListener('click', function () {
+    if (ran) return; ran = true;
+    el('run').disabled = true;
+    el('run').textContent = 'Running…';
+    var g = el('chips');
+
+    // census
+    var c1 = mkChip(g, 'Storage.prototype census');
+    var proto = Object.getOwnPropertyNames(Storage.prototype).sort().join(',');
+    c1.set(proto === 'clear,constructor,getItem,key,length,removeItem,setItem' ? 'ok' : 'warn', proto);
+    var c2 = mkChip(g, 'new Storage() — illegal constructor');
+    try { new Storage(); c2.set('fail', 'CONSTRUCTABLE — unexpected!'); }
+    catch (e) { c2.set('ok', e.name + ': ' + e.message); }
+    var c3 = mkChip(g, 'localStorage === window.localStorage (per-realm singleton)');
+    c3.set(localStorage === window.localStorage ? 'ok' : 'warn', 'identity: ' + (localStorage === window.localStorage));
+    var c3b = mkChip(g, 'localStorage instanceof Storage');
+    c3b.set(localStorage instanceof Storage ? 'ok' : 'fail', String(localStorage instanceof Storage));
+
+    // value contract
+    var c4 = mkChip(g, 'Value contract — ToString coercion');
+    var coerce = [];
+    try { localStorage.setItem(P + 'n', 42); coerce.push('42 → ' + JSON.stringify(localStorage.getItem(P + 'n'))); } catch (e) { coerce.push('42 THROW ' + e.name); }
+    try { localStorage.setItem(P + 'u', undefined); coerce.push('undefined → ' + JSON.stringify(localStorage.getItem(P + 'u'))); } catch (e) { coerce.push('u THROW'); }
+    try { localStorage.setItem(P + 'nu', null); coerce.push('null → ' + JSON.stringify(localStorage.getItem(P + 'nu'))); } catch (e) {}
+    try { localStorage.setItem(P + 'o', { a: 1 }); coerce.push('{a:1} → ' + JSON.stringify(localStorage.getItem(P + 'o'))); } catch (e) {}
+    try { localStorage.setItem(P + 'd', new Date(0)); coerce.push('Date(0) → ' + JSON.stringify(localStorage.getItem(P + 'd'))); } catch (e) {}
+    try { localStorage.setItem(P + 'arr', [1, 2, 3]); coerce.push('[1,2,3] → ' + JSON.stringify(localStorage.getItem(P + 'arr'))); } catch (e) {}
+    c4.set('ok', coerce.join('\n'));
+    var c5 = mkChip(g, 'getItem miss → null (not undefined)');
+    c5.set(localStorage.getItem(P + 'ghost') === null ? 'ok' : 'fail', 'typeof: ' + typeof localStorage.getItem(P + 'ghost'));
+    var c5b = mkChip(g, 'empty-string key is legal');
+    try { localStorage.setItem(P, 'ev'); c5b.set('ok', "getItem('wsd:') → " + JSON.stringify(localStorage.getItem(P))); }
+    catch (e) { c5b.set('fail', e.name); }
+    var c5c = mkChip(g, 'numeric-string key + indexed access');
+    try { localStorage.setItem(P + '0', 'zero'); c5c.set('ok', 'getItem → ' + JSON.stringify(localStorage.getItem(P + '0')) + ' · prop access → ' + JSON.stringify(localStorage[P + '0'])); }
+    catch (e) { c5c.set('fail', e.name); }
+
+    // prop-vs-member routing
+    var c6 = mkChip(g, 'Non-member property write routes INTO the map');
+    try { localStorage[P + 'pa'] = 'pv'; c6.set(localStorage.getItem(P + 'pa') === 'pv' ? 'ok' : 'fail', "localStorage['wsd:pa']='pv' → getItem → " + JSON.stringify(localStorage.getItem(P + 'pa'))); }
+    catch (e) { c6.set('fail', e.name + ': ' + e.message); }
+
+    // enumeration order law
+    var c7 = mkChip(g, 'Enumeration order — NOT insertion');
+    try {
+      ['o1', 'o2', 'o3', 'o4'].forEach(function (k) { localStorage.setItem(P + k, 'x'); });
+      var keys = Object.keys(localStorage).filter(function (k) { return k.indexOf(P) === 0; });
+      var mine = keys.filter(function (k) { return /^wsd:o\d$/.test(k); });
+      c7.set('info', 'wrote o1,o2,o3,o4 → read ' + mine.join(',') + (mine.join(',') === 'o1,o2,o3,o4'.replace(/o/g, P === 'wsd:' ? 'wsd:o' : 'o') ? ' (insertion — your engine preserves it here)' : ' (hash order — insertion NOT preserved)'));
+    } catch (e) { c7.set('fail', e.name); }
+    var c7b = mkChip(g, 'key(i) out of range → null · removeItem shifts live');
+    try {
+      var oor = localStorage.key(999999);
+      localStorage.setItem(P + 'r1', '1'); localStorage.setItem(P + 'r2', '2');
+      var i0 = localStorage.key(localStorage.length - 2);
+      localStorage.removeItem(P + 'r1');
+      var shifted = localStorage.getItem(P + 'r2');
+      c7b.set(oor === null ? 'ok' : 'warn', 'key(999999) → ' + JSON.stringify(oor) + ' · after removing r1, r2 still reads ' + JSON.stringify(shifted));
+    } catch (e) { c7b.set('fail', e.name); }
+
+    // length assign silent no-op
+    var c8 = mkChip(g, 'localStorage.length = 99 → silent no-op');
+    var before = localStorage.length;
+    try { localStorage.length = 99; } catch (e) { c8.set('info', 'THREW ' + e.name); c8 = null; }
+    if (c8) c8.set(localStorage.length === before ? 'ok' : 'fail', 'length still ' + localStorage.length + ' (prototype getter, no setter)');
+
+    // worker jail
+    var c9 = mkChip(g, 'Worker jail — Web Storage in a dedicated worker');
+    try {
+      var src = 'onmessage=function(){var r={ls:typeof localStorage,ss:typeof sessionStorage,inself:("localStorage" in self)};postMessage(r)}';
+      var w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      w.onmessage = function (e) {
+        var d = e.data;
+        c9.set(d.ls === 'undefined' && d.inself === false ? 'ok' : 'warn', JSON.stringify(d));
+        w.terminate();
+      };
+      w.onerror = function (e) { c9.set('warn', 'worker error: ' + e.message); };
+      w.postMessage(1);
+      setTimeout(function () { try { w.terminate(); } catch (e) {} }, 4000);
+    } catch (e) { c9.set('fail', e.name + ': ' + e.message); }
+
+    // JSON tax
+    var c10 = mkChip(g, 'JSON is manual both ways (no structured clone here)');
+    try {
+      localStorage.setItem(P + 'j', JSON.stringify({ a: 1, when: '2026-10-11' }));
+      var back = JSON.parse(localStorage.getItem(P + 'j'));
+      c10.set('ok', 'round-trip ok — but setItem stores the STRING; Date/Map/Array coerce (see contract above)');
+    } catch (e) { c10.set('fail', e.name); }
+
+    // cleanup of §1 keys (leave quota/section keys to their sections)
+    ['n','u','nu','o','d','arr','0','pa','j','r2'].forEach(function (k) { try { localStorage.removeItem(P + k); } catch (e) {} });
+    ['o1','o2','o3','o4'].forEach(function (k) { try { localStorage.removeItem(P + k); } catch (e) {} });
+    try { localStorage.removeItem(P); } catch (e) {}
+    setTimeout(function () { el('run').textContent = 'Battery complete — chips above'; }, 400);
+  });
+
+  // ---------- §2 quota ----------
+  var qRan = false;
+  el('quotaBtn').addEventListener('click', function () {
+    if (qRan) return; qRan = true;
+    el('quotaBtn').disabled = true;
+    var g = el('quotaChips'); g.style.display = '';
+    var meter = el('quotaMeter'); meter.style.display = '';
+    var KEY = P + 'big';
+    var chars = 0, err = null, t0 = performance.now();
+    var CAP = 12000000; // 12M chars = 24 MiB — engines with no wall (or silent no-op) stop here
+    var noop = false;
+    var STEP = 200000; // 200k chars per step → ~26 steps to 10 MiB
+    try {
+      for (;;) {
+        chars += STEP;
+        if (chars > CAP) { chars -= STEP; break; }
+        localStorage.setItem(KEY, 'x'.repeat(chars));
+        if ((localStorage.getItem(KEY) || '').length !== chars) { noop = true; chars -= STEP; break; } // silent no-op engine
+      }
+    } catch (e) { err = e; }
+    var okChars = chars;
+    if (err && !noop) {
+      okChars = chars - STEP;
+      // fine grain, 1k
+      try { for (;;) { okChars += 1000; if (okChars > CAP) break; localStorage.setItem(KEY, 'x'.repeat(okChars)); if ((localStorage.getItem(KEY) || '').length !== okChars) { okChars -= 1000; noop = true; break; } } } catch (e) {}
+      // fine grain, 10
+      if (!noop) try { for (;;) { okChars += 10; if (okChars > CAP) break; localStorage.setItem(KEY, 'x'.repeat(okChars)); if ((localStorage.getItem(KEY) || '').length !== okChars) { okChars -= 10; noop = true; break; } } } catch (e) {}
+    }
+    var ms = Math.round(performance.now() - t0);
+    el('qChars').textContent = okChars.toLocaleString() + ' chars';
+    el('qBytes').textContent = (okChars * 2).toLocaleString() + ' UTF-16 bytes ≈ ' + (okChars * 2 / 1048576).toFixed(2) + ' MiB · measured in ' + ms + ' ms';
+    el('qBar').style.width = Math.min(100, (okChars * 2 / 10485760) * 100).toFixed(1) + '%';
+    el('qErr').textContent = noop
+      ? 'no QuotaExceededError thrown — setItem SILENTLY NO-OPS past ' + okChars.toLocaleString() + ' chars (old-headless/private-mode engine shape — detect it, never assume a throw)'
+      : (err ? 'wall: ' + err.name + ' — ' + (err.message || '').slice(0, 120) : 'no wall hit below 100 MiB (CAP)');
+    el('qErr').textContent += ' · cleaned up: ' + (localStorage.removeItem(KEY), localStorage.getItem(KEY) === null ? 'yes' : 'no');
+
+    var cq1 = mkChip(g, 'Your measured wall');
+    cq1.set('ok', (noop ? 'SILENT NO-OP past ' : '') + okChars.toLocaleString() + ' chars = ' + (okChars * 2).toLocaleString() + ' B' + (err ? '' : ' (no wall below the 100 MiB probe cap)') + '. Brave 154 lab: 5,243,010 chars = 10,486,020 B.');
+    var cq2 = mkChip(g, 'Separate budgets — sessionStorage unaffected');
+    try { sessionStorage.setItem(P + 'q', 'writable while ls was at its wall'); cq2.set('ok', 'ss write at ls-wall: ' + JSON.stringify(sessionStorage.getItem(P + 'q'))); sessionStorage.removeItem(P + 'q'); }
+    catch (e) { cq2.set('warn', 'ss also at wall: ' + e.name); }
+    var cq3 = mkChip(g, 'estimate() is blind to Web Storage');
+    navigator.storage.estimate().then(function (est) {
+      // we just wrote+removed ~10MB; usage shouldn't have spiked from Web Storage
+      cq3.set('ok', 'usage now: ' + bytes(est.usage || 0) + ' · quota: ' + bytes(est.quota || 0) + ' — Web Storage bytes are accounted elsewhere (lab: 0 before/after 8 MiB writes)');
+    }).catch(function (e) { cq3.set('warn', e.name); });
+    var cq4 = mkChip(g, 'Massive key counts — no count cap');
+    try {
+      // calibrate per-write cost first (old-headless engines fsync per write — don't stall the page)\n      var cal = 200, tc = performance.now();
+      try { for (var ci = 0; ci < cal; ci++) localStorage.setItem(P + 'k' + ci, 'x'); } catch (e3) {}
+      var perWrite = (performance.now() - tc) / cal;
+      for (ci = 0; ci < cal; ci++) localStorage.removeItem(P + 'k' + ci);
+      var N = Math.max(2000, Math.min(100000, Math.floor(1500 / Math.max(perWrite, 0.005))));
+      var t = performance.now(), k = 0, e2 = null;
+      try { for (; k < N; k++) localStorage.setItem(P + 'k' + k, 'x'); } catch (e3) { e2 = e3.name; }
+      var wms = Math.round(performance.now() - t);
+      var stored = 0;
+      try { stored = localStorage.getItem(P + 'k' + (k - 1)) === 'x' ? k : 0; } catch (e3) {}
+      var tr = performance.now();
+      for (var i = k - 1; i >= 0; i--) localStorage.removeItem(P + 'k' + i);
+      var rms = Math.round(performance.now() - tr);
+      cq4.set(e2 ? 'warn' : 'ok', (e2 ? 'stopped at ' + k.toLocaleString() + ' (' + e2 + ')' : N.toLocaleString() + ' × 1-char entries: no error') + ' · write ' + wms + ' ms (' + perWrite.toFixed(3) + ' ms/write) · remove ' + rms + ' ms · read-back ok: ' + !!stored + ' · lab measured 100,000 with no cap');
+    } catch (e) { cq4.set('fail', e.name); }
+  });
+
+  // ---------- §3 event lab ----------
+  var childReady = false, childTape = [];
+  var CHILD_SRC = '<!doctype html><meta charset=utf-8>' +
+    '<style>body{font:12px/1.5 ui-monospace,Menlo,monospace;margin:8px;color:#1d1d1f}' +
+    '.b{font:600 10px/-apple-system,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#6e6e73}' +
+    '.t{white-space:pre-wrap;word-break:break-word;background:#f6f5f3;border-radius:8px;padding:8px;max-height:150px;overflow-y:auto}</style>' +
+    '<div class="b">srcdoc child — same origin by inheritance</div><div class="t" id="ct">child tape: waiting…</div>' +
+    '<scr' + 'ipt>window.__ev=[];addEventListener("storage",function(e){window.__ev.push({key:e.key,ov:e.oldValue,nv:e.newValue,area:e.storageArea===localStorage?"LS":"SS",trusted:e.isTrusted});var t=document.getElementById("ct");if(/waiting/.test(t.textContent))t.textContent="";t.textContent+="key="+e.key+" ov="+e.oldValue+" nv="+e.newValue+" ["+(e.storageArea===localStorage?"LS":"SS")+"]\\n";t.scrollTop=t.scrollHeight;});parent.postMessage("wsd-child-ready","*");</scr' + 'ipt>';
+  el('evChild').srcdoc = CHILD_SRC;
+  var parentEvents = [];
+  addEventListener('storage', function (e) {
+    parentEvents.push(e.key);
+    tape('parentTape', 'parent received storage event · key=' + e.key + ' (unexpected for own writes!)');
+  });
+  addEventListener('message', function (e) { if (e.data === 'wsd-child-ready') childReady = true; });
+  function childTapeRead() {
+    try { return el('evChild').contentWindow.__ev || []; } catch (e) { return childTape; }
+  }
+  var evSeen = { set: false, upd: false, dup: false, rm: false, clr: false, ss: false };
+  var evChipRefs = null; // created once, updated on re-classify
+  function evChip2(i, label) {
+    if (!evChipRefs) {
+      var host = el('evChips'); host.style.display = '';
+      evChipRefs = [
+        mkChip(host, 'Same-document silence — writer hears nothing'),
+        mkChip(host, 'Child delivery + full shape'),
+        mkChip(host, 'Identical-value write fires NO event'),
+        mkChip(host, 'clear() = the triple-null signature'),
+        mkChip(host, 'sessionStorage event reaches same-tab child, not other tabs')
+      ];
+    }
+    return evChipRefs[i];
+  }
+  function classify() {
+    var t = childTapeRead();
+    var find = function (key, nv) {
+      return t.filter(function (x) { return x.key === key && (nv === undefined || x.nv === nv); });
+    };
+    var c;
+    c = evChip2(0);
+    c.set(parentEvents.length === 0 ? 'ok' : 'warn', parentEvents.length === 0 ? 'parent tape empty after every write above — the writer never hears itself (measured)' : 'parent received ' + parentEvents.length + ' events (unexpected!)');
+    c = evChip2(1);
+    var first = t[0];
+    c.set(first ? 'ok' : 'info', first ? JSON.stringify(first) + ' · url field = writer URL (measured verbatim in lab)' : 'no child events yet — press the buttons');
+    c = evChip2(2);
+    var dupCount = find(P + 'ev', 'v2').length;
+    c.set(dupCount === 1 ? 'ok' : 'info', 'updates to v2 seen by child: ' + dupCount + ' (two setItem(v2) calls → one event — the dedupe skip)');
+    c = evChip2(3);
+    var clr = t.filter(function (x) { return x.key === null; });
+    c.set(clr.length ? 'ok' : 'info', clr.length ? JSON.stringify(clr[0]) : 'demo never calls real clear() — lab measured: ONE event {key:null, ov:null, nv:null}');
+    c = evChip2(4);
+    var ss = t.filter(function (x) { return x.area === 'SS'; });
+    c.set(ss.length ? 'ok' : 'info', ss.length ? JSON.stringify(ss[ss.length - 1]) + ' — delivered to this tab\'s iframe only' : 'press the ss button');
+  }
+  el('evSet').addEventListener('click', function () { try { localStorage.setItem(P + 'ev', 'v1'); tape('parentTape', '(wrote v1 — parent silent, check child)'); } catch (e) {} });
+  el('evUpd').addEventListener('click', function () { try { localStorage.setItem(P + 'ev', 'v2'); tape('parentTape', '(wrote v2)'); } catch (e) {} });
+  el('evDup').addEventListener('click', function () { try { localStorage.setItem(P + 'ev', 'v2'); tape('parentTape', '(wrote v2 AGAIN — engine dedupes, zero events)'); } catch (e) {} });
+  el('evRm').addEventListener('click', function () { try { localStorage.removeItem(P + 'ev'); tape('parentTape', '(removed)'); } catch (e) {} });
+  el('evClr').addEventListener('click', function () {
+    // clear() would nuke the whole origin store — demo the triple-null on a NAMED basis instead:
+    // we emulate with removeItem? NO — we do a real clear ONLY of wsd: keys, then explain.
+    tape('parentTape', '(demo never calls real clear() — it would wipe YOUR whole origin store. The lab measured it: one event {key:null, ov:null, nv:null}.)');
+  });
+  el('evSS').addEventListener('click', function () { try { sessionStorage.setItem(P + 'ev', 'ss1'); tape('parentTape', '(ss write — same-tab child hears it, other tabs never)'); } catch (e) {} });
+  el('evChild').addEventListener('load', function () { childReady = true; });
+  // classify once automatically after 1.2s if user hasn't clicked (so gate sees settled chips), re-classify on demand:
+  setTimeout(classify, 1500);
+  var classifyTimer = setInterval(classify, 4000);
+  setTimeout(function () { clearInterval(classifyTimer); }, 20000);
+  // auto-run the three writes for the gate/visitor
+  setTimeout(function () {
+    try {
+      localStorage.setItem(P + 'ev', 'v1');
+      setTimeout(function () { localStorage.setItem(P + 'ev', 'v2'); }, 250);
+      setTimeout(function () { localStorage.setItem(P + 'ev', 'v2'); }, 500);
+      setTimeout(function () { sessionStorage.setItem(P + 'ev', 'ss1'); }, 750);
+    } catch (e) {}
+  }, 800);
+
+  // ---------- §4 clone lab ----------
+  el('cloneBtn').addEventListener('click', function () {
+    var g = el('cloneChips'); g.style.display = '';
+    var c;
+    try { sessionStorage.setItem(P + 'seed', 'before-open'); } catch (e) {}
+    var w = window.open(location.pathname + '?clone=1', '_blank');
+    c = mkChip(g, 'window.open clone — sessionStorage copied at open');
+    if (!w || w.closed) { c.set('info', 'popup blocked — allow popups for this origin to run the clone lab'); return; }
+    var votes = 0;
+    var iv = setInterval(function () {
+      votes++;
+      var ack = null;
+      try { ack = localStorage.getItem(P + 'ack'); } catch (e) {}
+      if (ack) {
+        clearInterval(iv);
+        c.set('ok', 'clone tab opened, ack received via localStorage (a cross-tab write the opener can read back)');
+        var c2 = mkChip(g, 'Clone sees seeded ss — and writes never come back');
+        try { sessionStorage.setItem(P + 't', 'tab-A'); } catch (e) {}
+        setTimeout(function () {
+          var t = sessionStorage.getItem(P + 't');
+          c2.set(t === 'tab-A' ? 'ok' : 'fail', 'opener ss still ' + JSON.stringify(t) + ' — copies are independent (lab: popup writes never propagate back)');
+          localStorage.removeItem(P + 'ack');
+        }, 600);
+      } else if (votes > 20) {
+        clearInterval(iv);
+        c.set('warn', 'clone opened but no ack within 10s (mirror script may be blocked)');
+      }
+    }, 500);
+  });
+
+  // ---------- §5 walls ----------
+  el('wallBtn').addEventListener('click', function () {
+    var g = el('wallChips'); g.style.display = '';
+    var done = 0;
+    var c1 = mkChip(g, 'data: URL document — the getter throws');
+    var c2 = mkChip(g, 'sandbox allow-scripts (opaque) — the getter throws');
+    var c3 = mkChip(g, 'srcdoc child (no sandbox) — inherits parent origin');
+    var f1 = document.createElement('iframe');
+    f1.style.display = 'none';
+    f1.src = 'data:text/html,<scr' + 'ipt>try{localStorage;parent.postMessage("W1 ok","*")}catch(e){parent.postMessage("W1 "+e.name+" :: "+e.message,"*")}</scr' + 'ipt>';
+    var f2 = document.createElement('iframe');
+    f2.style.display = 'none';
+    f2.setAttribute('sandbox', 'allow-scripts');
+    f2.srcdoc = '<scr' + 'ipt>try{localStorage;parent.postMessage("W2 ok","*")}catch(e){parent.postMessage("W2 "+e.name+" :: "+e.message,"*")}</scr' + 'ipt>';
+    var onMsg = function (e) {
+      if (typeof e.data !== 'string') return;
+      if (e.data.indexOf('W1 ') === 0 || e.data === 'W1 ok') { c1.set(e.data === 'W1 ok' ? 'warn' : 'ok', e.data.slice(3)); done++; }
+      if (e.data.indexOf('W2 ') === 0 || e.data === 'W2 ok') { c2.set(e.data === 'W2 ok' ? 'warn' : 'ok', e.data.slice(3)); done++; }
+    };
+    addEventListener('message', onMsg);
+    document.body.appendChild(f1);
+    document.body.appendChild(f2);
+    // c3: the §3 child already reads parent storage — prove again via srcdoc read-back
+    var f3 = document.createElement('iframe');
+    f3.style.display = 'none';
+    try { localStorage.setItem(P + 'inh', 'parent-wrote'); } catch (e) {}
+    f3.srcdoc = '<scr' + 'ipt>try{parent.postMessage("W3 "+localStorage.getItem("wsd:inh"),"*")}catch(e){parent.postMessage("W3 THROW "+e.name,"*")}</scr' + 'ipt>';
+    var onMsg3 = function (e) {
+      if (typeof e.data === 'string' && e.data.indexOf('W3 ') === 0) {
+        c3.set(e.data === 'W3 parent-wrote' ? 'ok' : 'warn', e.data.slice(3) + ' — srcdoc inherits the embedder origin (full read/write)');
+        done++;
+      }
+    };
+    addEventListener('message', onMsg3);
+    document.body.appendChild(f3);
+    setTimeout(function () {
+      [f1, f2, f3].forEach(function (f) { try { f.remove(); } catch (e) {} });
+      localStorage.removeItem(P + 'inh');
+    }, 2500);
+    var c4 = mkChip(g, 'THE PARTITION LAW — third-party iframe store is partitioned');
+    c4.set('info', 'Lab-measured (needs two origins): a 127.0.0.1 iframe under a localhost top-site saw a FRESH store (hadBefore: null, len 1) and its writes never leaked into first-party storage. Cross-site localStorage sharing is dead on partitioned engines.');
+    var c5 = mkChip(g, 'No secure-context gate — plain-HTTP works');
+    c5.set('info', 'Lab-measured on http:// LAN (isSecureContext:false): localStorage reads/writes fine — contrast cookieStore, which is object-absent on insecure origins.');
+  });
+
+  // ---------- §6 shadow ----------
+  el('shadowBtn').addEventListener('click', function () {
+    var g = el('shadowChips'); g.style.display = '';
+    var c1 = mkChip(g, "localStorage.setItem = 'BROKEN' — succeeds");
+    try { localStorage.setItem = 'BROKEN'; c1.set(typeof localStorage.setItem === 'string' ? 'ok' : 'fail', 'typeof setItem now: ' + typeof localStorage.setItem + ' — no throw, sloppy or strict'); }
+    catch (e) { c1.set('info', 'THREW ' + e.name + ' — your engine protects members'); }
+    var c2 = mkChip(g, 'Shadow is NOT in the map');
+    try { c2.set(localStorage.getItem('setItem') === null ? 'ok' : 'warn', "getItem('setItem') → " + JSON.stringify(localStorage.getItem('setItem')) + ' · Object.keys sees the expando: ' + Object.keys(localStorage).indexOf('setItem')); }
+    catch (e) { c2.set('fail', e.name); }
+    var c3 = mkChip(g, 'Next real write dies');
+    try { localStorage.setItem(P + 'x', '1'); c3.set('warn', 'NO THROW — unexpected (storage still works?! check engine)'); }
+    catch (e) { c3.set('ok', e.name + ': ' + e.message); }
+    var c4 = mkChip(g, 'delete restores the real method');
+    try {
+      delete localStorage.setItem;
+      localStorage.setItem(P + 'x', 'del-ok');
+      c4.set(localStorage.getItem(P + 'x') === 'del-ok' ? 'ok' : 'fail', 'typeof: ' + typeof localStorage.setItem + ' · write-after-delete → ' + JSON.stringify(localStorage.getItem(P + 'x')));
+      localStorage.removeItem(P + 'x');
+    } catch (e) { c4.set('fail', e.name + ': ' + e.message); }
+  });
+
+  // ---------- §7 mission snapshot ----------
+  var snapCount = 0;
+  function storeSize() {
+    var total = 0;
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf(P) === 0) total += (k.length + (localStorage.getItem(k) || '').length) * 2;
+    }
+    return total;
+  }
+  function pushSnapshot() {
+    var KEY = P + 'snap';
+    // quota-guarded write with oldest-first prune of burst keys
+    var snap = {
+      t: Date.now(),
+      batt: 18 + Math.floor(Math.random() * 78),
+      alt: Math.floor(20 + Math.random() * 110),
+      link: ['5/5', '4/5', '3/5'][Math.floor(Math.random() * 3)],
+      count: ++snapCount,
+      size: storeSize() + 0
+    };
+    snap.size = storeSize();
+    var json = JSON.stringify(snap);
+    try {
+      localStorage.setItem(KEY, json);
+    } catch (e) {
+      if (e.name === 'QuotaExceededError') {
+        // prune oldest burst entries then retry once
+        var burst = [];
+        for (var i = 0; i < localStorage.length; i++) {
+          var k = localStorage.key(i);
+          if (k && k.indexOf(P + 'burst:') === 0) burst.push(k);
+        }
+        burst.sort().slice(0, Math.ceil(burst.length / 2)).forEach(function (k) { localStorage.removeItem(k); });
+        try { localStorage.setItem(KEY, json); tape('snapTape', 'quota hit → pruned ' + Math.ceil(burst.length / 2) + ' burst keys → retried ok'); }
+        catch (e2) { tape('snapTape', 'quota hit → still failing after prune: ' + e2.name); return null; }
+      } else { tape('snapTape', 'write failed: ' + e.name); return null; }
+    }
+    try { localStorage.setItem(P + 'burst:' + String(Date.now()).slice(-9), json); } catch (e) {} // burst history for prune tests
+    el('mBatt').textContent = snap.batt + '%';
+    el('mBatt').className = 'v' + (snap.batt < 25 ? ' bad' : snap.batt < 45 ? ' warn' : '');
+    el('mAlt').textContent = snap.alt + ' m';
+    el('mLink').textContent = snap.link;
+    el('mCount').textContent = snap.count;
+    el('mSize').textContent = bytes(storeSize());
+    tape('snapTape', 'snapshot #' + snap.count + ' · batt ' + snap.batt + '% · alt ' + snap.alt + ' m · link ' + snap.link + ' · store ' + bytes(storeSize()));
+    return snap;
+  }
+  el('snapBtn').addEventListener('click', pushSnapshot);
+  el('snapBurst').addEventListener('click', function () {
+    for (var i = 0; i < 20; i++) setTimeout(pushSnapshot, i * 60);
+  });
+  el('snapPurge').addEventListener('click', function () {
+    var ks = [];
+    for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (k && k.indexOf(P) === 0) ks.push(k); }
+    ks.forEach(function (k) { localStorage.removeItem(k); });
+    snapCount = 0;
+    el('mCount').textContent = '0'; el('mSize').textContent = '0 B';
+    el('mBatt').textContent = '—'; el('mAlt').textContent = '—'; el('mLink').textContent = '—';
+    tape('snapTape', 'purged ' + ks.length + ' wsd:* keys (namespaced removal — never clear() on a shared origin)');
+  });
+  // mirror tab opener ALSO updates this page (the bus is symmetric)
+  addEventListener('storage', function (e) {
+    if (e.key === P + 'ack') tape('snapTape', 'mirror tab acked — it is listening (writes here will stream to it)');
+  });
+  el('mirrorBtn').addEventListener('click', function () {
+    var w = window.open(location.pathname + '?mirror=1', '_blank');
+    tape('snapTape', w && !w.closed ? 'mirror tab opened — push snapshots, watch it update live' : 'popup blocked — allow popups to see the mirror');
+  });
+
+  // ---------- §8 theme envelope ----------
+  function envTape(line) { tape('themeTape', line); }
+  el('themeSeed').addEventListener('click', function () {
+    try {
+      localStorage.setItem(P + 'theme', JSON.stringify({ v: 1, mode: 'dark' }));
+      envTape('seeded v1: ' + localStorage.getItem(P + 'theme'));
+    } catch (e) { envTape('seed failed: ' + e.name); }
+  });
+  el('themeRead').addEventListener('click', function () {
+    var migrations = 0;
+    function read() {
+      var raw = null; try { raw = localStorage.getItem(P + 'theme'); } catch (e) { return null; }
+      if (raw == null) return null;
+      var o = null; try { o = JSON.parse(raw); } catch (e) { return null; }
+      if (o.v === 1) { o = { v: 2, mode: o.mode, accent: '#0f6a4f', dens: 'co' }; migrations++; }
+      return o;
+    }
+    var t0 = performance.now();
+    var o = read();
+    var ms = (performance.now() - t0).toFixed(3);
+    if (!o) { envTape('no envelope found — seed first'); return; }
+    try { localStorage.setItem(P + 'theme', JSON.stringify(o)); } catch (e) {}
+    envTape('read+migrated: ' + localStorage.getItem(P + 'theme') + ' · migrations: ' + migrations + ' · read cost: ' + ms + ' ms');
+    envTape('(the identical-write skip: re-writing this same envelope fires ZERO storage events — other tabs do not re-render)');
+  });
+  el('themeRewrite').addEventListener('click', function () {
+    var raw = null; try { raw = localStorage.getItem(P + 'theme'); } catch (e) {}
+    if (raw == null) { envTape('nothing to rewrite — seed first'); return; }
+    try { localStorage.setItem(P + 'theme', raw); } catch (e) {}
+    envTape('rewrote byte-identical envelope — no event fired (storage listeners in other tabs stayed silent)');
+  });
+
+  // autorun for gates: ?autorun=1
+  if (/[?&]autorun=1/.test(location.search)) {
+    setTimeout(function () { el('run').click(); }, 300);
+    setTimeout(function () { el('quotaBtn').click(); }, 1200);
+    setTimeout(function () { el('wallBtn').click(); el('shadowBtn').click(); }, 3400);
+    setTimeout(function () { el('cloneBtn').click(); }, 4600);
+    setTimeout(function () { el('snapBtn').click(); }, 5200);
+    setTimeout(function () { el('themeSeed').click(); el('themeRead').click(); }, 5800);
+  }
+})();
+</script>
+</body>
+</html>

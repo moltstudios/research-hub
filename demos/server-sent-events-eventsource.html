@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:,">
+<title>Server-Sent Events — EventSource: the one-way push tier</title>
+<style>
+  :root {
+    --bg: #faf9f7; --ink: #1d1d1f; --mut: #6e6e73; --line: rgba(0,0,0,.08);
+    --acc: #0d6a5f; --ok: #1d7a3e; --bad: #b3261e; --pend: #8a6d00;
+    --card: #fff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    color: var(--ink); background: var(--bg);
+    background-image:
+      radial-gradient(420px 300px at 12% -4%, rgba(13,106,95,.10), transparent 62%),
+      radial-gradient(460px 320px at 96% 10%, rgba(120,90,160,.08), transparent 60%);
+    background-repeat: no-repeat;
+  }
+  main { max-width: 620px; margin: 0 auto; padding: 56px 22px 90px; }
+  .eyebrow { font-size: 12.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--acc); margin-bottom: 14px; }
+  h1 { font-size: clamp(30px, 6.4vw, 40px); line-height: 1.12; letter-spacing: -.022em; font-weight: 800; margin-bottom: 16px; }
+  .lede { color: var(--mut); font-size: 16px; margin-bottom: 8px; }
+  section { margin-top: 56px; }
+  h2 { font-size: 22px; letter-spacing: -.015em; margin-bottom: 6px; }
+  .sub { color: var(--mut); font-size: 14px; margin-bottom: 18px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+  button.run {
+    appearance: none; border: 0; background: var(--ink); color: #fff; font: inherit; font-weight: 600;
+    padding: 12px 22px; border-radius: 13px; cursor: pointer; transition: transform .15s ease, opacity .15s ease;
+    max-width: 100%; white-space: normal;
+  }
+  button.run:hover { transform: translateY(-1px); } button.run:active { transform: translateY(0); opacity: .85; }
+  button.run[disabled] { opacity: .45; cursor: default; transform: none; }
+  button.run.sm { padding: 8px 14px; font-size: 13.5px; border-radius: 10px; }
+  .grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 18px; }
+  .chip { border: 1px solid var(--line); border-radius: 13px; padding: 12px 14px; background: #fff; }
+  .chip .lbl { font-size: 12.5px; font-weight: 600; color: var(--mut); letter-spacing: .01em; display: flex; justify-content: space-between; gap: 10px; }
+  .chip .st { font-weight: 700; font-size: 11.5px; letter-spacing: .06em; }
+  .chip .st.w { color: var(--mut); } .st.ok { color: var(--ok); } .st.bad { color: var(--bad); } .st.pend { color: var(--pend); }
+  .chip pre { font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); margin-top: 7px; white-space: pre-wrap; word-break: break-word; background: #f6f5f3; border-radius: 8px; padding: 8px 10px; display: none; }
+  .chip pre.show { display: block; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th { text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--mut); padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.v { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  .y { color: var(--ok); font-weight: 600; } .n { color: var(--bad); font-weight: 600; } .p { color: var(--pend); font-weight: 600; }
+  .note { font-size: 13px; color: var(--mut); background: #f6f5f3; border-radius: 12px; padding: 12px 14px; margin-top: 14px; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: .92em; background: #f0efec; padding: 1px 5px; border-radius: 5px; overflow-wrap: anywhere; }
+  .twrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 10px; }
+  .foot { margin-top: 60px; color: var(--mut); font-size: 12.5px; border-top: 1px solid var(--line); padding-top: 18px; }
+  .wire { font: 11.5px/1.6 ui-monospace, Menlo, monospace; background: #14201d; color: #c8e6dd; border-radius: 12px; padding: 14px; white-space: pre; overflow-x: auto; margin-top: 12px; }
+  .wire b { color: #7fd8c3; font-weight: 700; }
+  .hud { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+  .hud .cell { background: #f6f5f3; border-radius: 10px; padding: 10px 12px; }
+  .hud .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--mut); font-weight: 700; }
+  .hud .v { font: 600 17px/1.3 ui-monospace, Menlo, monospace; margin-top: 2px; }
+  .hud .v.acc { color: var(--acc); }
+  .log { margin-top: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; max-height: 168px; overflow-y: auto; font: 11.5px/1.6 ui-monospace, Menlo, monospace; background: #fbfaf9; }
+  .log div { padding: 1px 0; }
+  .log .t-err { color: var(--bad); } .log .t-ok { color: var(--ok); } .log .t-res { color: var(--acc); font-weight: 700; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  .stat { font: 600 12.5px/1.4 ui-monospace, Menlo, monospace; background: #f6f5f3; padding: 6px 10px; border-radius: 9px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Web Platform API · Engine Truth Series</div>
+  <h1>Server-Sent Events — the one-way push tier</h1>
+  <p class="lede"><code>EventSource</code> is the browser's native subscribe lane: one HTTP response, unbounded event stream, automatic reconnect with resume-token. The missing member of the transport sextet (fetch · WebSocket · WebSocketStream · WebTransport · WebRTC — all previously live-probed). Measured live on Chrome-for-Testing 148 + Brave 154 headless against a local lab — re-measured in <em>your</em> engine below.</p>
+
+  <section>
+    <h2>1 · Live battery — your engine, right now</h2>
+    <p class="sub">Surface census, constructor grammar, readonly laws, the data-URL lane, the worker lane. Auto-runs on load; nothing leaves this origin.</p>
+    <div class="card">
+      <div class="grid" id="chips1"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>2 · The wire grammar — bytes in, events out</h2>
+    <p class="sub">The server writes a tiny line protocol; the browser parses it with hard rules. Live against <code>/api/sse?mode=grammar</code> — wire on the left of each row is exactly what the server sent.</p>
+    <div class="card" style="padding:8px 14px">
+      <div class="twrap">
+      <table id="grammarTable">
+        <tr><th>Wire bytes (server)</th><th>Dispatched (browser)</th></tr>
+      </table>
+      </div>
+    </div>
+    <div class="wire" id="wireView">…wire follows live…</div>
+    <div class="grid" id="chips2"></div>
+    <p class="note"><strong>The dispatch pair:</strong> <code>event: ghost</code> with <em>no data line</em> dispatches <strong>NOTHING</strong> (empty data buffer = no MessageEvent), while a bare <code>data</code> field with no colon and no value <strong>DOES dispatch</strong> an event whose <code>data</code> is the empty string. The buffer is "\n-terminated per data line", stripped once at dispatch — that asymmetry is the whole grammar in one row.</p>
+  </section>
+
+  <section>
+    <h2>3 · The reconnect contract — measured deltas</h2>
+    <p class="sub">The server drops each stream mid-flight; the deltas below are live error→reopen measurements. <code>retry:</code> hints, junk values, and the resume token.</p>
+    <div class="card">
+      <div class="grid" id="chips3"></div>
+      <p class="note">Spec default is 3000&nbsp;ms — engines add jitter (we measured 3113&nbsp;ms on both CfT 148 and Brave 154). Junk <code>retry:</code> values (<code>12x</code>, <code>-5</code>) are <strong>silently ignored</strong>, keeping the previous value. <code>retry: 0</code> is honored (sub-150&nbsp;ms reconnect measured).</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>4 · The fatal-handshake wall</h2>
+    <p class="sub">The folklore says SSE "retries forever on errors." Measured: only <em>mid-stream drops</em> reconnect. A bad handshake — 204, 404, wrong MIME — is fatal: one <code>error</code> event, <code>readyState 2</code>, zero retry loop.</p>
+    <div class="card">
+      <button class="run" id="wallsBtn">Fire the four walls</button>
+      <div class="grid" id="chips4"></div>
+      <p class="note"><strong>The one-row rule:</strong> each wall shows the request count from the server's own log. 204 is the spec's <em>intended</em> "stop, don't come back" — but every failed handshake gets the same treatment. Your circuit-breaker is the readyState check, not a magic status code.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>5 · The data-URL law — a stream with no server</h2>
+    <p class="sub">The constructor has no scheme wall. <code>data:</code> URLs construct, open, and <em>dispatch</em> — and because the data: response "ends", the engine reconnects… to the same immutable URL. A self-repeating event stream from a string.</p>
+    <div class="card">
+      <div class="row"><span class="stat" id="durlTicks">dispatches: 0</span><span class="stat" id="durlRs">readyState: —</span></div>
+      <div class="wire" id="durlWire">new EventSource("data:text/event-stream,data:tick%0A%0A")</div>
+      <div class="grid" id="chips5"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>6 · The pool law — SSE eats your HTTP/1.1 budget</h2>
+    <p class="sub">Six held EventSources to one origin is the classic stall: the 7th connection (a plain fetch) queues behind them on HTTP/1.1. On HTTP/2 everything multiplexes one connection. Live either way — your protocol is detected.</p>
+    <div class="card">
+      <button class="run" id="poolBtn">Open 6 held streams, then fetch</button>
+      <div class="grid" id="chips6"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>7 · Capstone — OpenDrones Mission Control telemetry</h2>
+    <p class="sub">One EventSource, three event types (<code>resume</code> · <code>tlm</code> · <code>status</code>), a server that drops the stream every ~20 events, and a client that never misses a beat. This is the whole pitch for one-way push.</p>
+    <div class="card">
+      <div class="hud">
+        <div class="cell"><div class="k">Battery</div><div class="v acc" id="tBatt">—</div></div>
+        <div class="cell"><div class="k">Altitude</div><div class="v" id="tAlt">—</div></div>
+        <div class="cell"><div class="k">Ground spd</div><div class="v" id="tSpd">—</div></div>
+        <div class="cell"><div class="k">Satellites</div><div class="v" id="tSats">—</div></div>
+        <div class="cell"><div class="k">Link RSSI</div><div class="v" id="tRssi">—</div></div>
+        <div class="cell"><div class="k">Events recv</div><div class="v" id="tN">0</div></div>
+      </div>
+      <div class="log" id="tlog"></div>
+      <p class="note">The log's <span style="color:var(--acc);font-weight:700">resume</span> lines are the resume token round-trip: the server echoes the <code>Last-Event-ID</code> request header it received, and the id sequence continues from it. Tab hidden → the feed keeps flowing; page reloaded → the log rebuilds from wherever the server's counter is. No WS server, no socket library, no reconnect code in the client beyond <code>onerror</code> logging.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>8 · The decision table</h2>
+    <p class="sub">Which transport for which job — all five previously live-probed in this catalog.</p>
+    <div class="card" style="padding:8px 14px">
+      <div class="twrap">
+      <table>
+        <tr><th>Job</th><th>Pick</th><th>Why</th></tr>
+        <tr><td>Server → client push only (telemetry, feeds, ticks, progress)</td><td class="v y">EventSource</td><td class="v">Free reconnect + resume token, plain HTTP infra, proxies love it</td></tr>
+        <tr><td>Client also talks back (chat, collaborative cursors)</td><td class="v">WebSocket</td><td class="v">Bidirectional frame lane, universal Baseline</td></tr>
+        <tr><td>…and you want backpressure + Worker pipelines</td><td class="v">WebSocketStream</td><td class="v">Streams-native, pipeThrough transforms (Chromium-only)</td></tr>
+        <tr><td>Unreliable networks, datagram tolerance, many streams</td><td class="v">WebTransport</td><td class="v">HTTP/3 + QUIC, per-stream independence</td></tr>
+        <tr><td>Peer-to-peer media / data</td><td class="v">WebRTC</td><td class="v">ICE + DTLS, no server relay required</td></tr>
+        <tr><td>One-shot or request/response</td><td class="v">fetch</td><td class="v">The cornerstone; streaming bodies via ReadableStream</td></tr>
+      </table>
+      </div>
+    </div>
+    <p class="note"><strong>OpenDrones:</strong> Mission Control telemetry is 95% one-way — battery, GPS, attitude, link health. The Arc pre-order status feed, firmware release channels, and fleet "last seen" walls are all EventSource-shaped. <strong>Molt:</strong> client dashboards, live menus, job-status pages — push without a socket server, through every corporate proxy that blocks WS.</p>
+  </section>
+
+  <section>
+    <h2>9 · Shipping rules</h2>
+    <div class="card">
+      <div class="twrap">
+      <table>
+        <tr><th>#</th><th>Rule</th></tr>
+        <tr><td class="v">1</td><td>Send <code>retry:</code> early (e.g. 2000) — the 3s default is a floor, not a feature; you own the cadence.</td></tr>
+        <tr><td class="v">2</td><td>Give every event an <code>id:</code> — the resume token is free durability; your server replays from <code>Last-Event-ID</code>.</td></tr>
+        <tr><td class="v">3</td><td>Use named event types; <code>onmessage</code> is the default lane only and custom types never touch it.</td></tr>
+        <tr><td class="v">4</td><td>Check <code>readyState === 2</code> in <code>onerror</code> — fatal handshake vs transient drop is the only branch that matters; re-arm or surface, don't loop.</td></tr>
+        <tr><td class="v">5</td><td>A stream that ends normally is a <em>drop</em> — the engine reconnects. 204 is the only clean goodbye.</td></tr>
+        <tr><td class="v">6</td><td>On HTTP/1.1, count your held streams — six to one origin stalls the seventh connection (favicon, fetch, everything).</td></tr>
+        <tr><td class="v">7</td><td>Heartbeat with <code>: comments</code> every 15–30s — proxies time out silent responses; comments keep the lane warm and dispatch nothing.</td></tr>
+        <tr><td class="v">8</td><td>Don't parse the wire yourself — the grammar laws (empty-data dispatch, one-space strip, CR line endings) are already done correctly by the engine.</td></tr>
+        <tr><td class="v">9</td><td><code>close()</code> is forever — there is no reopen; create a new EventSource.</td></tr>
+        <tr><td class="v">10</td><td>EventSource works in Workers — move the feed off the main thread; forward parsed events via postMessage.</td></tr>
+      </table>
+      </div>
+    </div>
+    <p class="foot">Entry 205 · live-probed CfT 148.0.7778.96 + Brave 154.1.96.60 headless · 2 probe suites, 45+ chips · lab: local h1.1 Node server ×2 instances + cross-origin + wildcard-CORS lanes · gate ×2 viewports local + production · part of the transport sextet: fetch · WebSocket · WebSocketStream · WebTransport · WebRTC.</p>
+  </section>
+</main>
+
+<script>
+(() => {
+  const API = '/api/sse';
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const race = (p, ms, tag) => Promise.race([Promise.resolve(p), sleep(ms).then(() => ({ _timeout: true, _tag: tag }))]);
+  const $ = id => document.getElementById(id);
+
+  const mkChip = (host, name) => {
+    const el = document.createElement('div');
+    el.className = 'chip';
+    el.innerHTML = `<div class="lbl"><span>${name}</span><span class="st pend">RUN</span></div><pre></pre>`;
+    $(host).appendChild(el);
+    return {
+      set: (st, detail) => {
+        el.querySelector('.st').textContent = st.toUpperCase();
+        el.querySelector('.st').className = 'st ' + (st === 'ok' ? 'ok' : st === 'bad' ? 'bad' : st === 'warn' ? 'w' : 'pend');
+        if (detail != null) { const pre = el.querySelector('pre'); pre.textContent = detail; pre.classList.add('show'); }
+      }
+    };
+  };
+
+  const pending = [];
+  const done = () => pending.length === 0;
+  const track = p => { pending.push(p); return p.finally(() => pending.splice(pending.indexOf(p), 1)); };
+
+  // ============ SECTION 1 — live battery ============
+  const run1 = track((async () => {
+    try {
+      const c1 = mkChip('chips1', 'proto census + statics');
+      const proto = Object.getOwnPropertyNames(EventSource.prototype).sort();
+      c1.set('ok', `EventSource.prototype = ${JSON.stringify(proto)}\nstatics: CONNECTING=${EventSource.CONNECTING} OPEN=${EventSource.OPEN} CLOSED=${EventSource.CLOSED} (on ctor AND instances) · EventSource.length=${EventSource.length}`);
+
+      const c2 = mkChip('chips1', 'ctor grammar (verbatim)');
+      let noarg = 'no throw';
+      try { new EventSource(); } catch (e) { noarg = `${e.name}: ${e.message}`; }
+      let coerced = '?';
+      try { const e = new EventSource(42); coerced = '42 → ' + e.url; e.close(); } catch (err) { coerced = err.name; }
+      c2.set('ok', `no-arg: ${noarg}\nnumeric coercion: ${coerced} (ToString — connects to /42)`);
+
+      const c3 = mkChip('chips1', 'readonly laws + enumerable lie');
+      const e3 = new EventSource('data:text/event-stream,');
+      let wc = e3.withCredentials; try { e3.withCredentials = true; } catch (e) {} 
+      let urlAfter = e3.url; try { e3.url = 'https://evil.example/'; } catch (e) {}
+      let sc = 'cloned?!'; try { structuredClone(e3); } catch (e) { sc = e.name; }
+      c3.set('ok', `withCredentials: ${wc} → assign → ${e3.withCredentials} (silent no-op)\nurl: ${urlAfter} → assign → ${e3.url === urlAfter ? 'unchanged' : 'CHANGED'}\nObject.keys(es)=${JSON.stringify(Object.keys(e3))} · structuredClone → ${sc}`);
+      e3.close();
+
+      const c4 = mkChip('chips1', 'scheme lanes (async outcomes)');
+      const lanes = [];
+      for (const [label, url] of [['ws://', 'ws://127.0.0.1:1/x'], ['about:', 'about:blank']]) {
+        const r = await new Promise(res => {
+          const es = new EventSource(url); const t = setTimeout(() => { es.close(); res('PEND>1.5s rs=' + es.readyState); }, 1500);
+          es.onerror = () => { clearTimeout(t); const rs = es.readyState; es.close(); res(`error → rs=${rs}${rs === 2 ? ' (FATAL)' : ' (retry)'}`); };
+          es.onopen = () => { clearTimeout(t); es.close(); res('OPENED?!'); };
+        });
+        lanes.push(`${label} ${r}`);
+      }
+      c4.set('ok', lanes.join('\n') + '\n(no scheme wall at construction — failures are async, fetch-time)');
+
+      const c5 = mkChip('chips1', 'DedicatedWorker lane');
+      const src = `const es=new EventSource('${API}?mode=telemetry&worker=1');
+        let n=0; es.addEventListener('tlm',ev=>{n++; if(n>=2){es.close();postMessage({ok:true,n,lei:ev.lastEventId,esInWorker:typeof EventSource==='function'});}});`;
+      const w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      const res = await race(new Promise(r => w.onmessage = ev => r(ev.data)), 6000, 'worker');
+      try { w.terminate(); } catch {}
+      c5.set(res && res.ok ? 'ok' : 'bad', JSON.stringify(res));
+
+      const c6 = mkChip('chips1', 'open fires on response headers');
+      const es6 = new EventSource(API + '?mode=hang');
+      const t0 = performance.now();
+      const opened = await race(new Promise(r => es6.onopen = r), 3000, 'open');
+      const at = Math.round(performance.now() - t0);
+      const rs6 = es6.readyState; es6.close();
+      c6.set(opened && !opened._timeout ? 'ok' : 'bad', `headers-only (no body ever written) → onopen in ${at}ms, readyState=${rs6} while silent\n(open = handshake accepted, not first byte)`);
+    } catch (e) { try { mkChip('chips1', 'battery crash').set('bad', e.message); } catch {} }
+  })());
+
+  // ============ SECTION 2 — grammar ============
+  const run2 = track((async () => {
+    try {
+      const rows = [
+        [': comment only\n\n', 'no dispatch', ''],
+        ['data: hello\n\n', 'message', 'data "hello"'],
+        ['data: line1\ndata: line2\n\n', 'message', 'data "line1\\nline2"'],
+        ['data:nospace\n\n', 'message', 'data "nospace"'],
+        ['data:  two lead\n\n', 'message', 'data " two lead" (ONE space stripped)'],
+        ['event: telemetry\ndata: {"batt":84}\n\n', 'telemetry', 'custom type — onmessage NOT hit'],
+        ['event: ghost\n\n', '— nothing —', 'no data line → NO dispatch'],
+        ['id: 42\ndata: after-id\n\ndata: no-id-here\n\n', 'message ×2', 'lastEventId "42" then inherits "42"'],
+        ['id: n\\0ul\ndata: after-nul\n\n', 'message', 'NUL id DROPPED — lei stays "42" (spec falsified)'],
+        ['foo: junk\ndata: unknown-ok\n\n', 'message', 'unknown field ignored'],
+        ['data\n\n', 'message', 'data "" — bare field dispatches EMPTY'],
+        ['event: t1\\ndata: a\\n\\nevent:\\ndata: b\\n\\n', 't1 then message', 'bare event: resets to default lane'],
+      ];
+      const tbl = $('grammarTable');
+      for (const [wire, dispatch, note] of rows) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td class="v">${wire.replace(/\n/g, '⏎').replace(/</g, '&lt;')}</td><td class="v"><strong>${dispatch}</strong>${note ? '<br><span style="color:var(--mut)">' + note + '</span>' : ''}</td>`;
+        tbl.appendChild(tr);
+      }
+      $('wireView').innerHTML = '<b>: the server writes</b>\nretry: 2000\nid: 42\nevent: telemetry\ndata: {"batt": 84}\n\n<b>…the browser dispatches</b>\nMessageEvent{ type:"telemetry", data:\'{"batt": 84}\', lastEventId:"42" }';
+
+      // live grammar verification chips
+      const g = mkChip('chips2', 'grammar live: dispatch pair');
+      const es = new EventSource(API + '?mode=grammar');
+      const seen = [];
+      es.addEventListener('telemetry', ev => seen.push(['telemetry', ev.data]));
+      es.addEventListener('ghost', () => seen.push(['ghost!', '']));
+      es.onmessage = ev => seen.push(['message', ev.data.length > 24 ? `[${ev.data.length}B]` : ev.data]);
+      es.onerror = () => {};
+      await sleep(6500); es.close();
+      const flat = JSON.stringify(seen);
+      g.set('ok', `received: ${flat}\nghost fired: ${seen.some(s => s[0] === 'ghost!') ? 'YES (unexpected)' : 'no — no-data frames never dispatch'} · empty-string data: ${seen.filter(s => s[1] === '').length} · 1MB intact: ${seen.some(s => /^\[1048576B\]$/.test(s[1]))}`);
+    } catch (e) { try { mkChip('chips3', 'grammar crash').set('bad', e.message); } catch {} }
+  })());
+
+  // ============ SECTION 3 — reconnect deltas ============
+  const run3 = track((async () => {
+    try {
+      const lane = async (host, name, qs, min, max) => {
+        const c = mkChip(host, name);
+        const es = new EventSource(API + '?mode=drop' + qs);
+        let errAt = null;
+        es.onerror = () => { errAt = errAt ?? performance.now(); };
+        const r = await race(new Promise(res => es.onopen = () => errAt !== null ? res(performance.now() - errAt) : res(-1)), min > 2000 ? 5800 : 2600, 'reopen');
+        es.close();
+        const d = typeof r === 'number' ? r : -1;
+        c.set(d >= min && d <= max ? 'ok' : 'warn', `error → reopen: ${Math.round(d)}ms (expected ${min}–${max}ms)`);
+      };
+      await lane('chips3', 'default reconnect (no retry hint)', '', 2000, 4500);
+      await lane('chips3', 'retry: 120 honored', '&retry=120', 60, 600);
+      await lane('chips3', 'retry: 0 honored', '&retry=0', 0, 200);
+      await lane('chips3', 'junk retry: 12x → ignored', '&retry=12x', 2000, 4500);
+      await lane('chips3', 'negative retry: -5 → ignored', '&retry=-5', 2000, 4500);
+
+      const c6 = mkChip('chips3', 'Last-Event-ID resume token');
+      const es = new EventSource(API + '?mode=drop&retry=150');
+      let resumeInfo = null, firstId = null;
+      es.addEventListener('resume', ev => { try { resumeInfo = JSON.parse(ev.data); } catch { resumeInfo = ev.data; } });
+      es.onmessage = ev => { firstId = firstId ?? ev.lastEventId; };
+      es.onerror = () => {};
+      await sleep(3400); es.close();
+      c6.set(resumeInfo && resumeInfo.lei ? 'ok' : 'warn', `first pass id=${firstId} → server saw Last-Event-ID: ${JSON.stringify(resumeInfo && resumeInfo.lei)} on reconnect\n(the server echoes what your engine resent)`);
+    } catch (e) { try { mkChip('chips3', 'reconnect crash').set('bad', e.message); } catch {} }
+  })());
+
+  // ============ SECTION 4 — walls ============
+  const wallsRun = new Promise(resolve => { $('wallsBtn').onclick = async () => {
+    $('wallsBtn').disabled = true;
+    const wall = async (name, qs) => {
+      const c = mkChip('chips4', name);
+      const key = 'case:' + qs;
+      const log0 = await (await fetch(API + '?mode=reqlog&key=' + encodeURIComponent(key))).json();
+      const before = log0.count;
+      let errs = 0;
+      const es = new EventSource(API + '?case=' + qs);
+      es.onerror = () => errs++;
+      await sleep(3600);
+      const rs = es.readyState;
+      es.close();
+      const log1 = await (await fetch(API + '?mode=reqlog&key=' + encodeURIComponent(key))).json();
+      c.set(rs === 2 && log1.count <= before + 1 ? 'ok' : 'bad', `readyState=${rs} (2=CLOSED) · error events=${errs} · requests=${before}→${log1.count} — ${rs === 2 ? 'fatal, no retry loop' : 'retrying'}`);
+    };
+    await wall('204 No Content (the intended goodbye)', '204');
+    await wall('404 Not Found', '404');
+    await wall('200 text/plain (wrong MIME)', 'mime');
+    await wall('200 application/json (wrong MIME)', 'json');
+    $('wallsBtn').disabled = false;
+    resolve();
+  }; });
+  track(wallsRun);
+
+  // ============ SECTION 5 — data URL ticker ============
+  const run5 = track((async () => {
+    try {
+      const DURL = 'data:text/event-stream,' + encodeURIComponent('retry: 500\ndata:tick\n\n');
+      const es = new EventSource(DURL);
+      let n = 0;
+      es.onmessage = () => { n++; $('durlTicks').textContent = 'dispatches: ' + n; };
+      const rsTick = () => { $('durlRs').textContent = 'readyState: ' + ['CONNECTING', 'OPEN', 'CLOSED'][es.readyState]; };
+      rsTick(); const t = setInterval(rsTick, 250);
+      es.onerror = () => {};
+      const c = mkChip('chips5', 'the data: URL lane');
+      await sleep(4200);
+      c.set(n >= 2 ? 'ok' : 'warn', `data:text/event-stream — constructed, OPENED, dispatched ×${n} in 4.2s\n(retry: 500 honored inside the data: body — the parser doesn't care where bytes come from)`);
+      // leave the ticker running
+      window.__durlES = es; window.__durlT = t;
+      const c2 = mkChip('chips5', 'measured lab values (CfT 148 + Brave 154)');
+      c2.set('ok', 'ws:// → async error → CLOSED (fatal) · about: → fatal · blob: (dead) → retry loop · data: → OPENS + DISPATCHES (both engines)');
+    } catch (e) { try { mkChip('chips5', 'durl crash').set('bad', e.message); } catch {} }
+  })());
+
+  // ============ SECTION 6 — pool law ============
+  const poolRun = new Promise(resolve => { $('poolBtn').onclick = async () => {
+    $('poolBtn').disabled = true;
+    const c1 = mkChip('chips6', 'your protocol');
+    await fetch(API + '?mode=info').then(r => r.json()).catch(() => {});
+    const res = performance.getEntriesByType('resource').filter(e => e.name.includes('/api/sse?mode=info')).pop();
+    const proto = (res && res.nextHopProtocol) || 'http/1.1';
+    const srv = await fetch(API + '?mode=info').then(r => r.json()).catch(() => ({}));
+    c1.set('ok', `nextHopProtocol = ${proto} · server hop = ${srv.proto || '?'} → ${String(proto).startsWith('h2') || String(proto).startsWith('h3') ? 'multiplexed — the h1.1 stall does not apply' : 'HTTP/1.1 — the six-stream budget is live'}`);
+    const c2 = mkChip('chips6', '6 held streams → 7th connection');
+    const held = [];
+    for (let i = 0; i < 6; i++) { const e = new EventSource(API + '?mode=hold'); e.onerror = () => {}; held.push(e); }
+    await sleep(800);
+    const t0 = performance.now();
+    const fr = await race(fetch(API + '?mode=info').then(r => r.json()), 4200, 'fetch7');
+    const stalled = fr._timeout === true;
+    c2.set(stalled ? 'ok' : (performance.now() - t0 > 1200 ? 'ok' : 'warn'), stalled ? 'fetch STALLED >4.2s behind the six held streams (h1.1 budget exhausted) — lab-confirmed on both engines' : `fetch completed in ${Math.round(performance.now() - t0)}ms — ${String(proto).startsWith('h2') || String(proto).startsWith('h3') ? 'multiplexed on your connection (expected on h2)' : 'budget not exhausted on this lane'}`);
+    held.forEach(e => e.close());
+    const c3 = mkChip('chips6', 'after close()');
+    const t1 = performance.now();
+    await race(fetch(API + '?mode=info').then(r => r.json()), 4200, 'fetch8');
+    c3.set('ok', `fetch after close(): ${Math.round(performance.now() - t1)}ms — the budget returns instantly`);
+    $('poolBtn').disabled = false;
+    resolve();
+  }; });
+  track(poolRun);
+
+  // ============ SECTION 7 — telemetry capstone ============
+  const run7 = track((async () => {
+    try {
+      const log = (cls, msg) => {
+        const el = document.createElement('div');
+        el.className = cls; el.textContent = `${new Date().toLocaleTimeString()} ${msg}`;
+        const host = $('tlog'); host.prepend(el);
+        while (host.children.length > 60) host.removeChild(host.lastChild);
+      };
+      let n = 0;
+      const es = new EventSource(API + '?mode=telemetry');
+      es.onopen = () => log('t-ok', 'open — stream established');
+      es.addEventListener('resume', ev => {
+        let d = ev.data; try { d = JSON.parse(ev.data).lei; } catch {}
+        log('t-res', `reconnected — server saw Last-Event-ID: ${d}`);
+      });
+      es.addEventListener('tlm', ev => {
+        n++; $('tN').textContent = n;
+        try {
+          const t = JSON.parse(ev.data);
+          $('tBatt').textContent = t.batt.toFixed(0) + '%';
+          $('tBatt').style.color = t.batt < 25 ? 'var(--bad)' : 'var(--acc)';
+          $('tAlt').textContent = t.alt.toFixed(0) + ' m';
+          $('tSpd').textContent = t.spd.toFixed(1) + ' m/s';
+          $('tSats').textContent = t.sats;
+          $('tRssi').textContent = t.rssi + ' dBm';
+        } catch {}
+      });
+      es.onerror = () => log('t-err', 'drop — engine reconnecting (no code on our side)');
+      window.__tlmES = es;
+    } catch (e) { log('t-err', 'capstone crash: ' + e.message); }
+  })());
+
+  // gate hook
+  const check = setInterval(() => {
+    if (done()) { clearInterval(check); window.__GATE_DONE__ = true; }
+  }, 300);
+  setTimeout(() => { window.__GATE_DONE__ = true; }, 30000); // hard cap
+
+  // expose for gate
+  window.__GATE_STATE = () => ({ pending: pending.length, tlm: window.__tlmES ? window.__tlmES.readyState : -1 });
+})();
+</script>
+</body>
+</html>
