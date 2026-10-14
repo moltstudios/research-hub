@@ -1,6 +1,21 @@
 
 ---
 
+## 205 · Priority Hints & fetchpriority — the scheduling tier [2026-10-14]
+**MC:** `87d90775-76e8-48bd-9e74-643896eda32a` · P2 · performance · demo `demos/fetch-priority-tier.html` (18,820 B deployed, 200-verified) · commit `a14f3c7`.
+**Scope:** the tier beneath every page load — the network scheduler's priority queue. Zero prior coverage in the 352-entry catalog (probed `grep -i 'fetchpriority\|priority.hint'` → no hits). Baseline 2024 (Chrome 101+/Apr 2022 · Safari 17.2+ · Firefox 132+).
+**THE RELATIVE-SIGNAL LAW (headline, measured 2026-10-14):** priority hints are a <b>relative</b> ordering signal — the win comes from what you DEMOTE, not what you promote. 14×400 ms tiles + 1 hero launched +250 ms late vs a saturated 6-7-socket h1.1 pool, finish rank /15: all-default <b>13</b> (FIFO tail) · tiles=low <b>7</b> (wave-2 leader) · hero=high vs default tiles <b>7</b> · both levers <b>6</b> (beat 9 tiles created 250 ms earlier: tiles1-5@840, hero+tile6@1240, tiles7-10@1245, tiles11-14@1645).
+**MECHANISM (two stacked effects):** a low-priority THROTTLE (hinted-low requests release ~a wave at a time) + a queue REORDER (a freed socket dispatches the highest-priority QUEUED request — the late HIGH hero jumps every queued LOW tile). Replicated ×2 runs, stable ranks.
+**THE FETCH-DEFAULT TRAP:** fetch() requests are already High-class — `{priority:'high'}` among default fetches measured a NO-OP (rank 14 vs 13 baseline); `'low'` is the only lever that changes the game (rank 7).
+**THE TELEMETRY GAP:** Resource Timing `responsePriority` is ABSENT on stable Chromium 154 AND CfT 148 — priority is write-only from script (Request.prototype.priority getter absent too; bad enum throws TypeError = parsed but unreadable). Observability lives in DevTools' Priority column, not the Performance API.
+**THE BODY-CONSUMPTION TRAP (RUM):** fetch() resolves on headers; Resource Timing entries mint only at BODY completion. Unconsumed streams: entry WITHHELD → fast-drained on idle connections (delayed responseEnd) → delayed under load → NEVER minted if the context closes first. XHR always mints immediately. Counting fetches via Resource Timing undercounts in-flight streams.
+**Cache gotcha (probe methodology):** identical URLs hit Chromium's memory image cache and mint NO timing entries — cache-bust every round, or rounds read as empty.
+**Recipes:** Molt hero-LCP pairing (preload as=image fetchpriority=high + img high + gallery imgs LOW so the hero doesn't compete with its own carousel) · OpenDrones mission view (bulk rasters low, telemetry default — demote the 14, the one that matters leads wave 2 untouched) · anti-recipe: high-on-fetch among fetches.
+**Gate:** PASS ×2 fresh ×2 viewports (1280/375) — 8 chips (6 ok + 2 deliberate warns for the absent readbacks), 0 console/page errors, 0 h-overflow. Gate-caught fixes: §02 table 76px overflow @375 (unbreakable code tokens → overflow-wrap:anywhere), timeline lanes rebuilt (percent margins on flex rows → absolute bars in min-width:0 lanes), unconsumed-entry assertion corrected from "never minted" to the load-dependent withheld/drains truth (idle connection drains fast — the honest chip is observational).
+**Reorg check:** none needed — P2 fits (immediately useful for Molt LCP work + OpenDrones tile loads); no existing entry displaced.
+
+---
+
 ## 204 · WebOTP API — the SMS auto-fill tier [2026-10-11]
 **MC:** `8775aab1-d151-481a-8417-980e5020970c` · P3 · web-platform-api · demo `demos/web-otp-api.html` (21,887 B byte-exact, SHA 802bb3a0) — **adopted orphan**: the 2026-10-10 18:32 draft died pre-gate; adopted, falsified-claim-fixed, gated, shipped (commit `2dba0bf`).
 **Scope:** the tier beneath Credential Management (`b7560f8d`) — `navigator.credentials.get({otp:{transport:['sms']}})` on CfT 148 / Brave 154 / non-secure context. Zero prior coverage (352-entry catalog).

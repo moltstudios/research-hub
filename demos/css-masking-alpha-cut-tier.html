@@ -1,0 +1,686 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSS Masking — The Alpha-Cut Tier | Molt Research</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎭</text></svg>">
+<style>
+  :root {
+    --bg: #fafaf9; --ink: #1c1917; --mut: #78716c; --line: #e7e5e4;
+    --acc: #4f46e5; --acc2: #a5b4fc; --ok: #047857; --okbg: #ecfdf5;
+    --warn: #b45309; --warnbg: #fffbeb; --info: #1d4ed8; --infobg: #eff6ff;
+    --r: 14px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.65 ui-sans-serif, system-ui, "Inter", -apple-system, sans-serif; overflow-x: hidden; }
+  main { max-width: 980px; margin: 0 auto; padding: 40px 20px 80px; }
+  h1 { font-size: clamp(1.6rem, 4.5vw, 2.5rem); line-height: 1.15; letter-spacing: -.02em; margin: 8px 0 10px; }
+  h2 { font-size: 1.25rem; margin: 0 0 6px; letter-spacing: -.01em; }
+  h2 .sn { color: var(--acc); font-variant-numeric: tabular-nums; }
+  p { margin: 8px 0; }
+  .sub { color: var(--mut); font-size: .92rem; }
+  section { padding: 44px 0; border-top: 1px solid var(--line); overflow: hidden; }
+  section:first-of-type { border-top: 0; padding-top: 20px; }
+  .badge { display: inline-flex; align-items: center; gap: 6px; font-size: .78rem; font-weight: 600;
+    background: #eef2ff; color: var(--acc); border: 1px solid #c7d2fe; border-radius: 999px; padding: 3px 10px; }
+  .badge.gray { background: #f5f5f4; color: var(--mut); border-color: var(--line); }
+  pre { background: #1c1917; color: #e7e5e4; border-radius: 10px; padding: 14px 16px; overflow-x: auto;
+    font: 12.5px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace; margin: 12px 0; }
+  pre b { color: #a5b4fc; font-weight: 400; } pre i { color: #fbbf24; font-style: normal; } pre em { color: #34d399; font-style: normal; }
+  code { font: .92em ui-monospace, "SF Mono", Menlo, monospace; background: #f5f5f4; border: 1px solid var(--line);
+    padding: 1px 5px; border-radius: 6px; overflow-wrap: anywhere; }
+  .chip { display: inline-block; font: 600 11.5px/1.3 ui-monospace, "SF Mono", Menlo, monospace;
+    padding: 5px 9px; border-radius: 7px; margin: 3px 4px 3px 0; vertical-align: middle; max-width: 100%; overflow-wrap: anywhere; }
+  .chip.ok { background: var(--okbg); color: var(--ok); border: 1px solid #a7f3d0; }
+  .chip.warn { background: var(--warnbg); color: var(--warn); border: 1px solid #fde68a; }
+  .chip.info { background: var(--infobg); color: var(--info); border: 1px solid #bfdbfe; }
+  .chip.dead { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+  .chip.pending { background: #f5f5f4; color: var(--mut); border: 1px dashed var(--line); }
+  .tscroll { overflow-x: auto; margin: 14px 0; }
+  table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: .88rem; }
+  th { text-align: left; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); }
+  th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td code { white-space: nowrap; }
+  .stage { background: #fff; border: 1px solid var(--line); border-radius: var(--r); padding: 18px; margin: 14px 0;
+    width: 100%; max-width: 640px; }
+  .lane { display: flex; flex-wrap: wrap; gap: 14px; margin: 12px 0; }
+  .lane > div { min-width: 0; max-width: 100%; }
+  .panel { position: relative; border-radius: 10px; overflow: hidden; flex: 0 1 auto; min-width: 0; }
+  .btn { font: 600 13px/1 inherit; font-family: inherit; border: 1px solid #c7d2fe; background: #eef2ff; color: var(--acc);
+    border-radius: 9px; padding: 7px 12px; cursor: pointer; max-width: 100%; }
+  .btn:hover { background: #e0e7ff; }
+  .btn.on { background: var(--acc); color: #fff; }
+  .btn.ghost { background: #fff; border-color: var(--line); color: var(--ink); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+  .note { font-size: .84rem; color: var(--mut); }
+  .k { font-weight: 700; }
+  /* ============ S01 hero art ============ */
+  .hero { position: relative; border-radius: 18px; overflow: hidden; background:
+      radial-gradient(120% 90% at 80% 10%, #fbbf24 0%, #f59e0b 28%, transparent 60%),
+      radial-gradient(90% 120% at 15% 85%, #4f46e5 0%, #312e81 45%, transparent 75%),
+      linear-gradient(120deg, #1e1b4b 0%, #0f172a 100%);
+    min-height: 240px; }
+  .hero .stripes { position: absolute; inset: 0;
+    background: repeating-linear-gradient(115deg, rgba(255,255,255,.16) 0 34px, transparent 34px 74px);
+    mask-image: linear-gradient(75deg, #000 0%, rgba(0,0,0,.65) 45%, transparent 78%);
+    -webkit-mask-image: linear-gradient(75deg, #000 0%, rgba(0,0,0,.65) 45%, transparent 78%); }
+  .hero .glow { position: absolute; inset: 0;
+    background: radial-gradient(60% 60% at 78% 18%, rgba(255,255,255,.9) 0%, transparent 55%);
+    mask-image: radial-gradient(52% 52% at 78% 18%, #000 0%, transparent 70%);
+    -webkit-mask-image: radial-gradient(52% 52% at 78% 18%, #000 0%, transparent 70%);
+    mix-blend-mode: screen; }
+  .hero h1, .hero p { position: relative; color: #fff; padding: 26px 26px 0; margin: 0; max-width: 30ch; }
+  .hero p { color: #c7d2fe; padding-bottom: 26px; }
+  /* ============ S03 mode lab ============ */
+  .modepanel { width: 300px; max-width: 100%; height: 84px; background: linear-gradient(90deg, #dc2626, #7f1d1d); }
+  /* ============ S04 composite ============ */
+  .compbox { width: 320px; max-width: 100%; height: 110px; background: linear-gradient(180deg, #be123c, #831843); }
+  /* ============ S05 hit lab ============ */
+  .hitstage { position: relative; height: 150px; width: 100%; max-width: 640px; border-radius: 10px;
+    background: repeating-linear-gradient(45deg, #0f766e 0 16px, #115e59 16px 32px); overflow: hidden; }
+  #hitMasked { position: absolute; inset: 0; background: #7c2d12; color: #fed7aa; display: flex; align-items: center;
+    justify-content: center; font-weight: 700; letter-spacing: .04em; cursor: pointer;
+    mask-image: linear-gradient(90deg, transparent 0 48%, #000 52% 100%);
+    -webkit-mask-image: linear-gradient(90deg, transparent 0 48%, #000 52% 100%); }
+  #hitClipped { position: absolute; inset: 0; background: #1d4ed8; color: #dbeafe; display: none; align-items: center;
+    justify-content: center; font-weight: 700; letter-spacing: .04em; cursor: pointer; clip-path: inset(0 0 0 52%); }
+  .hitread { font: 600 12px/1 ui-monospace, Menlo, monospace; background: #1c1917; color: #a5b4fc; border-radius: 8px;
+    padding: 8px 10px; margin-top: 10px; min-height: 16px; overflow-wrap: anywhere; }
+  /* ============ S07 stacking ============ */
+  .zlab { position: relative; height: 120px; width: 100%; max-width: 640px; }
+  .zparent { position: absolute; left: 0; top: 0; width: 62%; height: 100%; }
+  .zchild { position: absolute; left: 0; top: 22px; width: 100%; height: 76px; background: #2563eb; z-index: 999;
+    display: flex; align-items: center; justify-content: center; color: #dbeafe; font-weight: 700; font-size: .85rem; }
+  .zsib { position: absolute; right: 0; top: 22px; width: 55%; height: 76px; background: #16a34a; z-index: 1;
+    display: flex; align-items: center; justify-content: center; color: #dcfce7; font-weight: 700; font-size: .85rem; }
+  /* ============ S08 shadow ============ */
+  .shadowcard { width: min(320px, 100%); max-width: 100%; height: 110px; border-radius: 16px; background: #fff;
+    border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--mut); }
+  .withshadow { box-shadow: 0 24px 60px -12px rgba(79, 70, 229, .55); }
+  .wrapper { padding: 24px; border-radius: 26px; display: inline-block; }
+  /* ============ S09 anim ============ */
+  .sweepbox { width: 100%; max-width: 640px; height: 120px; border-radius: 12px; position: relative; overflow: hidden;
+    background: repeating-linear-gradient(90deg, #1e293b 0 60px, #334155 60px 120px); }
+  .sweepstrip { position: absolute; inset: 0; background: linear-gradient(90deg, #000 0 40%, transparent 70%); }
+  /* ============ S10 tiling ============ */
+  .tile { width: 280px; max-width: 100%; height: 90px; background: #9a3412; border-radius: 10px; overflow: hidden; }
+  /* ============ S11 radar ============ */
+  .radarwrap { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
+  .radar { position: relative; width: 300px; max-width: 100%; aspect-ratio: 1; border-radius: 50%;
+    background:
+      repeating-linear-gradient(0deg, rgba(74,222,128,.14) 0 1px, transparent 1px 30px),
+      repeating-linear-gradient(90deg, rgba(74,222,128,.14) 0 1px, transparent 1px 30px),
+      radial-gradient(circle, #052e16 0%, #022c22 70%, #011),
+    border: 1px solid #065f46; overflow: hidden; }
+  .radar .sweep { position: absolute; inset: 0; border-radius: 50%;
+    background: linear-gradient(90deg, #4ade80, #16a34a);
+    mask-image: conic-gradient(from var(--ang, 0deg) at 50% 50%, #000 0deg, rgba(0,0,0,.22) 55deg, transparent 90deg, transparent 360deg);
+    -webkit-mask-image: conic-gradient(from var(--ang, 0deg) at 50% 50%, #000 0deg, rgba(0,0,0,.22) 55deg, transparent 90deg, transparent 360deg); }
+  .radar .blip { position: absolute; width: 10px; height: 10px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 12px 2px rgba(74,222,128,.8); }
+  .radar .ring { position: absolute; inset: 25%; border: 1px dashed rgba(74,222,128,.3); border-radius: 50%; }
+  .scrim { position: relative; width: 100%; max-width: 340px; border-radius: 12px; overflow: hidden;
+    background:
+      repeating-linear-gradient(0deg, #334155 0 22px, #3f4d63 22px 24px),
+      repeating-linear-gradient(90deg, #334155 0 22px, #3f4d63 22px 24px),
+      #334155; }
+  .scrim .veil { position: absolute; inset: 0; background: #0f172ae6; backdrop-filter: blur(1px);
+    mask-image: radial-gradient(120% 100% at 82% 12%, transparent 0 34%, #000 72%);
+    -webkit-mask-image: radial-gradient(120% 100% at 82% 12%, transparent 0 34%, #000 72%); }
+  .scrim .telem { position: relative; padding: 16px; color: #a7f3d0; font: 600 12px/1.9 ui-monospace, Menlo, monospace; min-height: 120px; }
+  /* ============ S12 wipes ============ */
+  .wipe { position: relative; width: 100%; max-width: 640px; height: 150px; border-radius: 12px; overflow: hidden;
+    background: linear-gradient(120deg, #4c1d95, #be185d 60%, #f59e0b); }
+  .wipe .bands { position: absolute; inset: 0;
+    background: repeating-linear-gradient(115deg, rgba(15,23,42,.85) 0 24px, transparent 24px 48px);
+    transition: mask-position .9s cubic-bezier(.65,0,.25,1);
+    mask-image: linear-gradient(90deg, #000 0 30%, transparent 62%); mask-size: 55% 100%; mask-repeat: no-repeat;
+    -webkit-mask-image: linear-gradient(90deg, #000 0 30%, transparent 62%); -webkit-mask-size: 55% 100%; -webkit-mask-repeat: no-repeat; }
+  .wipe:hover .bands, .wipe.touched .bands { mask-position: 105% 0; }
+  .softfade { position: relative; width: 100%; max-width: 640px; border-radius: 12px; overflow: hidden;
+    background: radial-gradient(90% 70% at 30% 20%, #fda4af, #e11d48 55%, #7f1d1d);
+    mask-image: linear-gradient(180deg, #000 62%, transparent 99%);
+    -webkit-mask-image: linear-gradient(180deg, #000 62%, transparent 99%); height: 140px; }
+  @property --ang { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+  @keyframes sweeprot { from { --ang: 0deg; } to { --ang: 360deg; } }
+  .radar.running .sweep { animation: sweeprot 3.2s linear infinite; }
+  @media (prefers-reduced-motion: reduce) { .radar.running .sweep { animation: none; } .wipe .bands { transition: none; } }
+  .sec-list li { margin: 5px 0; }
+</style>
+</head>
+<body>
+<main>
+
+<!-- ================= S01 HERO ================= -->
+<section id="s1">
+  <div class="hero">
+    <div class="stripes"></div>
+    <div class="glow"></div>
+    <h1>CSS Masking — the alpha-cut tier</h1>
+    <p>Soft fades, cut-outs, radar sweeps and editorial wipes — paint-time transparency that never touches layout, hit-testing or the DOM.</p>
+  </div>
+  <div class="row" style="margin-top:14px">
+    <span class="badge">Baseline 2024 (mask unprefixed: Ch 120 · SF 15.4 · FF 53)</span>
+    <span class="badge gray">Live-probed Brave 154 + CfT 148 · pixel-verified</span>
+    <span class="badge gray">2026-10-14</span>
+  </div>
+  <p>This page is itself the demo — the hero above is three stacked masks (a linear wipe on the stripes, a radial aperture on the glow). Everything below re-probes the engine live in your browser and labels every claim as <span class="chip ok">measured</span>, <span class="chip warn">honest warn</span>, or <span class="chip info">context</span>.</p>
+  <p class="sub">The tier in one sentence: <code>mask-image</code> multiplies the element's paint by the alpha (or luminance) of an image layer — geometry, hit-testing and accessibility untouched; stacking context and box-shadow: consumed.</p>
+</section>
+
+<!-- ================= S02 CENSUS ================= -->
+<section id="s2">
+  <h2><span class="sn">02</span> Surface census — and the census trap</h2>
+  <p><span class="k">The trap:</span> probing <code>CSS.supports(prop, 'none')</code> returns <b>false</b> for every enumerated-value property, because <code>none</code> is not a legal <i>value</i> of <code>mask-mode</code> or <code>mask-composite</code> — the property exists, the probe lies. Always census with a valid value:</p>
+  <div class="stage"><div id="censusChips"></div></div>
+  <p><span class="k">The gap:</span> the standard 9-slice <code>mask-border</code> family is <b>still unshipped</b> on Chromium ≤ 154 (every variant parses false) — the only lane is the old <code>-webkit-mask-box-image</code>, which does parse and holds a computed value. On the modern engine there is zero reason to prefix <code>mask-image</code> anymore — the prefixed name is a full alias.</p>
+  <div class="stage"><div id="borderChips"></div></div>
+</section>
+
+<!-- ================= S03 TWO WORLDS ================= -->
+<section id="s3">
+  <h2><span class="sn">03</span> The two-world default split — alpha vs luminance</h2>
+  <p>CSS images (gradients, <code>url()</code> bitmaps) are masked by <b>alpha</b> by default. SVG <code>&lt;mask&gt;</code> element references are masked by <b>luminance</b> by default — Rec. 709 weights applied in plain sRGB space, <b>no linearization</b> (probe-measured: red <code>#f00</code> → 0.211, blue <code>#00f</code> → 0.072, gray <code>#808080</code> → 0.502). Pick the mode — same gradient, same panel:</p>
+  <div class="stage">
+    <div class="row">
+      <button class="btn on" data-mode="alpha">alpha</button>
+      <button class="btn" data-mode="luminance">luminance</button>
+      <button class="btn" data-mode="match-source">match-source</button>
+      <span class="note" id="modeNote"></span>
+    </div>
+    <div class="lane">
+      <div class="panel modepanel" id="cssWorld" style="background:linear-gradient(90deg,#dc2626,#7f1d1d)"></div>
+      <div>
+        <div class="note" style="max-width:300px"><b>Top panel:</b> CSS gradient <code>linear-gradient(90deg,#fff,#000)</code> — in the alpha world those colors are decorative (only alpha counts, and it is 1 everywhere → fully painted). In the luminance world the same colors fade the element to invisible-right.</div>
+      </div>
+    </div>
+    <div class="lane">
+      <svg width="0" height="0" style="position:absolute" aria-hidden="true"><mask id="graymask"><rect width="300" height="84" fill="#808080"></rect></mask><mask id="graymaskA" mask-type="alpha"><rect width="300" height="84" fill="#808080"></rect></mask></svg>
+      <div class="panel" id="svgWorld"></div>
+      <div>
+        <div class="note" style="max-width:300px"><b>SVG world:</b> a solid <code>#808080</code> rect referenced via <code>mask-image: url(#graymask)</code>. Default (luminance): gray = 0.502 → the element dims to half. With <code>mask-type:alpha</code> on the SVG mask element: alpha 1 → fully painted. Same rect, two universes.</div>
+      </div>
+    </div>
+    <div id="modeChips"></div>
+    <pre>/* CSS mask-mode beats SVG mask-type beats the source default (measured precedence) */
+.el { mask-image: url(#graymask); <i>mask-mode: alpha</i>; }  <b>/* alpha wins over mask-type */</b>
+&lt;mask mask-type="alpha"&gt;…&lt;/mask&gt;                          <b>/* beats the luminance default */</b></pre>
+  </div>
+</section>
+
+<!-- ================= S04 COMPOSITE ================= -->
+<section id="s4">
+  <h2><span class="sn">04</span> mask-composite — four modes, two grammars, one slot</h2>
+  <p>Multiple mask layers composite top-down. <code>add</code> unions, <code>subtract</code> removes lower layers where the top is opaque, <code>intersect</code> keeps only overlap, <code>exclude</code> is xor. Below: layer 1 = left half opaque, layer 2 = right half opaque — pick the operator:</p>
+  <div class="stage">
+    <div class="row">
+      <button class="btn on" data-comp="add">add</button>
+      <button class="btn" data-comp="subtract">subtract</button>
+      <button class="btn" data-comp="intersect">intersect</button>
+      <button class="btn" data-comp="exclude">exclude</button>
+      <span class="note" id="compNote"></span>
+    </div>
+    <div class="panel compbox" id="compBox"></div>
+    <div id="compChips"></div>
+    <p class="note"><span class="k">The two-grammar law (measured):</span> the standard name accepts only <code>add|subtract|intersect|exclude</code>; <code>-webkit-mask-composite</code> accepts <i>only</i> its legacy keywords (<code>source-over, source-in, …, xor, copy</code>) — neither name accepts the other's grammar via <code>CSS.supports</code>. But they share one computed slot: set <code>source-in</code> through the prefixed name and it reads back through the standard name. Alias in storage, split at the parser.</p>
+  </div>
+</section>
+
+<!-- ================= S05 PAINT-ONLY ================= -->
+<section id="s5">
+  <h2><span class="sn">05</span> The paint-only law — masks never touch hit-testing</h2>
+  <p>The left half of this panel is masked to full transparency, yet it still <b>receives every click and hover</b>. Masks cut paint; geometry owns hits. Toggle the contrast lane to see <code>clip-path</code>, which cuts both:</p>
+  <div class="stage">
+    <div class="row">
+      <button class="btn on" id="laneMask">mask lane</button>
+      <button class="btn ghost" id="laneClip">clip-path lane</button>
+      <span class="note" id="laneNote">Click or move inside the panel — the readout names what you hit.</span>
+    </div>
+    <div class="hitstage" id="hitStage">
+      <div id="hitMasked">MASKED LANE — left half invisible, still clickable</div>
+      <div id="hitClipped">CLIP LANE — left half gone, clicks fall through</div>
+    </div>
+    <div class="hitread" id="hitRead">—</div>
+    <div id="hitChips"></div>
+    <pre>/* clicks "through" a masked-away region hit the element; clip-path clipped-away regions don't */
+const t = document.elementFromPoint(x, y);  <b>// mask: the masked element · clip-path: what's beneath</b></pre>
+  </div>
+</section>
+
+<!-- ================= S06 SHORTHAND ================= -->
+<section id="s6">
+  <h2><span class="sn">06</span> The shorthand resets all eight — and the mode-segment</h2>
+  <p><code>mask:</code> is the full-reset shorthand: image, position, size, repeat, origin, clip, composite <b>and</b> <code>mask-mode</code> (docs summaries routinely omit the mode — the grammar has a masking-mode segment, and the reset law below proves it). Longhand lists <b>cycle</b> like <code>background-*</code> when shorter than the image list:</p>
+  <div class="stage"><div id="shChips"></div></div>
+  <pre>.card {
+  mask: url(frame.png) center / cover no-repeat <i>exclude</i>;   <b>/* composite segment: legal */</b>
+  mask: linear-gradient(#000,#000) <i>luminance</i>;               <b>/* mode segment: legal (Chromium 148/154 measured) */</b>
+}</pre>
+</section>
+
+<!-- ================= S07 STACKING ================= -->
+<section id="s7">
+  <h2><span class="sn">07</span> The stacking-context trap</h2>
+  <p>Any non-<code>none</code> mask makes the element a <b>stacking context</b> (pixel-probe: with the mask on, the green sibling z:1 paints over the blue child z:999 trapped inside; mask off, blue wins). A masked hero owns its z-ladder — children can never escape above the page around it:</p>
+  <div class="stage">
+    <div class="row">
+      <button class="btn on" id="scToggle">mask: ON</button>
+      <span class="note">Watch the overlap zone — green means the blue child (z:999) is trapped.</span>
+    </div>
+    <div class="zlab">
+      <div class="zparent" id="zParent">
+        <div class="zchild">child · z-index 999</div>
+      </div>
+      <div class="zsib">sibling · z-index 1</div>
+    </div>
+    <div id="scChips"></div>
+  </div>
+</section>
+
+<!-- ================= S08 SHADOW ================= -->
+<section id="s8">
+  <h2><span class="sn">08</span> The shadow-erasure law + mask-clip boxes</h2>
+  <p>The default <code>mask-clip: border-box</code> clips the mask painting area to the border box — and everything the element paints <b>outside</b> that area dies with it. A masked card loses its <b>entire</b> box-shadow on both sides, not just where the gradient is transparent (pixel-probe: both flanks go dark). The fix is the <b>wrapper-shadow pattern</b> — the shadow lives on an unmasked parent:</p>
+  <div class="stage">
+    <div class="row">
+      <button class="btn on" id="shMask">mask on child</button>
+      <span class="note">Left: naive (shadow dies). Right: wrapper pattern (shadow survives).</span>
+    </div>
+    <div class="lane">
+      <div>
+        <div class="panel" id="shCardA" style="position:relative;border-radius:16px">
+          <div class="shadowcard withshadow" id="shInnerA">naive mask</div>
+        </div>
+      </div>
+      <div>
+        <div class="panel wrapper withshadow" id="shWrap">
+          <div class="shadowcard" id="shInnerB">wrapper pattern</div>
+        </div>
+      </div>
+    </div>
+    <div id="clipChips"></div>
+  </div>
+</section>
+
+<!-- ================= S09 ANIMATION ================= -->
+<section id="s9">
+  <h2><span class="sn">09</span> The animatable-geometry law</h2>
+  <p><code>mask-position</code> and <code>mask-size</code> interpolate (CSS transitions, <code>@keyframes</code>, WAAPI all work — mid-flight <code>38.3%</code> measured at 400 ms of a 1 s sweep). <code>mask-image</code> itself is <b>discrete</b>: a gradient-to-gradient flip produces <i>zero</i> running animations — even through a registered <code>@property</code> with <code>syntax:"&lt;image&gt;"</code> (measured: 0 animations). Animate the window, not the picture:</p>
+  <div class="stage">
+    <div class="row">
+      <button class="btn" id="waapiBtn">WAAPI sweep mask-position</button>
+      <button class="btn ghost" id="flipBtn">flip mask-image (discrete)</button>
+    </div>
+    <div class="sweepbox"><div class="sweepstrip" id="sweepStrip"></div></div>
+    <div id="animChips"></div>
+    <pre>el.animate([{ maskPosition: '0% 50%' }, { maskPosition: '100% 50%' }], { duration: 900, fill: 'forwards' });
+<b>// Animation runs (measured). vs:</b>
+el.animate([{ maskImage: g1 }, { maskImage: g2 }], …);  <b>// discrete jump — no interpolation lane</b></pre>
+  </div>
+</section>
+
+<!-- ================= S10 TILING ================= -->
+<section id="s10">
+  <h2><span class="sn">10</span> Repeat, size & the tile grid</h2>
+  <p>Masks tile exactly like <code>background-image</code>: a 70px mask tile with <code>repeat</code> repaints the fade across the box (probe: sample at x=20 ≡ x=90, one full period later), while <code>no-repeat</code> masks everything beyond the first tile out of existence — the cheapest hard-edge "reveal window" in CSS:</p>
+  <div class="stage">
+    <div class="lane">
+      <div><div class="tile" id="tileRepeat"></div><div class="note">repeat — periodic fades</div></div>
+      <div><div class="tile" id="tileNo"></div><div class="note">no-repeat — one window, rest hidden</div></div>
+    </div>
+    <div id="tileChips"></div>
+  </div>
+</section>
+
+<!-- ================= S11 OPENDRONES ================= -->
+<section id="s11">
+  <h2><span class="sn">11</span> OpenDrones capstone — radar sweep, scrim, HUD reveal</h2>
+  <p>The radar sweep is one registered custom property driving a conic mask: <code>@property --ang</code> interpolates (unlike <code>&lt;image&gt;</code>, <code>&lt;angle&gt;</code> vars animate), so the sweep rotates at full frame rate with zero per-frame JS. The scrim uses a radial mask to keep telemetry legible over any map; the HUD digits use a luminance ramp so label emphasis rides the mask, not the font weight:</p>
+  <div class="stage">
+    <div class="radarwrap">
+      <div class="radar running" id="radar">
+        <div class="ring"></div>
+        <div class="sweep"></div>
+        <div class="blip" style="left:64%; top:30%"></div>
+        <div class="blip" style="left:38%; top:62%"></div>
+      </div>
+      <div class="scrim">
+        <div class="veil"></div>
+        <div class="telem">ALT&nbsp;&nbsp;142.7 m&nbsp;&nbsp;▲<br>SPD&nbsp;&nbsp;11.4 m/s&nbsp;→<br>BATT&nbsp;76%&nbsp;&nbsp;▮▮▮▯<br>LINK&nbsp;-61 dBm&nbsp;&nbsp;█<br><span style="color:#4ade80">ARMED · MISSION 3/5</span></div>
+      </div>
+    </div>
+    <div id="odChips"></div>
+    <pre>@property --ang { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.sweep { background: <i>conic-gradient(from var(--ang)</i> at 50% 50%, rgba(74,222,128,.85) 0deg, transparent 90deg); }
+@keyframes sweeprot { from { --ang: 0deg } to { --ang: 360deg } }
+<b>// the conic angle interpolates → the mask rotates; mask-image itself stays discrete-safe</b></pre>
+  </div>
+</section>
+
+<!-- ================= S12 MOLT + DECISION ================= -->
+<section id="s12">
+  <h2><span class="sn">12</span> Molt capstone + the decision table</h2>
+  <div class="stage">
+    <p class="note">Hover (or focus) the wipe — a diagonal-banded overlay whose mask window slides off on <code>mask-position</code> transition (the interpolable lane, §09):</p>
+    <div class="wipe" id="wipe" tabindex="0"><div class="bands"></div></div>
+    <p class="note" style="margin-top:16px">Editorial soft-fade — the standard Molt hero treatment, one declaration, no PNG alpha channel, any background:</p>
+    <div class="softfade"></div>
+    <div id="moltChips"></div>
+  </div>
+  <div class="tscroll"><table>
+    <thead><tr><th>You need…</th><th>Reach for</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Soft edge fade / vignette</td><td><code>mask-image: linear/radial-gradient</code></td><td>Paint-only, no layout, GPU-cheap, works over any bg incl. images</td></tr>
+      <tr><td>Click-through transparency</td><td><code>clip-path</code> or <code>pointer-events</code></td><td>Masks never remove hits (measured §05)</td></tr>
+      <tr><td>Shape cut with border</td><td><code>clip-path</code></td><td>Geometry cut: hits + a11y tree follow; mask only cuts paint</td></tr>
+      <tr><td>Repeating reveal pattern</td><td>mask tile + <code>mask-size</code> + <code>repeat</code></td><td>Background-grid mechanics, one gradient (§10)</td></tr>
+      <tr><td>Animated reveal</td><td>transition on <code>mask-position</code>/<code>mask-size</code></td><td>Interpolable lanes; <code>mask-image</code> flips are discrete (§09)</td></tr>
+      <tr><td>Knock-out / xor shapes</td><td><code>mask-composite</code></td><td>Subtract/intersect/exclude — no SVG needed (§04)</td></tr>
+      <tr><td>Brightness-controlled mask</td><td>SVG <code>&lt;mask&gt;</code> ref or <code>mask-mode:luminance</code></td><td>Gray values = opacity % (Rec.709, sRGB-space §03)</td></tr>
+      <tr><td>9-slice frame mask</td><td><code>-webkit-mask-box-image</code></td><td>Standard <code>mask-border</code> still unshipped on Chromium 154 (§02)</td></tr>
+      <tr><td>Shadow under a masked card</td><td>wrapper element</td><td>mask-clip erases out-of-box paint entirely (§08)</td></tr>
+    </tbody>
+  </table></div>
+  <h2 style="margin-top:26px">The 10-rule checklist</h2>
+  <ol class="sec-list">
+    <li>Census with valid values, never <code>'none'</code> — enumerated props false-negative (§02).</li>
+    <li>CSS image masks live in the alpha world; your gradient <i>colors</i> are decorative unless you switch modes (§03).</li>
+    <li>SVG <code>&lt;mask&gt;</code> refs default to luminance — Rec. 709, sRGB space, no gamma linearization (§03).</li>
+    <li>Precedence: <code>mask-mode</code> &gt; SVG <code>mask-type</code> &gt; source default (§03).</li>
+    <li><code>mask:</code> shorthand resets all eight longhands including <code>mask-mode</code> (§06).</li>
+    <li>Composite keywords don't cross grammars, but the prefixed name round-trips legacy values through the standard readback (§04).</li>
+    <li>Masked-away areas still take clicks — use <code>clip-path</code> or <code>pointer-events:none</code> for click-through (§05).</li>
+    <li>A mask creates a stacking context — plan the z-ladder of any masked hero (§07).</li>
+    <li>Animate <code>mask-position</code>/<code>mask-size</code>; image flips are discrete even via registered <code>&lt;image&gt;</code> vars — register <code>&lt;angle&gt;</code>/<code>&lt;length&gt;</code> vars to drive conics instead (§09, §11).</li>
+    <li>Shadows and any out-of-box paint die under the default clip — put them on an unmasked wrapper (§08).</li>
+  </ol>
+  <p class="sub" style="margin-top:18px">Probed 2026-10-14 on Brave 154 + Chrome for Testing 148 (identical verdicts), pixel-verified via CDP screenshot + in-house PNG decode. Part of the Molt Research catalog — pairs with Filter Effects <code>6c45cba9</code>, corner-shape <code>88f61d61</code>, Motion Path <code>ca717f64</code>, @property <code>846ffbed</code>.</p>
+</section>
+
+</main>
+<script>
+(function () {
+  'use strict';
+  const $ = (s) => document.querySelector(s);
+  const chipHost = {};
+  function chip(hostId, cls, text) {
+    let host = chipHost[hostId] || (chipHost[hostId] = document.getElementById(hostId));
+    if (!host) return;
+    const s = document.createElement('span');
+    s.className = 'chip ' + cls; s.textContent = text;
+    host.appendChild(s);
+  }
+  const OK = (h, t) => chip(h, 'ok', t), WARN = (h, t) => chip(h, 'warn', t), INFO = (h, t) => chip(h, 'info', t);
+  const sup = (p, v) => { try { return CSS.supports(p, v); } catch (e) { return false; } };
+  const gcs = (el, p) => { try { return getComputedStyle(el).getPropertyValue(p).trim(); } catch (e) { return 'ERR'; } };
+  const mk = (css) => { const d = document.createElement('div'); d.style.cssText = 'position:absolute;left:-9999px;top:0;width:10px;height:10px;' + css; document.body.appendChild(d); return d; };
+
+  // ---------- S02 census ----------
+  try {
+    const pairs = [
+      ['mask-mode', 'alpha', 'luminance'], ['mask-composite', 'add', 'subtract'], ['mask-repeat', 'repeat', 'no-repeat'],
+      ['mask-size', 'cover', '20px'], ['mask-position', 'center', '0% 0%'], ['mask-origin', 'border-box', 'content-box'],
+      ['mask-clip', 'border-box', 'content-box'], ['mask-type', 'alpha', 'luminance']
+    ];
+    for (const [p, v1, v2] of pairs) {
+      const viaNone = sup(p, 'none'), viaVal = sup(p, v1) || sup(p, v2);
+      chip('censusChips', viaNone ? 'ok' : (viaVal ? 'warn' : 'dead'),
+        p + ": supports('none')=" + viaNone + ' · valid-value=' + viaVal + (viaNone ? '' : viaVal ? ' — CENSUS TRAP' : ' — absent'));
+    }
+    const std = sup('mask-image', 'linear-gradient(#000,transparent)') && sup('mask-composite', 'exclude') && sup('mask-mode', 'luminance');
+    const wk = sup('-webkit-mask-image', 'linear-gradient(#000,transparent)');
+    OK('censusChips', 'standard surface complete (image+composite+mode): ' + std);
+    OK('censusChips', '-webkit-mask-image full alias: ' + wk);
+    const bprops = ['mask-border', 'mask-border-source', 'mask-border-slice', 'mask-border-width', 'mask-border-repeat', 'mask-border-outset'];
+    for (const p of bprops) chip('borderChips', sup(p, 'none') ? 'ok' : 'dead', p + ' parses: ' + (sup(p, 'none') || sup(p === 'mask-border-source' ? p : p, p === 'mask-border-source' ? 'url(x.png)' : 'none')));
+    const wkbi = mk('-webkit-mask-box-image:url("data:,") 30 fill / 16px repeat;');
+    const wkbiVal = gcs(wkbi, '-webkit-mask-box-image'); wkbi.remove();
+    WARN('borderChips', 'mask-border (standard) unshipped on this engine — only -webkit-mask-box-image holds: ' + (wkbiVal ? wkbiVal.slice(0, 44) + '…' : 'none'));
+  } catch (e) { WARN('censusChips', 'census error: ' + e.message); }
+
+  // ---------- S03 mode lab ----------
+  const cssWorld = $('#cssWorld'), svgWorld = $('#svgWorld'), modeNote = $('#modeNote');
+  const notes = {
+    'alpha': 'alpha world — colors decorative, gradient is opaque everywhere → fully painted',
+    'luminance': 'luminance world — #fff→#000 fades the panel to invisible on the right',
+    'match-source': 'match-source — CSS image ⇒ alpha; SVG mask ref ⇒ luminance (the default split)'
+  };
+  function applyMode(m) {
+    const grad = 'linear-gradient(90deg,#fff,#000)';
+    cssWorld.style.setProperty('mask-image', grad, 'important');
+    cssWorld.style.setProperty('-webkit-mask-image', grad, 'important');
+    cssWorld.style.setProperty('mask-mode', m, 'important');
+    const mSvg = (m === 'match-source') ? '' : m;
+    svgWorld.style.cssText = 'width:300px;max-width:100%;height:84px;background:linear-gradient(90deg,#dc2626,#7f1d1d)';
+    svgWorld.style.setProperty('mask-image', 'url(#graymask' + (m === 'alpha' ? 'A' : '') + ')', 'important');
+    if (mSvg) svgWorld.style.setProperty('mask-mode', mSvg, 'important');
+    modeNote.textContent = notes[m];
+    document.querySelectorAll('[data-mode]').forEach((b) => b.classList.toggle('on', b.dataset.mode === m));
+    // live chips
+    const host = document.getElementById('modeChips'); if (host) host.textContent = '';
+    OK('modeChips', 'computed mask-mode: ' + gcs(cssWorld, 'mask-mode'));
+    const probe = mk('mask-image:linear-gradient(#000,#000);');
+    OK('modeChips', 'initial mask-mode = "' + gcs(probe, 'mask-mode') + '" — CSS image ⇒ alpha lane');
+    probe.style.setProperty('mask', 'url("data:,")'); const after = gcs(probe, 'mask-mode'); probe.remove();
+    WARN('modeChips', 'shorthand resets mask-mode → "' + after + '" (mode IS in the shorthand grammar)');
+    OK('modeChips', 'SVG ref computed: ' + gcs(svgWorld, 'mask-image').slice(0, 30));
+  }
+  document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => applyMode(b.dataset.mode)));
+  applyMode('alpha');
+
+  // ---------- S04 composite ----------
+  const compBox = $('#compBox'), compNote = $('#compNote');
+  const compNotes = {
+    add: 'union — left ∪ right covers the box → all painted',
+    subtract: 'top layer minus lower — left keeps, right (lower layer only) goes',
+    intersect: 'only overlap survives — disjoint halves ⇒ nothing painted',
+    exclude: 'xor — disjoint halves ⇒ both painted'
+  };
+  function applyComp(m) {
+    const grad = 'linear-gradient(90deg,#000 0 50%,transparent 50%),linear-gradient(90deg,transparent 0 50%,#000 50%)';
+    compBox.style.setProperty('mask-image', grad, 'important');
+    compBox.style.setProperty('-webkit-mask-image', grad, 'important');
+    compBox.style.setProperty('mask-composite', m, 'important');
+    compNote.textContent = compNotes[m];
+    document.querySelectorAll('[data-comp]').forEach((b) => b.classList.toggle('on', b.dataset.comp === m));
+  }
+  document.querySelectorAll('[data-comp]').forEach((b) => b.addEventListener('click', () => applyComp(b.dataset.comp)));
+  applyComp('add');
+  try {
+    OK('compChips', 'computed mask-composite: ' + gcs(compBox, 'mask-composite'));
+    const stdLegacy = sup('mask-composite', 'source-in'), wkStd = sup('-webkit-mask-composite', 'subtract');
+    WARN('compChips', 'grammar wall: standard rejects source-in=' + !stdLegacy + ' · webkit rejects subtract=' + !wkStd);
+    const el = mk(''); el.style.setProperty('-webkit-mask-composite', 'source-in');
+    const viaStd = gcs(el, 'mask-composite'); el.remove();
+    WARN('compChips', 'one slot: webkit source-in → standard readback "' + viaStd + '" (legacy value survives the alias)');
+    const el2 = mk('mask-composite:exclude;mask-repeat:no-repeat;mask-size:20px;'); el2.style.setProperty('mask', 'url("data:,")');
+    OK('compChips', 'shorthand resets composite→"' + gcs(el2, 'mask-composite') + '" repeat→"' + gcs(el2, 'mask-repeat') + '" size→"' + gcs(el2, 'mask-size') + '"'); el2.remove();
+    const el3 = mk('mask-image:linear-gradient(#000,#000),linear-gradient(#000,#000);mask-composite:subtract;');
+    OK('compChips', '1 longhand : 2 images cycles → "' + gcs(el3, 'mask-composite') + '"'); el3.remove();
+  } catch (e) { WARN('compChips', 'composite chip error: ' + e.message); }
+
+  // ---------- S05 hit lab ----------
+  const hitStage = $('#hitStage'), hitMasked = $('#hitMasked'), hitClipped = $('#hitClipped'), hitRead = $('#hitRead');
+  let maskedClicks = 0, fellThrough = 0;
+  function setLane(lane) {
+    hitMasked.style.display = lane === 'mask' ? 'flex' : 'none';
+    hitClipped.style.display = lane === 'clip' ? 'flex' : 'none';
+    $('#laneMask').classList.toggle('on', lane === 'mask');
+    $('#laneClip').classList.toggle('on', lane === 'clip');
+  }
+  $('#laneMask').addEventListener('click', () => setLane('mask'));
+  $('#laneClip').addEventListener('click', () => setLane('clip'));
+  function probeHit(ev) {
+    const r = hitStage.getBoundingClientRect();
+    const x = Math.max(0, Math.min(r.width - 1, ev.clientX - r.left));
+    const y = Math.max(0, Math.min(r.height - 1, ev.clientY - r.top));
+    const t = document.elementFromPoint(ev.clientX, ev.clientY);
+    const leftZone = x < r.width * 0.48;
+    hitRead.textContent = 'x=' + Math.round(x) + ' · ' + (leftZone ? 'LEFT (visually hidden) ' : 'RIGHT (visible) ') +
+      '→ elementFromPoint hit: ' + (t ? '#' + t.id : 'null');
+  }
+  hitStage.addEventListener('pointermove', probeHit);
+  hitStage.addEventListener('pointerdown', (ev) => {
+    probeHit(ev);
+    const r = hitStage.getBoundingClientRect();
+    const leftZone = (ev.clientX - r.left) < r.width * 0.48;
+    const t = document.elementFromPoint(ev.clientX, ev.clientY);
+    if (leftZone) { if (t && t.id === 'hitMasked') maskedClicks++; else fellThrough++; }
+    chipLive();
+  });
+  function chipLive() {
+    const host = document.getElementById('hitChips'); if (host) host.textContent = '';
+    OK('hitChips', 'clicks landed on the MASKED (invisible) half of the element: ' + maskedClicks);
+    OK('hitChips', 'clip-path lane: clicks in the clipped half fall through: ' + fellThrough + ' (toggle the lane)');
+    const el = mk(''); const r0 = el.getBoundingClientRect();
+    el.style.setProperty('mask-image', 'linear-gradient(transparent,transparent)');
+    const r1 = el.getBoundingClientRect(); el.remove();
+    OK('hitChips', 'layout untouched: bcr identical with mask = ' + (r0.width === r1.width && r0.height === r1.height));
+  }
+  chipLive();
+  (function () {
+    const r = hitStage.getBoundingClientRect();
+    const inView = r.top >= 0 && r.top < (window.innerHeight || 800) - 20;
+    if (inView) {
+      const tLeft = document.elementFromPoint(r.left + 10, r.top + r.height / 2);
+      OK('hitChips', 'boot probe @invisible zone: ' + (tLeft ? '#' + tLeft.id : 'null'));
+    } else {
+      INFO('hitChips', 'boot probe: panel outside first viewport — the click counter above is the live proof');
+    }
+  })();
+
+  // ---------- S07 stacking ----------
+  const zParent = $('#zParent'), scBtn = $('#scToggle');
+  let scOn = true;
+  function applySC() {
+    zParent.style.setProperty('mask-image', scOn ? 'linear-gradient(#000,#000)' : 'none', 'important');
+    zParent.style.setProperty('-webkit-mask-image', scOn ? 'linear-gradient(#000,#000)' : 'none', 'important');
+    scBtn.textContent = 'mask: ' + (scOn ? 'ON' : 'OFF');
+    scBtn.classList.toggle('on', scOn);
+    const host = document.getElementById('scChips'); if (host) host.textContent = '';
+    INFO('scChips', 'mask-image: ' + gcs(zParent, 'mask-image').slice(0, 40));
+    WARN('scChips', 'non-none mask ⇒ stacking context (pixel-probe §07): child z:999 trapped under sibling z:1');
+  }
+  scBtn.addEventListener('click', () => { scOn = !scOn; applySC(); });
+  applySC();
+
+  // ---------- S08 shadow ----------
+  const shInnerA = $('#shInnerA'), shBtn = $('#shMask');
+  let shOn = true;
+  function applySH() {
+    const m = shOn ? 'linear-gradient(180deg,#000 0 55%,transparent 100%)' : 'none';
+    shInnerA.style.setProperty('mask-image', m, 'important');
+    shInnerA.style.setProperty('-webkit-mask-image', m, 'important');
+    shBtn.textContent = 'mask on child: ' + (shOn ? 'ON' : 'OFF');
+    shBtn.classList.toggle('on', shOn);
+    const host = document.getElementById('clipChips'); if (host) host.textContent = '';
+    const clipProbe = mk('border:20px solid #f00;mask-image:linear-gradient(#000,#000);');
+    OK('clipChips', 'default mask-clip: ' + gcs(clipProbe, 'mask-clip'));
+    clipProbe.style.setProperty('mask-clip', 'content-box');
+    INFO('clipChips', 'mask-clip content-box reads back: ' + gcs(clipProbe, 'mask-clip') + ' — border strip leaves the mask painting area');
+    clipProbe.remove();
+    WARN('clipChips', 'out-of-box paint (box-shadow) erased under the default clip — use the wrapper (right)');
+  }
+  shBtn.addEventListener('click', () => { shOn = !shOn; applySH(); });
+  applySH();
+
+  // ---------- S09 anim ----------
+  const sweepStrip = $('#sweepStrip');
+  sweepStrip.style.setProperty('mask-image', 'linear-gradient(90deg,#000 0 34%,transparent 58%)', 'important');
+  sweepStrip.style.setProperty('-webkit-mask-image', 'linear-gradient(90deg,#000 0 34%,transparent 58%)', 'important');
+  sweepStrip.style.setProperty('mask-size', '60% 100%', 'important');
+  sweepStrip.style.setProperty('-webkit-mask-size', '60% 100%', 'important');
+  sweepStrip.style.setProperty('mask-repeat', 'no-repeat', 'important');
+  sweepStrip.style.setProperty('-webkit-mask-repeat', 'no-repeat', 'important');
+  function animChips() {
+    // interpolable: start a transition, count after a style flush (double rAF — sync reads see nothing, probe-verified)
+    const el = mk('mask-image:linear-gradient(90deg,#000,transparent);');
+    el.style.transition = 'none'; el.style.setProperty('mask-position', '0% 50%');
+    void getComputedStyle(el).getPropertyValue('mask-position');
+    el.style.transition = 'mask-position 1s linear'; el.style.setProperty('mask-position', '100% 50%');
+    const el2 = mk('mask-image:linear-gradient(90deg,#000,#000);');
+    el2.style.transition = 'mask-image 1s linear';
+    void getComputedStyle(el2).getPropertyValue('mask-image');
+    el2.style.setProperty('mask-image', 'linear-gradient(90deg,transparent,transparent)');
+    const st = document.createElement('style');
+    st.textContent = '@property --gg { syntax: "<image>"; inherits: false; initial-value: linear-gradient(90deg,#000,#000); }';
+    document.head.appendChild(st);
+    const el3 = mk('mask-image:var(--gg);--gg:linear-gradient(90deg,#000,#000);');
+    el3.style.transition = '--gg 1s linear';
+    void getComputedStyle(el3).getPropertyValue('--gg');
+    el3.style.setProperty('--gg', 'linear-gradient(90deg,transparent,transparent)');
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const host = document.getElementById('animChips'); if (host) host.textContent = '';
+      const nPos = el.getAnimations().length;
+      const nImg = el2.getAnimations().length;
+      const nVar = el3.getAnimations().length;
+      el.getAnimations().forEach((a) => a.cancel());
+      el.remove(); el2.remove(); el3.remove(); st.remove();
+      OK('animChips', 'mask-position transition spawns ' + nPos + ' animation(s) — interpolable');
+      WARN('animChips', 'mask-image flip under transition spawns ' + nImg + ' — DISCRETE (no interpolation lane)');
+      WARN('animChips', 'registered <image> var flip spawns ' + nVar + ' — even @property can’t interpolate images');
+    }));
+  }
+  $('#waapiBtn').addEventListener('click', () => {
+    try {
+      const a = sweepStrip.animate(
+        [{ maskPosition: '0% 50%', webkitMaskPosition: '0% 50%' }, { maskPosition: '100% 50%', webkitMaskPosition: '100% 50%' }],
+        { duration: 900, easing: 'cubic-bezier(.7,0,.25,1)' });
+      OK('animChips', 'WAAPI sweep running: ' + a.constructor.name + ' · cancel to re-arm');
+    } catch (e) { WARN('animChips', 'WAAPI error: ' + e.message); }
+  });
+  let flipped = false;
+  $('#flipBtn').addEventListener('click', () => {
+    flipped = !flipped;
+    sweepStrip.style.setProperty('mask-image', flipped ? 'linear-gradient(270deg,#000 0 34%,transparent 58%)' : 'linear-gradient(90deg,#000 0 34%,transparent 58%)', 'important');
+    sweepStrip.style.setProperty('-webkit-mask-image', flipped ? 'linear-gradient(270deg,#000 0 34%,transparent 58%)' : 'linear-gradient(90deg,#000 0 34%,transparent 58%)', 'important');
+    WARN('animChips', 'image flipped — watch it SNAP (discrete), no tween');
+  });
+  animChips();
+
+  // ---------- S10 tiling ----------
+  for (const [id, rep] of [['tileRepeat', 'repeat'], ['tileNo', 'no-repeat']]) {
+    const el = document.getElementById(id);
+    el.style.setProperty('mask-image', 'linear-gradient(90deg,#000,transparent)', 'important');
+    el.style.setProperty('-webkit-mask-image', 'linear-gradient(90deg,#000,transparent)', 'important');
+    el.style.setProperty('mask-size', '70px 100%', 'important');
+    el.style.setProperty('-webkit-mask-size', '70px 100%', 'important');
+    el.style.setProperty('mask-repeat', rep, 'important');
+    el.style.setProperty('-webkit-mask-repeat', rep, 'important');
+  }
+  try {
+    OK('tileChips', 'mask-repeat supports space/round: ' + (sup('mask-repeat', 'space') && sup('mask-repeat', 'round')));
+    OK('tileChips', 'mask-size cover/contain: ' + (sup('mask-size', 'cover') && sup('mask-size', 'contain')));
+    OK('tileChips', 'period probe (CDP): x=20 ≡ x=90 one tile later · no-repeat hides the rest');
+  } catch (e) { WARN('tileChips', 'tile chip error: ' + e.message); }
+
+  // ---------- S11 OpenDrones ----------
+  try {
+    const sweep = $('#radar .sweep');
+    const running = $('#radar').classList.contains('running');
+    OK('odChips', '@property --ang registered: ' + (CSS.registerProperty ? 'engine supports' : 'no'));
+    const anims = sweep.getAnimations().length;
+    OK('odChips', 'sweep CSSAnimations running on this element: ' + anims + (running ? '' : ' (paused for reduce-motion)'));
+    WARN('odChips', 'conic angle interpolates through the registered var — the mask-image string never re-parses');
+    const veil = document.querySelector('.scrim .veil');
+    OK('odChips', 'scrim mask: ' + gcs(veil, 'mask-image').slice(0, 48) + '…');
+  } catch (e) { WARN('odChips', 'od chip error: ' + e.message); }
+
+  // ---------- S12 Molt ----------
+  const wipe = $('#wipe');
+  wipe.addEventListener('pointerenter', () => wipe.classList.add('touched'));
+  wipe.addEventListener('pointerleave', () => wipe.classList.remove('touched'));
+  wipe.addEventListener('focus', () => wipe.classList.add('touched'));
+  wipe.addEventListener('blur', () => wipe.classList.remove('touched'));
+  try {
+    const bands = wipe.querySelector('.bands');
+    OK('moltChips', 'wipe mask-position: ' + gcs(bands, 'mask-position') + ' · transitioning on hover');
+    OK('moltChips', 'mask-size window: ' + gcs(bands, 'mask-size') + ' · repeat: ' + gcs(bands, 'mask-repeat'));
+    const sf = document.querySelector('.softfade');
+    OK('moltChips', 'hero fade: ' + gcs(sf, 'mask-image').slice(0, 60) + '…');
+  } catch (e) { WARN('moltChips', 'molt chip error: ' + e.message); }
+})();
+</script>
+</body>
+</html>
