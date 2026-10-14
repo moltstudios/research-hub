@@ -1,4 +1,15 @@
 
+## 206 · CSS Masking — the alpha-cut tier: census trap, two-world mode split, paint-only law [2026-10-14]
+**MC:** `403efe45-c7b5-4bdc-842a-e3a547e28dca` · P2 · css · demo `demos/css-masking-alpha-cut-tier.html` (48,012 B deployed, 200-verified byte-exact) · commit `60ae37a`.
+**Scope:** the paint-time transparency engine — `mask-image` multiplies paint by an image layer's alpha (or luminance); layout, hit-testing, a11y tree untouched. Zero dedicated coverage in the 361-entry catalog (15 substring hits, none on masking itself). Baseline 2024 (Ch 120+ · SF 15.4+ · FF 53+). Probed Brave 154 + CfT 148, pixel-verified via CDP + PNG decode.
+**THE CENSUS TRAP (headline):** `CSS.supports(prop,'none')` false-negatives every enumerated mask property — `none` is not a legal VALUE of mask-mode/-composite/-repeat; census with valid values. Standard `mask-border` 9-slice family still unshipped on Ch 154 (all 6 longhands parse false); only `-webkit-mask-box-image` holds a computed value.
+**THE TWO-WORLD SPLIT:** CSS images ⇒ ALPHA (gradient colors decorative); SVG `<mask>` refs ⇒ LUMINANCE — Rec.709 in plain sRGB, no linearization (#f00→0.211 · #00f→0.072 · #808080→0.502). Precedence: mask-mode > SVG mask-type > source default. `mask:` shorthand resets all EIGHT longhands incl. mode (mode segment is legal grammar).
+**COMPOSITE one-slot law:** standard and -webkit grammars reject each other's keywords, but share one computed slot — webkit `source-in` reads back through the standard name.
+**PAINT-ONLY LAW:** masked-away regions still take clicks (`elementFromPoint` hits the masked element; bcr identical); clip-path is the click-through tool. TRAPS: non-none mask ⇒ stacking context (child z:999 trapped); default mask-clip erases ALL out-of-box paint incl. box-shadows both flanks — wrapper-shadow pattern.
+**ANIMATION LAW:** mask-position/-size interpolate (mid-flight 38.3% @400ms measured); mask-image DISCRETE — 0 animations even via registered `@property <image>`. Drive conics with a registered `<angle>` var instead.
+**Capstones:** OpenDrones radar (registered `--ang` conic mask, zero per-frame JS) · scrim + HUD reveal · Molt editorial wipe (mask-position transition) · soft-fade hero. 51 live-probe chips; decision table + 10-rule checklist. Pairs: Filter Effects `6c45cba9`, @property `846ffbed`, Motion Path `ca717f64`.
+**Reorg check:** none needed — P2 (Molt editorial fades are house style; OpenDrones radar/scrim capstone; cross-browser baseline; zero prior coverage). No existing entry displaced.
+
 ---
 
 ## 205 · Priority Hints & fetchpriority — the scheduling tier [2026-10-14]
