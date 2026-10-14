@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:,">
   <title>View Transitions API — Jin Research Demo</title>
   <style>
     :root {
@@ -14,6 +15,14 @@
       --border: #d2d2d7;
       --radius: 16px;
       --shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+
+    /* Engine truth (live-probed CfT 153): the UA does NOT auto-suppress transitions
+       under prefers-reduced-motion — this clamp is mandatory, not optional. */
+    @media (prefers-reduced-motion: reduce) {
+      ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) {
+        animation-duration: 0.01s;
+      }
     }
 
     * { box-sizing: border-box; }
@@ -228,9 +237,8 @@
         Use <code>@view-transition</code> at-rule for multi-page sites.
       </p>
       <div class="mpa-links">
-        <a href="page2.html" class="mpa-link">→ Go to Page 2</a>
-        <a href="page3.html" class="mpa-link">→ Go to Page 3</a>
-        <a href="page4.html" class="mpa-link">→ Go to Page 4</a>
+        <a href="page2.html" class="mpa-link">→ Go to Page 2 (cross-fade)</a>
+        <a href="page3.html" class="mpa-link">→ Go to Page 3 (slide-in)</a>
       </div>
     </div>
 
@@ -280,10 +288,10 @@
       </p>
       <ul style="font-size: 13px; color: var(--text-secondary); line-height: 1.8;">
         <li><code>document.startViewTransition()</code> — Start transition</li>
-        <li><code>transition.ready</code> — Animation ready</li>
-        <li><code>transition.finished</code> — Animation complete</li>
-        <li><code>transition.skip()</code> — Skip transition</li>
-        <li><code>transition.updateDOM()</code> — Update DOM before animation</li>
+        <li><code>transition.updateCallbackDone</code> — Settles first: your callback finished</li>
+        <li><code>transition.ready</code> — Settles second: pseudo-tree built, animations start</li>
+        <li><code>transition.finished</code> — Settles last: transition complete (or skipped)</li>
+        <li><code>transition.skipTransition()</code> — Skip the animation (callback still runs)</li>
         <li><code>pagereveal</code> — Cross-doc reveal event</li>
         <li><code>pageswap</code> — Cross-doc swap event</li>
       </ul>
@@ -299,27 +307,25 @@
     };
 
     function changeState(state) {
-      if (!document.startViewTransition) {
-        console.warn('View Transitions API not supported');
-        return;
-      }
-
       const data = stateData[state];
-      document.getElementById('spa-content').innerHTML = `
-        <div>
-          <h2>${data.h2}</h2>
-          <p>${data.p}</p>
-        </div>
-      `;
-
-      document.startViewTransition(() => {
+      // The DOM change MUST happen inside the callback only — anything written
+      // before startViewTransition() is captured as the OLD state (transition to itself).
+      const render = () => {
         document.getElementById('spa-content').innerHTML = `
           <div>
             <h2>${data.h2}</h2>
             <p>${data.p}</p>
           </div>
         `;
-      });
+      };
+
+      if (!document.startViewTransition) {
+        render(); // graceful fallback: still swap the content, just no animation
+        console.warn('View Transitions API not supported — falling back to instant swap');
+        return;
+      }
+
+      document.startViewTransition(render);
     }
   </script>
 </body>

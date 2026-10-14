@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:,">
   <title>View Transitions API — Gate Harness</title>
   <style>
     :root {
@@ -267,6 +268,10 @@
           <div class="chip-value" id="edge-value">-</div>
         </div>
       </div>
+      <div class="test-results">
+        <h3>Probe Log</h3>
+        <div class="console-output" id="browser-console"></div>
+      </div>
     </div>
 
     <!-- SPA Tests -->
@@ -281,6 +286,7 @@
         <button class="test-btn" id="test-contact" onclick="testSPA('contact')">Test Contact State</button>
         <button class="test-btn danger" id="test-error" onclick="testSPA('error')">Test Error State</button>
       </div>
+      <div id="spa-content" style="min-height:80px; display:flex; align-items:center; justify-content:center; background:#f5f5f7; border-radius:12px; margin-top:12px; text-align:center;"><div><h2 style="margin:0;font-size:20px;">Hero State</h2><p style="margin:4px 0 0;color:#86868b;font-size:13px;">gate sandbox</p></div></div>
       <div class="test-results" id="spa-results">
         <h3>Test Results</h3>
         <div class="console-output" id="spa-console"></div>
@@ -291,12 +297,11 @@
     <div class="section">
       <div class="section-header">
         <h2>MPA Transition Tests</h2>
-        <span class="count" id="mpa-count">0/3</span>
+        <span class="count" id="mpa-count">0/2</span>
       </div>
       <div class="test-controls">
         <a href="page2.html" class="test-btn">Test Page 2 Transition</a>
         <a href="page3.html" class="test-btn">Test Page 3 Transition</a>
-        <a href="page4.html" class="test-btn">Test Page 4 Transition</a>
       </div>
       <div class="test-results" id="mpa-results">
         <h3>Test Results</h3>
@@ -317,35 +322,39 @@
           <div class="chip-value" id="api-start-value">-</div>
         </div>
         <div class="chip">
-          <div class="chip-label">ready Event</div>
+          <div class="chip-label">ready promise</div>
           <div class="chip-status" id="api-ready">Checking...</div>
           <div class="chip-value" id="api-ready-value">-</div>
         </div>
         <div class="chip">
-          <div class="chip-label">finished Event</div>
+          <div class="chip-label">finished promise</div>
           <div class="chip-status" id="api-finished">Checking...</div>
           <div class="chip-value" id="api-finished-value">-</div>
         </div>
         <div class="chip">
-          <div class="chip-label">skip()</div>
+          <div class="chip-label">skipTransition()</div>
           <div class="chip-status" id="api-skip">Checking...</div>
           <div class="chip-value" id="api-skip-value">-</div>
         </div>
         <div class="chip">
-          <div class="chip-label">updateDOM()</div>
+          <div class="chip-label">updateCallbackDone</div>
           <div class="chip-status" id="api-updatedom">Checking...</div>
           <div class="chip-value" id="api-updatedom-value">-</div>
         </div>
         <div class="chip">
-          <div class="chip-label">pagereveal Event</div>
+          <div class="chip-label">pagereveal event</div>
           <div class="chip-status" id="api-pagereveal">Checking...</div>
           <div class="chip-value" id="api-pagereveal-value">-</div>
         </div>
         <div class="chip">
-          <div class="chip-label">pageswap Event</div>
+          <div class="chip-label">pageswap event</div>
           <div class="chip-status" id="api-pageswap">Checking...</div>
           <div class="chip-value" id="api-pageswap-value">-</div>
         </div>
+      </div>
+      <div class="test-results">
+        <h3>Probe Log</h3>
+        <div class="console-output" id="api-console"></div>
       </div>
     </div>
 
@@ -382,6 +391,10 @@
           <div class="chip-value" id="css-new-value">-</div>
         </div>
       </div>
+      <div class="test-results">
+        <h3>Probe Log</h3>
+        <div class="console-output" id="css-console"></div>
+      </div>
     </div>
 
     <!-- Capstones -->
@@ -411,6 +424,7 @@
   <script>
     const log = (container, message, type = 'info') => {
       const console = document.getElementById(container);
+      if (!console) return; // null-safe: a missing container must never break the init chain
       const entry = document.createElement('div');
       entry.className = `log-entry log-${type}`;
       entry.textContent = message;
@@ -427,65 +441,69 @@
         { name: 'Edge', id: 'edge', minVersion: 111 }
       ];
 
-      let passed = 0;
+      // Honest semantics: only the CURRENT engine gets a live PASS/FAIL.
+      // Other rows are static minima — they cannot be probed from this engine.
+      const ua = navigator.userAgent;
+      const rx = { chrome: /Chrome\/(\d+)/, edge: /Edg\/(\d+)/, firefox: /Firefox\/(\d+)/, safari: /Version\/(\d+)/ };
+      const cur = /Edg\//.test(ua) ? 'edge' : /Firefox\//.test(ua) ? 'firefox' : (/Chrome\//.test(ua) && /Safari\//.test(ua)) ? 'chrome' : /Version\/.*Safari/.test(ua) ? 'safari' : null;
+      let currentOk = null;
+      let currentVersion = 0;
 
       browsers.forEach(browser => {
-        const ua = navigator.userAgent;
-        let version = 0;
+        const match = ua.match(rx[browser.id]);
+        const version = match ? parseInt(match[1]) : 0;
 
-        if (browser.name === 'Chrome') {
-          const match = ua.match(/Chrome\/(\d+)/);
-          version = match ? parseInt(match[1]) : 0;
-        } else if (browser.name === 'Safari') {
-          const match = ua.match(/Version\/(\d+)/);
-          version = match ? parseInt(match[1]) : 0;
-        } else if (browser.name === 'Firefox') {
-          const match = ua.match(/Firefox\/(\d+)/);
-          version = match ? parseInt(match[1]) : 0;
-        } else if (browser.name === 'Edge') {
-          const match = ua.match(/Edge\/(\d+)/);
-          version = match ? parseInt(match[1]) : 0;
+        if (browser.id === cur) {
+          currentOk = version >= browser.minVersion;
+          currentVersion = version;
+          document.getElementById(`${browser.id}-status`).textContent = currentOk ? '✓ PASS' : '✗ FAIL';
+          document.getElementById(`${browser.id}-status`).className = `chip-status status-${currentOk ? 'ok' : 'fail'}`;
+          document.getElementById(`${browser.id}-value`).textContent = `v${version} live (min: v${browser.minVersion})`;
+          document.getElementById(`${browser.id}-value`).className = `chip-value status-${currentOk ? 'ok' : 'fail'}`;
+        } else {
+          document.getElementById(`${browser.id}-status`).textContent = '◇ STATIC';
+          document.getElementById(`${browser.id}-status`).className = 'chip-status status-warn';
+          document.getElementById(`${browser.id}-value`).textContent = `min v${browser.minVersion}+ (not this engine)`;
+          document.getElementById(`${browser.id}-value`).className = 'chip-value status-warn';
         }
-
-        const passedCheck = version >= browser.minVersion;
-        if (passedCheck) passed++;
-
-        document.getElementById(`${browser.id}-status`).textContent = passedCheck ? '✓ PASS' : '✗ FAIL';
-        document.getElementById(`${browser.id}-status`).className = `chip-status status-${passedCheck ? 'ok' : 'fail'}`;
-        document.getElementById(`${browser.id}-value`).textContent = `v${version} (min: v${browser.minVersion})`;
-        document.getElementById(`${browser.id}-value`).className = `chip-value status-${passedCheck ? 'ok' : 'fail'}`;
       });
 
-      document.getElementById('browser-count').textContent = `${passed}/${browsers.length}`;
-      log('browser-console', `Browser support: ${passed}/${browsers.length} passed`, passed === browsers.length ? 'ok' : 'warn');
+      document.getElementById('browser-count').textContent = cur === null ? 'unknown engine' : (currentOk ? `current engine ✓ (${cur} ${currentVersion})` : `current engine ✗ (${cur} ${currentVersion})`);
+      log('browser-console', `Current engine: ${cur === null ? 'unknown' : cur + ' ' + currentVersion} — ${currentOk ? 'supported' : 'BELOW minimum'}. Other rows are static minima, not live probes.`, currentOk ? 'ok' : 'error');
     }
 
     // API Features Detection
+    // One real transition, probed synchronously, skipped immediately.
+    // Engine truth: startViewTransition() returns the ViewTransition object
+    // SYNCHRONOUSLY (it is not a promise). skipTransition() still runs the
+    // callback — a no-op here — so this probe is side-effect free.
+    function probeViewTransition() {
+      if (typeof document.startViewTransition !== 'function') return {};
+      const vt = document.startViewTransition(() => {});
+      // Skip path rejects both promises — absorb them so the probe never
+      // leaks an unhandledrejection (gate-earned: the runner sees it as a pageerror).
+      vt.ready.catch(() => {});
+      vt.finished.catch(() => {});
+      const out = {
+        ready: 'ready' in vt,
+        finished: 'finished' in vt,
+        skip: typeof vt.skipTransition === 'function',
+        updatedom: 'updateCallbackDone' in vt
+      };
+      vt.skipTransition();
+      return out;
+    }
+
     function checkAPIFeatures() {
+      const vt = probeViewTransition();
       const features = [
         { name: 'startViewTransition()', id: 'api-start', fn: () => typeof document.startViewTransition === 'function' },
-        { name: 'ready Event', id: 'api-ready', fn: () => {
-          const div = document.createElement('div');
-          return 'ready' in div;
-        }},
-        { name: 'finished Event', id: 'api-finished', fn: () => {
-          const div = document.createElement('div');
-          return 'finished' in div;
-        }},
-        { name: 'skip()', id: 'api-skip', fn: () => {
-          const div = document.createElement('div');
-          return 'skip' in div;
-        }},
-        { name: 'updateDOM()', id: 'api-updatedom', fn: () => {
-          const div = document.createElement('div');
-          return 'updateDOM' in div;
-        }},
-        { name: 'pagereveal Event', id: 'api-pagereveal', fn: () => {
-          return 'pagereveal' in window;
-        }},
-        { name: 'pageswap Event', id: 'api-pageswap', fn: () => {
-          return 'pageswap' in window;
-        }}
+        { name: 'ready promise', id: 'api-ready', fn: () => vt.ready === true },
+        { name: 'finished promise', id: 'api-finished', fn: () => vt.finished === true },
+        { name: 'skipTransition()', id: 'api-skip', fn: () => vt.skip === true },
+        { name: 'updateCallbackDone', id: 'api-updatedom', fn: () => vt.updatedom === true },
+        { name: 'pagereveal event', id: 'api-pagereveal', fn: () => 'onpagereveal' in window },
+        { name: 'pageswap event', id: 'api-pageswap', fn: () => 'onpageswap' in window }
       ];
 
       let passed = 0;
@@ -494,8 +512,8 @@
         const passedCheck = feature.fn();
         if (passedCheck) passed++;
 
-        document.getElementById(`${feature.id}-status`).textContent = passedCheck ? '✓ PASS' : '✗ FAIL';
-        document.getElementById(`${feature.id}-status`).className = `chip-status status-${passedCheck ? 'ok' : 'fail'}`;
+        document.getElementById(feature.id).textContent = passedCheck ? '✓ PASS' : '✗ FAIL';
+        document.getElementById(feature.id).className = `chip-status status-${passedCheck ? 'ok' : 'fail'}`;
         document.getElementById(`${feature.id}-value`).textContent = passedCheck ? 'Available' : 'Not available';
         document.getElementById(`${feature.id}-value`).className = `chip-value status-${passedCheck ? 'ok' : 'fail'}`;
       });
@@ -505,43 +523,24 @@
     }
 
     // CSS Features Detection
+    // The CSSOM drops unsupported at-rules at parse time — if the rule
+    // survives into cssRules, the engine understands it.
+    function ruleSurvivesParse(ruleText) {
+      const style = document.createElement('style');
+      style.textContent = ruleText;
+      document.head.appendChild(style);
+      const ok = !!(style.sheet && style.sheet.cssRules.length > 0);
+      document.head.removeChild(style);
+      return ok;
+    }
+
     function checkCSSFeatures() {
       const features = [
-        { name: '@view-transition', id: 'css-view', fn: () => {
-          const style = document.createElement('style');
-          document.head.appendChild(style);
-          const hasRule = style.sheet.cssRules.length > 0;
-          document.head.removeChild(style);
-          return hasRule;
-        }},
-        { name: '::view-transition', id: 'css-view-root', fn: () => {
-          const div = document.createElement('div');
-          const style = document.createElement('style');
-          style.textContent = '::view-transition { }';
-          div.appendChild(style);
-          return '::view-transition' in div;
-        }},
-        { name: '::view-transition-group()', id: 'css-group', fn: () => {
-          const div = document.createElement('div');
-          const style = document.createElement('style');
-          style.textContent = '::view-transition-group() { }';
-          div.appendChild(style);
-          return '::view-transition-group()' in div;
-        }},
-        { name: '::view-transition-old()', id: 'css-old', fn: () => {
-          const div = document.createElement('div');
-          const style = document.createElement('style');
-          style.textContent = '::view-transition-old() { }';
-          div.appendChild(style);
-          return '::view-transition-old()' in div;
-        }},
-        { name: '::view-transition-new()', id: 'css-new', fn: () => {
-          const div = document.createElement('div');
-          const style = document.createElement('style');
-          style.textContent = '::view-transition-new() { }';
-          div.appendChild(style);
-          return '::view-transition-new()' in div;
-        }}
+        { name: '@view-transition', id: 'css-view', fn: () => ruleSurvivesParse('@view-transition { navigation: auto; }') },
+        { name: '::view-transition', id: 'css-view-root', fn: () => CSS.supports('selector(html::view-transition)') },
+        { name: '::view-transition-group()', id: 'css-group', fn: () => CSS.supports('selector(::view-transition-group(*))') },
+        { name: '::view-transition-old()', id: 'css-old', fn: () => CSS.supports('selector(::view-transition-old(*))') },
+        { name: '::view-transition-new()', id: 'css-new', fn: () => CSS.supports('selector(::view-transition-new(*))') }
       ];
 
       let passed = 0;
@@ -550,8 +549,8 @@
         const passedCheck = feature.fn();
         if (passedCheck) passed++;
 
-        document.getElementById(`${feature.id}-status`).textContent = passedCheck ? '✓ PASS' : '✗ FAIL';
-        document.getElementById(`${feature.id}-status`).className = `chip-status status-${passedCheck ? 'ok' : 'fail'}`;
+        document.getElementById(feature.id).textContent = passedCheck ? '✓ PASS' : '✗ FAIL';
+        document.getElementById(feature.id).className = `chip-status status-${passedCheck ? 'ok' : 'fail'}`;
         document.getElementById(`${feature.id}-value`).textContent = passedCheck ? 'Available' : 'Not available';
         document.getElementById(`${feature.id}-value`).className = `chip-value status-${passedCheck ? 'ok' : 'fail'}`;
       });
@@ -580,7 +579,7 @@
           error: { h2: 'Error State', p: 'Something went wrong' }
         };
         content.innerHTML = `<div><h2>${data[state].h2}</h2><p>${data[state].p}</p></div>`;
-      }).then(() => {
+      }).finished.then(() => {
         const endTime = performance.now();
         log('spa-console', `✓ ${state.toUpperCase()} transition: SUCCESS (${(endTime - startTime).toFixed(2)}ms)`, 'ok');
       }).catch(err => {
@@ -594,7 +593,7 @@
     checkCSSFeatures();
 
     log('spa-console', 'SPA tests ready - click buttons to test transitions', 'info');
-    log('mpa-console', 'MPA tests ready - navigate to page2.html, page3.html, page4.html', 'info');
+    log('mpa-console', 'MPA tests ready - navigate to page2.html, page3.html', 'info');
   </script>
 </head>
 </html>
