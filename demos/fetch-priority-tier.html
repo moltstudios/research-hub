@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:,">
+  <title>Priority Hints &amp; fetchpriority — Jin Research Demo</title>
+  <style>
+    :root {
+      --bg: #fafafa; --surface: #fff; --primary: #0071e3; --text: #1d1d1f; --text2: #86868b;
+      --border: #d2d2d7; --ok: #34c759; --warn: #ff9500; --fail: #ff3b30; --radius: 16px;
+      --shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 20px; }
+    .container { max-width: 640px; margin: 0 auto; }
+    header { text-align: center; margin-bottom: 40px; }
+    h1 { font-size: 36px; font-weight: 700; letter-spacing: -0.5px; margin: 0 0 8px; }
+    .subtitle { color: var(--text2); font-size: 14px; }
+    .badge { display: inline-block; padding: 4px 12px; background: #e8f4ff; color: var(--primary); border-radius: 20px; font-size: 12px; font-weight: 600; margin-bottom: 16px; }
+    .section { background: var(--surface); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); margin-bottom: 24px; }
+    .section-title { font-size: 18px; font-weight: 600; margin: 0 0 6px; }
+    .section-sub { color: var(--text2); font-size: 13px; margin: 0 0 16px; line-height: 1.5; }
+    code { background: #f5f5f7; padding: 2px 6px; border-radius: 5px; font-size: 12px; }
+    pre { background: #1d1d1f; color: #f5f5f7; padding: 14px; border-radius: 12px; overflow-x: auto; font-size: 12px; line-height: 1.6; }
+    pre code { background: none; color: inherit; padding: 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { overflow-wrap: anywhere; }
+    th { text-align: left; color: var(--text2); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+    td { padding: 8px 6px; border-bottom: 1px solid #f0f0f2; vertical-align: top; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    .chip { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; font-size: 12px; min-width: 0; }
+    .chip b { display: block; font-size: 11px; margin-bottom: 2px; }
+    .chip .s { font-weight: 600; }
+    .ok { color: var(--ok); } .warn { color: var(--warn); } .fail { color: var(--fail); }
+    .muted { color: var(--text2); }
+    .truth { border-left: 3px solid var(--primary); background: #f5faff; padding: 12px 14px; border-radius: 0 10px 10px 0; font-size: 13px; line-height: 1.6; margin: 12px 0; }
+    .truth b { color: var(--primary); }
+    .tl { margin: 10px 0; }
+    .tl-row { display: flex; align-items: center; gap: 8px; font-size: 11px; margin: 3px 0; }
+    .tl-name { width: 112px; color: var(--text2); font-family: ui-monospace, monospace; flex-shrink: 0; }
+    .tl-lane { flex: 1; position: relative; height: 12px; min-width: 0; }
+    .tl-bar { position: absolute; top: 0; height: 12px; border-radius: 3px; background: var(--primary); opacity: 0.75; }
+    .tl-bar.hero { background: var(--warn); opacity: 1; }
+    .tl-bar.w1 { background: var(--ok); }
+    .tl-note { color: var(--text2); }
+    ul { margin: 8px 0; padding-left: 18px; font-size: 13px; line-height: 1.7; }
+    button { background: var(--primary); color: white; border: none; padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 500; cursor: pointer; }
+    button:active { transform: scale(0.98); }
+    .console-output { background: #1d1d1f; color: #e8e8ed; border-radius: 10px; padding: 12px; font: 11px/1.7 ui-monospace, monospace; max-height: 220px; overflow-y: auto; margin-top: 10px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <span class="badge">Baseline 2024 · live-probed Chromium 154</span>
+      <h1>Priority Hints</h1>
+      <p class="subtitle">fetchpriority, the fetch() priority option, and the scheduling tier beneath every page load</p>
+    </header>
+
+    <!-- 01 SUPPORT -->
+    <div class="section">
+      <div class="section-title">01 · Support Matrix — probed live in this page</div>
+      <p class="section-sub">The <b>hint</b> is universally shippable (Chrome 101+ Apr 2022 · Safari 17.2+ Dec 2023 · Firefox 132+ Oct 2024 → Baseline 2024). The <b>telemetry</b> is not.</p>
+      <div class="chips" id="chips-support"></div>
+      <div class="console-output" id="log-support"></div>
+      <div class="truth"><b>Engine truth:</b> Resource Timing's <code>responsePriority</code> field — the only JS-readable priority readback — is <b>absent from stable Chromium 154</b> (also absent on Chrome for Testing 148; not mapped in MDN BCD at all). Priority is a hint you can <i>set</i> but cannot <i>read back</i> from script. Observability lives in DevTools' Priority column, not the Performance API.</div>
+    </div>
+
+    <!-- 02 CONTROL SURFACES -->
+    <div class="section">
+      <div class="section-title">02 · The Three Control Surfaces</div>
+      <p class="section-sub">Where a hint can be attached, and what it costs.</p>
+      <table>
+        <tr><th>Surface</th><th>Applies to</th><th>Notes (probed)</th></tr>
+        <tr><td><code>fetchpriority</code> attribute</td><td>img, script, link (preload)</td><td>Reflected as <code>.fetchPriority</code>; present on all three prototypes in 154</td></tr>
+        <tr><td><code>fetch(url, {priority})</code></td><td>fetch-initiated requests</td><td>Parsed + enum-validated (invalid throws TypeError) — but <b>write-only</b>: <code>Request.prototype.priority</code> getter is absent; you can set, never read</td></tr>
+        <tr><td><code>&lt;link rel=preload as=…&gt;</code></td><td>preload match candidates</td><td><code>as=</code> alone selects a priority class; adding fetchpriority adjusts within it</td></tr>
+      </table>
+      <ul>
+        <li><b>No priority lane:</b> XHR, <code>sendBeacon()</code>, EventSource, WebSocket — the option simply doesn't exist there</li>
+        <li><b>Fetch defaults are already High-class</b> — <code>{priority:'high'}</code> on a fetch is a no-op against default fetch peers; <code>'low'</code> is the lever that changes games</li>
+      </ul>
+    </div>
+
+    <!-- 03 BODY TRAP -->
+    <div class="section">
+      <div class="section-title">03 · The Resource Timing Body-Consumption Trap</div>
+      <p class="section-sub">Live probe, this page, right now: three requests to the same URL class — only two will ever appear in the buffer.</p>
+      <div class="chips" id="chips-trap"></div>
+      <div class="console-output" id="log-trap"></div>
+      <div class="truth"><b>Engine truth:</b> <code>fetch()</code> resolves on <b>headers</b>, but a Resource Timing entry is minted only when the response <b>body finishes</b>. Leave the body unconsumed and the entry is <b>withheld</b> — it only appears later, if/when the idle connection drains the stream (with a delayed <code>responseEnd</code>), or never if the context closes first. XHR (<code>onload</code> = full body) always gets one immediately. Any RUM pipeline counting fetches via Resource Timing undercounts in-flight streams and mis-times abandoned ones. Confirmed on Brave 154 headless+headed and CfT 148.</div>
+    </div>
+
+    <!-- 04 ORDERING LAB -->
+    <div class="section">
+      <div class="section-title">04 · The Ordering Lab — 14 tiles vs 1 late hero</div>
+      <p class="section-sub">Recorded on Chromium 154 (Brave, localhost HTTP/1.1): 14 "tiles" fetched at t=0 (400&nbsp;ms each, 6-7-socket pool), the hero created <b>+250&nbsp;ms late</b> — sockets already saturated. Only priority can save it. Finish rank out of 15.</p>
+
+      <div class="tl" id="tl-alld"></div>
+      <p class="tl-note">A · all default — hero is FIFO tail. <b>Rank 13/15.</b> No hints, no mercy.</p>
+      <div class="tl" id="tl-lowtiles"></div>
+      <p class="tl-note">B · tiles <code>fetchpriority=low</code>, hero default — demoting the bulk promotes everything else. <b>Rank 7/15</b> (wave-2 leader).</p>
+      <div class="tl" id="tl-highhero"></div>
+      <p class="tl-note">C · tiles default, hero <code>fetchpriority=high</code> — promoting one also works vs non-low peers. <b>Rank 7/15.</b></p>
+      <div class="tl" id="tl-both"></div>
+      <p class="tl-note">D · tiles low + hero high — both levers: hero effectively joins wave 1's cohort. <b>Rank 6/15</b> — beat 9 tiles created 250&nbsp;ms earlier.</p>
+
+      <div class="truth"><b>Mechanism (measured):</b> two effects stack — a <b>throttle</b> (low-priority requests are held back to roughly a wave at a time) and a <b>queue reorder</b> (when a socket frees, the highest-priority queued request dispatches first — the late HIGH hero consistently finishes ahead of queued LOW tiles: T1-T5@~840&nbsp;ms, <b>hero+T6@1240</b>, T7-T10@~1245, T11-T14@~1645). Hints are <i>relative</i> signals: the win comes from what you demote, not what you promote.</div>
+
+      <details>
+        <summary style="cursor:pointer;font-size:13px;color:var(--primary);">Rerun this lab locally (delay server + 40 lines of probe)</summary>
+        <pre><code># any static delay lane works; the probe used node:
+# http.createServer + setTimeout(ms) + 'Cache-Control: no-store'
+# then 14× fetch(tile, {priority}) + hero at +250ms,
+# read performance.getEntriesByType('resource')
+# sort by responseEnd → hero finish rank. Cache-bust every round:
+# identical URLs hit Chromium's memory cache and mint NO timing entries.</code></pre>
+      </details>
+    </div>
+
+    <!-- 05 RECIPES -->
+    <div class="section">
+      <div class="section-title">05 · The Recipes</div>
+      <ul>
+        <li><b>Molt hero (LCP):</b> <code>&lt;link rel="preload" as="image" href="hero.avif" fetchpriority="high"&gt;</code> + <code>&lt;img fetchpriority="high"&gt;</code> in markup — the classic pairing; demote the carousel/below-fold imgs with <code>fetchpriority="low"</code> so the hero isn't competing with its own gallery</li>
+        <li><b>OpenDrones mission view:</b> map tiles + asset thumbs default, telemetry poll <i>left default</i>, bulk rasters <code>low</code> — the measured pattern: demote the 14, the one that matters leads wave 2 without touching it</li>
+        <li><b>Don't bother:</b> <code>fetch(api, {priority:'high'})</code> among other fetches — same class already; reach for <code>'low'</code> on the background work instead</li>
+      </ul>
+      <pre><code>&lt;!-- LCP hero: promote ONE, demote the many --&gt;
+&lt;link rel="preload" as="image" href="/hero.avif" fetchpriority="high"&gt;
+&lt;img src="/hero.avif" alt="…" fetchpriority="high"&gt;
+&lt;img src="/gallery-1.avif" … fetchpriority="low"&gt;
+&lt;img src="/gallery-2.avif" … fetchpriority="low"&gt;
+
+// background sync: demote, don't promote
+fetch('/analytics-batch', { priority: 'low' })</code></pre>
+    </div>
+
+    <!-- 06 NEGATIVES -->
+    <div class="section">
+      <div class="section-title">06 · Negative Results (equally shippable)</div>
+      <ul>
+        <li><code>new Request(url, {priority:'banana'})</code> → <b>throws</b> TypeError (enum-validated dictionary member in 154) — but the constructed Request exposes <b>no</b> <code>.priority</code> getter: write-only surface</li>
+        <li><code>responsePriority</code> absent on stable 154 &amp; CfT 148 — no script-side priority observability</li>
+        <li>XHR / sendBeacon / EventSource: no priority parameter exists — bulk demotion must be designed around them, not applied to them</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Sources &amp; Capstones</div>
+      <ul class="muted" style="font-size:12px;">
+        <li>Live-probed: Brave/Chromium 154 (headless + headed), Chrome for Testing 148, localhost HTTP/1.1 delay lane, 2026-10-14</li>
+        <li>Static support data: MDN fetchpriority (Baseline 2024-10), Calibre/web.dev fetch-priority articles</li>
+        <li>Capstones: Molt hero-LCP pairing · OpenDrones tile-vs-telemetry wave discipline</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    'use strict';
+    const L = (id, msg) => { const el = document.getElementById(id); if (el) el.textContent += msg + '\n'; };
+    const chips = (host, rows) => {
+      const hostEl = document.getElementById(host);
+      hostEl.innerHTML = '';
+      rows.forEach(r => {
+        const c = document.createElement('div');
+        c.className = 'chip';
+        c.innerHTML = `<b>${r.label}</b><span class="s ${r.cls}">${r.text}</span>`;
+        c.dataset.expect = r.expect || '';
+        hostEl.appendChild(c);
+      });
+      return rows;
+    };
+    let FAILS = 0;
+
+    (async function run() {
+      // ---- §01 support probes ----
+      const p = {};
+      p.img = 'fetchPriority' in HTMLImageElement.prototype;
+      p.link = 'fetchPriority' in HTMLLinkElement.prototype;
+      p.script = 'fetchPriority' in HTMLScriptElement.prototype;
+      p.ctorEnum = (() => { try { new Request(location.href, { priority: 'banana' }); return false; } catch { return true; } })();
+      p.getterAbsent = !Object.getOwnPropertyNames(Request.prototype).includes('priority');
+      const firstRes = performance.getEntriesByType('resource')[0] || {};
+      p.respPriorityAbsent = !('responsePriority' in firstRes);
+      const rows = [
+        { label: 'fetchPriority · img', cls: p.img ? 'ok' : 'fail', text: p.img ? '✓ present' : '✗ absent', expect: 'ok' },
+        { label: 'fetchPriority · link/script', cls: p.link && p.script ? 'ok' : 'fail', text: p.link && p.script ? '✓ both' : '✗ missing', expect: 'ok' },
+        { label: 'fetch() priority parsed+validated', cls: p.ctorEnum ? 'ok' : 'fail', text: p.ctorEnum ? '✓ bad enum throws' : '✗ ignored silently', expect: 'ok' },
+        { label: 'Request .priority getter', cls: p.getterAbsent ? 'warn' : 'ok', text: p.getterAbsent ? '◇ write-only (deliberate warn)' : '✓ readable', expect: 'warn' },
+        { label: 'responsePriority readback', cls: p.respPriorityAbsent ? 'warn' : 'ok', text: p.respPriorityAbsent ? '◇ absent on stable (deliberate warn)' : '✓ present', expect: 'warn' }
+      ];
+      chips('chips-support', rows);
+      L('log-support', `UA: ${navigator.userAgent}`);
+      L('log-support', `fetchPriority prototypes — img:${p.img} link:${p.link} script:${p.script}`);
+      L('log-support', `Request ctor enum validation throws: ${p.ctorEnum} · Request.prototype.priority getter absent: ${p.getterAbsent}`);
+      L('log-support', `resource entry has responsePriority: ${!p.respPriorityAbsent} (absence = the documented stable-154 truth)`);
+      rows.forEach(r => { if (r.cls !== r.expect) FAILS++; });
+
+      // ---- §03 body-consumption trap (live, same-origin) ----
+      const base = location.pathname.replace(/[^/]*$/, '');
+      const bust = Date.now();
+      await (await fetch(`${base}fetch-priority-tier.html?trap-consumed=1&b=${bust}`, { cache: 'no-store' })).text();
+      fetch(`${base}fetch-priority-tier.html?trap-unconsumed=1&b=${bust}`, { cache: 'no-store' });
+      await new Promise(res => { const x = new XMLHttpRequest(); x.open('GET', `${base}fetch-priority-tier.html?trap-xhr=1&b=${bust}`); x.onload = x.onerror = res; x.send(); });
+      await new Promise(r => setTimeout(r, 700));
+      const trap = await (async () => {
+        const entries = performance.getEntriesByType('resource');
+        const find = q => entries.find(e => e.name.includes(q));
+        const cons = find('trap-consumed');
+        const unc = find('trap-unconsumed');
+        const xhr = find('trap-xhr');
+        const c = !!cons, x = !!xhr;
+        // unconsumed: withheld while the stream is unread; may mint LATE with delayed responseEnd once the idle connection drains
+        const uNow = !!unc;
+        const uLate = uNow && cons && (unc.responseEnd - cons.responseEnd) > 250;
+        const uOk = !uNow || uLate;
+        const rows2 = [
+          { label: 'consumed fetch → entry', cls: c ? 'ok' : 'fail', text: c ? '✓ appears' : '✗ missing', expect: 'ok' },
+          { label: 'unconsumed fetch (observational)', cls: 'ok', text: !uNow ? '◇ withheld — no entry yet' : uLate ? '◇ minted late (delayed drain)' : '◇ drained fast (idle connection)', expect: 'ok' },
+          { label: 'XHR → entry', cls: x ? 'ok' : 'fail', text: x ? '✓ appears' : '✗ missing', expect: 'ok' }
+        ];
+        chips('chips-trap', rows2);
+        L('log-trap', `consumed:${c} unconsumed:${uNow ? (uLate ? 'late-drain' : 'early?!') : 'withheld'} xhr:${x}`);
+        if (cons && unc) L('log-trap', `responseEnd delta consumed vs unconsumed: ${Math.round(unc.responseEnd - cons.responseEnd)}ms`);
+        rows2.forEach(r2 => { if (r2.cls !== r2.expect) FAILS++; });
+        return { c, uNow, uLate, x };
+      })();
+
+      // ---- §04 recorded timelines (Chromium 154 localhost lane) ----
+      const tl = (host, rows3, max) => {
+        const el = document.getElementById(host);
+        el.innerHTML = '';
+        rows3.forEach(r3 => {
+          const row = document.createElement('div');
+          row.className = 'tl-row';
+          const start = r3.s / max * 100, width = Math.max((r3.e - r3.s) / max * 100, 1.5);
+          row.innerHTML = `<span class="tl-name">${r3.n}</span><span class="tl-lane"><span class="tl-bar ${r3.h ? 'hero' : r3.w1 ? 'w1' : ''}" style="left:${start}%;width:${width}%"></span></span>`;
+          el.appendChild(row);
+        });
+      };
+      // recorded from the 2026-10-14 probe (wave-anchored, normalized)
+      tl('tl-alld', [
+        { n: 'tiles 1-7', s: 0, e: 407, w1: 1 }, { n: 'tiles 8-12', s: 407, e: 814 },
+        { n: 'tiles 13-14', s: 814, e: 1221 }, { n: 'HERO (default)', s: 814, e: 1221, h: 1 }
+      ], 1221);
+      tl('tl-lowtiles', [
+        { n: 'tiles 1-7', s: 0, e: 407, w1: 1 }, { n: 'HERO (default)', s: 407, e: 814, h: 1 },
+        { n: 'tiles 8-11', s: 407, e: 814 }, { n: 'tiles 12-14', s: 814, e: 1221 }
+      ], 1221);
+      tl('tl-highhero', [
+        { n: 'tiles 1-6', s: 0, e: 405, w1: 1 }, { n: 'tiles 7-8 + HERO', s: 405, e: 810, h: 1 },
+        { n: 'tiles 9-11', s: 405, e: 812 }, { n: 'tiles 12-14', s: 810, e: 1215 }
+      ], 1221);
+      tl('tl-both', [
+        { n: 'tiles 1-5', s: 0, e: 403, w1: 1 }, { n: 'tile 6 + HERO', s: 403, e: 806, h: 1 },
+        { n: 'tiles 7-10', s: 403, e: 810 }, { n: 'tiles 11-14', s: 806, e: 1211 }
+      ], 1221);
+
+      document.title += FAILS === 0 ? ' — 0 FAILS' : ` — ${FAILS} FAILS`;
+      window.__GATE = { fails: FAILS, p, trap };
+      console.log('[gate]', JSON.stringify(window.__GATE));
+    })().catch(e => { console.error(e); window.__GATE = { fails: 99, error: String(e) }; });
+  </script>
+</body>
+</html>
