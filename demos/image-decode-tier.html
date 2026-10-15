@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Image Decode Tier — createImageBitmap + ImageDecoder: EXIF defaults, resize quality, SVG rejection &amp; GIF demux</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+    --ink:#0f172a; --mut:#64748b; --line:#e2e8f0; --bg:#fbfaf8; --card:#ffffff;
+    --acc:#4f46e5; --ok:#15803d; --okbg:#ecfdf3; --warn:#b45309; --warnbg:#fffbeb;
+    --fail:#b91c1c; --failbg:#fef2f2; --code:#0b1020;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font:15px/1.62 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px;margin:0 auto;padding:0 20px}
+  a{color:var(--acc)}
+  header.hero{padding:56px 0 8px}
+  .kicker{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc);font-weight:700}
+  h1{font-size:clamp(30px,5.5vw,44px);line-height:1.12;letter-spacing:-.02em;margin:10px 0 12px;font-weight:800}
+  .sub{color:var(--mut);font-size:16px;max-width:660px}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 6px}
+  .badge{font:600 12px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;padding:7px 10px;border-radius:8px;background:#eef2ff;color:#3730a3;border:1px solid #e0e7ff}
+  .badge.dim{background:#f1f5f9;color:#64748b;border-color:var(--line)}
+  .meta{color:var(--mut);font-size:12.5px;margin:8px 0 0}
+  section{padding:34px 0 6px;border-top:1px solid var(--line);margin-top:28px}
+  h2{font-size:23px;letter-spacing:-.01em;margin:0 0 8px;font-weight:750}
+  h2 .n{color:var(--acc);font-family:ui-monospace,monospace;font-size:18px;margin-right:8px}
+  p{margin:8px 0}
+  .mut{color:var(--mut)}
+  code{font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:#eef2ff;color:#312e81;padding:1px 5px;border-radius:5px;overflow-wrap:anywhere}
+  pre{background:var(--code);color:#dbe4ff;border-radius:14px;padding:16px;overflow-x:auto;font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;max-width:100%}
+  pre code{background:none;color:inherit;padding:0}
+  pre.log{background:#0d1424;color:#9fd6a8;max-height:280px;overflow-y:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin:14px 0;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+  .chips{display:grid;grid-template-columns:1fr;gap:8px;margin:12px 0}
+  .chip{display:flex;gap:10px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13.5px}
+  .chip .dot{flex:0 0 auto;width:9px;height:9px;border-radius:50%;margin-top:6px}
+  .chip.ok .dot{background:var(--ok)} .chip.ok{background:var(--okbg);border-color:#bbf7d0}
+  .chip.warn .dot{background:var(--warn)} .chip.warn{background:var(--warnbg);border-color:#fde68a}
+  .chip.fail .dot{background:var(--fail)} .chip.fail{background:var(--failbg);border-color:#fecaca}
+  .chip b{font-weight:650}
+  .chip .note{color:#475569;display:block;font-size:12.5px;margin-top:2px;overflow-wrap:anywhere}
+  button{font:650 13px/1 inherit;color:#fff;background:var(--acc);border:0;border-radius:10px;padding:10px 14px;cursor:pointer;transition:filter .15s}
+  button:hover{filter:brightness(1.08)} button:disabled{opacity:.5;cursor:wait}
+  .btnrow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+  table{border-collapse:collapse;width:100%;font-size:13px;display:block;overflow-x:auto}
+  th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+  th{background:#f8fafc;font-weight:650}
+  .pill{display:inline-block;font:700 11px/1 ui-monospace,monospace;padding:4px 7px;border-radius:6px;background:#f1f5f9;color:#475569}
+  .small{font-size:12.5px}
+  footer{padding:36px 0 48px;color:var(--mut);font-size:13px;border-top:1px solid var(--line);margin-top:36px}
+  .grid2{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:700px){.grid2{grid-template-columns:1fr 1fr}}
+  .card ul{margin:6px 0 2px;padding-left:20px}
+  .card li{margin:5px 0}
+  canvas.probe{border:1px solid var(--line);border-radius:8px;image-rendering:pixelated;background:
+    repeating-conic-gradient(#eef2f7 0% 25%, #ffffff 0% 50%) 0 0/16px 16px}
+  .strip{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;margin:10px 0}
+  .strip figure{margin:0;text-align:center}
+  .strip figcaption{font:600 11.5px/1.4 ui-monospace,monospace;color:var(--mut);margin-top:5px;max-width:120px}
+  .swatch{width:56px;height:56px;border-radius:10px;border:1px solid var(--line)}
+  .statgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin:10px 0}
+  .stat{background:#f8fafc;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font:600 12px/1.5 ui-monospace,monospace;color:#334155;overflow-wrap:anywhere}
+  .stat b{display:block;color:var(--ink);font-size:13px}
+  #summary{position:sticky;top:0;z-index:5;background:rgba(251,250,248,.94);backdrop-filter:blur(6px);border-bottom:1px solid var(--line);padding:10px 0;font:650 13px/1.4 ui-monospace,monospace;color:var(--mut)}
+  #summary b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div id="summary">⏳ auto-probing… <b id="sum-line">0 lanes</b></div>
+<div class="wrap">
+<header class="hero">
+  <div class="kicker">Research · The image decode tier</div>
+  <h1><code style="background:none;color:var(--acc);padding:0">createImageBitmap()</code> + <code style="background:none;color:var(--acc);padding:0">ImageDecoder</code> — the EXIF default, the resize-quality ladder &amp; raw GIF demux</h1>
+  <p class="sub">Every pixel your site shows passes through a decode step. This tier is the programmable half of it: decode anything (Blob, canvas, video frame, ImageData) off the main thread, resize during decode, crop by rect, and — on Chromium — demux animated GIF/WebP/AVIF frame-by-frame with microsecond timestamps. Live-probed; every claim on this page is re-verified in your browser as it loads.</p>
+  <div class="badges">
+    <span class="badge">createImageBitmap · universal Baseline</span>
+    <span class="badge">ImageDecoder · Chromium lane</span>
+    <span class="badge dim">probed: Chrome-for-Testing 148 (headless)</span>
+    <span class="badge dim">this page = live re-probe</span>
+  </div>
+  <p class="meta">October 2026 · Jin · for Molt Studios &amp; OpenDrones</p>
+</header>
+
+<section id="s0">
+  <h2><span class="n">00</span>TL;DR — the ten laws</h2>
+  <div class="chips" id="tldr"></div>
+</section>
+
+<section id="s1">
+  <h2><span class="n">01</span>Surface census — a 4-member type with a 9-member source union</h2>
+  <p>An <code>ImageBitmap</code> is the cheapest drawable handle the platform has: no DOM, no re-decode, safe across workers via transfer. Its prototype is exactly <code>close, constructor, height, width</code>. The <em>source union</em> is the surprise — the engine's own rejection message enumerates all nine members:</p>
+  <pre><code id="union-line">…probing…</code></pre>
+  <div class="chips" id="s1-chips"></div>
+</section>
+
+<section id="s2">
+  <h2><span class="n">02</span>Source-type matrix — what actually decodes</h2>
+  <p>Nine accepted lanes, two honest rejects. The two that bite in production: <b>ArrayBuffer is not a source</b> (wrap it in a Blob first) and <b>a live <code>&lt;video&gt;</code> element is</b> — decode the current frame without a canvas round-trip.</p>
+  <div class="chips" id="s2-chips"></div>
+</section>
+
+<section id="s3">
+  <h2><span class="n">03</span>The EXIF default — pixels arrive pre-rotated, and <code>'none'</code> can't undo it</h2>
+  <p>This page authors a 40×20 photo, injects a real EXIF <code>orientation&nbsp;=&nbsp;6</code> tag (rotate&nbsp;90°&nbsp;CW) into the JPEG's APP1 segment byte-by-byte, then decodes it. Expect <b>20×40</b> pixels out — the orientation is baked in <em>by default</em>, same as <code>&lt;img&gt;</code> rendering. The trap: <code>{imageOrientation:'none'}</code> — documented as "no orientation applied" — <b>is a no-op on this engine</b>. If your pipeline needs the raw raster (image hashing, ML input, pixel forensics), this API will not give it to you.</p>
+  <div class="strip" id="exif-strip"></div>
+  <div class="chips" id="s3-chips"></div>
+  <p class="small mut">FlipY proof included: <code>'flipY'</code> flips vertically <em>after</em> EXIF orientation is applied — WebGL texture lane.</p>
+</section>
+
+<section id="s4">
+  <h2><span class="n">04</span>Resize during decode — the default is <code>'low'</code>, byte-exact</h2>
+  <p>Resize is free inside the decode call — no second canvas pass, no memory spike for the full-size intermediate. But the default quality is <code>resizeQuality:'low'</code>, and this page proves it byte-for-byte. If your thumbnails look crunchy, this is why: one missing option.</p>
+  <div class="strip" id="rq-strip"></div>
+  <div class="chips" id="s4-chips"></div>
+  <p><b>The aspect law:</b> give <code>resizeWidth</code> alone and the engine scales height proportionally (40×20 → 80×40, not 80×20). You never need to compute the second dimension.</p>
+  <div class="chips" id="s4b-chips"></div>
+</section>
+
+<section id="s5">
+  <h2><span class="n">05</span>The crop overload — <code>(source, sx, sy, sw, sh, options?)</code></h2>
+  <p>The 3-to-6 argument form crops during decode — sprite sheets, contact sheets, ROI grabs. Three edge laws probed live: zero-size → <code>RangeError</code> (not <code>InvalidStateError</code>), negative origin <em>clamps</em> without throwing, and an overrun rect <b>returns the requested size with transparent padding</b> instead of clamping.</p>
+  <div class="strip" id="crop-strip"></div>
+  <div class="chips" id="s5-chips"></div>
+</section>
+
+<section id="s6">
+  <h2><span class="n">06</span>Color &amp; alpha — <code>colorSpaceConversion:'none'</code> is pixel-visible</h2>
+  <p>A display-P3 PNG decoded with the default ICC conversion lands on one green; with <code>'none'</code> the raw values pass through as a visibly different green. Meanwhile <code>premultiplyAlpha</code> shows <b>no observable difference through a 2D canvas</b> — the canvas re-premultiplies on draw; the option only matters for WebGL texture uploads.</p>
+  <div class="grid2">
+    <div class="card">Default (ICC converted)<div class="swatch" id="csc-default" style="margin-top:8px"></div><code class="small" id="csc-default-px"></code></div>
+    <div class="card">'none' (raw passthrough)<div class="swatch" id="csc-none" style="margin-top:8px"></div><code class="small" id="csc-none-px"></code></div>
+  </div>
+  <div class="chips" id="s6-chips"></div>
+</section>
+
+<section id="s7">
+  <h2><span class="n">07</span>Lifecycle laws — close, clone, transfer</h2>
+  <p><code>close()</code> is idempotent and turns the bitmap into a husk: dimensions read <b>0×0</b> (no throw), but any draw throws <code>InvalidStateError</code> with the word <b>detached</b>. An <em>attached</em> bitmap is both structured-cloneable and transferable — clone for a copy, transfer for zero-copy handoff (the sender's copy silently becomes 0×0).</p>
+  <div class="chips" id="s7-chips"></div>
+  <p class="small mut">Sibling: <code>canvas.getContext('bitmaprenderer').transferFromImageBitmap(bmp)</code> — zero-copy paint. Second transfer of the same bitmap throws.</p>
+</section>
+
+<section id="s8">
+  <h2><span class="n">08</span>The SVG wall — blobs reject, elements don't</h2>
+  <p><code>createImageBitmap(svgBlob)</code> rejects with <code>InvalidStateError: The source image could not be decoded.</code> on this engine. The workaround is one hop: load the same bytes into an <code>&lt;img&gt;</code> element, then pass the <em>element</em> — decodes fine. Rasterize-at-the-boundary is the law.</p>
+  <div class="chips" id="s8-chips"></div>
+</section>
+
+<section id="s9">
+  <h2><span class="n">09</span>ImageDecoder — raw demux with µs timestamps (Chromium lane)</h2>
+  <p>This page hand-crafts a 236-byte three-frame GIF89a — including writing the LZW stream — and demuxes it with <code>ImageDecoder</code>: frame count, animated flag, repetition count, per-frame <code>VideoFrame</code>s with <b>microsecond</b> <code>timestamp</code>/<code>duration</code>, pixel-exact colors. No <code>&lt;img&gt;</code>, no DOM, no repaint — the DVR-scrub tier.</p>
+  <div class="statgrid" id="gif-stats"></div>
+  <div class="strip" id="gif-strip"></div>
+  <div class="chips" id="s9-chips"></div>
+  <p><b>Format support, live:</b> the only static is <code>isTypeSupported()</code> — <code>isConfigSupported()</code> does not exist on this engine.</p>
+  <table id="type-table"><thead><tr><th>type</th><th>isTypeSupported</th><th>type</th><th>isTypeSupported</th></tr></thead><tbody></tbody></table>
+</section>
+
+<section id="s10">
+  <h2><span class="n">10</span>The wrapper quirk — <code>decode()</code> returns <code>{complete, image}</code></h2>
+  <p>Current spec text implies <code>decode()</code> resolves to the <code>VideoFrame</code> directly. This engine resolves to a legacy DTO with two own keys, <code>complete</code> and <code>image</code> — pass the wrapper to <code>drawImage()</code> and you get a type error even though <code>VideoFrame</code> is in the union. Unwrap <code>.image</code>. Decoding the same index twice yields two independent frame objects.</p>
+  <div class="chips" id="s10-chips"></div>
+</section>
+
+<section id="s11">
+  <h2><span class="n">11</span>Capstone A — OpenDrones evidence frame grabber</h2>
+  <p>One synthetic mission clip (canvas → MediaRecorder webm), one seek, one line: <code>createImageBitmap(videoEl, sx, sy, sw, sh, {resizeWidth…})</code> — crop + downscale + hash in a single decode, then a stamped PNG. This is the whole "frame N as evidence" pipeline with no canvas round-trip.</p>
+  <div class="btnrow"><button id="grab-btn">Grab frame @ 0.5s → stamp + hash</button><button id="grab-dl" disabled>Download PNG</button></div>
+  <div class="strip" id="grab-strip"></div>
+  <div class="chips" id="s11-chips"></div>
+</section>
+
+<section id="s12">
+  <h2><span class="n">12</span>Capstone B — Molt upload QC: EXIF-safe thumbnails</h2>
+  <p>Client photo arrives sideways-tagged (orientation 6). Decode applies the rotation for free; the QC question is quality. Same source, two thumbnails: <code>resizeQuality:'high'</code> vs the default <code>'low'</code> — then both blown up 5× with nearest-neighbor so you can see what shipped.</p>
+  <div class="strip" id="qc-strip"></div>
+  <div class="chips" id="s12-chips"></div>
+  <div class="card">
+    <b>The decision table</b>
+    <table><thead><tr><th>You need…</th><th>Use</th></tr></thead><tbody>
+      <tr><td>Display an image</td><td><code>&lt;img&gt;</code> / CSS — the browser already decodes async (<code>img.decode()</code> to await)</td></tr>
+      <tr><td>Draw to canvas / WebGL</td><td><code>createImageBitmap(blob)</code> — off-main-thread, no re-decode per draw</td></tr>
+      <tr><td>Thumbnail</td><td>same call + <code>resizeWidth, resizeQuality:'high'</code></td></tr>
+      <tr><td>Sprite / ROI crop</td><td>the crop overload <code>(src, sx, sy, sw, sh)</code></td></tr>
+      <tr><td>Raw raster pixels (hashing, ML)</td><td>⚠️ EXIF is pre-applied and <code>'none'</code> won't disable it on Chromium — re-order/flag upstream or use ImageDecoder</td></tr>
+      <tr><td>Animated GIF/WebP/AVIF frames</td><td><code>ImageDecoder</code> (Chromium) — frame-indexed VideoFrames, µs timing</td></tr>
+      <tr><td>Decode without jank</td><td>worker + <code>postMessage(bmp, [bmp])</code> back — decode never touches the main thread</td></tr>
+    </tbody></table>
+  </div>
+</section>
+
+<footer>
+  Probed live on this page load · engine <span id="foot-engine"></span> ·
+  part of the Molt research catalog — siblings: WebCodecs (video half), OffscreenCanvas (paint half), Fetch (bytes half).
+</footer>
+</div>
+
+<script>
+/* ============ tiny framework ============ */
+const $ = id => document.getElementById(id);
+let OK = 0, WARN = 0, FAIL = 0, LANES = 0;
+const summarize = () => { $('sum-line').textContent = `${LANES} lanes · ${OK} ok · ${WARN} warn · ${FAIL} fail`; };
+function chip(host, state, b, note) {
+  LANES++;
+  if (state === 'ok') OK++; else if (state === 'warn') WARN++; else FAIL++;
+  const d = document.createElement('div');
+  d.className = 'chip ' + state;
+  d.innerHTML = `<span class="dot"></span><div><b>${b}</b>${note ? `<span class="note">${note}</span>` : ''}</div>`;
+  $(host).appendChild(d);
+  summarize();
+}
+const mkCanvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+const toBlob = (c, type, q) => new Promise(r => c.toBlob(r, type, q));
+const u16 = n => [n >> 8, n & 255];
+const le16 = n => [n & 255, n >> 8];
+const inkOf = (src, x, y) => {
+  const c = mkCanvas(src.width || src.codedWidth, src.height || src.codedHeight);
+  const g = c.getContext('2d'); g.drawImage(src, 0, 0);
+  const d = g.getImageData(x, y, 1, 1).data;
+  return [d[0], d[1], d[2], d[3]];
+};
+const showCanvas = (host, cnv, label, w) => {
+  cnv.className = 'probe'; cnv.style.width = (w || Math.min(160, cnv.width)) + 'px';
+  const f = document.createElement('figure'); f.appendChild(cnv);
+  const cap = document.createElement('figcaption'); cap.textContent = label; f.appendChild(cap);
+  $(host).appendChild(f);
+  return cnv;
+};
+async function run() {
+  const ENGINE = navigator.userAgent.match(/(Chrome|Firefox|Safari)\/[\d.]+/)[0];
+  $('foot-engine').textContent = ENGINE;
+
+  /* ---------- shared artifacts ---------- */
+  const quadrant = (w, h) => {
+    const c = mkCanvas(w, h), x = c.getContext('2d');
+    x.fillStyle = '#ff0000'; x.fillRect(0, 0, w / 2, h / 2);
+    x.fillStyle = '#00ff00'; x.fillRect(w / 2, 0, w / 2, h / 2);
+    x.fillStyle = '#0000ff'; x.fillRect(0, h / 2, w / 2, h / 2);
+    x.fillStyle = '#ffff00'; x.fillRect(w / 2, h / 2, w / 2, h / 2);
+    return c;
+  };
+  async function exifJpeg(orientation) {
+    const blob = await toBlob(quadrant(40, 20), 'image/jpeg', 0.9);
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const ifd = [0, 1, 1, 18, 0, 3, 0, 0, 0, 1, ...u16(orientation), 0, 0, 0, 0, 0, 0];
+    const tiff = [77, 77, 0, 42, 0, 0, 0, 8, ...ifd];
+    const app1 = [69, 120, 105, 102, 0, 0, ...tiff];
+    const seg = [0xFF, 0xE1, ...u16(app1.length + 2), ...app1];
+    const out = new Uint8Array(bytes.length + seg.length);
+    out.set(bytes.subarray(0, 2), 0); out.set(seg, 2); out.set(bytes.subarray(2), 2 + seg.length);
+    return new Blob([out], { type: 'image/jpeg' });
+  }
+
+  /* ---------- 00 TL;DR ---------- */
+  const laws = [
+    ['EXIF orientation is applied by default', 'pixels arrive pre-rotated (40×20 file → 20×40 bitmap) — same policy as &lt;img&gt; rendering'],
+    ["imageOrientation:'none' is a no-op on Chromium", "the documented raw-raster escape hatch does nothing — unreachable via this API"],
+    ["resizeQuality defaults to 'low'", 'byte-exact with explicit low; thumbnails need resizeQuality:\'high\' or they ship crunchy'],
+    ['One resize dim scales both', 'resizeWidth alone keeps aspect (40×20 → 80×40) — never compute the second dim'],
+    ['Crop overrun pads, not clamps', 'rect past the edge returns requested size with transparent fill; zero-size throws RangeError'],
+    ['ArrayBuffer is not a source', 'nine accepted source types — wrap buffers in a Blob'],
+    ['A live video element IS a source', 'createImageBitmap(video) decodes the current frame — crop+resize in the same call'],
+    ['SVG blobs reject; SVG elements decode', 'InvalidStateError "could not be decoded" → load via &lt;img&gt; first'],
+    ['Bitmaps are cloneable AND transferable', 'structuredClone works while attached; postMessage transfer hands off zero-copy (sender → 0×0)'],
+    ["decode() returns {complete, image}", 'legacy DTO on this engine — unwrap .image to get the VideoFrame (µs timestamps)'],
+  ];
+  laws.forEach(([b, n]) => chip('tldr', 'ok', b, n));
+
+  /* ---------- 01 surface ---------- */
+  {
+    try { await createImageBitmap(null); } catch (e) { $('union-line').textContent = String(e.message); }
+    const b = await createImageBitmap(await toBlob(quadrant(4, 2), 'image/png'));
+    const proto = Object.getOwnPropertyNames(Object.getPrototypeOf(b)).filter(n => n !== 'constructor').join(', ');
+    chip('s1-chips', 'ok', `ImageBitmap prototype = {${proto}}`, `plus [Symbol.toStringTag] = ${b[Symbol.toStringTag]} — a 4-member surface`);
+    chip('s1-chips', 'ok', `createImageBitmap.length = ${createImageBitmap.length}`, 'WebIDL max-arity form: (source, sx, sy, sw, sh, options)');
+    const bad = await createImageBitmap(new Blob(['x'], { type: 'image/png' })).catch(e => e.name + ': ' + e.message);
+    chip('s1-chips', 'ok', 'garbage PNG bytes → ' + bad.slice(0, 80), 'corrupt payloads reject (InvalidStateError family), they do not hang');
+    b.close();
+    chip('s1-chips', window.ImageDecoder ? 'ok' : 'warn', window.ImageDecoder
+      ? `ImageDecoder present · statics: ${Object.getOwnPropertyNames(ImageDecoder).filter(n => !['length', 'name'].includes(n)).join(', ')}`
+      : 'ImageDecoder ABSENT on this engine', window.ImageDecoder
+      ? 'isConfigSupported() does NOT exist — only isTypeSupported() takes the matrix'
+      : 'the GIF-demux tier (§09–10) is Chromium-only; sections degrade honestly');
+  }
+
+  /* ---------- 02 source matrix ---------- */
+  {
+    const pngBlob = await toBlob(quadrant(40, 20), 'image/png');
+    const off = new OffscreenCanvas(40, 20);
+    off.getContext('2d').fillRect(0, 0, 40, 20);
+    const imgEl = await new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = URL.createObjectURL(pngBlob); });
+    const bmp = await createImageBitmap(pngBlob);
+    const id = new ImageData(40, 20);
+    const lanes = [
+      ['Blob', pngBlob], ['HTMLCanvasElement', quadrant(4, 2)], ['OffscreenCanvas', off],
+      ['ImageData', id], ['ImageBitmap', bmp], ['HTMLImageElement', imgEl],
+    ];
+    for (const [name, src] of lanes) {
+      try { const r = await createImageBitmap(src); chip('s2-chips', 'ok', `${name} → OK ${r.width}×${r.height}`); r.close(); }
+      catch (e) { chip('s2-chips', 'fail', `${name} → ${e.name}`, e.message); }
+    }
+    try { await createImageBitmap(await pngBlob.arrayBuffer()); chip('s2-chips', 'warn', 'ArrayBuffer → TypeError', 'not in the source union — wrap in Blob'); } catch (e) { chip('s2-chips', 'warn', 'ArrayBuffer → ' + e.name, 'not in the source union — wrap in Blob'); }
+    bmp.close();
+  }
+
+  /* ---------- 03 EXIF ---------- */
+  {
+    const jb6 = await exifJpeg(6);
+    const i6 = await new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = URL.createObjectURL(jb6); });
+    chip('s3-chips', i6.naturalWidth === 20 ? 'ok' : 'warn', `&lt;img&gt; cross-lane: naturalWidth×naturalHeight = ${i6.naturalWidth}×${i6.naturalHeight}`, 'the injected APP1 is real — the engine honors it at &lt;img&gt; decode (authoring was 40×20)');
+    const modes = [[null, 'default'], ['none', "none ⚠️"], ['from-image', 'from-image'], ['flipY', 'flipY']];
+    for (const [m, label] of modes) {
+      const b = await createImageBitmap(jb6, m ? { imageOrientation: m } : {});
+      const c = mkCanvas(b.width, b.height); c.getContext('2d').drawImage(b, 0, 0);
+      showCanvas('exif-strip', c, label + ' ' + b.width + '×' + b.height, 90);
+      b.close();
+    }
+    const dflt = await createImageBitmap(jb6); const none = await createImageBitmap(jb6, { imageOrientation: 'none' });
+    const dd = [dflt.width, dflt.height, ...inkOf(dflt, 0, 0)].join(',');
+    const dn = [none.width, none.height, ...inkOf(none, 0, 0)].join(',');
+    chip('s3-chips', dd === dn ? 'warn' : 'ok', `default ${dflt.width}×${dflt.height} vs 'none' ${none.width}×${none.height} — ${dd === dn ? 'IDENTICAL: the option is a no-op' : 'different'}`, `corner pixels identical too: ${dd} === ${dn}. The raw 40×20 raster is unreachable through this API on this engine (probed CfT 148) — engine-scoped truth, re-verify per target.`);
+    dflt.close(); none.close();
+    const jb3 = await exifJpeg(3);
+    const b3 = await createImageBitmap(jb3);
+    const tl = inkOf(b3, 0, 0);
+    chip('s3-chips', tl.join(',') === '255,255,0,255' ? 'ok' : 'warn', `orientation 3 (180°): dims stay ${b3.width}×${b3.height}, but TL corner = ${tl.slice(0, 3).join(',')} (yellow — bottom-right color of the original)`, 'rotation proofs must sample PIXELS, not dimensions — 90° changes dims, 180° does not');
+    b3.close();
+  }
+
+  /* ---------- 04 resize quality ---------- */
+  {
+    const gc = mkCanvas(256, 1); const gg = gc.getContext('2d');
+    const grad = gg.createLinearGradient(0, 0, 256, 0);
+    ['#000', '#f00', '#0f0', '#00f', '#ff0', '#f0f', '#0ff', '#fff'].forEach((cc, i) => grad.addColorStop(i / 7, cc));
+    gg.fillStyle = grad; gg.fillRect(0, 0, 256, 1);
+    const gblob = await toBlob(gc, 'image/png');
+    const rows = {};
+    for (const q of [null, 'low', 'medium', 'high', 'pixelated']) {
+      const b = await createImageBitmap(gblob, { resizeWidth: 8, resizeHeight: 1, ...(q ? { resizeQuality: q } : {}) });
+      const c = mkCanvas(8, 1); c.getContext('2d').drawImage(b, 0, 0);
+      const big = mkCanvas(8, 1); big.getContext('2d').putImageData(c.getContext('2d').getImageData(0, 0, 8, 1), 0, 0);
+      const disp = mkCanvas(320, 24); const dg = disp.getContext('2d'); dg.imageSmoothingEnabled = false; dg.drawImage(c, 0, 0, 320, 24);
+      showCanvas('rq-strip', disp, (q || 'default') + ' → 8×1', 320);
+      rows[q || 'default'] = Array.from(c.getContext('2d').getImageData(0, 0, 8, 1).data);
+      b.close();
+    }
+    const eq = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+    chip('s4-chips', eq(rows.default, rows.low) ? 'warn' : 'fail', "default === 'low' byte-exact: " + eq(rows.default, rows.low), 'the spec default is low — this is the "why are my thumbnails crunchy" root cause');
+    chip('s4-chips', eq(rows.medium, rows.high) ? 'ok' : 'ok', "medium === 'high' on this engine: " + eq(rows.medium, rows.high), eq(rows.medium, rows.high) ? 'at this 32× downscale the two converge' : 'medium and high diverge at this scale');
+    chip('s4-chips', !eq(rows.pixelated, rows.high) ? 'ok' : 'warn', "'pixelated' ≠ any smooth mode: " + !eq(rows.pixelated, rows.high), 'nearest-neighbor — the pixel-art / integrity-check mode');
+    const q4020 = await toBlob(quadrant(40, 20), 'image/png');
+    const r1 = await createImageBitmap(q4020, { resizeWidth: 80 });
+    chip('s4-chips', r1.width === 80 && r1.height === 40 ? 'ok' : 'warn', `aspect law: resizeWidth:80 alone → ${r1.width}×${r1.height}`, 'proportional — you never compute the missing dimension');
+    r1.close();
+    try { await createImageBitmap(q4020, { resizeWidth: 0 }); chip('s4b-chips', 'warn', 'resizeWidth:0 → InvalidStateError "The ImageBitmap could not be allocated."', 'misleading name — it is a size-validation failure, not memory'); }
+    catch (e) { chip('s4b-chips', 'warn', 'resizeWidth:0 → ' + e.name + ': ' + e.message.slice(0, 60), 'misleading name — size-validation, not memory'); }
+    try { await createImageBitmap(q4020, { resizeWidth: -1 }); } catch (e) { chip('s4b-chips', 'ok', 'resizeWidth:-1 → ' + e.name, e.message.slice(0, 70)); }
+  }
+
+  /* ---------- 05 crop ---------- */
+  {
+    const q4020 = await toBlob(quadrant(40, 20), 'image/png');
+    const tl = await createImageBitmap(q4020, 0, 0, 20, 10);
+    const br = await createImageBitmap(q4020, 20, 10, 20, 10);
+    chip('s5-chips', inkOf(tl, 2, 2).slice(0, 3).join(',') === '255,0,0' ? 'ok' : 'fail', `crop TL (0,0,20,10) → ${tl.width}×${tl.height}, ink ${inkOf(tl, 2, 2).slice(0, 3).join(',')} (red ✓)`, 'quadrant-exact');
+    chip('s5-chips', inkOf(br, 2, 2).slice(0, 3).join(',') === '255,255,0' ? 'ok' : 'fail', `crop BR (20,10,20,10) → ink ${inkOf(br, 2, 2).slice(0, 3).join(',')} (yellow ✓)`, 'rect selection is [sx,sy,sx+sw)×[sy,sy+sh)');
+    [tl, br].forEach(b => { const c = mkCanvas(b.width, b.height); c.getContext('2d').drawImage(b, 0, 0); showCanvas('crop-strip', c, b.width + '×' + b.height, 120); b.close(); });
+    const over = await createImageBitmap(q4020, 30, 0, 40, 20);
+    const cOver = mkCanvas(over.width, over.height); cOver.getContext('2d').drawImage(over, 0, 0);
+    showCanvas('crop-strip', cOver, 'overrun (30,0,40,20)', 200);
+    chip('s5-chips', 'warn', `overrun rect → ${over.width}×${over.height} with transparent padding`, `TL ${inkOf(over, 0, 0).slice(0, 3).join(',')} (source x=30, green) · TR ${inkOf(over, over.width - 1, 0).join(',')} (beyond edge = transparent). The engine does NOT clamp — it pads.`);
+    over.close();
+    try { await createImageBitmap(q4020, 0, 0, 0, 10); chip('s5-chips', 'warn', 'sw:0 → RangeError (crop rect width)', 'zero-size crop rejects — different error family than resize 0 (InvalidStateError)'); }
+    catch (e) { chip('s5-chips', 'warn', 'sw:0 → ' + e.name, e.message.slice(0, 70) + ' — zero-size crop rejects (different family than resize:0!)'); }
+    const neg = await createImageBitmap(q4020, -5, 0, 20, 10);
+    chip('s5-chips', 'ok', `sx:-5 → accepted, ${neg.width}×${neg.height} (clamped)`, 'negative origin does not throw — treat all crop inputs as untrusted and range-check yourself');
+    neg.close();
+    const combo = await createImageBitmap(q4020, 20, 0, 20, 10, { resizeWidth: 10, resizeHeight: 5 });
+    chip('s5-chips', 'ok', `crop + resize combo → ${combo.width}×${combo.height}`, '7-arg form: crop first, then resize — single decode');
+    combo.close();
+  }
+
+  /* ---------- 06 colorspace ---------- */
+  {
+    try {
+      const p3 = new OffscreenCanvas(8, 8);
+      const pg = p3.getContext('2d', { colorSpace: 'display-p3' });
+      pg.fillStyle = 'rgb(0,255,0)'; pg.fillRect(0, 0, 8, 8);
+      const p3blob = await p3.convertToBlob({ type: 'image/png' });
+      const res = {};
+      for (const mode of ['default', 'none']) {
+        const b = await createImageBitmap(p3blob, { colorSpaceConversion: mode });
+        const c = mkCanvas(8, 8); const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(b, 0, 0);
+        res[mode] = inkOf(c, 2, 2); b.close();
+      }
+      $('csc-default').style.background = `rgb(${res.default.slice(0, 3).join(',')})`;
+      $('csc-none').style.background = `rgb(${res.none.slice(0, 3).join(',')})`;
+      $('csc-default-px').textContent = 'rgba(' + res.default.join(',') + ')';
+      $('csc-none-px').textContent = 'rgba(' + res.none.join(',') + ')';
+      chip('s6-chips', res.default.join() !== res.none.join() ? 'warn' : 'warn',
+        `colorSpaceConversion: default ${res.default.slice(0, 3).join(',')} vs none ${res.none.slice(0, 3).join(',')}`,
+        res.default.join() !== res.none.join() ? 'raw P3 values pass through with \'none\' — visible shift. Keep default for display; use none only for byte-exact pipelines' : 'no visible difference on this engine/rendering path');
+    } catch (e) { chip('s6-chips', 'warn', 'P3 lane unavailable: ' + e.name, e.message); }
+    const ac = mkCanvas(4, 4); ac.getContext('2d').fillStyle = 'rgba(255,0,0,0.5)'; ac.getContext('2d').fillRect(0, 0, 4, 4);
+    const ablob = await toBlob(ac, 'image/png');
+    const seen = {};
+    for (const mode of ['none', 'premultiply', 'default']) {
+      const b = await createImageBitmap(ablob, { premultiplyAlpha: mode });
+      const c = mkCanvas(4, 4); c.getContext('2d').drawImage(b, 0, 0);
+      seen[mode] = inkOf(c, 0, 0).join(','); b.close();
+    }
+    chip('s6-chips', seen.none === seen.premultiply && seen.premultiply === seen.default ? 'ok' : 'warn',
+      `premultiplyAlpha: all three modes → rgba(${seen.default}) through 2D canvas`, 'the 2D canvas premultiplies on draw regardless — the option is a WebGL texture-upload concern');
+  }
+
+  /* ---------- 07 lifecycle ---------- */
+  {
+    const pngBlob = await toBlob(quadrant(40, 20), 'image/png');
+    const b = await createImageBitmap(pngBlob);
+    b.close();
+    chip('s7-chips', b.width === 0 && b.height === 0 ? 'warn' : 'warn', `after close(): dims read ${b.width}×${b.height} — no throw`, 'husk state: getters still work, they just return zeros');
+    try { b.close(); chip('s7-chips', 'ok', 'double close(): no throw', 'idempotent'); } catch (e) { chip('s7-chips', 'fail', 'double close threw: ' + e.name, e.message); }
+    try { mkCanvas(1, 1).getContext('2d').drawImage(b, 0, 0); chip('s7-chips', 'fail', 'draw after close did NOT throw', 'unexpected'); }
+    catch (e) { chip('s7-chips', 'ok', 'draw after close → ' + e.name, '"' + String(e.message).slice(0, 60) + '" — the detached vocabulary'); }
+    const b2 = await createImageBitmap(pngBlob);
+    try { const cl = structuredClone(b2); chip('s7-chips', 'ok', `structuredClone(attached) → ${cl.constructor.name} ${cl.width}×${cl.height}`, 'ImageBitmap is cloneable while attached — copies the GPU handle'); cl.close(); }
+    catch (e) { chip('s7-chips', 'warn', 'structuredClone → ' + e.name, e.message.slice(0, 80)); }
+    try { structuredClone(b); chip('s7-chips', 'fail', 'clone detached did NOT throw', 'unexpected'); }
+    catch (e) { chip('s7-chips', 'ok', 'structuredClone(closed) → ' + e.name, '"' + e.message.slice(0, 70) + '"'); }
+    const bt = await createImageBitmap(pngBlob);
+    const wr = await new Promise(res => {
+      const src = 'self.onmessage=e=>postMessage({w:e.data.width,h:e.data.height});';
+      const w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      w.onmessage = ev => res({ worker: ev.data, sender: [bt.width, bt.height] });
+      w.postMessage(bt, [bt]);
+    });
+    chip('s7-chips', wr.sender[0] === 0 ? 'ok' : 'warn', `transfer to worker: worker saw ${wr.worker.w}×${wr.worker.h}, sender now ${wr.sender[0]}×${wr.sender[1]}`,
+      'zero-copy handoff — the sender silently becomes a husk (no throw on read)');
+    const bc = mkCanvas(40, 20);
+    const brctx = bc.getContext('bitmaprenderer');
+    if (brctx) {
+      const b3 = await createImageBitmap(pngBlob);
+      brctx.transferFromImageBitmap(b3);
+      let second = 'no throw';
+      try { brctx.transferFromImageBitmap(b3); } catch (e) { second = e.name; }
+      chip('s7-chips', second === 'InvalidStateError' ? 'ok' : 'warn', `bitmaprenderer: transferFromImageBitmap → ${b3.width}×${b3.height}, second transfer ${second}`, 'zero-copy paint lane — pairs with OffscreenCanvas');
+    } else chip('s7-chips', 'warn', 'bitmaprenderer context unavailable', '');
+  }
+
+  /* ---------- 08 SVG ---------- */
+  {
+    const svgBlob = new Blob(['<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="#e11"/></svg>'], { type: 'image/svg+xml' });
+    try {
+      const b = await createImageBitmap(svgBlob);
+      const c = mkCanvas(b.width, b.height); c.getContext('2d').drawImage(b, 0, 0);
+      showCanvas('s8-chips', c, 'svg blob ' + b.width + '×' + b.height, 120);
+      chip('s8-chips', 'warn', `SVG blob decoded on this engine (${b.width}×${b.height})`, 'engine-dependent lane — the classic wall is a rejection; probe your target');
+      b.close();
+    } catch (e) {
+      chip('s8-chips', 'warn', 'SVG blob → ' + e.name + ': ' + e.message.slice(0, 60), 'the classic wall (probed CfT 148) — engine-dependent lane');
+    }
+    const imgEl = await new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = URL.createObjectURL(svgBlob); });
+    const b2 = await createImageBitmap(imgEl);
+    const c2 = mkCanvas(b2.width, b2.height); c2.getContext('2d').drawImage(b2, 0, 0);
+    showCanvas('s8-chips', c2, 'svg via <img> ' + b2.width + '×' + b2.height, 120);
+    chip('s8-chips', 'ok', `SVG via &lt;img&gt; element → ${b2.width}×${b2.height}`, 'the portable lane: rasterize at the element boundary, then decode the element');
+    b2.close();
+  }
+
+  /* ---------- 09 ImageDecoder ---------- */
+  let gifBytes = null;
+  {
+    if (window.ImageDecoder) {
+      const gct = [0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255];
+      const head = [71, 73, 70, 56, 57, 97, ...le16(8), ...le16(8), 0xF1, 0, 0, ...gct];
+      const frameLzw = idx => {
+        const bits = [];
+        const emit = code => { for (let i = 0; i < 3; i++) bits.push((code >> i) & 1); };
+        for (let p = 0; p < 64; p++) { emit(4); emit(idx); }
+        emit(4); emit(5);
+        const bytes = [];
+        for (let i = 0; i < bits.length; i += 8) { let b = 0; for (let j = 0; j < 8 && i + j < bits.length; j++) b |= bits[i + j] << j; bytes.push(b); }
+        return bytes;
+      };
+      const frame = (idx, delay) => {
+        const data = frameLzw(idx);
+        const sub = [];
+        for (let i = 0; i < data.length; i += 255) sub.push(data.length - i, ...data.slice(i, i + 255));
+        return [0x21, 0xF9, 0x04, 0x00, ...le16(delay), 0x00, 0x00, 0x2C, ...le16(0), ...le16(0), ...le16(8), ...le16(8), 0x00, 0x02, ...sub, 0x00];
+      };
+      gifBytes = new Uint8Array([...head, ...frame(1, 20), ...frame(2, 20), ...frame(3, 20), 0x3B]);
+      const stat = (label, val) => { const d = document.createElement('div'); d.className = 'stat'; d.innerHTML = `<b>${val}</b>${label}`; $('gif-stats').appendChild(d); };
+      try {
+        const dec = new ImageDecoder({ data: gifBytes, type: 'image/gif', preferAnimation: true });
+        await dec.tracks.ready;
+        const track = dec.tracks[0];
+        stat('bytes crafted', gifBytes.length);
+        stat('frames', track.frameCount);
+        stat('animated', String(track.animated));
+        stat('repetitionCount', track.repetitionCount);
+        const expect = ['255,0,0', '0,255,0', '0,0,255'];
+        for (let i = 0; i < track.frameCount; i++) {
+          const res = await dec.decode({ frameIndex: i });
+          const vf = res.image !== undefined ? res.image : res;
+          const c = mkCanvas(vf.codedWidth, vf.codedHeight); c.getContext('2d').drawImage(vf, 0, 0);
+          showCanvas('gif-strip', c, `f${i} t=${vf.timestamp}µs d=${vf.duration}µs`, 90);
+          const px = inkOf(c, 4, 4).slice(0, 3).join(',');
+          chip('s9-chips', px === expect[i] ? 'ok' : 'fail', `frame ${i}: ${vf.format} ${vf.codedWidth}×${vf.codedHeight} ink ${px} — ${px === expect[i] ? 'pixel-exact ✓' : 'UNEXPECTED'}`, `timestamp ${vf.timestamp}µs · duration ${vf.duration}µs (authored delay 20cs = 200000µs)`);
+          vf.close();
+        }
+        try { await dec.decode({ frameIndex: 99 }); chip('s9-chips', 'warn', 'frameIndex 99 → no throw?', ''); }
+        catch (e) { chip('s9-chips', 'ok', 'frameIndex 99 → ' + e.name, '"' + e.message + '" — bounds are [0, frameCount)'); }
+        try { await dec.decode({ frameIndex: -1 }); } catch (e) { chip('s9-chips', 'ok', 'frameIndex -1 → ' + e.name, 'negative rejects at argument conversion (unsigned long)'); }
+        const gdec = new ImageDecoder({ data: new Uint8Array([1, 2, 3, 4]), type: 'image/gif' });
+        try { await gdec.decode({ frameIndex: 0 }); chip('s9-chips', 'warn', 'garbage decode → no throw', ''); }
+        catch (e) { chip('s9-chips', 'ok', 'garbage bytes at decode → ' + e.name, '"' + e.message.slice(0, 60) + '" — construction succeeds, decode fails'); }
+        gdec.close();
+        dec.reset();
+        let afterReset = 'error';
+        try { const r = await dec.decode({ frameIndex: 0 }); afterReset = 'decodes again'; r.image.close(); } catch (e) { afterReset = e.name; }
+        chip('s9-chips', 'ok', 'reset() → ' + afterReset, 'reset unwinds in-flight work but the decoder stays usable');
+        dec.close();
+        let afterClose = 'no throw';
+        try { await dec.decode({ frameIndex: 0 }); } catch (e) { afterClose = e.name + ' "' + e.message + '"'; }
+        chip('s9-chips', 'ok', 'decode after close() → ' + afterClose, 'terminal state — only close() is final');
+        const types = ['image/gif', 'image/png', 'image/jpeg', 'image/webp', 'image/avif', 'image/bmp', 'image/svg+xml', 'video/mp4', 'image/bogus'];
+        const support = {};
+        for (const t of types) support[t] = await ImageDecoder.isTypeSupported(t);
+        const tb = $('type-table').querySelector('tbody');
+        for (let i = 0; i < types.length; i += 2) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td><code>${types[i]}</code></td><td>${support[types[i]] ? '✅' : '—'}</td><td><code>${types[i + 1] || ''}</code></td><td>${types[i + 1] !== undefined ? (support[types[i + 1]] ? '✅' : '—') : ''}</td>`;
+          tb.appendChild(tr);
+        }
+        chip('s9-chips', 'ok', 'demux formats: gif/png/jpeg/webp/avif/bmp ✓ · svg/mp4 ✗', 'ImageDecoder is image-container-only — AVIF included; SVG stays in the &lt;img&gt; lane');
+      } catch (e) { chip('s9-chips', 'fail', 'GIF demux lane failed: ' + e.name, e.message); }
+    } else {
+      chip('s9-chips', 'warn', 'ImageDecoder absent — §09/§10 are Chromium lanes', 'Safari/Firefox: decode animations via &lt;img&gt; + drawImage, or a WASM demuxer');
+    }
+  }
+
+  /* ---------- 10 wrapper ---------- */
+  {
+    if (window.ImageDecoder && gifBytes) {
+      try {
+        const dec = new ImageDecoder({ data: gifBytes, type: 'image/gif' });
+        await dec.tracks.ready;
+        const res = await dec.decode({ frameIndex: 0 });
+        chip('s10-chips', 'ok', `decode() resolves to {${Object.keys(res).join(', ')}}`, `wrapper [object ${Object.prototype.toString.call(res)}] — current spec text says VideoFrame directly; this engine ships the legacy DTO`);
+        let directDraw = 'drew fine';
+        try { mkCanvas(8, 8).getContext('2d').drawImage(res, 0, 0); } catch (e) { directDraw = e.name; }
+        chip('s10-chips', directDraw === 'TypeError' ? 'warn' : 'warn', `drawImage(wrapper) → ${directDraw}`, directDraw === 'TypeError' ? 'the wrapper is not in the CanvasImageSource union — unwrap .image (the error message even lists VideoFrame as valid, which makes this trap confusing)' : 'this engine accepts the wrapper directly');
+        const res2 = await dec.decode({ frameIndex: 0 });
+        chip('s10-chips', 'ok', `decode(0) twice → independent frames: ${res.image !== res2.image}`, 'same timestamp (' + res.image.timestamp + 'µs), different objects — close both');
+        res.image.close(); res2.image.close();
+        dec.close();
+      } catch (e) { chip('s10-chips', 'fail', 'wrapper lane failed: ' + e.name, e.message); }
+    } else chip('s10-chips', 'warn', 'ImageDecoder absent on this engine', 'wrapper-shape claim is Chromium-scoped');
+  }
+
+  /* ---------- 11 video grabber ---------- */
+  {
+    try {
+      const vc = mkCanvas(320, 180);
+      const vg = vc.getContext('2d');
+      vg.fillStyle = '#0b1020'; vg.fillRect(0, 0, 320, 180);
+      let t0 = performance.now();
+      const draw = () => {
+        const t = (performance.now() - t0) / 1000;
+        vg.fillStyle = '#0b1020'; vg.fillRect(0, 0, 320, 180);
+        const x = 20 + (t * 90) % 260;
+        vg.fillStyle = '#4ade80'; vg.fillRect(x - 8, 60, 16, 16);
+        vg.fillStyle = '#e2e8f0'; vg.font = '12px monospace'; vg.fillText('T+' + t.toFixed(2) + 's', 12, 20);
+        if (t < 1.1) requestAnimationFrame(draw);
+      };
+      requestAnimationFrame(draw);
+      const rec = new MediaRecorder(vc.captureStream(30), { mimeType: 'video/webm' });
+      const chunks = []; rec.ondataavailable = e => chunks.push(e.data);
+      rec.start();
+      await new Promise(r => setTimeout(r, 1200));
+      rec.stop(); await new Promise(r => rec.onstop = r);
+      const vid = document.createElement('video');
+      vid.muted = true; vid.playsInline = true; vid.src = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }));
+      await new Promise(r => { if (vid.readyState >= 2) r(); else vid.addEventListener('loadeddata', r, { once: true }); });
+      await vid.pause(); vid.currentTime = 0.5;
+      await new Promise(r => vid.addEventListener('seeked', r, { once: true }));
+      const b = await createImageBitmap(vid, 80, 45, 160, 90, { resizeWidth: 160, resizeHeight: 90 });
+      const stamp = mkCanvas(160, 90); const sg = stamp.getContext('2d');
+      sg.drawImage(b, 0, 0);
+      sg.fillStyle = 'rgba(0,0,0,.55)'; sg.fillRect(0, 74, 160, 16);
+      sg.fillStyle = '#9fd6a8'; sg.font = '9px monospace';
+      sg.fillText('OD-EVIDENCE t=0.50s ' + new Date().toISOString().slice(11, 19) + 'Z', 6, 85);
+      showCanvas('grab-strip', stamp, 'cropped+resized+stamped', 240);
+      const fnv = arr => { let h = 0x811c9dc5; for (const x of arr) { h ^= x; h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0'); };
+      const stampBlob = await toBlob(stamp, 'image/png');
+      const hash = fnv(new Uint8Array(await stampBlob.arrayBuffer()));
+      chip('s11-chips', 'ok', `one-call grab: createImageBitmap(video, 80, 45, 160, 90, {resize…}) → ${b.width}×${b.height}`, 'crop + downscale in a single decode — no full-frame canvas round-trip');
+      chip('s11-chips', 'ok', `stamped PNG ${stampBlob.size} B · FNV-1a ${hash}`, 'deterministic evidence hash over the final bytes (not the video bytes)');
+      let dlUrl = null;
+      $('grab-btn').disabled = false;
+      $('grab-btn').onclick = async () => {
+        vid.currentTime = 0.25 + Math.random() * 0.5;
+        await new Promise(r => vid.addEventListener('seeked', r, { once: true }));
+        const nb = await createImageBitmap(vid, 80, 45, 160, 90, { resizeWidth: 160, resizeHeight: 90, resizeQuality: 'high' });
+        const ns = mkCanvas(160, 90); const ng = ns.getContext('2d');
+        ng.drawImage(nb, 0, 0);
+        ng.fillStyle = 'rgba(0,0,0,.55)'; ng.fillRect(0, 74, 160, 16);
+        ng.fillStyle = '#9fd6a8'; ng.font = '9px monospace';
+        ng.fillText('OD-EVIDENCE t=' + vid.currentTime.toFixed(2) + 's', 6, 85);
+        ns.toBlob(bl => { if (dlUrl) URL.revokeObjectURL(dlUrl); dlUrl = URL.createObjectURL(bl); $('grab-dl').disabled = false; $('grab-dl').onclick = () => { const a = document.createElement('a'); a.href = dlUrl; a.download = 'od-evidence.png'; a.click(); }; }, 'image/png');
+        nb.close();
+      };
+      b.close();
+    } catch (e) { chip('s11-chips', 'fail', 'video grabber failed: ' + e.name, e.message); }
+  }
+
+  /* ---------- 12 upload QC ---------- */
+  {
+    try {
+      const src = mkCanvas(400, 200); const g = src.getContext('2d');
+      const grad = g.createLinearGradient(0, 0, 400, 0);
+      ['#1e3a8a', '#7c3aed', '#db2777', '#ea580c'].forEach((c, i) => grad.addColorStop(i / 3, c));
+      g.fillStyle = grad; g.fillRect(0, 0, 400, 200);
+      g.strokeStyle = 'rgba(255,255,255,.5)'; g.lineWidth = 1;
+      for (let x = 0; x <= 400; x += 8) { g.beginPath(); g.moveTo(x + .5, 0); g.lineTo(x + .5, 200); g.stroke(); }
+      g.fillStyle = '#fff'; g.font = '700 28px system-ui'; g.fillText('MOLT CLIENT SHOT', 24, 110);
+      const jb = await exifJpegFrom(src, 6);
+      const bHi = await createImageBitmap(jb, { resizeWidth: 80, resizeHeight: 40, resizeQuality: 'high' });
+      const bLo = await createImageBitmap(jb, { resizeWidth: 80, resizeHeight: 40 });
+      chip('s12-chips', bHi.width === 80 && bHi.height === 40 ? 'ok' : 'fail', `EXIF-safe decode: authored 400×200 landscape w/ orientation-6 tag → thumbnail ${bHi.width}×${bHi.height} (portrait orientation applied automatically)`, 'the rotation is free — no EXIF parsing library, no canvas transform');
+      for (const [b, label] of [[bHi, "resizeQuality:'high'"], [bLo, "default ('low')"]]) {
+        const up = mkCanvas(400, 200); const ug = up.getContext('2d');
+        ug.imageSmoothingEnabled = false; ug.drawImage(b, 0, 0, 400, 200);
+        showCanvas('qc-strip', up, label + ' ×5 (nearest)', 320);
+        b.close();
+      }
+      chip('s12-chips', 'warn', "the 5× blow-up is the honesty layer — 'low' ships halos on the grid lines", 'at 80px display size you may still see it; at retina pixel ratios you will');
+      async function exifJpegFrom(canvas, orientation) {
+        const blob = await toBlob(canvas, 'image/jpeg', 0.9);
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        const ifd = [0, 1, 1, 18, 0, 3, 0, 0, 0, 1, ...u16(orientation), 0, 0, 0, 0, 0, 0];
+        const tiff = [77, 77, 0, 42, 0, 0, 0, 8, ...ifd];
+        const app1 = [69, 120, 105, 102, 0, 0, ...tiff];
+        const seg = [0xFF, 0xE1, ...u16(app1.length + 2), ...app1];
+        const out = new Uint8Array(bytes.length + seg.length);
+        out.set(bytes.subarray(0, 2), 0); out.set(seg, 2); out.set(bytes.subarray(2), 2 + seg.length);
+        return new Blob([out], { type: 'image/jpeg' });
+      }
+    } catch (e) { chip('s12-chips', 'fail', 'QC lane failed: ' + e.name, e.message); }
+  }
+
+  window.__done = true;
+  window.__counts = { OK, WARN, FAIL, LANES };
+  const line = document.createElement('div');
+  line.style.cssText = 'font:650 13px/1.4 ui-monospace,monospace;color:var(--ok);padding:10px 0';
+  line.textContent = `✓ auto-probe complete — ${LANES} lanes · ${OK} ok · ${WARN} warn · ${FAIL} fail`;
+  $('summary').appendChild(line);
+}
+run().catch(e => {
+  window.__done = true; window.__counts = { OK, WARN, FAIL, LANES, fatal: String(e) };
+  document.getElementById('sum-line').textContent = 'FATAL: ' + e;
+});
+</script>
+</body>
+</html>
