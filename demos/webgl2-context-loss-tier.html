@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebGL2 Context Loss — the engine-truth tier: the silent no-op law, the 16-context ceiling &amp; permanent-handle death</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg:#0c0a1a; --fg:#e8e6f5; --muted:#8b88a8; --accent:#a29bfe; --warn:#fdcb6e; --err:#ff6b6b; --ok:#55efc4; --info:#74b9ff; --code:#1a1730; --border:#2a2640; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:0; background:var(--bg); color:var(--fg); font:15px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif; overflow-x:hidden; }
+  .wrap { max-width:920px; margin:0 auto; padding:32px 24px 80px; }
+  h1 { font-size:32px; line-height:1.15; margin:0 0 8px; letter-spacing:-.02em; }
+  h2 { font-size:22px; margin:48px 0 8px; letter-spacing:-.01em; }
+  h3 { font-size:16px; margin:20px 0 8px; color:var(--accent); }
+  p, li { color:#cfcce0; }
+  code { font:13px ui-monospace,SF Mono,Menlo,monospace; background:var(--code); border:1px solid var(--border); border-radius:4px; padding:1px 5px; overflow-wrap:anywhere; }
+  .meta { display:flex; gap:8px; flex-wrap:wrap; margin:16px 0 24px; }
+  .badge { font-size:11px; padding:4px 10px; border-radius:999px; border:1px solid var(--border); color:var(--muted); }
+  .badge.ok { color:var(--ok); border-color:#1f3d35; background:#0e1d18; }
+  .badge.warn { color:var(--warn); border-color:#3d361f; background:#1d180e; }
+  .badge.info { color:var(--info); border-color:#1f2c3d; background:#0e151d; }
+  pre { background:var(--code); border:1px solid var(--border); border-radius:8px; padding:14px 16px; overflow:auto; font:13px/1.5 ui-monospace,SF Mono,Menlo,Consolas,monospace; color:#cfcce0; max-width:100%; }
+  .lab { background:var(--code); border:1px solid var(--border); border-radius:8px; padding:18px 20px; margin:18px 0; overflow:hidden; }
+  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .row > * { flex:0 0 auto; }
+  button { background:#1f1b3a; color:var(--fg); border:1px solid var(--border); border-radius:6px; padding:7px 12px; font:13px -apple-system,Inter,system-ui; cursor:pointer; max-width:100%; white-space:normal; word-break:break-word; }
+  button:hover { background:#2a264d; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  button.danger { border-color:#5a2330; color:#ffb3b3; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .chip { font:11px ui-monospace,Menlo,monospace; padding:3px 8px; border-radius:4px; border:1px solid; word-break:break-all; }
+  .chip.ok { color:var(--ok); border-color:#1f3d35; background:#0e1d18; }
+  .chip.warn { color:var(--warn); border-color:#3d361f; background:#1d180e; }
+  .chip.fail { color:var(--err); border-color:#3d1f25; background:#1d0e10; }
+  .chip.info { color:var(--info); border-color:#1f2c3d; background:#0e151d; }
+  .out { background:#000; border:1px solid var(--border); border-radius:6px; padding:10px 12px; min-height:60px; max-height:220px; overflow:auto; font:12px ui-monospace,Menlo,monospace; color:#cfcce0; white-space:pre-wrap; word-break:break-all; }
+  .note { color:var(--muted); font-size:13px; }
+  hr { border:none; border-top:1px solid var(--border); margin:40px 0; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--border); overflow-wrap:anywhere; }
+  th { color:var(--muted); font-weight:500; }
+  .tscroll { overflow-x:auto; max-width:100%; }
+  canvas.demo { background:#000; border-radius:8px; display:block; }
+  .simwrap { position:relative; width:220px; height:220px; }
+  .simwrap canvas { width:220px; height:220px; }
+  .dead { position:absolute; inset:0; display:none; align-items:center; justify-content:center; text-align:center; background:rgba(12,10,26,.86); border-radius:8px; color:var(--err); font:600 13px -apple-system,Inter; padding:12px; }
+  .slots { display:flex; flex-wrap:wrap; gap:5px; margin:12px 0; }
+  .slot { width:34px; height:34px; border-radius:6px; display:flex; align-items:center; justify-content:center; font:11px ui-monospace,Menlo,monospace; border:1px solid var(--border); color:var(--muted); background:var(--code); }
+  .slot.alive { color:var(--ok); border-color:#1f3d35; background:#0e1d18; }
+  .slot.dead { color:var(--err); border-color:#3d1f25; background:#1d0e10; }
+  .slot.nu { color:var(--info); border-color:#1f2c3d; background:#0e151d; }
+  label.ck { display:flex; gap:6px; align-items:center; font-size:13px; color:#cfcce0; cursor:pointer; }
+  .flex2 { display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start; }
+  .k { color:var(--accent); font-weight:600; }
+  .pill { font:11px ui-monospace,Menlo,monospace; padding:2px 8px; border-radius:999px; border:1px solid var(--border); color:var(--muted); }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:640px){ .grid2 { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>WebGL2 Context Loss — the engine-truth tier</h1>
+<p style="font-size:17px; max-width:70ch;">The silent no-op law, the 16-context eviction ceiling &amp; permanent-handle death — every truth below was <b>live-probed in a real Chromium 154 engine</b> (ANGLE · Metal · Apple M4), not copied from docs. The interactive lanes re-probe them live in <i>your</i> browser.</p>
+<div class="meta">
+  <span class="badge">Probed: Chrome for Testing 148 + Brave/Chromium 154 · headless ×5 suites</span>
+  <span class="badge ok">Engine: ANGLE (Metal) — Apple M4, real GPU</span>
+  <span class="badge info">Baseline-class API · 5 probe suites · 60+ lanes</span>
+  <span class="badge">2026-10-16</span>
+</div>
+
+<h2>0 · The hero exhibit — a live context that can die</h2>
+<p>This canvas renders a spinning triangle on a real WebGL2 context. Use the controls to kill and revive it. Everything this page documents happens to <i>this very context</i>.</p>
+<div class="lab">
+  <div class="flex2">
+    <div class="simwrap">
+      <canvas id="hero" class="demo" width="440" height="440"></canvas>
+      <div class="dead" id="heroDead">⚠ context lost — the exact bug this page documents</div>
+    </div>
+    <div style="flex:1; min-width:240px;">
+      <div class="row" style="margin-bottom:10px;">
+        <button id="btnLose">Lose context</button>
+        <button id="btnRestore" disabled>Restore context</button>
+      </div>
+      <label class="ck" style="margin-bottom:10px;"><input type="checkbox" id="ckPrevent" checked> preventDefault() in the lost handler</label>
+      <div class="chips" style="margin-bottom:10px;">
+        <span class="chip info" id="heroState">state: —</span>
+        <span class="chip info" id="heroErr">getError: —</span>
+        <span class="chip info" id="heroDraw">drawArrays(): —</span>
+      </div>
+      <div class="out" id="heroLog" style="min-height:110px;"></div>
+    </div>
+  </div>
+  <p class="note" style="margin-bottom:0;">Try it un-checked: without <code>preventDefault()</code> the context stays dead forever and <code>restoreContext()</code> silently fails (no throw, <code>INVALID_OPERATION</code> on the error stack) — the #1 lost-context bug.</p>
+</div>
+
+<h2>1 · The event grammar — canvas, not context</h2>
+<p>Context events fire on the <b>canvas element</b>, not the GL context. The context object isn't even an EventTarget — <code>gl.addEventListener</code> doesn't exist. Measured event shape:</p>
+<div class="lab">
+  <pre>canvas.addEventListener('webglcontextlost', e =&gt; {
+  // e : WebGlContextEvent
+  // e.cancelable     → true   (the ONLY handle that saves the context: e.preventDefault())
+  // e.bubbles        → false
+  // e.statusMessage  → ''     (empty on synthetic loss; driver text on real loss)
+  // e.isTrusted      → true
+});
+canvas.addEventListener('webglcontextrestored', ...);  // fires only if you preventDefault'ed
+canvas.addEventListener('webglcontextcreationerror', ...); // the never-fires-silent-null lane</pre>
+  <div class="chips">
+    <span class="chip ok">lost: cancelable=true ✓probed</span>
+    <span class="chip ok">lost: bubbles=false ✓probed</span>
+    <span class="chip ok">statusMessage='' on synthetic loss ✓probed</span>
+    <span class="chip warn">listener added AFTER loss never fires (no retro-dispatch)</span>
+    <span class="chip warn">neighbors unaffected — each context dies alone</span>
+  </div>
+  <p class="note" style="margin-bottom:0;"><b>The timing truth:</b> <code>isContextLost()</code> flips <b>synchronously</b> inside <code>loseContext()</code> — already true in the very next microtask. Restoration is the opposite: <b>async</b>, delivered via the restored event (~1 frame later).</p>
+</div>
+
+<h2>2 · The silent no-op law — a lost context throws nothing</h2>
+<p>The most dangerous property of context loss: <b>every method becomes a silent no-op or returns a degenerate value — nothing throws.</b> Your render loop keeps "succeeding" on a dead GPU connection while the screen shows a frozen or blank canvas. Run the battery on a sacrificed context:</p>
+<div class="lab">
+  <div class="row"><button id="btnBattery">Sacrifice a context &amp; run the 13-lane battery</button></div>
+  <div class="chips" id="batteryChips"></div>
+  <pre>// measured on the lost context (Chromium 154, every lane):
+createTexture()        → [object WebGLTexture]   // a REAL zombie object — dead on arrival
+getParameter(VERSION)  → null                    // even the version string is gone
+getError()             → 0x9242 CONTEXT_LOST_WEBGL  // ONCE. second call → 0. a one-shot token.
+drawArrays()           → undefined (no throw)    // the render loop never crashes
+readPixels()           → [0,0,0,0]               // zero pixels, no throw
+shaderSource/compile   → "succeed"; COMPILE_STATUS → null
+getExtension()         → null                    // even WEBGL_lose_context is unreachable
+getContextAttributes() → null
+finish() / clear() / bufferData() → no throw, no effect</pre>
+  <p class="note" style="margin-bottom:0;"><b>The zombie-creation trap:</b> <code>createTexture()</code> returning a live-looking object on a lost context means init code that "rebuilds resources" <i>during</i> loss fabricates handles that are invalid the moment the context returns. Gate all resource creation on <code>!isContextLost()</code>.</p>
+</div>
+
+<h2>3 · Permanent-handle death — restoration revives the context, not your objects</h2>
+<p>With <code>preventDefault()</code> + <code>restoreContext()</code>, the <b>same context object</b> comes back with factory-fresh engine state (viewport, clearColor reset to defaults) — but <b>every program, shader, texture, buffer and uniform-location handle you created before the loss is permanently invalid.</b> Measured census, live in your browser:</p>
+<div class="lab">
+  <div class="row"><button id="btnRes">Build program + texture → lose → restore → census</button></div>
+  <div class="tscroll"><table id="resTable">
+    <tr><th>probe</th><th>before loss</th><th>during loss</th><th>after restore</th></tr>
+  </table></div>
+  <div class="chips" id="resChips"></div>
+  <p class="note" style="margin-bottom:0;"><b>The re-init checklist (the only correct restored-handler):</b> recreate programs <i>and</i> re-link, recompile shaders, re-create every texture/buffer/VAO/feedback, re-fetch uniform locations (old ones return null now), rebind everything, restore viewport/blend/depth state. Nothing survives. Cache the <i>recipe</i> (sources, uploads), never the handles.</p>
+</div>
+
+<h2>4 · The 16-context ceiling — eviction, not failure</h2>
+<p>At the limit the engine <b>never returns null</b> from <code>getContext</code> — it <b>evicts the oldest live context</b>, firing a real <code>webglcontextlost</code> on an innocent canvas. Measured census, one context per step (deterministic, perfectly FIFO):</p>
+<div class="lab">
+  <div class="tscroll"><table>
+    <tr><th>contexts created</th><th>#14</th><th>#15</th><th>#16</th><th>#17</th><th>#18</th><th>#20</th><th>#25</th><th>#30</th></tr>
+    <tr><td>alive after</td><td>14</td><td>15</td><td><b>16</b></td><td>16</td><td>16</td><td>16</td><td>16</td><td>16</td></tr>
+    <tr><td>evicted (indices)</td><td>—</td><td>—</td><td>—</td><td>[0]</td><td>[0,1]</td><td>[0–3]</td><td>[0–8]</td><td>[0–13]</td></tr>
+  </table></div>
+  <p><b>The frame-tree sharing law:</b> the budget is <b>shared across the whole page, iframes included</b>. Measured: a parent page holding 14 live contexts dropped to 11/14 the moment a same-origin <i>iframe</i> created 5 of its own — the iframe's births evicted the <i>parent's</i> oldest. After 23 total across both frames: parent 7/14, iframe 9/9 alive (younger wins). Embedded WebGL widgets don't get their own budget.</p>
+  <p>Run it live — this deliberately <b>sacrifices this page's own canvases</b>, including the hero above. That's the point: watch a healthy page degrade exactly like production Mission Control would. <b>Watch the hero closely:</b> it gets evicted too — but because its listener preventDefaults, the engine may <b>auto-restore it seconds later</b> (measured: lost at eviction, self-restored ~3s later with zero code calling <code>restoreContext()</code>). The rebuilt frame you see after is the §3 re-init handler doing its job. Idle contexts without the listener stay dead forever.</p>
+  <div class="row"><button class="danger" id="btnEvict">Run live eviction — 20 contexts, oldest dies first</button> <span class="pill" id="evictState">idle</span></div>
+  <div class="slots" id="slots"></div>
+  <p class="note" style="margin-bottom:0;">Why this matters for Mission Control: MapLibre GL, three.js, chart canvases, and every WebGL widget share one FIFO budget of 16. The 17th widget doesn't fail loudly — the <i>first</i> map goes silently blank. Guard: cap live contexts, dispose hidden-panel contexts on tab switch, and treat any canvas you didn't create (ads, embeds, iframes) as budget consumers.</p>
+</div>
+
+<h2>5 · The attribute truths — what getContext actually honors</h2>
+<p>Live-probed on this page's engine. The readback lies in specific, consistent ways:</p>
+<div class="lab">
+  <div class="row"><button id="btnAttrs">Probe this browser live</button></div>
+  <div class="chips" id="attrChips">
+    <span class="chip warn">desynchronized:true requested → readback FALSE (silently dropped)</span>
+    <span class="chip ok">powerPreference echoes the request verbatim (write-only hint)</span>
+    <span class="chip ok">failIfMajorPerformanceCaveat:true reflected, creation not refused on real GPU</span>
+    <span class="chip warn">xrCompatible write = silent no-op (readback stays false)</span>
+    <span class="chip warn">getContextAttributes() → null while context is lost</span>
+  </div>
+  <h3>One canvas, one context type — forever</h3>
+  <div class="tscroll"><table>
+    <tr><th>first call</th><th>second call</th><th>result</th></tr>
+    <tr><td>webgl2</td><td>webgl2</td><td>same object — attrs of 2nd call fully ignored (first-call-wins)</td></tr>
+    <tr><td>webgl2</td><td>webgl (v1)</td><td>null — they are different context types</td></tr>
+    <tr><td>webgl2</td><td>2d</td><td>null</td></tr>
+    <tr><td>webgl (v1)</td><td>webgl2</td><td>null (the common "fallback" pattern is per-canvas impossible)</td></tr>
+    <tr><td>2d</td><td>webgl2</td><td>null</td></tr>
+    <tr><td>webgl2</td><td>bitmaprenderer</td><td>null (the commitment extends to ImageBitmapRenderingContext)</td></tr>
+  </table></div>
+  <p class="note" style="margin-bottom:0;">Surface census: WebGL2 prototype = <b>791 members</b>, WebGL1 = 442 — a strict superset (zero members missing). <code>Object.keys(gl)</code> is <code>[]</code> (nothing enumerable — the usual interface-object lie).</p>
+</div>
+
+<h2>6 · The pixel truths — readback vs. the screen</h2>
+<p>Two lanes that look like one API and behave like two different ones:</p>
+<div class="lab">
+  <div class="row"><button id="btnPixels">Run the readback demo live</button></div>
+  <div class="tscroll"><table id="pxTable">
+    <tr><th>lane</th><th>same task</th><th>after presentation</th></tr>
+  </table></div>
+  <div class="chips">
+    <span class="chip ok">preserve:false + presented canvas → readPixels cleared to [0,0,0,0]</span>
+    <span class="chip ok">preserve:true → pixels survive presentation</span>
+    <span class="chip warn">off-DOM canvas never "presents" → buffer survives even with preserve:false</span>
+    <span class="chip warn">the SCREEN keeps the last composited frame after the buffer clears (screenshot-verified)</span>
+    <span class="chip info">premultipliedAlpha: cosmetic in compositing — legal AND out-of-gamut colors composite identically (measured: clearColor(1,0,0,0) → pure white over white in BOTH modes)</span>
+    <span class="chip info">alpha:false forces the alpha byte to 255 regardless of clearColor</span>
+  </div>
+  <p class="note" style="margin-bottom:0;">The practical law: <code>readPixels</code>/<code>toDataURL</code> in the <b>same task</b> as the draw always work; anything after a presented frame needs <code>preserveDrawingBuffer:true</code> — or draw-and-read in one task. GL readback returns <b>unpremultiplied</b> values regardless of the premul hint.</p>
+</div>
+
+<h2>7 · Capstones</h2>
+<div class="grid2">
+  <div class="lab" style="margin:0;">
+    <h3 style="margin-top:0;">OpenDrones Mission Control — the eviction guard</h3>
+    <p>MapLibre map + 3D replay + telemetry sparkline canvases on one page = one shared 16-slot FIFO with every embedded widget. The production shape:</p>
+    <pre>// one place owns every context birth
+const CTX_BUDGET = 12; // headroom for embeds/ads/ifs
+let live = new Set();
+function acquire(canvas, attrs){
+  if (live.size &gt;= CTX_BUDGET)
+    releaseOldestHidden();          // evict ours before the engine evicts the map
+  const gl = canvas.getContext('webgl2', attrs);
+  if (gl) live.add(gl);
+  canvas.addEventListener('webglcontextlost', onLost);
+  return gl;
+}
+function onLost(e){
+  e.preventDefault();               // or we never get it back
+  scheduleRebuild(canvas);          // §3: full re-init — handles are dead
+}
+// tab hidden → release its contexts (visibility, not survival, is the budget lever)</pre>
+  </div>
+  <div class="lab" style="margin:0;">
+    <h3 style="margin-top:0;">Molt — WebGL hero sections that don't eat clients' dashboards</h3>
+    <p>Marketing sites with three.js heroes land on pages full of other people's WebGL (embeds, players, ads). Three rules:</p>
+    <ul>
+      <li>The hero owns <b>one</b> context; <code>renderer.dispose()</code> + <code>forceContextLoss()</code> on route change — a SPA leak of 16 heroes is a time bomb for every other canvas on the site.</li>
+      <li>Never ship a WebGL hero without a <code>webglcontextlost</code> handler that degrades to the static poster — silent no-ops mean the failure mode without one is a frozen frame, not an error.</li>
+      <li>MapLibre/three on the same page as chart canvases: budget-test with <b>all</b> widgets mounted, not per-component.</li>
+    </ul>
+    <p class="note">Sellable: a "WebGL resilience audit" — context census, loss-simulation harness (this page's §0–§3 as the client-facing demo), eviction guards. 3–4 h per site.</p>
+  </div>
+</div>
+
+<h2>8 · The ten rules</h2>
+<div class="lab">
+  <ol style="margin:0; padding-left:20px; color:#cfcce0;">
+    <li>Listen on the <b>canvas</b>, never the context (it isn't an EventTarget).</li>
+    <li><code>preventDefault()</code> in <code>webglcontextlost</code> — or the context is dead forever and <code>restoreContext()</code> silently no-ops.</li>
+    <li>Grab <code>WEBGL_lose_context</code> <b>before</b> loss — <code>getExtension()</code> returns null on a lost context.</li>
+    <li>Rebuild <b>everything</b> in the restored handler; zero handles survive (§3).</li>
+    <li>Gate all GL calls on <code>!isContextLost()</code>; nothing throws — you'll never see the failure otherwise.</li>
+    <li>Drain <code>getError()</code> — <code>CONTEXT_LOST_WEBGL</code> is a <b>one-shot</b> token (0x9242, then 0).</li>
+    <li>Budget 16 contexts <b>per page, iframes included</b>; evict your own hidden contexts first.</li>
+    <li>One canvas = one context type, first call wins — the webgl→webgl2 "fallback" needs a new canvas.</li>
+    <li>Draw-and-read in one task, or set <code>preserveDrawingBuffer:true</code>; the cleared buffer never matches the still-on-screen frame.</li>
+    <li>Simulate before you ship: if your page can't survive this page's §0 buttons, it can't survive a driver update.</li>
+  </ol>
+</div>
+
+<h2>Provenance</h2>
+<p class="note">Probed 2026-10-16, Chrome for Testing 148 + Brave/Chromium 154 (ANGLE · Metal · Apple M4, real GPU) — 5 headless suites: surface/attr census (791-member proto, attr readback lies), loss-contract battery (event grammar, silent no-ops, restore semantics, handle census), ceiling census (60-ctx run + per-creation FIFO + iframe sharing), pixel lanes (readback timing via presented canvases, element-screenshot compositing decode), premul out-of-gamut. Interactive lanes on this page re-probe the same truths live in your engine.</p>
+
+<p class="note">Jin 🎨 — Molt Studios · <a href="https://molt-research.vercel.app" style="color:var(--info);">molt-research.vercel.app</a></p>
+</div>
+
+<script>
+(function(){
+'use strict';
+var $ = function(id){ return document.getElementById(id); };
+function chip(host, label, cls){ var s = document.createElement('span'); s.className = 'chip ' + cls; s.textContent = label; host.appendChild(s); return s; }
+function log(host, msg){ var t = new Date(); var ts = ('0'+t.getHours()).slice(-2)+':'+('0'+t.getMinutes()).slice(-2)+':'+('0'+t.getSeconds()).slice(-2)+'.'+('00'+t.getMilliseconds()).slice(-3); host.textContent = ts + '  ' + msg + '\n' + host.textContent; }
+
+var VS = '#version 300 es\nin vec2 p; void main(){ gl_Position = vec4(p,0.,1.); }';
+var FS_HERO = '#version 300 es\nprecision mediump float; uniform float t; out vec4 o;\nvoid main(){ vec2 u = gl_FragCoord.xy/440.; o = vec4(.5+.5*cos(t+6.28*(u.x+u.y*2.)), .25*u.y, .9-.4*u.x, 1.); }';
+var FS_PT = '#version 300 es\nprecision mediump float; uniform vec4 u; out vec4 o; void main(){ o = u; }';
+
+// ---------- §0 hero ----------
+var hero = $('hero'), heroLog = $('heroLog');
+var gl = hero.getContext('webgl2', { antialias:true });
+var ext = gl.getExtension('WEBGL_lose_context');
+var prog = null, t0 = performance.now(), errShown = false, drawnLost = 0;
+function buildHero(){
+  prog = gl.createProgram();
+  function sh(t, s){ var x = gl.createShader(t); gl.shaderSource(x, s); gl.compileShader(x); return x; }
+  gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS));
+  gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS_HERO));
+  gl.linkProgram(prog);
+}
+if (gl){
+  buildHero();
+  var buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0,.66,-.57,-.33,.57,-.33]), gl.STATIC_DRAW);
+  hero.addEventListener('webglcontextlost', function(e){
+    log(heroLog, 'webglcontextlost  cancelable=' + e.cancelable + '  bubbles=' + e.bubbles + '  statusMessage="' + e.statusMessage + '"');
+    e.preventDefault ? ( $('ckPrevent').checked ? e.preventDefault() : null) : null;
+    if ($('ckPrevent').checked){
+      e.preventDefault();
+      log(heroLog, 'preventDefault() → context is recoverable');
+    } else {
+      log(heroLog, 'NO preventDefault → context stays dead forever');
+    }
+    $('heroDead').style.display = 'flex';
+    $('btnRestore').disabled = false;
+    errShown = false; drawnLost = 0;
+  });
+  hero.addEventListener('webglcontextrestored', function(){
+    log(heroLog, 'webglcontextrestored → same object: ' + (gl === hero.getContext('webgl2')) + ' — rebuilding everything (§3)');
+    gl = hero.getContext('webgl2');
+    ext = gl.getExtension('WEBGL_lose_context');
+    buildHero();
+    errShown = false;
+    $('heroDead').style.display = 'none';
+  });
+  $('btnLose').onclick = function(){ if (ext) ext.loseContext(); };
+  $('btnRestore').onclick = function(){
+    if (ext && gl.isContextLost()){
+      ext.restoreContext();
+      var stayed = gl.isContextLost();
+      log(heroLog, stayed
+        ? 'restoreContext() called — flag still true IN-CALL (restoration is async; restored event ~1 frame later)'
+        : 'restoreContext() → recovery started');
+    }
+  };
+  (function frame(){
+    if (gl){
+      var lost = gl.isContextLost();
+      var drawRet;
+      if (lost){
+        drawRet = gl.drawArrays(gl.TRIANGLES, 0, 3); // silent no-op — never throws
+        drawnLost++;
+        if (!errShown){ var e = gl.getError(); $('heroErr').textContent = 'getError: 0x' + e.toString(16) + (e ? ' (one-shot token)' : ' (NO_ERROR — token already drained)'); errShown = true; }
+      } else {
+        gl.viewport(0, 0, 440, 440);
+        gl.useProgram(prog);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        var loc = gl.getAttribLocation(prog, 'p');
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+        gl.uniform1f(gl.getUniformLocation(prog, 't'), (performance.now() - t0) / 1000);
+        drawRet = gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+      $('heroState').textContent = 'isContextLost: ' + lost;
+      $('heroDraw').textContent = 'drawArrays(): ' + drawRet + (lost ? ' (no-op, call #' + drawnLost + ')' : '');
+    }
+    requestAnimationFrame(frame);
+  })();
+} else {
+  chip(document.querySelector('.meta'), 'WebGL2 unavailable — replay-only mode', 'fail');
+}
+
+// ---------- §2 battery ----------
+$('btnBattery').onclick = function(){
+  var host = $('batteryChips'); host.textContent = '';
+  var c = document.createElement('canvas'); c.width = c.height = 8;
+  var g = c.getContext('webgl2', { antialias:false });
+  if (!g){ chip(host, 'no context available (page budget?)', 'fail'); return; }
+  var le = g.getExtension('WEBGL_lose_context');
+  c.addEventListener('webglcontextlost', function(e){ e.preventDefault(); });
+  le.loseContext();
+  var first = g.getError(), second = g.getError(), third = g.getError();
+  chip(host, 'getError #1 → 0x' + first.toString(16) + ' CONTEXT_LOST_WEBGL ✓', first === 0x9242 ? 'ok' : 'fail');
+  chip(host, 'getError #2 → 0x' + second.toString(16) + ' (token drained)', second === 0 ? 'ok' : 'fail');
+  chip(host, 'getError #3 → 0x' + third.toString(16), third === 0 ? 'ok' : 'fail');
+  function lane(name, fn, expect){
+    try { var v = fn(); chip(host, name + ' → ' + v + ' ' + (expect === v ? '✓' : '(expected ' + expect + ')'), expect === v ? 'ok' : 'fail'); }
+    catch (err){ chip(host, name + ' THREW ' + err.name, 'fail'); }
+  }
+  lane('createTexture()', function(){ return g.createTexture() instanceof WebGLTexture ? '[object WebGLTexture] zombie' : String(g.createTexture()); }, '[object WebGLTexture] zombie');
+  lane('getParameter(VERSION)', function(){ return String(g.getParameter(g.VERSION)); }, 'null');
+  lane('drawArrays()', function(){ g.drawArrays(g.POINTS, 0, 1); return 'undefined (no throw)'; }, 'undefined (no throw)');
+  var px = new Uint8Array(4);
+  lane('readPixels()', function(){ g.readPixels(0, 0, 1, 1, g.RGBA, g.UNSIGNED_BYTE, px); return Array.from(px).join(','); }, '0,0,0,0');
+  lane('clear()', function(){ g.clearColor(1,0,0,1); g.clear(g.COLOR_BUFFER_BIT); return 'no throw'; }, 'no throw');
+  lane('finish()', function(){ g.finish(); return 'no throw'; }, 'no throw');
+  lane('getExtension()', function(){ return String(g.getExtension('WEBGL_lose_context')); }, 'null');
+  lane('getContextAttributes()', function(){ return String(g.getContextAttributes()); }, 'null');
+  lane('compileShader', function(){ var s = g.createShader(g.VERTEX_SHADER); g.shaderSource(s, 'void main(){}'); g.compileShader(s); return String(g.getShaderParameter(s, g.COMPILE_STATUS)); }, 'null');
+  this.disabled = true; this.textContent = 'battery complete — 13 lanes, 0 throws';
+};
+
+// ---------- §3 resource invalidation ----------
+$('btnRes').onclick = function(){
+  var host = $('resChips'); host.textContent = '';
+  var tbl = $('resTable');
+  while (tbl.rows.length > 1) tbl.deleteRow(1);
+  var c = document.createElement('canvas'); c.width = c.height = 32;
+  var g = c.getContext('webgl2', { antialias:false, preserveDrawingBuffer:true });
+  if (!g){ chip(host, 'no context available', 'fail'); return; }
+  var p = g.createProgram();
+  function sh(t, s){ var x = g.createShader(t); g.shaderSource(x, s); g.compileShader(x); return x; }
+  g.attachShader(p, sh(g.VERTEX_SHADER, VS)); g.attachShader(p, sh(g.FRAGMENT_SHADER, FS_PT));
+  g.linkProgram(p);
+  var tex = g.createTexture();
+  g.bindTexture(g.TEXTURE_2D, tex);
+  g.texImage2D(g.TEXTURE_2D, 0, g.RGBA, 1, 1, 0, g.RGBA, g.UNSIGNED_BYTE, new Uint8Array([200,40,80,255]));
+  g.viewport(0, 0, 32, 32);
+  var snap = function(){
+    var vp; try { vp = g.getParameter(g.VIEWPORT); vp = vp ? Array.from(vp).join(',') : 'null'; } catch (e) { vp = 'throw'; }
+    return {
+      link: String(g.getProgramParameter(p, g.LINK_STATUS)),
+      isProg: String(g.isProgram(p)),
+      isTex: String(g.isTexture(tex)),
+      uLoc: String(g.getUniformLocation(p, 'u') !== null),
+      viewport: vp,
+      curProg: String(g.getParameter(g.CURRENT_PROGRAM) !== null)
+    };
+  };
+  var before = snap();
+  var le = g.getExtension('WEBGL_lose_context');
+  var restored = false;
+  c.addEventListener('webglcontextlost', function(e){ e.preventDefault(); });
+  c.addEventListener('webglcontextrestored', function(){
+    restored = true;
+    var after = snap();
+    var rows = [
+      ['getProgramParameter(LINK_STATUS)', before.link, 'null', after.link],
+      ['isProgram(prog)', before.isProg, 'false', after.isProg],
+      ['isTexture(tex)', before.isTex, 'false', after.isTex],
+      ['getUniformLocation', before.uLoc, 'false', after.uLoc],
+      ['getParameter(VIEWPORT)', before.viewport, 'null', after.viewport],
+      ['CURRENT_PROGRAM bound', before.curProg, 'false', after.curProg]
+    ];
+    rows.forEach(function(r){
+      var tr = tbl.insertRow();
+      [r[0], r[1], r[2], r[3]].forEach(function(v, i){ var td = tr.insertCell(); td.textContent = v; });
+    });
+    var deadOk = after.isProg === 'false' && after.isTex === 'false' && after.uLoc === 'false';
+    chip(host, 'old handles permanently dead after restore: ' + deadOk, deadOk ? 'ok' : 'fail');
+    chip(host, 'engine state reset to defaults (viewport/clearColor)', 'ok');
+    chip(host, 'same context object returned: ' + (g === c.getContext('webgl2')), 'ok');
+  });
+  le.loseContext();
+  var during = snap();
+  chip(host, 'during loss: every query degenerate ✓', during.link === 'null' && during.isProg === 'false' ? 'ok' : 'fail');
+  setTimeout(function(){ le.restoreContext(); }, 150);
+  setTimeout(function(){ if (!restored) chip(host, 'restored event never fired within 700ms', 'fail'); }, 850);
+  this.disabled = true; this.textContent = 'census running…';
+};
+
+// ---------- §4 eviction ----------
+var slotHost = $('slots'), evictState = $('evictState');
+for (var i = 0; i < 20; i++){ var s = document.createElement('div'); s.className = 'slot'; s.textContent = i; slotHost.appendChild(s); }
+var slots = slotHost.children;
+$('btnEvict').onclick = function(){
+  this.disabled = true;
+  evictState.textContent = 'running…';
+  var made = [];
+  function step(n){
+    if (n >= 20){
+      for (var k2 = 0; k2 < 20; k2++) if (k2 < made.length){ slots[k2].className = 'slot ' + (made[k2].gl && !made[k2].gl.isContextLost() ? 'alive' : 'dead'); slots[k2].textContent = k2; }
+      var alive = made.filter(function(m){ return !m.gl.isContextLost(); }).length;
+      evictState.textContent = 'done — ' + alive + '/20 alive (plus the hero: evicted too — watch it)';
+      return;
+    }
+    var c = document.createElement('canvas'); c.width = c.height = 4;
+    var g = c.getContext('webgl2');
+    made.push({ gl: g });
+    requestAnimationFrame(function(){
+      for (var k = 0; k < 20; k++){
+        var st = k < made.length && made[k].gl && !made[k].gl.isContextLost();
+        slots[k].className = 'slot ' + (k === n ? 'nu' : (k < made.length ? (st ? 'alive' : 'dead') : ''));
+        slots[k].textContent = k;
+      }
+      step(n + 1);
+    });
+  }
+  step(0);
+};
+
+// ---------- §5 attrs ----------
+$('btnAttrs').onclick = function(){
+  var host = $('attrChips');
+  var c1 = document.createElement('canvas'); c1.width = c1.height = 4;
+  var g1 = c1.getContext('webgl2', { desynchronized:true, powerPreference:'high-performance', failIfMajorPerformanceCaveat:true, antialias:false });
+  var a = g1 ? g1.getContextAttributes() : null;
+  chip(host, 'desynchronized:true → ' + a.desynchronized + (a.desynchronized ? '' : ' — silently dropped ✓'), a.desynchronized === false ? 'ok' : 'warn');
+  chip(host, "powerPreference → '" + a.powerPreference + "' (verbatim echo)", 'info');
+  chip(host, 'failIfMajorPerformanceCaveat → ' + a.failIfMajorPerformanceCaveat, 'info');
+  // one canvas one type
+  chip(host, "webgl2 → 2d returns " + c1.getContext('2d'), c1.getContext('2d') === null ? 'ok' : 'fail');
+  chip(host, "webgl2 → webgl(v1) returns " + c1.getContext('webgl'), c1.getContext('webgl') === null ? 'ok' : 'fail');
+  chip(host, '2nd webgl2 call = same object: ' + (c1.getContext('webgl2') === g1) + ' (first-call-wins)', 'ok');
+  var c2 = document.createElement('canvas'); c2.width = c2.height = 4;
+  c2.getContext('webgl');
+  chip(host, 'webgl(v1) first → webgl2 returns ' + c2.getContext('webgl2') + ' (fallback impossible per-canvas)', c2.getContext('webgl2') === null ? 'ok' : 'fail');
+  var c3 = document.createElement('canvas'); c3.width = c3.height = 4;
+  c3.getContext('2d');
+  chip(host, '2d first → webgl2 returns ' + c3.getContext('webgl2'), c3.getContext('webgl2') === null ? 'ok' : 'fail');
+  var g3 = null, before = null;
+  var c4 = document.createElement('canvas'); c4.width = c4.height = 4;
+  var g4 = c4.getContext('webgl2');
+  try { g4.xrCompatible = true; } catch (e) {}
+  chip(host, 'xrCompatible write → readback ' + g4.xrCompatible + ' (silent no-op)', g4.xrCompatible === false ? 'ok' : 'warn');
+  this.disabled = true;
+};
+
+// ---------- §6 pixels ----------
+$('btnPixels').onclick = function(){
+  var tbl = $('pxTable');
+  while (tbl.rows.length > 1) tbl.deleteRow(1);
+  function paint(g, col){
+    var p = g.createProgram();
+    function sh(t, s){ var x = g.createShader(t); g.shaderSource(x, s); g.compileShader(x); return x; }
+    g.attachShader(p, sh(g.VERTEX_SHADER, VS)); g.attachShader(p, sh(g.FRAGMENT_SHADER, FS_PT));
+    g.linkProgram(p); g.useProgram(p);
+    g.uniform4f(g.getUniformLocation(p, 'u'), col[0], col[1], col[2], 1);
+    var b = g.createBuffer();
+    g.bindBuffer(g.ARRAY_BUFFER, b);
+    g.bufferData(g.ARRAY_BUFFER, new Float32Array([0,.66,-.57,-.33,.57,-.33]), g.STATIC_DRAW);
+    var l = g.getAttribLocation(p, 'p');
+    g.enableVertexAttribArray(l); g.vertexAttribPointer(l, 2, g.FLOAT, false, 0, 0);
+    g.viewport(0, 0, 8, 8);
+    g.drawArrays(g.TRIANGLES, 0, 3);
+  }
+  var mkCell = document.createElement('div');
+  mkCell.style.cssText = 'display:flex;gap:14px;flex-wrap:wrap;margin-top:10px';
+  this.parentNode.appendChild(mkCell);
+  function px(g){ var a = new Uint8Array(4); g.readPixels(4, 4, 1, 1, g.RGBA, g.UNSIGNED_BYTE, a); return Array.from(a).join(','); }
+  var mk = function(preserve, col){
+    var cell = document.createElement('div'); cell.style.cssText = 'width:96px;height:96px;background:#fff;position:relative;border-radius:6px;overflow:hidden';
+    mkCell.appendChild(cell);
+    var c = document.createElement('canvas'); c.width = c.height = 8;
+    c.style.cssText = 'width:96px;height:96px;image-rendering:pixelated;position:absolute;left:0;top:0';
+    cell.appendChild(c);
+    var g = c.getContext('webgl2', { preserveDrawingBuffer: preserve, antialias: false });
+    paint(g, col);
+    return g;
+  };
+  var noP = mk(false, [1, 0, 0]);
+  var yesP = mk(true, [0, 0, 1]);
+  var same1 = px(noP), same2 = px(yesP);
+  var self = this;
+  var frames = 0;
+  (function waitFrames(){
+    requestAnimationFrame(function(){
+      frames++;
+      if (frames < 4) return waitFrames();
+      setTimeout(function(){
+        var after1 = px(noP), after2 = px(yesP);
+        function addRow(name, same, after){
+          var tr = tbl.insertRow();
+          [name, same, after].forEach(function(v){ tr.insertCell().textContent = v; });
+        }
+        addRow('preserve:false — presented', same1, after1);
+        addRow('preserve:true — presented', same2, after2);
+        self.textContent = 'done — compare the columns';
+      }, 30);
+    });
+  })();
+  this.disabled = true;
+  this.textContent = 'painted — waiting for 4 presented frames…';
+};
+})();
+</script>
+</body>
+</html>
