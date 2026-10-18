@@ -104,7 +104,8 @@ module.exports = async (req, res) => {
         'data\n\n',
         'id: 9\n\n',
         'data: after-lonely-id\n\n',
-        'data: cr-end\r\ndata: crlf-end\r\n\n',
+        'data: cr-end\rid: 7\r\r',
+        'data: crlf\r\nid: 8\r\n\r\n',
         'event: t1\ndata: a\n\nevent:\ndata: b\n\n',
         'data: ' + 'x'.repeat(1048576) + '\n\n',
       ];
