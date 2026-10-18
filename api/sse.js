@@ -20,7 +20,7 @@ module.exports = async (req, res) => {
   const mode = q.get('mode');
   const cs = q.get('case');
   const lei = req.headers['last-event-id'] || null;
-  const key = cs ? 'case:' + cs : 'mode:' + mode + (q.get('retry') !== null ? '&retry=' + q.get('retry') : '') + (q.get('worker') ? '&worker' : '');
+  const key = (q.get('key') ? q.get('key') + ':' : '') + (cs ? 'case:' + cs : 'mode:' + mode + (q.get('retry') !== null ? '&retry=' + q.get('retry') : '') + (q.get('worker') ? '&worker' : ''));
   if (mode === 'reqlog') {
     const want = q.get('key');
     const e = LOG.get(want) || { count: 0 };
@@ -33,6 +33,7 @@ module.exports = async (req, res) => {
     // ---- walls ----
     if (cs === '204') { res.writeHead(204, { 'Cache-Control': 'no-store' }); return res.end(); }
     if (cs === '404') { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('nope'); }
+    if (cs === '500') { res.writeHead(500, { 'Content-Type': 'text/plain' }); return res.end('boom'); }
     if (cs === 'mime') { res.writeHead(200, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' }); return res.end('data: not-sse\n\n'); }
     if (cs === 'json') { res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); return res.end('{}'); }
 
@@ -58,10 +59,38 @@ module.exports = async (req, res) => {
       return res.end();
     }
 
+    // ---- redi: redirect lane (same-origin or cross-origin landing) ----
+    if (mode === 'redi') {
+      const to = q.get('to');
+      const code = parseInt(q.get('code') || '302', 10);
+      bump(key);
+      res.writeHead(code, { Location: to });
+      return res.end();
+    }
+
+    // ---- tokens: the AI-capstone stream (fetch-lane POST demo) ----
+    if (mode === 'tokens') {
+      bump(key);
+      const lei0 = lei;
+      res.writeHead(200, SSE_HDRS);
+      res.flushHeaders && res.flushHeaders();
+      const answer = ['Server', '-', 'sent', 'events', 'are', 'the', 'push', 'tier', 'every', 'AI', 'widget', 'already', 'speaks', '.', 'No', 'sockets', ',', 'no', 'SDKs', ',', 'just', 'HTTP', '.'];
+      res.write(`retry: 800\n`);
+      res.write(`event: meta\ndata: ${JSON.stringify({ model: 'molt-demo-1', lei: lei0 })}\n\n`);
+      let alive = true;
+      req.on('close', () => { alive = false; });
+      for (let i = 0; i < answer.length && alive; i++) {
+        res.write(`event: token\ndata: ${JSON.stringify({ t: answer[i], i })}\n\n`);
+        await sleep(90 + Math.random() * 120);
+      }
+      if (alive) { res.write(`event: done\ndata: {"usage":{"tokens":${answer.length}}}\n\n`); }
+      return res.end();
+    }
+
     // ---- grammar: the wire-grammar pass ----
     if (mode === 'grammar') {
       const frames = [
-        ': open keep-alive comment only\n\n',
+        '\uFEFF: open keep-alive comment only (BOM swallowed)\n\n',
         'data: hello\n\n',
         'data: line1\ndata: line2\n\n',
         'data:nospace\n\n',
@@ -73,6 +102,8 @@ module.exports = async (req, res) => {
         'id: n\u0000ul\ndata: after-nul\n\n',
         'foo: ignored-field\ndata: unknown-ok\n\n',
         'data\n\n',
+        'id: 9\n\n',
+        'data: after-lonely-id\n\n',
         'data: cr-end\r\ndata: crlf-end\r\n\n',
         'event: t1\ndata: a\n\nevent:\ndata: b\n\n',
         'data: ' + 'x'.repeat(1048576) + '\n\n',
