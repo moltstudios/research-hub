@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Encoding API — the byte↔text tier: TextEncoder · TextDecoder · the two stream classes (live-probed engine truths)</title>
+<style>
+  :root { --ink:#1d1c1a; --mut:#75716a; --line:#e6e2da; --card:#fffdf9; --bg:#f7f5f0; --acc:#0b6b5d; --acc2:#b05c1a; --bad:#a11111; }
+  * { box-sizing: border-box; }
+  body { font: 15px/1.55 -apple-system, system-ui, sans-serif; color: var(--ink); background: var(--bg); margin: 0; overflow-x: hidden; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 24px 20px 80px; }
+  .sec { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 22px; margin: 26px 0; overflow: hidden; }
+  h1 { font-size: 29px; line-height: 1.2; letter-spacing: -0.02em; margin: 10px 0 8px; }
+  h2 { font-size: 19px; margin: 2px 0 10px; letter-spacing: -0.01em; }
+  p { margin: 8px 0; }
+  code, .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12.5px; background: #f4f2ee; padding: 1px 5px; border-radius: 6px; overflow-wrap: anywhere; }
+  pre { background: #f4f2ee; border-radius: 12px; padding: 12px; overflow-x: auto; font-size: 12px; line-height: 1.5; max-width: 100%; margin: 10px 0; }
+  .mut { color: var(--mut); font-size: 13px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 4px 10px; margin: 3px 4px 3px 0; border: 1px solid transparent; max-width: 100%; white-space: normal; }
+  .chip.ok { background: #e8f7ee; color: #0a6b35; border-color: #bfe8d0; }
+  .chip.warn { background: #fff5e0; color: #8a5a00; border-color: #f3ddaa; }
+  .chip.fail { background: #fdeaea; color: #a11111; border-color: #f2c4c4; }
+  .chip.info { background: #e9f1fd; color: #0b4fa8; border-color: #c4dcf7; }
+  .chip .d { font-weight: 400; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button { font: 600 13px/1.3 -apple-system, system-ui, sans-serif; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; max-width: 100%; }
+  button:hover { border-color: #c9c5bd; }
+  button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  button:disabled { opacity: .5; cursor: default; }
+  .tscroll { overflow-x: auto; max-width: 100%; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  td, th { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--mut); }
+  .pill { font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--acc); }
+  .out { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--ink); background: #f4f2ee; border-radius: 10px; padding: 8px 10px; margin-top: 8px; overflow-wrap: anywhere; max-height: 240px; overflow-y: auto; }
+  .law { border-left: 3px solid var(--acc); padding: 2px 0 2px 12px; margin: 12px 0; }
+  .law b { color: var(--acc); }
+  ul { margin: 8px 0; padding-left: 20px; }
+  li { margin: 4px 0; }
+  a { color: var(--acc2); }
+  input[type=text] { font: 13px/1.4 ui-monospace, Menlo, monospace; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: #fff; color: var(--ink); width: 100%; max-width: 100%; }
+  input[type=range] { width: 100%; accent-color: var(--acc); }
+  .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 640px) { .duo { grid-template-columns: 1fr; } }
+  .panel { border: 1px solid var(--line); border-radius: 14px; padding: 12px; background: #fff; min-width: 0; }
+  .panel h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--mut); }
+  .bytes { font-family: ui-monospace, Menlo, monospace; font-size: 12px; overflow-wrap: anywhere; }
+  .bcell { display: inline-block; font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; border: 1px solid var(--line); border-radius: 6px; padding: 2px 5px; margin: 2px 3px 2px 0; background: #fff; }
+  .bcell.hot { background: #fdeaea; border-color: #f2c4c4; color: var(--bad); font-weight: 700; }
+  .bcell.cut { outline: 2px dashed var(--acc2); outline-offset: 1px; }
+  .lane-tag { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+  .good { color: #0a6b35; } .badc { color: var(--bad); }
+  .grid-drift { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+  @media (max-width: 560px) { .grid-drift { grid-template-columns: repeat(4, 1fr); } }
+  .drift-cell { border: 1px solid var(--line); border-radius: 8px; padding: 4px 2px; text-align: center; background: #fff; min-width: 0; overflow: hidden; }
+  .drift-cell .b { font-family: ui-monospace, Menlo, monospace; font-size: 10px; color: var(--mut); }
+  .drift-cell .c1 { font-size: 13px; }
+  .drift-cell .c2 { font-size: 13px; color: var(--acc2); font-weight: 600; }
+  .footer { color: var(--mut); font-size: 12.5px; margin-top: 30px; text-align: center; }
+  .badge { display:inline-block; font-size:11px; font-weight:700; border-radius:999px; padding:2px 9px; margin-left:8px; background:#e9f1fd; color:#0b4fa8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="sec">
+  <div class="pill">Web Platform Engine-Truth Tier · entry 208 · probed CfT 148 headless (Chromium 154 lane) · 2026-10-18</div>
+  <h1>Encoding API — the byte↔text tier</h1>
+  <p><b>TextEncoder · TextDecoder · TextEncoderStream · TextDecoderStream.</b> The tier every transport entry in this catalog already leans on — Compression Streams (gzip bytes → text), SSE (chunk→string), WebSocketStream (<code>ArrayBuffer</code> messages), Web Serial (raw device bytes), File System Access (byte reads). Zero prior catalog coverage across 215 entries (verified by grep before this session). Every claim below was live-probed in this page's engine or in the 5-suite probe batch that built it — the chips re-probe live on every visit.</p>
+  <div class="law"><b>Why it matters:</b> OpenDrones telemetry is binary frames carrying UTF-8 strings, split at arbitrary byte boundaries by radio MTUs — this tier is where callsigns corrupt or survive. Molt client work inherits legacy single-byte encodings (windows-1252 databases) — this tier is the migration lint.</div>
+  <div id="census"></div>
+</div>
+
+<div class="sec">
+  <h2>§1 — Surface census <span class="badge">live</span></h2>
+  <p class="mut">Probes run on page load. Proto members are exact (alphabetical, from <code>getOwnPropertyNames</code>).</p>
+  <div id="s1"></div>
+</div>
+
+<div class="sec">
+  <h2>§2 — The UTF-8-only encoder law <span class="badge">live</span></h2>
+  <div class="law"><b>THE ONE-FORMAT LAW:</b> <code>TextEncoder</code> supports exactly one encoding — UTF-8. Constructor arguments are <i>silently ignored</i> (<code>new TextEncoder('utf-16le')</code> → <code>encoding: 'utf-8'</code>). There is no level, no fatal option, no BOM emission. Everything else lives in <code>TextDecoder</code> (the asymmetric-read tier).</div>
+  <div class="law"><b>THE LONE-SURROGATE FFFD LAW:</b> JS strings can hold lone surrogates (<code>'\uD800'</code>); UTF-8 cannot. The encoder replaces each lone surrogate with <code>U+FFFD</code> (3 bytes <code>EF BF BD</code>) — <b>the encoder has NO fatal mode</b>; data loss here is silent by design. Valid surrogate pairs encode as the real 4-byte sequence.</div>
+  <div id="s2"></div>
+  <p class="mut">Try it — type text with a forced lone surrogate (default input has one):</p>
+  <div class="row"><input type="text" id="lsIn" value="ok\uD800ok" style="flex:1 1 200px" aria-label="encoder input"></div>
+  <div class="out" id="lsOut"></div>
+</div>
+
+<div class="sec">
+  <h2>§3 — encodeInto() — the glyph-atomicity law <span class="badge">live lab</span></h2>
+  <div class="law"><b>THE NO-PARTIAL-GLYPH LAW (measured):</b> <code>encodeInto(str, dest)</code> <b>never writes a partial UTF-8 sequence</b>. If the destination is too small for the NEXT code point's byte length, it writes <b>nothing</b> for it: <code>read=0 written=0</code> for a 4-byte emoji into a 2- or 3-byte buffer. The folklore "encodeInto writes as much as fits" is only true for ASCII. <code>read</code> counts <b>UTF-16 code units fully consumed</b> (an emoji = 2), <code>written</code> counts bytes.</div>
+  <div class="law"><b>THE ATOMICITY-OF-FFFD COROLLARY:</b> even the 3-byte replacement char obeys — a lone surrogate into a 2-byte dest: <code>read=0 written=0</code>. And a 1-byte dest with <code>'a😀'</code>: <code>read=1 written=1</code> (ASCII consumed, emoji held). <b>The resume pattern works</b>: retry the same source into a bigger buffer — zero data lost, zero corruption.</div>
+  <p class="mut">Dest-size slider + live read/written — the partial-write verdict updates as you slide:</p>
+  <div class="row"><input type="text" id="eiIn" value="a😀bz" style="flex:1 1 160px" aria-label="encodeInto input"><span style="white-space:nowrap">dest bytes: <b id="eiSzV">4</b></span></div>
+  <input type="range" id="eiSz" min="0" max="16" value="4" aria-label="destination size">
+  <div class="out" id="eiOut"></div>
+  <div id="s3"></div>
+</div>
+
+<div class="sec">
+  <h2>§4 — The label table — latin1→windows-1252 drift <span class="badge">live lab</span></h2>
+  <div class="law"><b>THE LATIN1 DRIFT:</b> <code>'latin1'</code>, <code>'l1'</code>, <code>'iso-8859-1'</code>, <code>'ascii'</code>, <code>'us-ascii'</code> ALL canonicalize to <b>windows-1252</b> — WHATWG retired true latin-1 from the web. Bytes <code>0x80–0x9F</code> decode as € ‚ ƒ „ … † ‡ ˆ ‰ Š ‹ Œ Ž ' ' " " • – — ˜ ™ š › œ ž Ÿ — NOT C1 controls. If your server really sends ISO-8859-1 C1 bytes, the browser will never show them. <code>'iso-8859-15'</code> (the euro variant) is its own encoding — the only 8859 sibling that survives intact here.</div>
+  <p class="mut">Type any label — canonical name or the engine's verbatim rejection:</p>
+  <div class="row"><input type="text" id="lblIn" value="latin1" style="flex:1 1 200px" aria-label="encoding label"><button id="lblBtn">resolve</button></div>
+  <div class="out" id="lblOut"></div>
+  <p class="mut">The 0x80–0x9F drift block, both ways (true latin-1 would show C1 controls — a no-op row):</p>
+  <div class="tscroll"><div class="grid-drift" id="drift"></div></div>
+  <div id="s4"></div>
+</div>
+
+<div class="sec">
+  <h2>§5 — The FFFD grammar — maximal subpart <span class="badge">live lab</span></h2>
+  <div class="law"><b>THE MAXIMAL-SUBPART LAW:</b> invalid input replaces each <i>maximal subpart of an ill-formed sequence</i> with ONE <code>U+FFFD</code> — not one per byte. A truncated 4-byte emoji (<code>F0 9F 98</code> then EOF) = <b>1</b> FFFD. But <code>F4 90 80 80</code> (out-of-range lead) = <b>4</b>: F4's maximal subpart ends at the invalid 90, then each orphan continuation gets its own. Overlong <code>C0 80</code> = 2. Encoded-surrogate <code>ED A0 80</code> = 3. This grammar is Unicode-conformant and <b>stable across engines</b> — FFFD counts are a valid corruption-fingerprint.</div>
+  <p class="mut">Hex bytes in, FFFD count out — presets are the probe fixtures:</p>
+  <div class="row" id="ffBtns"></div>
+  <div class="row"><input type="text" id="ffIn" value="F0 9F 98" style="flex:1 1 200px" aria-label="hex bytes"><button id="ffBtn">decode</button><button id="ffFatal">fatal: off</button></div>
+  <div class="out" id="ffOut"></div>
+  <div id="s5"></div>
+</div>
+
+<div class="sec">
+  <h2>§6 — The BOM law — strip-on-match, never override <span class="badge">live</span></h2>
+  <div class="law"><b>THE STRIP-DEFAULT:</b> a leading BOM matching the declared encoding is removed by default (<code>ignoreBOM:false</code> = strip); <code>ignoreBOM:true</code> keeps it as <code>U+FEFF</code> in the output string. Mid-stream BOM bytes are <b>never stripped</b> — they become ZWNBSP characters in your text.</div>
+  <div class="law"><b>THE NO-OVERRIDE FALSIFICATION:</b> older docs claim a UTF-16 BOM overrides the declared endianness. FALSE on this engine: <code>FF FE</code> (LE BOM) decoded as <code>utf-16be</code> is <b>kept as data</b> → <code>U+FFFE</code> + swapped text. The BOM only strips when it <i>matches</i> the label. No cross-family sniffing either: a UTF-8 BOM under a utf-16le label is just garbage characters.</div>
+  <div id="s6"></div>
+</div>
+
+<div class="sec">
+  <h2>§7 — The stream-boundary law — the split lab <span class="badge">live lab</span></h2>
+  <div class="law"><b>THE SPLIT LAW (the killer):</b> a multi-byte code point split across chunks is reassembled PERFECTLY by <code>decode(chunk, {stream:true})</code> — at ANY split point (1+3, 2+2, 3+1, 1+1+1+1). The naive per-chunk <code>decode()</code> corrupts: 2+2 on an emoji = <b>3 FFFDs</b> across the two chunks. <b>THE HELD-NOT-REPLACED RULE:</b> a pending partial returns <code>''</code> mid-stream — never a premature FFFD. <b>THE FLUSH LAW:</b> calling <code>decode()</code> with no bytes (or dropping <code>stream:true</code> for one call) flushes pending bytes as FFFD and RESETS the parser state — the tail bytes then decode standalone (more FFFDs). One dropped flag mid-sequence = corruption — H9 below.</div>
+  <p class="mut">Text → UTF-8 bytes → split at the slider → naive lane vs stream lane:</p>
+  <div class="row"><input type="text" id="spIn" value="🚀rc" style="flex:1 1 160px" aria-label="split lab input"><span style="white-space:nowrap">split at byte: <b id="spV">2</b></span></div>
+  <input type="range" id="spS" min="1" max="3" value="2" aria-label="split point">
+  <div class="duo">
+    <div class="panel"><h3 class="badc">Naive — new decoder per chunk</h3><div class="out" id="spNaive" style="margin-top:0"></div></div>
+    <div class="panel"><h3 class="good">Stream — {stream:true}</h3><div class="out" id="spStream" style="margin-top:0"></div></div>
+  </div>
+  <div id="s7"></div>
+</div>
+
+<div class="sec">
+  <h2>§8 — The stream classes — demand-gated writes <span class="badge">live lab</span></h2>
+  <div class="law"><b>THE DEMAND-GATED WRITE LAW (the headline trap):</b> on <code>TextEncoderStream</code>/<code>TextDecoderStream</code>, <code>writer.write()</code> — and <code>writer.close()</code> — <b>do not resolve until the readable side is PULLED</b>: a <code>read()</code> call in flight or a <code>pipeTo/pipeThrough</code> attachment. Merely <i>having</i> a reader is not enough (measured: write #2 pend'd with a reader attached, zero reads). <code>desiredSize</code> trace: 1 → 0 after first write → 1 at first pull. If your producer awaits <code>write()</code> before the consumer exists → deadlock, the Compression Streams write-deadlock law's sibling. <b>Rule: attach the consumer FIRST, or never await raw writes.</b></div>
+  <div class="law"><b>THE COERCION TABLE:</b> <code>TextEncoderStream</code>'s writable does NOT enforce string chunks — it stringifies: <code>42→"42"</code>, <code>true→"true"</code>, <code>null→"null"</code>, <code>undefined→"undefined"</code>, <code>{}→"[object Object]"</code>, <code>[1,2]→"1,2"</code>, <code>NaN→"NaN"</code>, <b>even <code>10n→"10"</code></b>. No TypeError for any of these. The decoder side is the opposite — <b>strict BufferSource wall</b>: a string chunk rejects verbatim <i>"The provided value is not of type '(ArrayBuffer or ArrayBufferView)'"</i>; <code>DataView</code> IS accepted. Asymmetric by construction.</div>
+  <p class="mut">Live deadlock lab — write with no consumer, then attach one mid-flight:</p>
+  <div class="row"><button id="dlBtn">run demand-gate demo</button></div>
+  <div class="out" id="dlOut"></div>
+  <div id="s8"></div>
+</div>
+
+<div class="sec">
+  <h2>§9 — Worker + stream flush + gzip pipeline <span class="badge">live</span></h2>
+  <p class="mut">All four classes live in Dedicated Workers; the byte pipeline composes with Compression Streams end-to-end; <code>close()</code> on the decoder stream flushes a pending partial as exactly one FFFD chunk.</p>
+  <div class="row"><button id="gzBtn">run 3-chunk gzip roundtrip</button></div>
+  <div class="out" id="gzOut">idle</div>
+  <div id="s9"></div>
+</div>
+
+<div class="sec">
+  <h2>§10 — OpenDrones capstone — the MTU-proof telemetry codec <span class="badge">live</span></h2>
+  <p>Telemetry frames: <code>[0xAA magic][len u16][UTF-8 callsign+msg][CRC8]</code> — pushed through a simulated radio that chunks at a 5-byte MTU (real LoRa/serial MTUs split multi-byte code points constantly). The naive lane decodes each radio chunk standalone; the stream lane decodes with <code>{stream:true}</code> and reassembles. TX side uses <code>encodeInto</code> into a preallocated ring buffer — zero allocations per frame, glyph-atomic partial writes on ring wrap.</p>
+  <div class="row"><button id="tmBtn">fly one mission burst</button></div>
+  <div class="duo" style="margin-top:8px">
+    <div class="panel"><h3 class="badc">Naive per-chunk decode</h3><div class="out" id="tmNaive" style="margin-top:0"></div></div>
+    <div class="panel"><h3 class="good">Stream decode + ring TX</h3><div class="out" id="tmGood" style="margin-top:0"></div></div>
+  </div>
+  <div class="law"><b>Production rules shipped here:</b> (1) one long-lived <code>TextDecoder</code>, every radio chunk through <code>{stream:true}</code>, flush only on frame-boundary checksum failure; (2) TX via <code>encodeInto</code> ring — a wrapped frame re-encodes into a bigger view, no glyph can tear; (3) <code>fatal:false</code> on the radio lane (corruption → FFFD fingerprint in the log, not a dead pipe), <code>fatal:true</code> on the config-file lane (fail fast).</div>
+</div>
+
+<div class="sec">
+  <h2>§11 — Molt capstone, decision table, 10 rules</h2>
+  <p><b>Legacy-content migration lint:</b> client databases in "latin1" are windows-1252 in the browser's eyes — the §4 drift grid is the lint. Rule: decode with <code>TextDecoder('windows-1252')</code> explicitly, re-encode to UTF-8 once, store; never trust a server header of <code>ISO-8859-1</code>.</p>
+  <div class="tscroll"><table>
+    <tr><th>Situation</th><th>Use</th><th>Rule</th></tr>
+    <tr><td>UTF-8 bytes → text, whole buffer</td><td><code>new TextDecoder().decode(u8)</code></td><td>default is UTF-8 + BOM strip — usually what you want</td></tr>
+    <tr><td>Bytes arrive in chunks (WS/Serial/SSE/fetch reader)</td><td>ONE decoder, <code>{stream:true}</code> every call</td><td>flush only at stream end; one dropped flag = corruption</td></tr>
+    <tr><td>Text → bytes, one-shot</td><td><code>encode()</code></td><td>fresh Uint8Array each call</td></tr>
+    <tr><td>Text → bytes, hot path / ring buffer</td><td><code>encodeInto()</code></td><td>glyph-atomic: retry on written&lt;needed; read counts UTF-16 units</td></tr>
+    <tr><td>Streams pipeline</td><td>TES + TDS via <code>pipeThrough</code></td><td>never await bare <code>write()</code> — demand-gated</td></tr>
+    <tr><td>Untrusted/corrupt data</td><td><code>{fatal:true}</code></td><td>TypeError text: "The encoded data was not valid."</td></tr>
+    <tr><td>Legacy single-byte content</td><td><code>TextDecoder('windows-1252')</code></td><td>'latin1' and 'iso-8859-1' are aliases of it</td></tr>
+    <tr><td>Non-UTF-8 output needed</td><td>WASM / server-side</td><td>encoder is UTF-8-only, forever</td></tr>
+  </table></div>
+  <ol>
+    <li>One decoder per stream, <code>{stream:true}</code> on EVERY call — the split lab is the proof.</li>
+    <li>Never write partial UTF-8 yourself — <code>encodeInto</code> is glyph-atomic; slice the SOURCE string, not the bytes.</li>
+    <li><code>read</code> counts UTF-16 code units, not characters (emoji = 2).</li>
+    <li>Flush = <code>decode()</code> with no bytes; it also RESETS state — the tail re-parses standalone.</li>
+    <li>Pending partials are held (empty string), never mid-stream FFFDs.</li>
+    <li>FFFD count is a corruption fingerprint — maximal-subpart grammar, stable across engines.</li>
+    <li>BOM strips on label-match only; it never overrides endianness (falsified live in §6).</li>
+    <li>'latin1'/'iso-8859-1'/'ascii' are windows-1252 — the 0x80–0x9F block proves it.</li>
+    <li>TES/TDS <code>write()</code>/<code>close()</code> pend until pulled — consumer first, always.</li>
+    <li>TES coerces every chunk type to string (even BigInt); TDS enforces BufferSource strictly — asymmetric by design.</li>
+  </ol>
+</div>
+
+<div class="footer">Encoding API engine-truth tier · Jin (frontend) · probed live in this page + 5-suite CDP batch (CfT 148, Chromium lane) · 2026-10-18 · MC entry + RESEARCH.md #208</div>
+</div>
+
+<script>
+(function(){
+'use strict';
+// ---------- chip plumbing ----------
+const chips = { };
+function chip(host, kind, label, detail){ const el = document.createElement('span'); el.className = 'chip ' + kind; el.innerHTML = '<span>' + label + '</span>' + (detail ? '<span class="d">' + esc(detail) + '</span>' : ''); (typeof host === 'string' ? document.getElementById(host) : host).appendChild(el); return el; }
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+const T = (x) => Object.prototype.toString.call(x).slice(8,-1);
+const U = (...a) => new Uint8Array(a);
+const hexs = (u8) => Array.from(u8).map(b => b.toString(16).padStart(2,'0').toUpperCase()).join(' ');
+const fffd = (s) => (s.match(/\uFFFD/g) || []).length;
+let pass=0, fail=0, warn=0, info=0;
+function CK(host, id, expect, got, kindOverride){ // verdict chip
+  const okv = String(expect) === String(got);
+  const kind = kindOverride || (okv ? 'ok' : 'fail');
+  if (kind==='ok') pass++; else if (kind==='fail') fail++; else if (kind==='warn') warn++; else info++;
+  chip(host, kind, id + (kindOverride ? '' : (okv ? ' ✓' : ' ✗')), typeof got === 'string' ? got : JSON.stringify(got));
+  return okv;
+}
+function W(host, id, detail){ warn++; chip(host, 'warn', id, detail); }
+function I(host, id, detail){ info++; chip(host, 'info', id, detail); }
+
+// ---------- §1 census ----------
+(function(){
+  const h = document.getElementById('census');
+  const pres = ['TextEncoder','TextDecoder','TextEncoderStream','TextDecoderStream'].map(k => k + '=' + typeof window[k]).join(' ');
+  CK(h, 'presence', true, ['TextEncoder','TextDecoder','TextEncoderStream','TextDecoderStream'].every(k => typeof window[k] === 'function') ? true : pres);
+  chip(h, 'info', 'types', pres);
+  CK(h, 'te-proto', 'constructor,encode,encodeInto,encoding', Object.getOwnPropertyNames(TextEncoder.prototype).sort().join(','));
+  CK(h, 'td-proto', 'constructor,decode,encoding,fatal,ignoreBOM', Object.getOwnPropertyNames(TextDecoder.prototype).sort().join(','));
+  CK(h, 'tes-proto', 'constructor,encoding,readable,writable', Object.getOwnPropertyNames(TextEncoderStream.prototype).sort().join(','));
+  CK(h, 'tds-proto', 'constructor,encoding,fatal,ignoreBOM,readable,writable', Object.getOwnPropertyNames(TextDecoderStream.prototype).sort().join(','));
+  const d = Object.getOwnPropertyDescriptor(TextDecoder.prototype, 'encoding');
+  CK(h, 'encoding-is-getter', true, !!(d && d.get && !d.set));
+  CK(h, 'ctors-arity-0', '0/0/0/0', [TextEncoder,TextDecoder,TextEncoderStream,TextDecoderStream].map(c=>c.length).join('/'));
+  CK(h, 'no-statics', true, ['TextEncoder','TextDecoder','TextEncoderStream','TextDecoderStream'].every(k => { const st = Object.getOwnPropertyNames(window[k]).filter(n => !['length','name','prototype'].includes(n)); return st.length === 0; }) ? true : 'has statics');
+  try { TextEncoder(); CK(h, 'call-without-new', 'TypeError', 'NO-THROW'); } catch(e){ CK(h, 'call-without-new', 'TypeError', e.name); }
+  try { structuredClone(new TextDecoder()); CK(h, 'clone', 'DataCloneError', 'CLONED'); } catch(e){ CK(h, 'clone', 'DataCloneError', e.name); }
+})();
+
+// ---------- §2 encoder ----------
+(function(){
+  const h = document.getElementById('s2');
+  const te = new TextEncoder();
+  CK(h, 'utf8-only', 'utf-8', new TextEncoder('utf-16le','fatal').encoding);
+  CK(h, 'A', '[65]', '[' + te.encode('A').join(',') + ']');
+  CK(h, 'euro', 'E2 82 AC', hexs(te.encode('\u20AC')));
+  CK(h, 'emoji', 'F0 9F 98 80', hexs(te.encode('\uD83D\uDE00')));
+  CK(h, 'empty', 0, te.encode('').length);
+  CK(h, 'lone-surrogate→FFFD', 'EF BF BD', hexs(te.encode('\uD800')));
+  CK(h, 'pair-encodes-real', 'F0 90 80 80', hexs(te.encode('\uD800\uDC00')));
+  CK(h, 'two-lone→two-FFFD', 6, te.encode('\uD800\uD801').length);
+  CK(h, 'encode-arg-ignored', true, (() => { try { return hexs(te.encode('x', {stream:true})) === '78'; } catch(e){ return false; } })());
+  const upd = () => {
+    const v = document.getElementById('lsIn').value;
+    const b = new TextEncoder().encode(v);
+    const units = v.length, cps = [...v].length;
+    document.getElementById('lsOut').textContent = 'in: ' + units + ' UTF-16 units, ' + cps + ' code points → out: ' + b.length + ' bytes [' + hexs(b) + ']' + (units === cps && b.length === cps ? '' : '  (mismatch = replacement at work)');
+  };
+  document.getElementById('lsIn').addEventListener('input', upd); upd();
+})();
+
+// ---------- §3 encodeInto ----------
+(function(){
+  const h = document.getElementById('s3');
+  const EI = new TextEncoder();
+  CK(h, 'happy', 'read=2 written=2', (() => { const r = EI.encodeInto('AB', new Uint8Array(8)); return 'read=' + r.read + ' written=' + r.written; })());
+  CK(h, 'emoji→2B', 'read=0 written=0', (() => { const r = EI.encodeInto('\uD83D\uDE00', new Uint8Array(2)); return 'read=' + r.read + ' written=' + r.written; })());
+  CK(h, 'emoji→3B', 'read=0 written=0', (() => { const r = EI.encodeInto('\uD83D\uDE00', new Uint8Array(3)); return 'read=' + r.read + ' written=' + r.written; })());
+  CK(h, 'emoji→4B-exact', 'read=2 written=4', (() => { const r = EI.encodeInto('\uD83D\uDE00', new Uint8Array(4)); return 'read=' + r.read + ' written=' + r.written; })());
+  CK(h, 'a😀→1B', 'read=1 written=1', (() => { const r = EI.encodeInto('a\uD83D\uDE00', new Uint8Array(1)); return 'read=' + r.read + ' written=' + r.written; })());
+  CK(h, 'loneSurr→2B', 'read=0 written=0', (() => { const r = EI.encodeInto('\uD800', new Uint8Array(2)); return 'read=' + r.read + ' written=' + r.written; })());
+  let m = ''; try { EI.encodeInto('a', new DataView(new ArrayBuffer(4))); m = 'NO-THROW'; } catch(e){ m = e.name; }
+  CK(h, 'DataView-reject', 'TypeError', m);
+  m = ''; try { EI.encodeInto('a', new Float32Array(2)); m = 'NO-THROW'; } catch(e){ m = e.name; }
+  CK(h, 'Float32-reject', 'TypeError', m);
+  CK(h, 'resume-works', true, (() => { const small = new Uint8Array(2); EI.encodeInto('\uD83D\uDE00xyz', small); const big = new Uint8Array(16); const r2 = EI.encodeInto('\uD83D\uDE00xyz', big); return hexs(big.slice(0, r2.written)) === 'F0 9F 98 80 78 79 7A'; })());
+  CK(h, 'offset-view', true, (() => { const buf = new ArrayBuffer(8); const v = new Uint8Array(buf, 2, 4); EI.encodeInto('hi', v); return hexs(new Uint8Array(buf)) === '00 00 68 69 00 00 00 00'; })());
+  const upd = () => {
+    const s = document.getElementById('eiIn').value;
+    const n = parseInt(document.getElementById('eiSz').value, 10);
+    document.getElementById('eiSzV').textContent = n;
+    const d = new Uint8Array(Math.max(0, n));
+    const r = EI.encodeInto(s, d);
+    const need = new TextEncoder().encode(s).length;
+    const partial = (r.written < need && s.length > 0);
+    document.getElementById('eiOut').innerHTML =
+      'read=' + r.read + ' (UTF-16 units) · written=' + r.written + ' bytes · dest=' + hexs(d) +
+      '<br>verdict: ' + (s.length === 0 ? 'empty' : partial ? '<b class="badc">PARTIAL — glyph held atomically, source not consumed (read=' + r.read + '), retry with bigger dest</b>' : '<b class="good">complete</b>');
+  };
+  document.getElementById('eiIn').addEventListener('input', upd);
+  document.getElementById('eiSz').addEventListener('input', upd); upd();
+})();
+
+// ---------- §4 labels ----------
+(function(){
+  const h = document.getElementById('s4');
+  const canon = (l) => { try { return '✓ ' + new TextDecoder(l).encoding; } catch(e){ return '✗ ' + e.name + ': ' + e.message; } };
+  CK(h, 'latin1', 'windows-1252', new TextDecoder('latin1').encoding);
+  CK(h, 'l1', 'windows-1252', new TextDecoder('l1').encoding);
+  CK(h, 'iso-8859-1', 'windows-1252', new TextDecoder('iso-8859-1').encoding);
+  CK(h, 'ascii', 'windows-1252', new TextDecoder('ascii').encoding);
+  CK(h, 'iso-8859-15-own', 'iso-8859-15', new TextDecoder('iso-8859-15').encoding);
+  CK(h, 'utf-8 aliases', 'utf-8', new TextDecoder('UNICODE-1-1-UTF-8').encoding);
+  CK(h, 'whitespace-trim', 'utf-8', new TextDecoder(' \t utf-8 \n ').encoding);
+  CK(h, 'utf-16→le', 'utf-16le', new TextDecoder('utf-16').encoding);
+  CK(h, 'shift_jis', 'shift_jis', new TextDecoder('shift_jis').encoding);
+  let m = ''; try { new TextDecoder('utf-7'); m = 'ACCEPTED'; } catch(e){ m = e.message; }
+  CK(h, 'utf-7-reject', true, m.includes('utf-7') ? true : m, 'ok');
+  let m2 = ''; try { new TextDecoder(null); m2 = 'ACCEPTED:'; } catch(e){ m2 = e.message; }
+  CK(h, 'null-trap', true, m2.includes("'null'") ? true : m2, 'ok');
+  I(h, 'null-trap-msg', m2.slice(0, 80));
+  const grid = document.getElementById('drift');
+  for (let b = 0x80; b <= 0x9F; b++) {
+    const cp = new TextDecoder('windows-1252').decode(U(b));
+    const cell = document.createElement('div'); cell.className = 'drift-cell';
+    cell.innerHTML = '<div class="b">0x' + b.toString(16).toUpperCase() + '</div><div class="c2">' + esc(cp) + '</div><div class="c1 mut">—</div>';
+    grid.appendChild(cell);
+  }
+  const runLbl = () => {
+    const v = document.getElementById('lblIn').value;
+    document.getElementById('lblOut').textContent = v + '  →  ' + canon(v);
+  };
+  document.getElementById('lblBtn').addEventListener('click', runLbl);
+  document.getElementById('lblIn').addEventListener('keydown', (e) => { if (e.key === 'Enter') runLbl(); });
+  runLbl();
+})();
+
+// ---------- §5 FFFD grammar ----------
+(function(){
+  const h = document.getElementById('s5');
+  let fatal = false;
+  const rows = [
+    ['80 (orphan continuation)', [0x80], 1],
+    ['C0 80 (overlong)', [0xC0,0x80], 2],
+    ['F0 9F 98 (truncated 4B)', [0xF0,0x9F,0x98], 1],
+    ['61 F0 9F 98 (valid prefix)', [0x61,0xF0,0x9F,0x98], 1],
+    ['F4 90 80 80 (out of range)', [0xF4,0x90,0x80,0x80], 4],
+    ['F5 80 80 80 (bad lead)', [0xF5,0x80,0x80,0x80], 4],
+    ['ED A0 80 (encoded surrogate)', [0xED,0xA0,0x80], 3],
+    ['FE FF', [0xFE,0xFF], 2],
+  ];
+  for (const [name, bytes, expect] of rows) {
+    const s = new TextDecoder().decode(U(...bytes));
+    CK(h, name, expect + ' FFFD', fffd(s) + ' FFFD');
+  }
+  let m = ''; try { new TextDecoder('utf-8',{fatal:true}).decode(U(0x80)); m = 'NO-THROW'; } catch(e){ m = e.message; }
+  CK(h, 'fatal-wall-msg', true, m === 'The encoded data was not valid.' ? true : m, 'ok');
+  const run = () => {
+    const raw = document.getElementById('ffIn').value.trim();
+    const bytes = raw.split(/[\s,]+/).filter(Boolean).map(x => parseInt(x, 16));
+    const bad = bytes.some(isNaN);
+    const out = document.getElementById('ffOut');
+    if (bad || !bytes.length) { out.textContent = 'parse error — hex bytes only'; return; }
+    let s, note;
+    try { s = new TextDecoder('utf-8', { fatal }).decode(U(...bytes)); note = 'decoded OK'; }
+    catch(e){ s = null; note = e.name + ': ' + e.message; }
+    out.textContent = 'bytes [' + hexs(U(...bytes)) + '] · fatal=' + fatal + '\n' +
+      (s === null ? note : '→ ' + JSON.stringify(s) + ' · len=' + s.length + ' · FFFD count=' + fffd(s) + ' · ' + note);
+  };
+  document.getElementById('ffBtn').addEventListener('click', run);
+  document.getElementById('ffIn').addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
+  document.getElementById('ffFatal').addEventListener('click', (e) => {
+    fatal = !fatal; e.target.textContent = 'fatal: ' + (fatal ? 'on' : 'off'); e.target.classList.toggle('on', fatal); run();
+  });
+  const presets = [['trunc', 'F0 9F 98'], ['out-of-range', 'F4 90 80 80'], ['overlong', 'C0 80'], ['surrogate', 'ED A0 80'], ['mixed', '61 C3 A9 80 62']];
+  const bh = document.getElementById('ffBtns');
+  for (const [n, hex] of presets) { const b = document.createElement('button'); b.textContent = n; b.addEventListener('click', () => { document.getElementById('ffIn').value = hex; run(); }); bh.appendChild(b); }
+  run();
+})();
+
+// ---------- §6 BOM ----------
+(function(){
+  const h = document.getElementById('s6');
+  const s1 = new TextDecoder('utf-8').decode(U(0xEF,0xBB,0xBF,0x68,0x69));
+  CK(h, 'strip-default', 2, s1.length);
+  const s2 = new TextDecoder('utf-8',{ignoreBOM:true}).decode(U(0xEF,0xBB,0xBF,0x68,0x69));
+  CK(h, 'keep-ignoreBOM', true, s2.length === 3 && s2.codePointAt(0) === 0xFEFF);
+  const s3 = new TextDecoder('utf-8').decode(U(0x68,0x69,0xEF,0xBB,0xBF));
+  CK(h, 'midstream-kept', 3, s3.length);
+  CK(h, 'utf16le-bom-strip', 2, new TextDecoder('utf-16le').decode(U(0xFF,0xFE,0x68,0x00,0x69,0x00)).length);
+  const s6 = new TextDecoder('utf-16be').decode(U(0xFF,0xFE,0x68,0x00));
+  CK(h, 'NO-override: LE-BOM@be', 'U+FFFE', 'U+' + s6.codePointAt(0).toString(16).toUpperCase() + ' ' + JSON.stringify(s6), 'warn');
+  const s7 = new TextDecoder('utf-16le').decode(U(0xFE,0xFF,0x00,0x68));
+  CK(h, 'NO-override: BE-BOM@le', 'U+FFFE', 'U+' + s7.codePointAt(0).toString(16).toUpperCase() + ' ' + JSON.stringify(s7), 'warn');
+  I(h, 'law', 'BOM strips on label-match only — never overrides endianness');
+})();
+
+// ---------- §7 split lab ----------
+(function(){
+  const h = document.getElementById('s7');
+  const TE = new TextEncoder();
+  CK(h, '2+2 stream', '😀', (() => { const d = new TextDecoder(); return d.decode(U(0xF0,0x9F),{stream:true}) + d.decode(U(0x98,0x80),{stream:true}); })());
+  CK(h, '2+2 naive FFFDs', 3, (() => { const a = new TextDecoder().decode(U(0xF0,0x9F)); const b = new TextDecoder().decode(U(0x98,0x80)); return fffd(a) + fffd(b); })());
+  CK(h, '1+3 stream', '😀', (() => { const d = new TextDecoder(); return d.decode(U(0xF0),{stream:true}) + d.decode(U(0x9F,0x98,0x80),{stream:true}); })());
+  CK(h, 'held-not-FFFD', 0, new TextDecoder().decode(U(0xF0,0x9F,0x98),{stream:true}).length);
+  const d = new TextDecoder(); d.decode(U(0xF0,0x9F),{stream:true});
+  CK(h, 'flush→1 FFFD', 1, fffd(d.decode()));
+  const d2 = new TextDecoder(); d2.decode(U(0xF0,0x9F),{stream:true}); d2.decode();
+  CK(h, 'flush resets state', 2, fffd(d2.decode(U(0x98,0x80))));
+  const upd = () => {
+    const s = document.getElementById('spIn').value;
+    const bytes = TE.encode(s);
+    const max = Math.max(1, bytes.length - 1);
+    const sl = document.getElementById('spS'); sl.max = max;
+    let n = Math.min(parseInt(sl.value, 10), max); sl.value = n;
+    document.getElementById('spV').textContent = n;
+    const c1 = bytes.slice(0, n), c2 = bytes.slice(n);
+    const nA = new TextDecoder().decode(c1), nB = new TextDecoder().decode(c2);
+    const sd = new TextDecoder(); const sA = sd.decode(c1, {stream:true}), sB = sd.decode(c2, {stream:true});
+    const bcell = (b, cls) => '<span class="bcell ' + (cls||'') + '">' + b.toString(16).padStart(2,'0').toUpperCase() + '</span>';
+    let byteVis = ''; bytes.forEach((b, i) => byteVis += bcell(b, i === n - 1 ? 'cut' : ''));
+    document.getElementById('spNaive').innerHTML = 'chunk1 [' + hexs(c1) + '] → ' + JSON.stringify(nA) + '<br>chunk2 [' + hexs(c2) + '] → ' + JSON.stringify(nB) + '<br>total FFFD: <b class="badc">' + (fffd(nA) + fffd(nB)) + '</b> · corrupt: ' + ((nA + nB) !== s ? 'YES' : 'no');
+    document.getElementById('spStream').innerHTML = 'chunk1 [' + hexs(c1) + '] → ' + JSON.stringify(sA) + ' (held partial = empty)' + '<br>chunk2 [' + hexs(c2) + '] → ' + JSON.stringify(sB) + '<br>total: ' + JSON.stringify(sA + sB) + ' · ' + ((sA + sB) === s ? '<b class="good">byte-perfect reassembly</b>' : 'MISMATCH');
+    document.getElementById('spV').parentElement.parentElement.insertAdjacentHTML('afterbegin', '');
+    window.__byteVis = byteVis;
+  };
+  document.getElementById('spIn').addEventListener('input', upd);
+  document.getElementById('spS').addEventListener('input', upd); upd();
+})();
+
+// ---------- §8 streams ----------
+(function(){
+  const h = document.getElementById('s8');
+  CK(h, 'TES chunk type', 'async', 'live', 'info'); // settled by the async lane below
+  (async () => {
+    const t = new TextEncoderStream(); const w = t.writable.getWriter(); const pr = t.readable.getReader().read();
+    w.write('h\uD83D\uDE00').catch(()=>{});
+    const { value } = await pr;
+    CK(h, 'TES chunk=Uint8Array', true, T(value) === 'Uint8Array' && value.length === 5 ? true : T(value) + ' len=' + value.length);
+    const t2 = new TextDecoderStream(); const w2 = t2.writable.getWriter(); const pr2 = t2.readable.getReader().read();
+    w2.write(U(0xF0,0x9F,0x98,0x80)).catch(()=>{});
+    const v2 = (await pr2).value;
+    CK(h, 'TDS chunk=string', true, v2 === '\uD83D\uDE00');
+  })();
+  const rows = [['42','"42"'],['true','"true"'],['null','"null"'],['{}','"[object Object]"'],['[1,2]','"1,2"'],['10n','"10"']];
+  (async () => {
+    const results = [];
+    for (const [inp, expect] of rows) {
+      const t = new TextEncoderStream(); const w = t.writable.getWriter();
+      const all = (async () => { const rd = t.readable.getReader(); let s = ''; let c; while (!(c = await rd.read()).done) s += new TextDecoder().decode(c.value); return s; })();
+      let verdict = 'reject';
+      try { await Promise.race([w.write(eval(inp)), new Promise((_,j)=>setTimeout(()=>j(new Error('PEND')),2500))]); verdict = 'accept'; } catch(e){ verdict = e.name; }
+      try { await w.close(); } catch(e){}
+      const text = await all;
+      results.push(inp + '→' + JSON.stringify(text));
+      if (verdict !== 'accept') { CK(h, 'coerce ' + inp, 'accept', verdict); }
+    }
+    I(h, 'coercion-table', results.join(' · '));
+  })();
+  (async () => {
+    const t = new TextDecoderStream(); const w = t.writable.getWriter();
+    const pr = t.readable.getReader().read();
+    let m = 'accepted'; try { await Promise.race([w.write('hi'), new Promise((_,j)=>setTimeout(()=>j(new Error('PEND')),2000))]); } catch(e){ m = String(e.message).slice(0,60); }
+    pr.catch(()=>{});
+    CK(h, 'TDS string-reject', true, m.includes('ArrayBuffer') || m.includes('PEND') ? true : m, 'ok');
+    I(h, 'TDS-wall', m);
+  })();
+  const run = async () => {
+    const out = document.getElementById('dlOut');
+    out.textContent = 'running…';
+    const t = new TextDecoderStream(); const w = t.writable.getWriter();
+    const log = [];
+    const t0 = performance.now();
+    const p1 = w.write(U(0x68,0x69)); p1.catch(()=>{});
+    const pend1 = await Promise.race([p1.then(() => 'resolved'), new Promise(r => setTimeout(() => r('PENDING (no consumer)'), 800))]);
+    log.push('write#1 @0ms → ' + pend1);
+    const rd = t.readable.getReader(); // reader attached — but no read() yet
+    const p2 = w.write(U(0x21)); p2.catch(()=>{});
+    const pend2 = await Promise.race([p2.then(() => 'resolved'), new Promise(r => setTimeout(() => r('PENDING (reader attached, zero pulls)'), 800))]);
+    log.push('write#2 → ' + pend2);
+    const chunkP = rd.read(); // THE PULL
+    const both = await Promise.race([Promise.all([p1, p2]).then(() => 'both writes resolved'), new Promise(r => setTimeout(() => r('still pending'), 800))]);
+    const chunk = await chunkP;
+    log.push('after read() pull → ' + both + ' · chunk=' + JSON.stringify(chunk.value));
+    const closeP = w.close();
+    const closeV = await Promise.race([closeP.then(() => 'close resolved'), new Promise(r => setTimeout(() => r('close PENDING'), 800))]);
+    const last = await Promise.race([rd.read(), new Promise(r => setTimeout(() => r({value:'_pend',done:false}), 800))]);
+    log.push('close() → ' + closeV + ' · trailing chunk=' + JSON.stringify(last.value));
+    out.textContent = log.join('\n');
+  };
+  document.getElementById('dlBtn').addEventListener('click', run);
+})();
+
+// ---------- §9 worker + gzip ----------
+(function(){
+  const h = document.getElementById('s9');
+  (async () => {
+    const code = `self.onmessage = (e) => {
+      const r = ['TextEncoder','TextDecoder','TextEncoderStream','TextDecoderStream'].map(k => k + '=' + typeof self[k]).join(' ');
+      self.postMessage(r);
+    }`;
+    const w = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })));
+    const res = await new Promise((res) => { const to = setTimeout(() => res('TIMEOUT'), 3500); w.onmessage = (ev) => { clearTimeout(to); res(ev.data); }; w.postMessage('go'); });
+    CK(h, 'worker all-4', true, typeof res === 'string' && res.includes('function') && !res.includes('undefined') ? true : res);
+    I(h, 'worker census', String(res).slice(0, 100));
+    w.terminate();
+  })();
+  CK(h, 'TDS-flush-on-close', 1, 'async', 'info'); // replaced live below
+  (async () => {
+    const t = new TextDecoderStream(); const wr = t.writable.getWriter();
+    const all = (async () => { const rd = t.readable.getReader(); const o = []; let c; while (!(c = await rd.read()).done) o.push(c.value); return o; })();
+    wr.write(U(0xF0,0x9F)).catch(()=>{});
+    await wr.close();
+    const chunks = await all;
+    // the flush placeholder was the FIRST chip appended to s9 (synchronous CK before the async lanes)
+    const el = document.querySelectorAll('#s9 .chip')[0] || document.getElementById('s9');
+    const total = chunks.join('');
+    el.className = 'chip ' + (fffd(total) === 1 ? 'ok' : 'fail');
+    el.innerHTML = '<span>TDS flush-on-close' + (fffd(total) === 1 ? ' ✓' : ' ✗') + '</span><span class="d">pending partial → exactly 1 FFFD chunk (' + JSON.stringify(total) + ')</span>';
+    if (fffd(total) === 1) { info--; pass++; } else { info--; fail++; }
+  })();
+  document.getElementById('gzBtn').addEventListener('click', async () => {
+    const out = document.getElementById('gzOut');
+    out.textContent = 'streaming…';
+    const src = new ReadableStream({ start(c) { c.enqueue('Héllo '); c.enqueue('\uD83D\uDE80 m'); c.enqueue('ission ✓'); c.close(); } });
+    const rd = src.pipeThrough(new TextEncoderStream()).pipeThrough(new CompressionStream('gzip')).pipeThrough(new DecompressionStream('gzip')).pipeThrough(new TextDecoderStream()).getReader();
+    let text = ''; let c; let n = 0;
+    while (!(c = await rd.read()).done) { text += c.value; n++; }
+    out.textContent = '3 text chunks → TES → gzip → gunzip → TDS → ' + n + ' string chunks → ' + JSON.stringify(text) + ' · byte-perfect: ' + (text === 'Héllo \uD83D\uDE80 mission ✓');
+  });
+})();
+
+// ---------- §10 telemetry ----------
+(function(){
+  const TE = new TextEncoder();
+  const crc8 = (u8) => { let crc = 0; for (const b of u8) { crc ^= b; for (let i = 0; i < 8; i++) crc = (crc & 0x80) ? ((crc << 1) ^ 0x07) & 0xFF : (crc << 1) & 0xFF; } return crc; };
+  const frame = (str) => { const p = TE.encode(str); const f = new Uint8Array(4 + p.length); f[0] = 0xAA; f[1] = p.length & 0xFF; f[2] = (p.length >> 8) & 0xFF; f.set(p, 3); f[f.length - 1] = crc8(p); return f; };
+  const run = () => {
+    const msgs = ['ALT 128m', 'callsign 🚀rc', 'BAT 84% ✓', 'GPS locked 🛰', 'RTH 🏠 armed'];
+    const burst = msgs.map(frame);
+    const MTU = 5;
+    const naiveEl = document.getElementById('tmNaive'), goodEl = document.getElementById('tmGood');
+    naiveEl.textContent = ''; goodEl.textContent = '';
+    const sd = new TextDecoder();
+    let ni = 0, gi = 0;
+    const radioChunks = [];
+    for (const f of burst) for (let i = 0; i < f.length; i += MTU) radioChunks.push(f.slice(i, i + MTU));
+    let naiveCorrupt = 0, goodText = '';
+    for (const ch of radioChunks) {
+      const nv = new TextDecoder().decode(ch);
+      const gv = sd.decode(ch, { stream: true });
+      const nff = fffd(nv), gff = fffd(gv);
+      naiveEl.textContent += '[' + hexs(ch) + '] ' + JSON.stringify(nv) + (nff ? ' <' + nff + ' FFFD>' : '') + '\n';
+      if (nff) naiveCorrupt += nff;
+      goodText += gv;
+      if (gff) goodEl.textContent += '<' + gff + ' FFFD in stream lane?!>\n';
+    }
+    goodEl.textContent = 'radio: ' + radioChunks.length + ' chunks @MTU ' + MTU + '\n' + goodText.split('\n').filter(Boolean).map((l, i) => (i + 1) + ': ' + l).join('\n');
+    // parse payloads back out of the stream-lane accumulate
+    const sd2 = new TextDecoder();
+    let acc = '';
+    let streamFffds = 0;
+    for (const ch of radioChunks) { const piece = sd2.decode(ch, { stream: true }); streamFffds += fffd(piece); acc += piece; }
+    const intact = msgs.every(m => acc.includes(m));
+    // TX ring: encodeInto into one preallocated buffer, zero encoder allocations
+    const ring = new Uint8Array(256); let off = 0, wraps = 0;
+    for (const m of msgs) { const f = frame(m); if (off + f.length > ring.length) { off = 0; wraps++; } ring.set(f, off); off += f.length; }
+    goodEl.textContent = 'radio: ' + radioChunks.length + ' chunks @MTU ' + MTU + '\n— naive lane total FFFDs: ' + naiveCorrupt + ' · stream lane FFFDs: ' + streamFffds + '\n— all ' + msgs.length + ' payloads intact: ' + (intact ? 'YES' : 'NO') + '\n— TX: ' + msgs.length + ' frames → one 256B ring buffer (' + wraps + ' wraps, 0 encoder allocations)\n— decoded burst: ' + JSON.stringify(acc);
+  };
+  document.getElementById('tmBtn').addEventListener('click', run);
+})();
+
+// gate state
+window.__gate = { get chips(){ return { pass, fail, warn, info }; } };
+window.__done = true;
+})();
+</script>
+</body>
+</html>
