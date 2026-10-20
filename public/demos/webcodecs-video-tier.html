@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebCodecs — the video engine tier: VideoDecoder · VideoEncoder · VideoFrame — the 64px coded floor, the NV12 law & the silent-junk law (live-probed engine truths)</title>
+<style>
+  :root { --ink:#1d1c1a; --mut:#75716a; --line:#e6e2da; --card:#fffdf9; --bg:#f7f5f0; --acc:#0b6b5d; --acc2:#b05c1a; --bad:#a11111; }
+  * { box-sizing: border-box; }
+  body { font: 15px/1.55 -apple-system, system-ui, sans-serif; color: var(--ink); background: var(--bg); margin: 0; overflow-x: hidden; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 24px 20px 80px; }
+  .sec { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 22px; margin: 26px 0; overflow: hidden; }
+  h1 { font-size: 29px; line-height: 1.2; letter-spacing: -0.02em; margin: 10px 0 8px; }
+  h2 { font-size: 19px; margin: 2px 0 10px; letter-spacing: -0.01em; }
+  p { margin: 8px 0; }
+  code, .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12.5px; background: #f4f2ee; padding: 1px 5px; border-radius: 6px; overflow-wrap: anywhere; }
+  pre { background: #f4f2ee; border-radius: 12px; padding: 12px; overflow-x: auto; font-size: 12px; line-height: 1.5; max-width: 100%; margin: 10px 0; }
+  .mut { color: var(--mut); font-size: 13px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 4px 10px; margin: 3px 4px 3px 0; border: 1px solid transparent; max-width: 100%; white-space: normal; }
+  .chip.ok { background: #e8f7ee; color: #0a6b35; border-color: #bfe8d0; }
+  .chip.warn { background: #fff5e0; color: #8a5a00; border-color: #f3ddaa; }
+  .chip.fail { background: #fdeaea; color: #a11111; border-color: #f2c4c4; }
+  .chip.danger { background: #2b0d0d; color: #ff9d9d; border-color: #7a2a2a; }
+  .chip.info { background: #e9f1fd; color: #0b4fa8; border-color: #c4dcf7; }
+  .chip .d { font-weight: 400; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button { font: 600 13px/1.3 -apple-system, system-ui, sans-serif; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; max-width: 100%; }
+  button:hover { border-color: #c9c5bd; }
+  button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .tscroll { overflow-x: auto; max-width: 100%; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  td, th { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--mut); }
+  .pill { font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--acc); }
+  .out { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--ink); background: #f4f2ee; border-radius: 10px; padding: 8px 10px; margin-top: 8px; overflow-wrap: anywhere; max-height: 240px; overflow-y: auto; }
+  .law { border-left: 3px solid var(--acc); padding: 2px 0 2px 12px; margin: 12px 0; }
+  .law b { color: var(--acc); }
+  ul { margin: 8px 0; padding-left: 20px; }
+  li { margin: 4px 0; }
+  .strip { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+  .strip canvas { border-radius: 8px; border: 1px solid var(--line); }
+  .side { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; margin: 10px 0; }
+  .side figure { margin: 0; }
+  .side figcaption { font-size: 12px; color: var(--mut); text-align: center; margin-top: 4px; }
+  .side canvas { border-radius: 10px; border: 1px solid var(--line); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>WebCodecs — the video engine tier</h1>
+<p class="mut"><span class="pill">VideoDecoder · VideoEncoder · VideoFrame · EncodedVideoChunk</span> — hardware codec access without a <code>&lt;video&gt;</code> element. Live-probed on this engine (every chip below re-runs in your browser), fixtures crafted with ffmpeg 8.1.1 and byte-verified against its decoder. Ch 94+ · FF 130+ (desktop) · Safari 16.4+ video / 26 audio. The drone-feed tier for OpenDrones, the zero-DOM video pipeline for Molt.</p>
+
+<div class="sec" id="s1">
+<h2>1 · Surface census — what ships</h2>
+<div id="c1" class="row"></div>
+<p class="mut">Every chip re-probed live. <code>ondequeue</code> is the ONLY event-handler attribute on both codec classes — there is no <code>onerror</code>: errors arrive exclusively through the constructor callbacks. <code>copyTo()</code> returns a <b>promise</b>, not a sync result. Workers expose the full surface (verified in the probe suite: all five classes present in a dedicated worker).</p>
+</div>
+
+<div class="sec" id="s2">
+<h2>2 · The codec matrix — isConfigSupported, live</h2>
+<div class="tscroll"><table id="mtable"><thead><tr><th>codec</th><th>decode default</th><th>dec prefer-hw</th><th>dec prefer-sw</th><th>enc default</th><th>enc prefer-hw</th><th>enc prefer-sw</th></tr></thead><tbody></tbody></table></div>
+<p class="mut">Probed with real config objects. On this Apple-Silicon host: HEVC decode is <b>hardware-only</b> (VideoToolbox) — <code>prefer-software</code> says no; VP8 decode is software-only; AV1/VP8/VP9 <i>encode</i> is software-only. But read §4 before trusting any of this: <code>isConfigSupported</code> cannot see the floor that actually kills streams.</p>
+</div>
+
+<div class="sec" id="s3">
+<h2>3 · The demuxer — NAL grammar of the embedded stream</h2>
+<p>A 10-frame 128×96 H.264 baseline annex-B stream (crafted with ffmpeg <code>testsrc2</code>, 9,987 bytes) is embedded in this page as base64. The table below is parsed live from its bytes: start-code scan → NAL units → grouped into <code>EncodedVideoChunk</code>s (non-VCL NALs prefix the next chunk). The same 13-NAL census the probe suite measured: SPS, PPS, SEI, IDR, then 9 × P.</p>
+<div class="tscroll"><table id="naltable"><thead><tr><th>#</th><th>type</th><th>chunk</th><th>bytes</th></tr></thead><tbody></tbody></table></div>
+<div id="c3" class="row"></div>
+</div>
+
+<div class="sec" id="s4">
+<h2>4 · THE 64-PIXEL CODED FLOOR — the law isConfigSupported can't see</h2>
+<div class="law"><b>THE LAW.</b> On macOS Chromium, H.264 decode through the default hardware lane (VideoToolbox) silently rejects any stream whose <b>coded</b> dimensions are below 64 luma samples. Not display size — <b>coded</b> size. A 60×60 stream passes because its coded size is 64×64 with cropping; a 48×64 or 320×48 stream fails outright. The failure is an async <code>EncodingError: Decoding error.</code> — and <code>isConfigSupported({codec:'avc1…'})</code> says YES the whole time, because the decoder config carries no dimensions: the truth lives in the SPS. <b>The escape: <code>hardwareAcceleration:'prefer-software'</code> decodes sub-64 streams fine.</b></div>
+<p>Two crafted fixtures drive the bisect live — press the button:</p>
+<button id="b4">Run the floor bisect (48×64 vs 60×60 × 3 accel lanes)</button>
+<div id="c4" class="row"></div>
+<p class="mut">Probe-suite bisect (Chromium 148 CfT + Brave 154, identical): 64×48 ✗ · 96×48 ✗ · 192×48 ✗ · 320×48 ✗ · 48×64 ✗ · 32×32 ✗ · 48×48 ✗ — but 60×60 ✓ · 63×63 ✓ · 64×56 ✓ · 64×62 ✓ · 64×64 ✓ · everything ≥64 ✓. The boundary is exactly the coded-size 64 line. VP8 is exempt (64×48 decodes fine).</p>
+</div>
+
+<div class="sec" id="s5">
+<h2>5 · THE DECODE LAB — 10 frames, byte-verified against ffmpeg</h2>
+<button id="b5">Decode the embedded stream</button>
+<div class="strip" id="strip5"></div>
+<div id="c5" class="row"></div>
+<p class="mut">The SHA-16 chips are the honesty core: <code>copyTo()</code> native bytes of frame 0 and frame 9, hashed in your browser, compared against constants precomputed by ffmpeg's own decoder. GPU VideoToolbox decode ≡ ffmpeg decode, byte-for-byte, Y plane and interleaved UV.</p>
+<div class="law"><b>THE NV12 LAW.</b> macOS hardware decode hands you <code>NV12</code> frames — not the I420 every tutorial assumes. And <code>allocationSize({format:'I420'})</code> throws <code>NotSupportedError: This pixel format conversion is not supported</code> — planar→planar conversion is refused. Packed targets work: RGBA/BGRA convert fine. Write format-agnostic code: read <code>frame.format</code>, never assume I420.</p>
+</div>
+
+<div class="sec" id="s6">
+<h2>6 · The conversion & close-law matrix</h2>
+<button id="b6">Probe conversion + lifecycle walls</button>
+<div id="c6" class="row"></div>
+<div class="law"><b>THE CLOSE-LAW SPLIT.</b> After <code>frame.close()</code>: <code>drawImage(frame)</code> → InvalidStateError; <code>copyTo()</code> → rejection InvalidStateError; <code>allocationSize()</code> → sync throw; <code>format</code> → <code>null</code>; but <code>timestamp</code> and <code>duration</code> <b>stay readable</b>. Metadata survives close; pixels don't. And <code>clone()</code> buys an independent buffer — close the original, the clone still draws.</p>
+</div>
+
+<div class="sec" id="s7">
+<h2>7 · THE SILENT-JUNK LAW & the sync DataError</h2>
+<button id="b7">Feed junk & a delta-first chunk</button>
+<div id="c7" class="row"></div>
+<div class="law"><b>THE SILENT-JUNK LAW.</b> A syntactically-valid key chunk containing garbage slice data is <b>silently swallowed</b>: no error callback, state stays <code>configured</code>, <code>flush()</code> resolves — you just never get the frame. Corruption monitoring is <i>your</i> job: count outputs, diff against expectations. Contrast: a <b>delta-first</b> chunk throws <b>synchronously</b> from <code>decode()</code> — DataError, with the engine's own hint baked in: <code>"A key frame is required after configure() or flush(). If you're using AVC formatted H.264 you must fill out the description field in the VideoDecoderConfig."</code> — state survives; a subsequent key chunk decodes normally.</p>
+</div>
+
+<div class="sec" id="s8">
+<h2>8 · THE ENCODE LAB — canvas → H.264 → back, live</h2>
+<button id="b8">Encode 6 synthetic frames &amp; roundtrip</button>
+<div class="side">
+  <figure><canvas id="orig8" width="320" height="240"></canvas><figcaption>source frame 3 (canvas)</figcaption></figure>
+  <figure><canvas id="rt8" width="320" height="240"></canvas><figcaption>decoded back from the bitstream</figcaption></figure>
+</div>
+<div id="c8" class="row"></div>
+<p class="mut">Frames synthesized on a canvas, wrapped as <code>new VideoFrame(canvas, {timestamp, duration})</code>, encoded with the default config, then fed straight back through a decoder configured from the encoder's own <code>decoderConfig</code> metadata. The diff number is mean per-channel delta across all pixels — lossy, but structurally faithful.</p>
+<div class="law"><b>THE AVCC/ANNEXB LAW.</b> The encoder's default <code>avc.format:'avc'</code> emits <b>AVCC</b> chunks (length-prefixed, no start codes) and the first output carries <code>metadata.decoderConfig.description</code> — a 28-byte avcC record you MUST forward to your decoder. With <code>avc:{format:'annexb'}</code> the description is absent and chunks are start-code framed (radio/file streaming). Mixing the lanes is the #1 integration bug: annexb bytes into an AVCC-configured decoder → <code>DataError</code>. Press §7's delta button to see the engine spell it out.</p>
+</div>
+
+<div class="sec" id="s9">
+<h2>9 · THE LIFECYCLE LAWS — state machine & memory</h2>
+<button id="b9">Walk the state machine</button>
+<div id="c9" class="row"></div>
+<div class="law"><b>THE THREE LAWS.</b> (1) <code>unconfigured → configured → closed</code> is one-way per instance: <code>reset()</code> returns to <code>unconfigured</code> (re-configure required — a key frame alone doesn't revive it), <code>close()</code> is terminal, and a failed <code>configure()</code> (bitrate 0, size 0) throws TypeError <i>and leaves state unconfigured</i>. (2) <b>The encoder never closes your frames</b> — every <code>encode(frame)</code> must pair with <code>frame.close()</code> or you leak GPU memory. (3) <code>configure('bogus-codec')</code> does NOT throw — the rejection arrives asynchronously on the error callback, state already flipped: capability-check with <code>isConfigSupported</code>, don't try/catch your way to safety.</p>
+</div>
+
+<div class="sec" id="s10">
+<h2>10 · Capstones</h2>
+<div class="grid2">
+<div>
+<p class="pill">OpenDrones — the live drone feed</p>
+<pre>radio ─→ frames (Encoding-API MTU codec)
+     ─→ VideoDecoder (H.264, VT hw)
+     ─→ VideoFrame ─→ canvas / GL texture
+     ─→ telemetry HUD overlay
+     ─→ MediaSession / PiP</pre>
+<ul>
+<li>Decode the H.264/H.265 downlink <b>without a &lt;video&gt; element</b> — frame-level access means HUD compositing, motion detection, selective recording.</li>
+<li><code>latencyMode:'realtime'</code> for the live link (smaller first-chunk verified live in §8's lane); quality mode for flight-log export.</li>
+<li>Sub-64 coded frames (thumbnail lanes!) must force <code>prefer-software</code> — §4.</li>
+<li>Frame timestamps are <b>microseconds</b> — align with telemetry by µs, not ms (the Float16 entry's epoch-ms lesson applies).</li>
+<li>Corruption watch: count outputs per second; the decoder won't tell you (§7).</li>
+</ul>
+</div>
+<div>
+<p class="pill">Molt Studios — media without DOM</p>
+<ul>
+<li>Client-side transcode pipelines: decode → filter → encode, all off-thread (full surface in workers).</li>
+<li>Poster/thumbnail extraction without loading the whole video — decode one IDR.</li>
+<li>Zero-copy GL texturing (verified: <code>texImage2D(VideoFrame)</code>, glError 0) → WebGL/WebGPU effects on live video.</li>
+<li>Landing-page video backgrounds with guaranteed frame timing — no video element layout cost.</li>
+</ul>
+<p class="pill">Decision table</p>
+<div class="tscroll"><table><thead><tr><th>Need</th><th>Use</th></tr></thead><tbody>
+<tr><td>Just play a file</td><td><code>&lt;video&gt;</code> — WebCodecs is plumbing, not a player</td></tr>
+<tr><td>Live low-latency feed</td><td>WebCodecs + <code>latencyMode:'realtime'</code></td></tr>
+<tr><td>Frame access / CV</td><td>WebCodecs + <code>copyTo</code> (NV12-aware!) or GL texture</td></tr>
+<tr><td>Browser-native codec fallback</td><td>Always <code>isConfigSupported</code> per-stream; keep a MJPEG/fetch fallback for the codec gap</td></tr>
+<tr><td>Sub-64 coded streams</td><td><code>prefer-software</code> or pad to coded 64</td></tr>
+</tbody></table></div>
+</div>
+</div>
+</div>
+
+<div class="sec" id="s11">
+<h2>11 · The rule bank</h2>
+<ol>
+<li>Never assume I420 — read <code>frame.format</code> (macOS hw = NV12; planar→planan copyTo is refused).</li>
+<li>Sub-64 coded H.264 → <code>prefer-software</code>, or pad with crop. VP8 is exempt.</li>
+<li><code>isConfigSupported</code> yes ≠ runtime yes — the floor lives in the SPS, not the config.</li>
+<li>Forward the first output's <code>decoderConfig.description</code> (avcC) to your decoder, or use annexb everywhere — never mix.</li>
+<li>Every <code>encode(frame)</code> pairs with <code>frame.close()</code> — the encoder won't do it.</li>
+<li>Count your outputs; junk is silent. Budget watchdogs on frame-rate, not error events.</li>
+<li>Timestamps are µs, signed 64-bit; negative and duplicate values are accepted silently.</li>
+<li><code>delta</code> after configure/flush/reset throws <b>sync</b> DataError; state survives — reconfigure on key loss, then resume.</li>
+<li><code>close()</code> nulls <code>format</code> but keeps <code>timestamp</code> — frame identity outlives pixels.</li>
+<li>Errors reach you only through ctor callbacks and promise rejections (<code>copyTo</code>!) — there is no <code>onerror</code>.</li>
+</ol>
+<p class="mut">Provenance: probed live ×3 suites on Chromium for Testing 148 (headless, ANGLE/Metal, Apple M4) + cross-verified Brave 154 stable; fixtures crafted &amp; byte-verified with ffmpeg 8.1.1 (libx264 baseline annex-B; NV12 ground truth via <code>-pix_fmt nv12</code>).</p>
+</div>
+
+</div>
+<script>
+(function(){
+'use strict';
+const b64d = s => Uint8Array.from(atob(s), c=>c.charCodeAt(0));
+const CK = {
+  chip(host, kind, label, detail){ const el=document.createElement('span'); el.className='chip '+kind; el.innerHTML=label+(detail!==undefined&&detail!==''?' <span class="d">'+detail+'</span>':''); host.appendChild(el); return el; },
+  ok(host,l,d){return CK.chip(host,'ok',l,d);}, warn(host,l,d){return CK.chip(host,'warn',l,d);},
+  fail(host,l,d){return CK.chip(host,'fail',l,d);}, info(host,l,d){return CK.chip(host,'info',l,d);},
+  danger(host,l,d){return CK.chip(host,'danger',l,d);}
+};
+async function sha16(u8){ const h=await crypto.subtle.digest('SHA-256',u8); return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,16); }
+const B = {}; // chip hosts by section
+document.querySelectorAll('.sec').forEach(sec=>{ B[sec.id]=sec.querySelector('.row'); });
+
+// ---- embedded fixtures ----
+const MAIN_B64 = "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";
+const F4864_B64 = "AAAAAWdCwArZDJsBEAAAAwAQAAADAUDxImSAAAAAAWjLg8sgAAABBgX//23cRem95tlIt5Ys2CDZI+7veDI2NCAtIGNvcmUgMTY1IHIzMjIyIGIzNTYwNWEgLSBILjI2NC9NUEVHLTQgQVZDIGNvZGVjIC0gQ29weWxlZnQgMjAwMy0yMDI1IC0gaHR0cDovL3d3dy52aWRlb2xhbi5vcmcveDI2NC5odG1sIC0gb3B0aW9uczogY2FiYWM9MCByZWY9MyBkZWJsb2NrPTE6MDowIGFuYWx5c2U9MHgxOjB4MTExIG1lPWhleCBzdWJtZT03IHBzeT0xIHBzeV9yZD0xLjAwOjAuMDAgbWl4ZWRfcmVmPTEgbWVfcmFuZ2U9MTYgY2hyb21hX21lPTEgdHJlbGxpcz0xIDh4OGRjdD0wIGNxbT0wIGRlYWR6b25lPTIxLDExIGZhc3RfcHNraXA9MSBjaHJvbWFfcXBfb2Zmc2V0PS0yIHRocmVhZHM9MiBsb29rYWhlYWRfdGhyZWFkcz0xIHNsaWNlZF90aHJlYWRzPTAgbnI9MCBkZWNpbWF0ZT0xIGludGVybGFjZWQ9MCBibHVyYXlfY29tcGF0PTAgY29uc3RyYWluZWRfaW50cmE9MCBiZnJhbWVzPTAgd2VpZ2h0cD0wIGtleWludD0yNTAga2V5aW50X21pbj0xMCBzY2VuZWN1dD00MCBpbnRyYV9yZWZyZXNoPTAgcmNfbG9va2FoZWFkPTQwIHJjPWNyZiBtYnRyZWU9MSBjcmY9MjMuMCBxY29tcD0wLjYwIHFwbWluPTAgcXBtYXg9NjkgcXBzdGVwPTQgaXBfcmF0aW89MS40MCBhcT0xOjEuMDAAgAAAAWWIhBHxCIrBgRxJOAhTIgABAHrUGGAA8XjKjEj4fyP/wHQICMvuWliq/43/3K8x5Gi4XWf/hJ+JJ0hydiX/YPFaHobiP765qwSIjv11K4waMoTdXqDqImihdj++YHul8tGiSfvggADABgp0IAgFFOAA3zMSMdAjt42zgNRtTl5/IGj//YcD4xJajSADdcUVWGcDXcCjanS9VsAjDf/7ygaTlh55k6IqMQwjanA6CBmX/LSZZzcEGDYAAgPsvAAeLxlRjR0H93/6l0YSKoqNXgd7JkZD2r1B1ETRQ+z/fJJi6RY60gbp4kYjGY9Xuot5oOhUNgjOCM6EcjIOqg0uKkE0if7YIAAqEBpAIgkAQoDYFfM8CXBJKpAbE+kqNIKfvezA0zu/QLUyr99FsqVwoXyHx9rM5iVT2pv/uwnkimC8j/voioCKiTZBHgdAgZl9yZJirr8b/7leN8xI+F9n/4DoIEZfctLFV/xP/g7joYnf5aD1exJOSD2UyX/UDrM2jgvx/fKBx2fVwTv/vlLowSOo/avA72TIaOmr1B1ETRQ+1/fHJi6K6oOoIOoOEABcAGhkgk8BhtTDYuygXB5gALoI6pG1PBLIyiAtK/75UeARpUwygA6xTg9J8oKzHRoqwbRkbMB+wn76AgAyAIRDY4ocefAfzveAyxxfhrAAEAyEDgEBpmwPx4BIsgOA4GQMBnb0eQDlmELBSD4AC/HMY/6Gz3+2PV34dBeW648UDD3g4AMAaGI6zxuhwEe0M6j2WlT0zQDLtw0a0AMMfbK0j5hAcF/4Pxnv/7d34zwYAHg0KAwbf9TUMfu/YM8YAF8vVpjgvP+hhgHh4a4CZE7NWr8DkBgZlhACBCAWEAAIBcAAEAzQDLveyMCAnGlh4AEloaownMJIIAjlSw/AJQD/YaEcDwwjLBqeMdWQwABACAAEAuANIIEhlOJmYeCYeqCU3OTfZ5n+FZ3C/gEAjiIT+ANOY8StSRypblzwACVE9uXFAANQBptmdf8AwABYKggAC4HcAoGjYR5Uye0xTz4ioCrwAHK3OWQ6YIQs0AjADly5j/FYN4Yy/5czMm38P/hEWECCPFhAAGzgACBcyAAAAAFBmjgj+FpMnm0Be04kz+EAAj/4QEmwHABBxsvAIiREJGMZE+8DgRHS8AR337bZn+G+TR7LcYEnpebfwEd3IfR6XKFSshwaFmWmPfPD5cMgh9zb4640K6X3BQG0q1eJcNBO2t820R/fXpttEf68M8LV2fAJG7vb/rCAIhAPKGpBzQwIQiFeCLvtcO+2NkHWvCE5gEvXw+ft/gAAAAFBmlQK9XjaxH8Ea3JWObhKTNHf7deZx7/hAJy8IimAAwBUJEcVHUS3fz1nB8+L2oxlJYAE+9EZ4QzYfpgP/wR8N+2pfCIWKd8esAwcpMHU13AdAdD/DfN8f+T+whhcRCtL47Dwe+BUfpMTwL2JQgMzg0lps8ATt+WbdI3l6v68SFUVq4UC4wF92PWAVFFSvjkEaoJjyXwhGkR9T9aCkIggKHfD1D1gu/K+5hC9yqyApqeAF4n1Gq+0AS38kXrhvhENQEyJ2etX/QlNf4ADswzvkxSujESHAAAAAUGaYGeT7/8MU6YK/tOPZzEBiquPMiv9HaDF7+nntfCIVKshas2994J+Sn6/CsRgOLzwNOOTDfYGyAFru4VOfgBeq9dft92P+vpF6uODwx38A/AeGpeA9Iu4yIi00CJXs4T8NOB7TT2fL6HAiHQiSC8+od9w86eBTGeAXuMp52hgAh7dfU77fuflgjePSf4AAAABQZqAIf4Ynll8dyxfodpPzAatke3HNdr4dBMcn5jOfhOa6fGqr5QYVkwXD3u4DoVKBDUKPgEg1bK9//X3XBAHxDz4DY2VE9xOBahEMl7JP0HgyLQweUACLTPCzvvzwGqnNaNJt+3mNgAg3Fj5N/teAyu05k2o+zz3KS+gRA4BAgjggLqA5wMJLQTYE3JNje+EMbO1avYTMgjhFgdIcvhCHyd7pAA5kNDcdrlbtAUmu9czlojIxFymd2ZfKHRnhE8BdkjdU/4f";
+const F6060_B64 = "AAAAAWdCwArZBCe7wEQAAAMABAAAAwBQPEiZIAAAAAFoy4PLIAAAAQYF//9t3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE2NSByMzIyMiBiMzU2MDVhIC0gSC4yNjQvTVBFRy00IEFWQyBjb2RlYyAtIENvcHlsZWZ0IDIwMDMtMjAyNSAtIGh0dHA6Ly93d3cudmlkZW9sYW4ub3JnL3gyNjQuaHRtbCAtIG9wdGlvbnM6IGNhYmFjPTAgcmVmPTMgZGVibG9jaz0xOjA6MCBhbmFseXNlPTB4MToweDExMSBtZT1oZXggc3VibWU9NyBwc3k9MSBwc3lfcmQ9MS4wMDowLjAwIG1peGVkX3JlZj0xIG1lX3JhbmdlPTE2IGNocm9tYV9tZT0xIHRyZWxsaXM9MSA4eDhkY3Q9MCBjcW09MCBkZWFkem9uZT0yMSwxMSBmYXN0X3Bza2lwPTEgY2hyb21hX3FwX29mZnNldD0tMiB0aHJlYWRzPTIgbG9va2FoZWFkX3RocmVhZHM9MSBzbGljZWRfdGhyZWFkcz0wIG5yPTAgZGVjaW1hdGU9MSBpbnRlcmxhY2VkPTAgYmx1cmF5X2NvbXBhdD0wIGNvbnN0cmFpbmVkX2ludHJhPTAgYmZyYW1lcz0wIHdlaWdodHA9MCBrZXlpbnQ9MjUwIGtleWludF9taW49MTAgc2NlbmVjdXQ9NDAgaW50cmFfcmVmcmVzaD0wIHJjX2xvb2thaGVhZD00MCByYz1jcmYgbWJ0cmVlPTEgY3JmPTIzLjAgcWNvbXA9MC42MCBxcG1pbj0wIHFwbWF4PTY5IHFwc3RlcD00IGlwX3JhdGlvPTEuNDAgYXE9MToxLjAwAIAAAAFliIQ3xCIqAMCELeAhTIgABAJrUGGAA8XjOjGjoF93/4BCTCOJWoPuExMpK9Xm//3K8ZcxI+F93/4n2SyzIfI5Gf/YIGnxUsG0if764ahhOT5vHq9dThi8jytPV7QfRok1DxEGvqBx2fVwbv/vgQABoAQMbCgACACDAoAE+ZhVmOgQi+vPioB/L+oyRtxAc3/+04BXENLEaQAbriiqxpJCIzshAznlP/071gIRj/78tDbU+LPm7oioC4HsLkCeBxAQEZfyZExd7/MHgAaHOenrFwbd9BRGM7MZcLx7/6rjUMTk+Xx6vA72TIaOmr1B/ZtBbXv905MXRXqDqBPbJFGdvNdJoMKhSTlHq84mPIrIg6tR759YJHkb8A4XgQkGAlXHeIdtF3GLuhaoiXFrsvCWmpBaX/vrGUbHsKi7//3Omoa+pB5W2a+4l1e+DNDRap1sn77BPJFMF5F/fRFQEVG2QMPDgDqhsim5b/txE8M6ENioFSV/+A6BAzL51GRMLuvxv/g7hpBhELSeg9XtksuyC1nqx/9IAPIQiYoCpf3/tAeKQqcoCI/++XDUMbk+ao9XgatYlYrFY9XrDWYiSD2TP984RkVnK6DqCAiSsIABoUUxMBIqAEG1MJYLyogbU+YAAlQYrLG1PAt2VsgSolP75nNpAxtTKhlGZE8YAU5RbgbUwX80/Hd/+/IiACKi7UIfgISYjmrUHyABS8b5CR8Lqv/3/JkmKvf8gKA/WeJGjvZsSRyIPZ2S/5wRlRnRUHVQeufQ3Ev+2uOjAmdQvHq99A6zJo4Lsf3zagQDhA8IACADyATeQkqcBMy9MKy4SX+2DSGr9B8mVfvuItMVVEZmcgCyQiEfIQMRb3b3gcsnKAsGCNiRLFBKif/nGOfFiOpSlIeAB8IfYLCsCSD+IAIAJEAALAAshBBbjwABJ4dBBbhwABJ4iFAiDNcHQoB4M1zDEf/hr/f5AgIdBwwIciGAARIsXYIBEJuH2A4IhNwSDYLVweDYVXDo5YAAgBgNxAAiwcAAQBwBsA//yAr6qfwwnAkMcAAQM7GuinlNdOePAhJIWCx4OBCSQsPHwwwDw7HCsBMidmrVxYCYkM4lav74QIIwJCAANlABmBD2UOHDeGaOwiQrjErgAEloapehh756MS4hUY6sQgBHLuEAAEgEDLnAMB/2GvA5AwZl4AdJCKFPHTDbUEEAjQPCAoFSVDOKRU8AWMyEiFKrCehJaEwQAAVAICblVkhwis+7Un3hYEB2GBFc4Bw/0CzgcgDDMsIEgIeEAAYA4Dx4MGCKX7TQHBELl/wDAP9gr4CYkM5q1eBwACeAQIAQBCgCQHG8Tx2EJDlsSuYEdGJUIVGO5iEARypZAABIBgy5pmdOH6YnVMqwAAAAAUGaOCP4ZkyLhAAI++EBJsBwAEHGy8AaJEREJiIv3gcCI6XgFfbbZm0+8IQAAAABQZpUCvV54QAndQiSgAMBUJGKL3USe4kDF6amhkwATtshL6QYMsjRwhAAAAABQZpgZ/ngW4ogEL1KfsYRNqn9s0JgQP99/kw+AQgAAAABQZqAIeT7/8/MNzfwhA==";
+
+function splitNals(u8){
+  const idx=[];
+  for(let i=0;i<u8.length-3;i++){ if(u8[i]===0&&u8[i+1]===0&&u8[i+2]===1) idx.push({sc:i,nal:i+3}); }
+  const nals=[];
+  for(let k=0;k<idx.length;k++){ const end=k+1<idx.length?idx[k+1].sc:u8.length; nals.push({type:u8[idx[k].nal]&0x1f, bytes:u8.subarray(idx[k].nal,end)}); }
+  return nals;
+}
+function groupChunks(nals){
+  const chunks=[]; let pend=[];
+  for(const n of nals){
+    if(n.type===1||n.type===5){ chunks.push({key:n.type===5, nals:[...pend,n]}); pend=[]; }
+    else pend.push(n);
+  }
+  if(pend.length&&chunks.length) chunks[chunks.length-1].nals.push(...pend);
+  return chunks;
+}
+const annex=(...ns)=>{let l=0;for(const n of ns)l+=n.bytes.length+4;const u=new Uint8Array(l);let o=0;for(const n of ns){u.set([0,0,0,1],o);o+=4;u.set(n.bytes,o);o+=n.bytes.length;}return u;};
+const mkChunk=(i,c)=>new EncodedVideoChunk({type:c.key?'key':'delta',timestamp:i*100000,duration:100000,data:annex(...c.nals)});
+const race=(p,ms,tag)=>Promise.race([p,new Promise((_,rj)=>setTimeout(()=>rj(new Error(tag||'STALL')),ms))]);
+
+// ---- §1 surface census (auto) ----
+(function s1(){
+  const h=B.s1;
+  const members=['VideoDecoder','VideoEncoder','AudioDecoder','AudioEncoder','EncodedVideoChunk','VideoFrame','VideoColorSpace'];
+  for(const m of members) CK.chip(h, typeof window[m]==='function'?'ok':'fail', m, typeof window[m]);
+  CK.ok(h,'statics', 'isConfigSupported ×2 (both classes)');
+  CK.info(h,'decoder proto', 'decodeQueueSize·state·ondequeue·close·configure·decode·flush·reset');
+  CK.info(h,'encoder proto', 'encodeQueueSize·state·ondequeue·close·configure·encode·flush·reset');
+  CK.warn(h,'no onerror attr', 'errors only via ctor callbacks');
+  const c=document.createElement('canvas'); c.width=2;c.height=2; c.getContext('2d');
+  try{ const f=new VideoFrame(c,{timestamp:0}); const c2=document.createElement('canvas'); c2.width=2;c2.height=2; c2.getContext('2d').drawImage(f,0,0); f.close(); CK.ok(h,'VideoFrame = CanvasImageSource','drawImage ✓'); }catch(e){ CK.fail(h,'VideoFrame draw', e.name); }
+  try{ new VideoFrame(c); CK.fail(h,'ctor without timestamp','NO-THROW'); }catch(e){ CK.ok(h,'timestamp required', e.name); }
+})();
+
+// ---- §2 codec matrix (auto) ----
+(async function s2(){
+  const tb=document.querySelector('#mtable tbody');
+  const codecs=[['avc1.42001E','H.264 base'],['avc1.640028','H.264 high'],['hvc1.1.6.L93.B0','HEVC'],['av01.0.04M.08','AV1'],['vp8','VP8'],['vp09.00.10.08','VP9']];
+  for(const [codec,name] of codecs){
+    const tr=document.createElement('tr'); tr.innerHTML='<td><code>'+codec+'</code><div class="mut">'+name+'</div></td>';
+    const cells=[];
+    for(let i=0;i<6;i++){ const td=document.createElement('td'); tr.appendChild(td); cells.push(td); }
+    tb.appendChild(tr);
+    const probes=[
+      [VideoDecoder,{codec},0],[VideoDecoder,{codec,hardwareAcceleration:'prefer-hardware'},1],[VideoDecoder,{codec,hardwareAcceleration:'prefer-software'},2],
+      [VideoEncoder,{codec,width:320,height:240,bitrate:500000},3],[VideoEncoder,{codec,width:320,height:240,bitrate:500000,hardwareAcceleration:'prefer-hardware'},4],[VideoEncoder,{codec,width:320,height:240,bitrate:500000,hardwareAcceleration:'prefer-software'},5]
+    ];
+    for(const [Ctor,cfg,slot] of probes){
+      try{ const r=await Ctor.isConfigSupported(cfg); cells[slot].innerHTML=r.supported?'<b style="color:var(--acc)">yes</b>':'<span class="mut">no</span>'; }
+      catch(e){ cells[slot].innerHTML='<span style="color:var(--bad)">'+e.name+'</span>'; }
+    }
+  }
+})();
+
+// ---- §3 NAL table (auto) ----
+(function s3(){
+  const nals=splitNals(b64d(MAIN_B64));
+  const chunks=groupChunks(nals);
+  const tb=document.querySelector('#naltable tbody');
+  const names={1:'P slice',5:'IDR slice',6:'SEI',7:'SPS',8:'PPS',9:'AUD'};
+  let ci=-1;
+  nals.forEach((n,i)=>{
+    if(n.type===1||n.type===5) ci++;
+    const tr=document.createElement('tr');
+    tr.innerHTML='<td>'+i+'</td><td>'+n.type+' <span class="mut">'+(names[n.type]||'')+'</span></td><td>'+(ci>=0?(chunks[ci].key?'<b>key</b>':'delta')+' #'+ci:'—')+'</td><td>'+n.bytes.length+' B</td>';
+    tb.appendChild(tr);
+  });
+  CK.info(B.s3,'stream', nals.length+' NALs → '+chunks.length+' chunks, 1 key @0');
+})();
+
+// ---- §4 floor bisect (button) ----
+document.getElementById('b4').onclick=async function(){
+  this.disabled=true; this.classList.add('on');
+  const h=B.s4;
+  const lanes=[
+    ['48×64','default',{codec:'avc1.42001E'},F4864_B64],
+    ['48×64','prefer-hw',{codec:'avc1.42001E',hardwareAcceleration:'prefer-hardware'},F4864_B64],
+    ['48×64','prefer-sw',{codec:'avc1.42001E',hardwareAcceleration:'prefer-software'},F4864_B64],
+    ['60×60','default',{codec:'avc1.42001E'},F6060_B64],
+    ['60×60','prefer-hw',{codec:'avc1.42001E',hardwareAcceleration:'prefer-hardware'},F6060_B64]
+  ];
+  for(const [size,lane,cfg,b64] of lanes){
+    const nals=splitNals(b64d(b64)); const chunks=groupChunks(nals);
+    let outs=0;
+    await new Promise(res=>{
+      let settled=false; const fin=()=>{ if(!settled){settled=true;res();} };
+      const d=new VideoDecoder({output:f=>{outs++;f.close();},error:()=>{}});
+      try{ d.configure(cfg); }catch(e){ CK.fail(h,size+' '+lane,'cfg throw'); fin(); return; }
+      try{ d.decode(mkChunk(0,chunks[0])); }catch(e){ CK.fail(h,size+' '+lane,e.name); fin(); return; }
+      Promise.race([d.flush(),new Promise((_,rj)=>setTimeout(()=>rj(new Error('STALL')),2500))]).then(()=>{
+        (outs? CK.ok: CK.danger)(h, size+' '+lane, outs+'/'+chunks.length+' frames out'+(outs?'':' — EncodingError'));
+        try{ d.close(); }catch(_){ } fin();
+      }).catch(e=>{ CK.danger(h, size+' '+lane, '0 frames — '+e.message);
+        CK.info(h,'after EncodingError','decoder auto-closed: state='+d.state+' (close() now throws)');
+        try{ d.close(); }catch(_){ } fin(); });
+    });
+  }
+  CK.warn(h,'isConfigSupported','said YES for every lane above — the floor is invisible to it');
+  this.disabled=false; this.classList.remove('on');
+};
+
+// ---- §5 decode lab (button) ----
+document.getElementById('b5').onclick=async function(){
+  this.disabled=true; this.classList.add('on');
+  const h=B.s5;
+  const nals=splitNals(b64d(MAIN_B64)); const chunks=groupChunks(nals);
+  const frames=[];
+  const d=new VideoDecoder({output:f=>frames.push(f),error:e=>CK.fail(h,'error cb',e.name)});
+  d.configure({codec:'avc1.42001E'});
+  const t0=performance.now();
+  for(let i=0;i<chunks.length;i++) d.decode(mkChunk(i,chunks[i]));
+  CK.info(h,'queueSize while pumping', String(d.decodeQueueSize));
+  await d.flush();
+  const ms=Math.round(performance.now()-t0);
+  CK.ok(h,'decoded', frames.length+'/10 frames in '+ms+' ms');
+  const f0=frames[0];
+  CK.chip(h,'info','format',f0.format);
+  CK.info(h,'dims', f0.codedWidth+'×'+f0.codedHeight+' · display '+f0.displayWidth+'×'+f0.displayHeight);
+  CK.info(h,'µs timestamps', frames.map(f=>f.timestamp).join(','));
+  const cs=f0.colorSpace;
+  CK.info(h,'colorSpace', cs?cs.primaries+'/'+cs.transfer+'/'+cs.matrix+' range='+(cs.fullRange?'full':'limited'):'null');
+  // native byte verify
+  const buf=new Uint8Array(f0.allocationSize()); await f0.copyTo(buf);
+  const s0=await sha16(buf);
+  (s0==='82037a0461fdae52'?CK.ok:CK.fail)(h,'SHA-16 frame 0 ≡ ffmpeg', s0);
+  const fl=frames[9]; const bl=new Uint8Array(fl.allocationSize()); await fl.copyTo(bl);
+  const s9=await sha16(bl);
+  (s9==='f8b3f16336a2c853'?CK.ok:CK.fail)(h,'SHA-16 frame 9 ≡ ffmpeg', s9);
+  // preview strip
+  const strip=document.getElementById('strip5');
+  for(const f of frames){ const c=document.createElement('canvas'); c.width=128;c.height=96; c.getContext('2d').drawImage(f,0,0); strip.appendChild(c); f.close(); }
+  d.close();
+  this.disabled=false; this.classList.remove('on');
+};
+
+// ---- §6 conversion + close matrix (button) ----
+document.getElementById('b6').onclick=async function(){
+  this.disabled=true; this.classList.add('on');
+  const h=B.s6;
+  const nals=splitNals(b64d(MAIN_B64)); const chunks=groupChunks(nals);
+  let first=null;
+  const d=new VideoDecoder({output:f=>{ if(!first) first=f; else f.close(); },error:()=>{}});
+  d.configure({codec:'avc1.42001E'});
+  d.decode(mkChunk(0,chunks[0]));
+  await d.flush();
+  if(!first){ CK.fail(h,'no frame','decode failed'); return; }
+  CK.ok(h,'native allocation', first.allocationSize()+' B (128×96 NV12)');
+  try{ first.allocationSize({format:'RGBA'}); CK.ok(h,'→ RGBA', first.allocationSize({format:'RGBA'})+' B'); }catch(e){ CK.fail(h,'→ RGBA', e.name); }
+  try{ first.allocationSize({format:'BGRA'}); CK.ok(h,'→ BGRA','ok'); }catch(e){ CK.fail(h,'→ BGRA', e.name); }
+  try{ first.allocationSize({format:'I420'}); CK.fail(h,'→ I420','NO-THROW (I420 available)'); }catch(e){ CK.danger(h,'→ I420', 'REFUSED: '+String(e.message).slice(0,44)); }
+  const cp=first.copyTo(new Uint8Array(first.allocationSize()));
+  CK.info(h,'copyTo() returns', typeof cp==='object'&&cp.then?'a promise':'sync');
+  try{ await first.copyTo(new Uint8Array(10)); CK.warn(h,'short buffer','NO-THROW'); }catch(e){ CK.warn(h,'short buffer → rejection', e.name); }
+  // close-law split
+  const g=first.clone(); first.close();
+  try{ document.createElement('canvas').getContext('2d').drawImage(first,0,0); CK.warn(h,'drawImage after close','NO-THROW'); }catch(e){ CK.ok(h,'drawImage after close', 'InvalidStateError'); }
+  try{ await first.copyTo(new Uint8Array(18432)); CK.warn(h,'copyTo after close','NO-THROW'); }catch(e){ CK.ok(h,'copyTo after close', 'rejection InvalidStateError'); }
+  try{ first.allocationSize(); CK.warn(h,'allocationSize after close','NO-THROW'); }catch(e){ CK.ok(h,'allocationSize after close', 'sync throw'); }
+  CK.info(h,'format after close', String(first.format));
+  CK.ok(h,'timestamp after close', String(first.timestamp)+' µs survives');
+  try{ const c=document.createElement('canvas'); c.width=128;c.height=96; c.getContext('2d').drawImage(g,0,0); CK.ok(h,'clone outlives original','draws after source closed'); }catch(e){ CK.fail(h,'clone', e.name); }
+  g.close(); d.close();
+  this.disabled=false; this.classList.remove('on');
+};
+
+// ---- §7 junk + delta-first (button) ----
+document.getElementById('b7').onclick=async function(){
+  this.disabled=true; this.classList.add('on');
+  const h=B.s7;
+  // junk
+  await new Promise(res=>{
+    let outs=0, errs=0;
+    const d=new VideoDecoder({output:f=>{outs++;f.close();},error:e=>errs++});
+    d.configure({codec:'avc1.42001E'});
+    try{ d.decode(new EncodedVideoChunk({type:'key',timestamp:0,data:new Uint8Array([0,0,0,1,0x65,0xff,0xff,0xff,0xff,0x00,0x33,0x22])})); }catch(e){ CK.fail(h,'junk decode sync', e.name); }
+    setTimeout(async ()=>{
+      try{ await race(d.flush(),1500,'STALL');
+        if(outs===0&&errs===0) CK.danger(h,'junk key chunk','SILENT — 0 frames, 0 errors, state='+d.state);
+        else CK.warn(h,'junk key chunk', outs+' frames '+errs+' errors');
+      }catch(e){ CK.warn(h,'junk flush','rejects: '+e.name); }
+      d.close(); res();
+    },500);
+  });
+  // delta-first
+  await new Promise(res=>{
+    const nals=splitNals(b64d(MAIN_B64)); const chunks=groupChunks(nals);
+    const d=new VideoDecoder({output:()=>{},error:e=>CK.info(h,'async error cb', e.name)});
+    d.configure({codec:'avc1.42001E'});
+    try{ d.decode(mkChunk(3,chunks[3])); CK.warn(h,'delta first','NO-THROW'); }
+    catch(e){ CK.ok(h,'delta first → SYNC throw', 'DataError, state stays '+d.state); }
+    try{ d.decode(mkChunk(0,chunks[0])); CK.ok(h,'key after delta-first','accepted'); }catch(e){ CK.fail(h,'key after delta-first', e.name); }
+    d.close(); res();
+  });
+  this.disabled=false; this.classList.remove('on');
+};
+
+// ---- §8 encode lab (button) ----
+document.getElementById('b8').onclick=async function(){
+  this.disabled=true; this.classList.add('on');
+  const h=B.s8;
+  const mk=(i)=>{ const c=document.createElement('canvas'); c.width=320;c.height=240; const x=c.getContext('2d');
+    const g=x.createLinearGradient(0,0,320,240); g.addColorStop(0,'#123'); g.addColorStop(1,'#f84');
+    x.fillStyle=g; x.fillRect(0,0,320,240); x.fillStyle='#fff'; x.fillRect(20+i*25,20+i*25,60,60);
+    x.fillStyle='#000'; x.font='bold 24px monospace'; x.fillText('F'+i,8,232); return c; };
+  // draw source frame 3 for the visual
+  document.getElementById('orig8').getContext('2d').drawImage(mk(3),0,0);
+  const encChunks=[]; let dcfg=null;
+  const enc=new VideoEncoder({output:(ch,md)=>{ if(md&&md.decoderConfig)dcfg=md.decoderConfig; encChunks.push(ch); },error:e=>CK.fail(h,'enc error',e.name)});
+  const t0=performance.now();
+  enc.configure({codec:'avc1.42001E',width:320,height:240,bitrate:250000});
+  for(let i=0;i<6;i++){ const f=new VideoFrame(mk(i),{timestamp:i*33333,duration:33333}); enc.encode(f,{keyFrame:i===0}); f.close(); }
+  await enc.flush();
+  const encMs=Math.round(performance.now()-t0);
+  CK.ok(h,'encoded', encChunks.length+' chunks in '+encMs+' ms');
+  CK.info(h,'key cadence', encChunks.filter(c=>c.type==='key').length+' key / '+(encChunks.length-encChunks.filter(c=>c.type==='key').length)+' delta');
+  CK.info(h,'first chunk', encChunks[0].byteLength+' B · '+encChunks[0].type);
+  (dcfg&&dcfg.description?CK.ok:CK.warn)(h,'decoderConfig.description', dcfg&&dcfg.description?'avcC '+dcfg.description.byteLength+' B (AVCC lane)':'absent (annexb lane)');
+  // roundtrip
+  let outs=0,last=null;
+  await new Promise(async res=>{
+    const d=new VideoDecoder({output:f=>{ outs++; last=f; },error:e=>{ CK.fail(h,'rt error',e.name); res(); }});
+    try{ d.configure(dcfg||{codec:'avc1.42001E'}); }catch(e){ CK.fail(h,'rt cfg',e.name); res(); return; }
+    for(const ch of encChunks){ try{ d.decode(ch); }catch(e){ CK.fail(h,'rt decode',String(e.message).slice(0,60)); } }
+    try{ await race(d.flush(),2500,'STALL'); }catch(e){ CK.warn(h,'rt flush', e.message); }
+    d.close(); res();
+  });
+  CK.ok(h,'roundtrip', outs+'/6 frames decoded back');
+  if(last){
+    const c=document.getElementById('rt8'); c.width=320;c.height=240; c.getContext('2d').drawImage(last,0,0,320,240);
+    // diff vs source frame at outs-1
+    const src=mk(outs-1); const sc=src.getContext('2d').getImageData(0,0,320,240).data;
+    const rc=c.getContext('2d').getImageData(0,0,320,240).data;
+    let sum=0; for(let i=0;i<sc.length;i+=4){ sum+=Math.abs(sc[i]-rc[i])+Math.abs(sc[i+1]-rc[i+1])+Math.abs(sc[i+2]-rc[i+2]); }
+    const diff=(sum/(sc.length/4*3)).toFixed(2);
+    CK.info(h,'mean pixel delta vs source', diff+' / 255');
+    last.close();
+  }
+  enc.close();
+  this.disabled=false; this.classList.remove('on');
+};
+
+// ---- §9 state machine (button) ----
+document.getElementById('b9').onclick=async function(){
+  this.disabled=true; this.classList.add('on');
+  const h=B.s9;
+  const d=new VideoDecoder({output:()=>{},error:()=>{}});
+  CK.info(h,'initial state', d.state);
+  try{ d.decode(new EncodedVideoChunk({type:'key',timestamp:0,data:new Uint8Array(4)})); CK.warn(h,'decode before configure','NO-THROW'); }catch(e){ CK.ok(h,'decode before configure','InvalidStateError'); }
+  d.configure({codec:'avc1.42001E'});
+  CK.info(h,'after configure', d.state);
+  d.reset();
+  CK.info(h,'after reset', d.state+' (needs re-configure)');
+  try{ d.decode(new EncodedVideoChunk({type:'key',timestamp:0,data:new Uint8Array(4)})); CK.warn(h,'decode after reset','NO-THROW'); }catch(e){ CK.ok(h,'decode after reset','InvalidStateError — reset ≠ keyframe restart'); }
+  d.configure({codec:'avc1.42001E'});
+  d.close();
+  CK.info(h,'after close', d.state);
+  try{ d.reset(); CK.warn(h,'reset after close','NO-THROW'); }catch(e){ CK.ok(h,'reset after close','InvalidStateError (terminal)'); }
+  // encoder config walls
+  const e2=new VideoEncoder({output:()=>{},error:()=>{}});
+  try{ e2.configure({codec:'avc1.42001E',width:320,height:240,bitrate:0}); CK.warn(h,'bitrate:0','NO-THROW'); }catch(err){ CK.ok(h,'bitrate:0','TypeError: Bitrate must be greater than zero.'); }
+  CK.info(h,'state after failed configure', e2.state);
+  try{ e2.configure({codec:'avc1.42001E',width:0,height:240,bitrate:250000}); }catch(err){ CK.ok(h,'width:0','TypeError: Invalid size'); }
+  e2.close();
+  this.disabled=false; this.classList.remove('on');
+};
+
+window.__done = true;
+})();
+</script>
+</body>
+</html>
