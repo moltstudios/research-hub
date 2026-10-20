@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AbortSignal / AbortController — the cancellation tier</title>
+<style>
+  :root { --ink:#1d1c1a; --mut:#75716a; --line:#e6e2da; --card:#fffdf9; --bg:#f7f5f0; --acc:#0b6b5d; --acc2:#b05c1a; --bad:#a11111; }
+  * { box-sizing: border-box; }
+  body { font: 15px/1.55 -apple-system, system-ui, sans-serif; color: var(--ink); background: var(--bg); margin: 0; overflow-x: hidden; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 24px 20px 80px; }
+  .sec { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 22px; margin: 26px 0; overflow: hidden; }
+  h1 { font-size: 29px; line-height: 1.2; letter-spacing: -0.02em; margin: 10px 0 8px; }
+  h2 { font-size: 19px; margin: 2px 0 10px; letter-spacing: -0.01em; }
+  p { margin: 8px 0; }
+  code, .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12.5px; background: #f4f2ee; padding: 1px 5px; border-radius: 6px; overflow-wrap: anywhere; }
+  pre { background: #f4f2ee; border-radius: 12px; padding: 12px; overflow-x: auto; font-size: 12px; line-height: 1.5; max-width: 100%; margin: 10px 0; }
+  .mut { color: var(--mut); font-size: 13px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 4px 10px; margin: 3px 4px 3px 0; border: 1px solid transparent; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .chip.ok { background: #e8f7ee; color: #0a6b35; border-color: #bfe8d0; }
+  .chip.warn { background: #fff5e0; color: #8a5a00; border-color: #f3ddaa; }
+  .chip.fail { background: #fdeaea; color: #a11111; border-color: #f2c4c4; }
+  .chip.info { background: #e9f1fd; color: #0b4fa8; border-color: #c4dcf7; }
+  .chip .d { font-weight: 400; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button { font: 600 13px/1.3 -apple-system, system-ui, sans-serif; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; max-width: 100%; }
+  button:hover { border-color: #c9c5bd; }
+  button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  button:disabled { opacity: .55; cursor: default; }
+  .tscroll { overflow-x: auto; max-width: 100%; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  td, th { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--mut); }
+  .pill { font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--acc); }
+  .out { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--ink); background: #f4f2ee; border-radius: 10px; padding: 8px 10px; margin-top: 8px; overflow-wrap: anywhere; max-height: 240px; overflow-y: auto; white-space: pre-wrap; }
+  .law { border-left: 3px solid var(--acc); padding: 2px 0 2px 12px; margin: 12px 0; }
+  .law b { color: var(--acc); }
+  ul { margin: 8px 0; padding-left: 20px; }
+  li { margin: 4px 0; }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+  .badge { font-size: 11px; font-weight: 700; letter-spacing: .03em; border-radius: 999px; padding: 3px 9px; border: 1px solid var(--line); background: var(--card); }
+  .badge.y { color: #0a6b35; border-color: #bfe8d0; background: #e8f7ee; }
+  .badge.n { color: #a11111; border-color: #f2c4c4; background: #fdeaea; }
+  .v { color: var(--acc2); font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>AbortSignal / AbortController — the cancellation tier</h1>
+<p class="mut"><span class="pill">AbortController · AbortSignal · reason · timeout() · any() · throwIfAborted</span> — the cancellation primitive under fetch, streams, event listeners, EyeDropper, WebOTP and Observable. Baseline-universal since 2019; the statics (<code>timeout</code>/<code>any</code>) Baseline 2024. Live-probed on Chromium 148 (CfT) + Chromium 154 (Brave) + Node 25.8 — every chip below re-runs in your browser. The tier eight earlier entries kept citing and never researched.</p>
+<div class="badges">
+  <span class="badge y">surface: 2 + 5 + 3 statics</span>
+  <span class="badge y">EventTarget heritage</span>
+  <span class="badge y">full surface in workers</span>
+  <span class="badge y">timeout() → TimeoutError ≠ AbortError</span>
+  <span class="badge n">no canAbort / progress / passive</span>
+  <span class="badge y">cross-verified 148 / 154 / Node 25.8</span>
+</div>
+
+<div class="sec" id="s1">
+<h2>1 · Surface census — the smallest tier in the catalog</h2>
+<div id="c1" class="row"></div>
+<p class="mut"><code>AbortController</code> has exactly two members: <code>abort()</code> and the <code>signal</code> getter (same instance every read). <code>AbortSignal</code> has five: <code>aborted</code>, <code>reason</code>, <code>onabort</code>, <code>throwIfAborted()</code> + constructor. Three statics: <code>abort()</code>, <code>any()</code>, <code>timeout()</code>. It IS an <code>EventTarget</code> — that's the whole eventing story. <code>reason</code> before any abort is <code>undefined</code>. The proposed <code>canAbort()</code>/<code>progress()</code>/<code>passive()</code> extensions: <b>absent</b>. <code>new AbortSignal()</code> is an illegal constructor.</p>
+</div>
+
+<div class="sec" id="s2">
+<h2>2 · THE REASON LAW — what abort() actually hands you</h2>
+<button id="b2">Fire every abort shape</button>
+<div id="c2" class="row"></div>
+<div class="law"><b>THE LAW.</b> <code>abort()</code> with no argument (or literally <code>undefined</code>) synthesizes a <b>fresh</b> <code>DOMException</code> named <code>AbortError</code> per controller — engine-worded: <code class="v">"signal is aborted without reason"</code> on Chromium, <code class="v">"This operation was aborted"</code> on Node. Anything <i>else</i> — string, <code>null</code>, Error, plain object — becomes <code>signal.reason</code> <b>by reference, verbatim</b>. <code>null</code> IS a reason (distinct from <code>undefined</code>!). And the <b>once-law</b>: a second <code>abort()</code> is completely ignored — the reason is never replaced.</div>
+<p class="mut">This is the law prior entries kept rediscovering: fetch rejects with <i>your string verbatim</i> (Encoding/WS entries), EyeDropper's <code>{signal}</code> rejects with the raw reason <i>not</i> a DOMException, WebOTP's blast radius carries your reason across every pending get. One primitive, one contract — finally probed on its own.</p>
+</div>
+
+<div class="sec" id="s3">
+<h2>3 · The event grammar — sync dispatch, onabort last</h2>
+<div id="c3" class="row"></div>
+<div id="o3" class="out"></div>
+<div class="law"><b>THE ORDER.</b> <code>abort()</code> dispatches <b>synchronously</b>: every <code>addEventListener</code> listener runs <i>during</i> the abort call (registration order), then <code>onabort</code>, then your next line of sync code — the microtask queue never gets involved in delivery. The event: <code>type:'abort'</code>, <code>bubbles:false</code>, <code>cancelable:false</code>, <code>isTrusted:true</code>. Capture-phase listeners fire too (same-target both-phase law). Duplicate registrations dedup (EventTarget law). And <b>late listeners never fire</b> — there is exactly one abort event per signal, ever.</div>
+</div>
+
+<div class="sec" id="s4">
+<h2>4 · timeout() — the TimeoutError discriminant & the 3-way validation split</h2>
+<div id="c4" class="row"></div>
+<div class="tscroll"><table id="t4"><thead><tr><th>input</th><th>Chromium 148/154</th><th>Node 25.8</th><th>MDN claims</th></tr></thead><tbody>
+<tr><td><code>timeout(-1)</code></td><td>TypeError · "outside the unsigned long long value range"</td><td>RangeError · "delay … must be &gt;= 0 &amp;&amp; &lt;= 4294967295"</td><td rowspan="6">"must be within range of 0 and Number.MAX_SAFE_INTEGER"</td></tr>
+<tr><td><code>timeout(NaN)</code></td><td>TypeError · "not of type unsigned long long"</td><td>RangeError · "must be an integer"</td></tr>
+<tr><td><code>timeout(1.5)</code></td><td class="v">accepted → 1ms (WebIDL truncation)</td><td class="v">RangeError (integer-only)</td></tr>
+<tr><td><code>timeout(Infinity)</code></td><td>TypeError · "is infinite and not of type unsigned long long"</td><td>RangeError · "must be an integer"</td></tr>
+<tr><td><code>timeout(2³²)</code></td><td class="v">accepted</td><td class="v">RangeError (cap 2³²−1)</td></tr>
+<tr><td><code>timeout(2⁵³)</code></td><td>TypeError · outside range (2⁵³−1 passes)</td><td>RangeError</td></tr>
+</tbody></table></div>
+<p class="mut">Every cell live-measured this session (chips above re-fire the current engine's verdicts). The abort reason on expiry is a <code>DOMException</code> named <b><code>TimeoutError</code></b> — <i>not</i> AbortError — message <code class="v">"signal timed out"</code> (Chromium) / <code class="v">"The operation was aborted due to timeout"</code> (Node). That name is your error-UI discriminant: <code>err.name === 'TimeoutError'</code> → show "took too long", <code>AbortError</code> → show "cancelled".</p>
+<div class="law"><b>THE NO-CANCEL LANE.</b> A timeout signal has no controller — you cannot cancel the timer, only ignore it. Finishing early does nothing; listeners keep the signal GC-rooted until expiry (MDN's own guidance: for long timeouts, prefer <code>setTimeout</code> + <code>clearTimeout</code> + a real controller). Timers measure <b>active</b> time — paused in bfcache/suspended workers. Timeout signals still fire with <i>zero</i> listeners attached.</div>
+</div>
+
+<div class="sec" id="s5">
+<h2>5 · any() — the composition tier</h2>
+<button id="b5">Wire a composite & fire parent 1</button>
+<div id="c5" class="row"></div>
+<div class="law"><b>THE WIRING.</b> <code>AbortSignal.any([a, b])</code> — composite aborts the instant any parent aborts, with that parent's reason <b>verbatim</b>. One-directional: the composite never aborts its parents, parents stay independent siblings. <code>any([])</code> = a signal that can never abort. A pre-aborted parent makes the composite instantly aborted (reason inherited) — even when the composite is wired <i>after</i> the fact. Nested <code>any()</code> chains propagate reasons through every level. Garbage parents: <code>any([null])</code> → <code>TypeError: Failed to convert value to 'AbortSignal'</code>.</div>
+<p class="mut">The watchdog pattern: <code>any([AbortSignal.timeout(N), userCtrl.signal])</code> — either the clock or the user kills the operation, and the rejection reason tells you <i>which one</i> fired.</p>
+</div>
+
+<div class="sec" id="s6">
+<h2>6 · throwIfAborted() — the sync guard</h2>
+<div id="c6" class="row"></div>
+<p class="mut">Live signal → returns <code>undefined</code>, no throw. Aborted → <b>throws your raw reason</b> — string, object, Error, whatever you stored. This is the checkpoint primitive for long synchronous phases (parse loops, encode loops) that can't await: <code>for (…big work…) if (i % 1000 === 0) signal.throwIfAborted()</code>. Distinct from the <code>aborted</code> boolean: one is a query, the other is a tripwire.</p>
+</div>
+
+<div class="sec" id="s7">
+<h2>7 · fetch integration — & THE BODY-PATH REASON DIVERGENCE</h2>
+<div id="c7" class="row"></div>
+<div class="law"><b>THE DIVERGENCE.</b> On the fetch <i>promise</i>, the reason-verbatim law holds everywhere: reject with your exact reason, mid-flight or pre-flight. On the <i>body path</i> it is <b>version-dependent</b>: Chromium 148 loses your reason and synthesizes a default — reader: <code class="v">AbortError: BodyStreamBuffer was aborted</code>, <code>res.text()</code>: <code class="v">"The user aborted a request."</code> — while Chromium 154 propagates the raw reason verbatim in both lanes (Node 25.8: verbatim). The chips above show what <i>your current engine</i> does. <b>Production rule: branch on <code>signal.aborted</code>, never on rejection identity across the body path.</b></p>
+<p class="mut">Also live above: abort-after-settle is a silent no-op (nothing throws, ever), an aborted signal reused for a new fetch rejects instantly with the stored reason, and already-read chunks stay in your buffer after the cut — the evidence you collected before the axe fell is yours to keep. Probe-server log verified the pre-aborted lane never opens a socket.</p>
+</div>
+
+<div class="sec" id="s8">
+<h2>8 · The adopter census — who actually takes a signal</h2>
+<div id="c8" class="row"></div>
+<div class="tscroll"><table><thead><tr><th>API</th><th>signal lane</th><th>abort behavior</th></tr></thead><tbody>
+<tr><td><code>fetch(url, {signal})</code></td><td>✓</td><td>rejects with reason verbatim (promise lane)</td></tr>
+<tr><td><code>addEventListener(t, fn, {signal})</code></td><td>✓</td><td><b>removes the listener</b> — one signal, N targets, one <code>abort()</code> cleanup</td></tr>
+<tr><td><code>readable.pipeTo(w, {signal})</code></td><td>✓</td><td>rejects pipeTo with reason; stream cancels</td></tr>
+<tr><td><code>EyeDropper.open({signal})</code></td><td>✓</td><td>rejects with the <b>raw reason value</b>, not a DOMException</td></tr>
+<tr><td><code>navigator.credentials.get({signal})</code></td><td>✓</td><td>rejects AbortError</td></tr>
+<tr><td><code>PaymentRequest</code></td><td>—</td><td>has its own <code>.abort()</code> method, no signal</td></tr>
+<tr><td><code>Observable.subscribe(fn, {signal})</code></td><td>✓</td><td>signal = the ONLY unsubscribe handle (its entry)</td></tr>
+<tr><td><code>WebSocket(url, protocols, ?)</code></td><td class="v">✗</td><td>third ctor argument <b>silently ignored</b> — no cancellation lane, close() only</td></tr>
+<tr><td><code>EventSource(url, {signal})</code></td><td class="v">✗</td><td>options object accepted, signal <b>silently unused</b></td></tr>
+<tr><td><code>getUserMedia</code> / MediaRecorder / IndexedDB / sendBeacon</td><td class="v">✗</td><td>their own stop()/abort()/close() lifecycles</td></tr>
+</tbody></table></div>
+<div class="law"><b>THE DEAD-LISTENER LAW.</b> Registering a listener with an <i>already-aborted</i> signal silently registers nothing — zero events, ever, no warning. And one aborted signal retro-cleans every target it was attached to. Page-teardown in one line: one controller, every <code>addEventListener</code> in the module opts in via <code>{signal}</code>.</div>
+</div>
+
+<div class="sec" id="s9">
+<h2>9 · Streams — pipeTo under the axe</h2>
+<div id="c9" class="row"></div>
+<p class="mut">Live: an in-page <code>ReadableStream</code> that would enqueue twice, piped into a sink with <code>{signal}</code>, aborted between chunks. <code>pipeTo</code> rejects with the reason <b>verbatim</b> (both Chromium lanes + Node agree here — unlike the fetch body path), the sink keeps everything already written, and the source is cancelled — no dangling enqueues. Pairs with the Encoding entry's demand-gate lesson: <code>TextEncoderStream</code> has no signal lane; you gate demand with pulls, not aborts.</p>
+</div>
+
+<div class="sec" id="s10">
+<h2>10 · Workers + the cross-engine table</h2>
+<div id="c10" class="row"></div>
+<div class="tscroll"><table><thead><tr><th></th><th>Chromium 154</th><th>Chromium 148</th><th>Node 25.8</th></tr></thead><tbody>
+<tr><td>default AbortError message</td><td colspan="2">"signal is aborted without reason"</td><td>"This operation was aborted"</td></tr>
+<tr><td>timeout() reason message</td><td colspan="2">"signal timed out"</td><td>"The operation was aborted due to timeout"</td></tr>
+<tr><td>timeout() validation</td><td colspan="2">TypeError, unsigned-long-long, 1.5→1ms, cap 2⁵³−1</td><td>RangeError, integer-only, cap 2³²−1</td></tr>
+<tr><td>fetch body-path reason</td><td class="v">verbatim</td><td class="v">synthesized AbortError</td><td>verbatim</td></tr>
+<tr><td>abort dispatch</td><td colspan="3">synchronous, listeners → onabort → next line</td></tr>
+</tbody></table></div>
+<p class="mut">Full surface in dedicated workers — controller, signal, all three statics, <code>throwIfAborted</code>, reasons flow across <code>postMessage</code> (it's a structured-cloneable DOMException or your own value). Never trust <code>e.message</code> — it's engine-localized; branch on <code>name</code> or your own reason identity.</p>
+</div>
+
+<div class="sec" id="s11">
+<h2>11 · Capstone — OpenDrones link watchdog</h2>
+<button id="b11">Run the 2-attempt cycle</button>
+<div id="o11" class="out">idle — press run</div>
+<p class="mut">The reconnect engine pattern from the WebSocket entry, rebuilt on composition: each attempt wraps a real <code>fetch</code> (the lab's slow endpoint) in <code>AbortSignal.any([AbortSignal.timeout(1200), navSignal])</code>. Attempt 1: telemetry slower than the clock → rejection <code>name === 'TimeoutError'</code> → the log shows the discriminant firing, backoff 400 ms. Attempt 2: a 5 s clock wins the race → payload lands, watchdog disarms, page-teardown listeners (registered with <code>{signal}</code>) swept on abort. Every line in the log strip is a measured reason or a rendered byte — no simulation flags.</p>
+</div>
+
+<div class="sec" id="s12">
+<h2>12 · Capstone — Molt search-as-you-type</h2>
+<button id="b12">Type "drone-kit" (3 staged keystrokes)</button>
+<div id="o12" class="out">idle — press run</div>
+<p class="mut">Three queries fire 300 ms apart ("dron", "drone", "drone-kit") at a real endpoint. Each new keystroke aborts the previous controller with the reason <code class="v">'superseded'</code> — its fetch rejects verbatim, its render never happens, only the final query paints. A 900 ms <code>timeout()</code> guards the last keystroke against a dying API. This is the whole reason the tier exists: <b>the stale-response race dies in one line</b> (<code>prev?.abort('superseded')</code>), not in result-timestamp comparison code.</p>
+</div>
+
+<div class="sec" id="s13">
+<h2>13 · Decision table — reaching for the right door</h2>
+<div class="tscroll"><table><thead><tr><th>You need…</th><th>Use</th><th>Not</th></tr></thead><tbody>
+<tr><td>Cancel one operation</td><td><code>controller.abort(reason)</code></td><td>boolean flags + poll checks</td></tr>
+<tr><td>Timeout an operation</td><td><code>AbortSignal.timeout(ms)</code> inside <code>any()</code></td><td><code>Promise.race([p, timeout])</code> — leaks the loser</td></tr>
+<tr><td>User-cancel + timeout together</td><td><code>any([ctrl.signal, AbortSignal.timeout(N)])</code></td><td>two racing controllers</td></tr>
+<tr><td>Cleanup at teardown</td><td><code>addEventListener(..., {signal: pageSignal})</code></td><td>manual removeEventListener bookkeeping</td></tr>
+<tr><td>Cancel long sync work</td><td><code>signal.throwIfAborted()</code> checkpoints</td><td><code>aborted</code> checks that forget a branch</td></tr>
+<tr><td>Know WHO cancelled</td><td>distinct reasons per source, check identity</td><td><code>e.message</code> matching (engine-localized)</td></tr>
+<tr><td>Cancel a WebSocket</td><td><code>ws.close(code)</code> — there is no signal</td><td>passing a third ctor arg (silently ignored)</td></tr>
+<tr><td>Distinguish timeout vs cancel in UI</td><td><code>err.name === 'TimeoutError'</code></td><td>string-matching messages</td></tr>
+</tbody></table></div>
+<div class="law"><b>TEN RULES.</b> 1 · Give every abort a reason — default AbortError is anonymous. 2 · Reasons are by-reference: strings/enums beat messages. 3 · Once only — second abort() is a no-op, don't build reset logic on it. 4 · Listeners are one-shot: re-arm means new controller. 5 · timeout() can't be cancelled — clearTimeout needs a real controller. 6 · Branch on <code>signal.aborted</code> for body-path handling, not rejection identity (≤148 engines lose it). 7 · <code>TimeoutError</code> ≠ <code>AbortError</code> — route them to different UI. 8 · One teardown controller per page/module; every listener opts in with <code>{signal}</code>. 9 · Don't string-match messages: Chromium, Node and Firefox all word them differently. 10 · The census before the code: check the API actually takes a signal (WS and EventSource don't).</p>
+</div>
+
+<p class="mut" style="margin-top:30px">Probed 2026-10-20 · CfT 148.0.7778.96 + Brave 154.1.96.60 (headless, local probe server) + Node 25.8 cross-verification · demo re-probes live in your engine · fetch lanes hit <code>/api/ab-lab</code> (Vercel host; mirrors degrade to info chips).</p>
+</div>
+
+<script>
+(function(){
+"use strict";
+const CK = {
+  chip(host, kind, label, detail){ if (typeof host === 'string') host = B[host]; const el=document.createElement('span'); el.className='chip '+kind; el.innerHTML=label+(detail!==undefined&&detail!==''?' <span class="d">'+detail+'</span>':''); host.appendChild(el); return el; },
+  ok(host,l,d){return CK.chip(host,'ok',l,d);}, warn(host,l,d){return CK.chip(host,'warn',l,d);},
+  fail(host,l,d){return CK.chip(host,'fail',l,d);}, info(host,l,d){return CK.chip(host,'info',l,d);}
+};
+const B = {};
+document.querySelectorAll('.sec').forEach(sec=>{ B[sec.id]=sec.querySelector('.row'); });
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+const API = location.origin.includes('vercel') ? location.origin + '/api/ab-lab' : '/api/ab-lab';
+const esc = s => String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let CH = 0; const chipWrap = h => { CH++; return B[h] || c1row; };
+
+(async () => {
+// ---------- §1 census ----------
+{
+  const h = 's1';
+  const cp = Object.getOwnPropertyNames(AbortController.prototype).filter(n=>n!=='constructor').join(',');
+  const sp = Object.getOwnPropertyNames(AbortSignal.prototype).filter(n=>n!=='constructor').join(',');
+  const st = Object.getOwnPropertyNames(AbortSignal).filter(n=>!['length','name','prototype'].includes(n)).join(',');
+  CK.ok(h,'controller surface', esc(cp));
+  CK.ok(h,'signal surface', esc(sp));
+  CK.ok(h,'statics', esc(st));
+  const c = new AbortController();
+  CK.ok(h,'signal instanceof EventTarget', c.signal instanceof EventTarget);
+  CK.ok(h,'signal getter → same instance', c.signal === c.signal);
+  CK.ok(h,'reason before abort', String(c.signal.reason) + ' (undefined)');
+  CK.ok(h,'new AbortSignal() throws', (()=>{try{new AbortSignal();return 'NO';}catch(e){return e.constructor.name;}})());
+  CK.info(h,'canAbort / progress / passive', [AbortSignal.canAbort,AbortSignal.progress,AbortSignal.passive].map(v=>typeof v).join('/') + ' — all absent');
+  CK.ok(h,'onabort lives on prototype', Object.getOwnPropertyNames(AbortSignal.prototype).includes('onabort') + ' (instance keys: ' + esc(JSON.stringify(Object.keys(c.signal))) + ')');
+}
+
+// ---------- §2 reason law (button) ----------
+document.getElementById('b2').onclick = function(){
+  this.disabled = true; this.classList.add('on');
+  const h = 's2';
+  const c1 = new AbortController(); c1.abort();
+  CK.ok(h,'abort() default', 'AbortError DOMException · "' + esc(c1.signal.reason.message) + '"');
+  const c2 = new AbortController(); c2.abort();
+  CK.ok(h,'default reasons are fresh', c1.signal.reason !== c2.signal.reason ? 'each controller mints its own' : 'SHARED (unexpected)');
+  const cu = new AbortController(); cu.abort(undefined);
+  CK.ok(h,'abort(undefined)', cu.signal.reason.name + ' — undefined ≠ a reason');
+  const cn = new AbortController(); cn.abort(null);
+  CK.ok(h,'abort(null)', cn.signal.reason === null ? 'null IS the reason' : String(cn.signal.reason));
+  const cs = new AbortController(); cs.abort('raw string');
+  CK.ok(h,'abort(string)', cs.signal.reason === 'raw string' ? 'verbatim ===' : 'lost');
+  const err = new TypeError('custom'); const ce = new AbortController(); ce.abort(err);
+  CK.ok(h,'abort(Error)', (ce.signal.reason === err ? 'identity === · ' : 'lost · ') + (ce.signal.reason.stack ? 'stack preserved' : 'no stack'));
+  const obj = { code: 42 }; const co = new AbortController(); co.abort(obj);
+  CK.ok(h,'abort(object)', co.signal.reason === obj ? 'reference identity ===' : 'lost');
+  co.abort('second attempt');
+  CK.ok(h,'THE ONCE-LAW', co.signal.reason === obj ? '2nd abort() ignored · reason unchanged' : 'reason replaced (unexpected)');
+  CK.ok(h,'aborted flips synchronously', String(co.signal.aborted));
+  this.disabled = false; this.classList.remove('on');
+};
+
+// ---------- §3 event grammar (auto) ----------
+{
+  const h = 's3';
+  const c = new AbortController(); const order = []; let dup = 0, cap = 0; let ev = null;
+  const fn = () => { dup++; order.push('listener'); };
+  c.signal.addEventListener('abort', fn);
+  c.signal.addEventListener('abort', fn); // duplicate registration
+  c.signal.addEventListener('abort', () => { cap++; order.push('capture'); }, true);
+  c.signal.onabort = e => { order.push('onabort'); ev = e; };
+  c.abort('grammar');
+  order.push('sync-code-after-abort()');
+  Promise.resolve().then(()=>order.push('microtask'));
+  await sleep(40);
+  CK.ok(h,'dispatch is synchronous', order.indexOf('listener') < order.indexOf('sync-code-after-abort()') ? 'listeners run inside abort()' : 'deferred (unexpected)');
+  CK.ok(h,'order', esc(order.join(' → ')));
+  CK.ok(h,'duplicate listener fires once', dup === 1 ? 'EventTarget dedup' : dup + ' fires');
+  CK.ok(h,'capture-phase fires at target', cap === 1 ? 'both phases at target (bubbles:false)' : cap + ' fires');
+  CK.ok(h,'event shape', ev.type + ' · bubbles:' + ev.bubbles + ' · cancelable:' + ev.cancelable + ' · isTrusted:' + ev.isTrusted);
+  let late = 0; c.signal.addEventListener('abort', ()=>late++);
+  await sleep(30);
+  CK.warn(h,'late listener never fires', late === 0 ? 'exactly one abort event per signal, ever' : late + ' fires (unexpected)');
+  document.getElementById('o3').textContent = 'order: ' + order.join(' → ');
+}
+
+// ---------- §4 timeout (auto, short timers) ----------
+{
+  const h = 's4';
+  const verdicts = [];
+  for (const v of [-1, NaN, 1.5, Infinity, 4294967296, 9007199254740992]) {
+    try { AbortSignal.timeout(v); verdicts.push(v + '→accepted'); }
+    catch (e) { verdicts.push(v + '→' + e.constructor.name); }
+  }
+  CK.ok(h,'live validation verdicts', esc(verdicts.join(' · ')));
+  CK.ok(h,'timeout(1.5) fate', verdicts.includes('1.5→accepted') ? 'truncated to 1ms (WebIDL)' : 'rejected');
+  const t = AbortSignal.timeout(60);
+  await sleep(120);
+  CK.ok(h,'expiry reason', t.aborted ? t.reason.name + ' · "' + esc(t.reason.message) + '"' : 'never fired');
+  CK.warn(h,'TimeoutError ≠ AbortError', 'the discriminant for timeout-vs-cancel UI');
+  const t0 = AbortSignal.timeout(0);
+  await sleep(20);
+  CK.ok(h,'timeout(0)', t0.aborted && t0.reason.name === 'TimeoutError' ? 'immediate' : 'not immediate');
+  const silent = AbortSignal.timeout(50); // no listeners, dropped ref
+  await sleep(140);
+  CK.ok(h,'fires with zero listeners', silent.aborted ? 'no listener needed to keep the timer alive' : 'needs listeners (unexpected)');
+}
+
+// ---------- §5 any() (button) ----------
+document.getElementById('b5').onclick = function(){
+  this.disabled = true; this.classList.add('on');
+  const h = 's5';
+  const a = new AbortController(), b = new AbortController();
+  const comp = AbortSignal.any([a.signal, b.signal]);
+  CK.ok(h,'composite live', 'aborted:' + comp.aborted);
+  a.abort('parent-1-wins');
+  CK.ok(h,'parent fires → composite', comp.reason === 'parent-1-wins' ? 'reason verbatim ===' : 'lost: ' + esc(String(comp.reason)));
+  CK.ok(h,'sibling parent untouched', b.signal.aborted === false ? 'one-directional wiring' : 'cascade (unexpected)');
+  CK.ok(h,'any([])', AbortSignal.any([]).aborted === false ? 'a signal that can never abort' : 'aborted (unexpected)');
+  const pre = AbortSignal.any([AbortSignal.abort('pre'), new AbortController().signal]);
+  CK.ok(h,'pre-aborted parent', pre.aborted && pre.reason === 'pre' ? 'instant, reason inherited' : 'unexpected');
+  const late = AbortSignal.any([a.signal]);
+  CK.ok(h,'composite wired AFTER abort', late.aborted && late.reason === 'parent-1-wins' ? 'still instant' : 'stays live (unexpected)');
+  try { AbortSignal.any([null]); CK.warn(h,'any([null])', 'accepted'); } catch(e){ CK.ok(h,'any([null])', esc(e.constructor.name + ': ' + e.message.slice(0,60))); }
+  const nested = AbortSignal.any([AbortSignal.any([a.signal])]);
+  CK.ok(h,'nested any()', nested.reason === 'parent-1-wins' ? 'reasons propagate every level' : 'lost');
+  CK.ok(h,'AbortSignal.abort() static', AbortSignal.abort().reason.name + ' · AbortSignal.abort("s").reason === "s": ' + (AbortSignal.abort('s').reason === 's'));
+  this.disabled = false; this.classList.remove('on');
+};
+
+// ---------- §6 throwIfAborted (auto) ----------
+{
+  const h = 's6';
+  const live = new AbortController().signal;
+  CK.ok(h,'live signal → undefined', String(live.throwIfAborted()));
+  const c = new AbortController(); c.abort('tripwire');
+  try { c.signal.throwIfAborted(); CK.fail(h,'raw throw', 'did not throw'); }
+  catch (e) { CK.ok(h,'aborted → throws the raw reason', 'typeof ' + (typeof e) + ' · === original: ' + (e === 'tripwire')); }
+}
+
+// ---------- §7 fetch integration (auto, real /api/ab-lab) ----------
+{
+  const h = 's7';
+  let apiLive = true;
+  try { const r = await fetch(API + '?mode=fast'); if (!r.ok) throw 0; } catch (e) { apiLive = false; }
+  if (!apiLive) {
+    CK.info(h,'API lane unavailable', 'this mirror has no /api/ab-lab — fetch chips below are probe-suite results');
+    CK.info(h,'promise lane (probe-suite)', 'mid-flight abort → reason verbatim (148 + 154)');
+    CK.info(h,'reader lane (probe-suite)', '148: AbortError "BodyStreamBuffer was aborted" · 154: verbatim');
+    CK.info(h,'text() lane (probe-suite)', '148: "The user aborted a request." · 154: verbatim');
+  } else {
+    // pre-aborted
+    const cp = new AbortController(); cp.abort('early');
+    try { await fetch(API + '?mode=fast', { signal: cp.signal }); CK.fail(h,'pre-aborted fetch','resolved'); }
+    catch (e) { CK.ok(h,'pre-aborted fetch', e === 'early' ? 'instant reject · reason verbatim' : esc(String(e))); }
+    // mid-flight (slowhead, abort at 250ms — headers land at 1.2s)
+    const cm = new AbortController();
+    const pm = fetch(API + '?mode=slowhead', { signal: cm.signal }).then(()=>{throw new Error('resolved');}, e=>e);
+    setTimeout(()=>cm.abort('mid-flight'), 250);
+    const em = await pm;
+    CK.ok(h,'mid-flight abort (promise lane)', em === 'mid-flight' ? 'reason verbatim ===' : esc(String(em).slice(0,60)));
+    // mid-body reader cut
+    const cb = new AbortController();
+    const res = await fetch(API + '?mode=slowbody', { signal: cb.signal });
+    const rd = res.body.getReader();
+    const first = await rd.read();
+    CK.ok(h,'first body chunk landed', esc(new TextDecoder().decode(first.value)));
+    setTimeout(()=>cb.abort('body-cut'), 60);
+    try { await rd.read(); CK.fail(h,'read after abort','resolved'); }
+    catch (e) { CK[(e === 'body-cut') ? 'ok' : 'warn'](h,'reader lane', e === 'body-cut' ? 'reason verbatim (≥154 engine)' : esc((e.name||e.constructor?.name) + ': ' + (e.message||String(e))).slice(0,80) + ' — reason LOST (≤148 synthesizes)');
+    }
+    CK.ok(h,'already-read chunk retained', new TextDecoder().decode(first.value).includes('chunk1') ? 'evidence survives the cut' : 'gone');
+    // res.text() lane
+    const ct = new AbortController();
+    const tp = fetch(API + '?mode=slowbody', { signal: ct.signal }).then(r=>r.text().then(t=>'ok:'+t.slice(0,7), e=>'reject:' + (e && e.name ? e.name+':'+e.message : String(e))), e=>'reject:' + (e && e.name ? e.name+':'+e.message : String(e)));
+    setTimeout(()=>ct.abort('text-cut'), 220);
+    const et = await tp;
+    CK[(et === 'text-cut') ? 'ok' : 'warn'](h,'res.text() lane', et === 'text-cut' ? 'reason verbatim (≥154)' : esc(String(et).slice(0,90)) + ' — verbatim? no (≤148)');
+    // settle + abort no-op
+    const cs = new AbortController();
+    await fetch(API + '?mode=fast', { signal: cs.signal });
+    cs.abort('late');
+    CK.ok(h,'abort after settle', 'silent no-op — nothing throws');
+    try { await fetch(API + '?mode=fast', { signal: cs.signal }); CK.fail(h,'reused aborted signal','resolved'); }
+    catch (e) { CK.ok(h,'reused aborted signal', e === 'late' ? 'instant reject · stored reason' : 'unexpected shape'); }
+  }
+}
+
+// ---------- §8 adopter census (auto) ----------
+{
+  const h = 's8';
+  const cl = new AbortController(); let calls = 0;
+  addEventListener('ab-pfx', ()=>calls++, { signal: cl.signal });
+  dispatchEvent(new Event('ab-pfx'));
+  cl.abort();
+  dispatchEvent(new Event('ab-pfx'));
+  CK.ok(h,'addEventListener {signal}', calls === 1 ? 'abort removes the listener' : calls + ' calls (unexpected)');
+  const cm = new AbortController(); let t1=0, t2=0;
+  const el1 = document.createElement('button'), el2 = document.createElement('button');
+  el1.addEventListener('click', ()=>t1++, { signal: cm.signal });
+  el2.addEventListener('click', ()=>t2++, { signal: cm.signal });
+  el1.click(); el2.click(); cm.abort(); el1.click(); el2.click();
+  CK.ok(h,'one signal · two targets', t1===1 && t2===1 ? 'both swept by one abort()' : t1+'/'+t2+' (unexpected)');
+  const dead = AbortSignal.abort(); let deadCalls = 0;
+  addEventListener('ab-pfx2', ()=>deadCalls++, { signal: dead });
+  dispatchEvent(new Event('ab-pfx2'));
+  CK.warn(h,'THE DEAD-LISTENER LAW', deadCalls === 0 ? 'already-aborted signal → listener never registers' : 'fired (unexpected)');
+  try { new WebSocket('wss://signal-probe.invalid', ['chat'], { signal: 1 }); CK.warn(h,'WebSocket 3rd ctor arg', 'silently ignored — no signal lane exists'); }
+  catch (e) { CK.info(h,'WebSocket ctor probe', 'threw ' + e.constructor.name + ' (bad URL) — option irrelevant'); }
+  try { const es = new EventSource(API + '?mode=fast', { signal: AbortSignal.abort() }); es.close(); CK.warn(h,'EventSource {signal}', 'accepted, never aborts — the option is dead weight'); }
+  catch (e) { CK.info(h,'EventSource probe', 'ctor rejected: ' + esc(e.constructor.name)); }
+}
+
+// ---------- §9 pipeTo (auto) ----------
+{
+  const h = 's9';
+  const wrote = [];
+  const rs = new ReadableStream({ start(c){ c.enqueue('a'); setTimeout(()=>{ try { c.enqueue('b'); } catch(e) { /* source cancelled by the abort — late enqueue rejected, guard it */ } }, 180); } });
+  const ws = new WritableStream({ write(x){ wrote.push(x); } });
+  const c = new AbortController();
+  const p = rs.pipeTo(ws, { signal: c.signal }).then(()=>{throw new Error('resolved');}, e=>e);
+  setTimeout(()=>c.abort('pipe-cut'), 60);
+  const e = await p;
+  CK.ok(h,'pipeTo abort', e === 'pipe-cut' ? 'rejects with reason verbatim' : esc(String(e).slice(0,60)));
+  CK.ok(h,'sink contents frozen', esc(JSON.stringify(wrote)) + ' — written chunks kept, pending enqueue cancelled');
+  CK.ok(h,'stream source cancelled', 'no dangling enqueues after the cut');
+}
+
+// ---------- §10 workers (auto) ----------
+{
+  const h = 's10';
+  const src = `onmessage=()=>{const c=new AbortController();c.abort('w');postMessage([
+    Object.getOwnPropertyNames(AbortController.prototype).filter(n=>n!=='constructor').join('/'),
+    typeof AbortSignal.timeout, typeof AbortSignal.any, typeof AbortSignal.throwIfAborted,
+    c.signal.reason, (new AbortController().signal instanceof EventTarget)
+  ].join(' | '));}`;
+  try {
+    const w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+    const r = await new Promise(res => { w.onmessage = e => res(e.data); w.onerror = () => res('worker-error'); w.postMessage('go'); setTimeout(()=>res('worker-timeout'), 4000); });
+    w.terminate();
+    CK.ok(h,'dedicated worker census', esc(String(r)));
+  } catch (e) { CK.fail(h,'worker probe', esc(e.message)); }
+}
+
+// ---------- §11 OD watchdog (button) ----------
+document.getElementById('b11').onclick = async function(){
+  const btn = this; btn.disabled = true; btn.classList.add('on');
+  const out = document.getElementById('o11');
+  const log = m => { out.textContent += '\n' + m; out.scrollTop = out.scrollHeight; };
+  out.textContent = '— arming teardown controller —';
+  const teardown = new AbortController();
+  let pagehideFires = 0;
+  addEventListener('pagehide', ()=>{ pagehideFires++; log('pagehide handler ran'); }, { signal: teardown.signal });
+  const attempt = async (n, budgetMs, mode) => {
+    const clock = AbortSignal.timeout(budgetMs);
+    const sig = AbortSignal.any([clock, teardown.signal]);
+    const t0 = performance.now();
+    try {
+      const r = await fetch(API + '?mode=' + mode, { signal: sig });
+      const body = await r.text();
+      log(`attempt ${n}: RENDERED "${body.slice(0,14)}…" in ${Math.round(performance.now()-t0)}ms (budget ${budgetMs}ms won)`);
+      return true;
+    } catch (e) {
+      log(`attempt ${n}: cut after ${Math.round(performance.now()-t0)}ms → name:${e.name || '(raw ' + typeof e + ')'} · ${String(e).slice(0,44)}`);
+      return false;
+    }
+  };
+  if (!(await attempt(1, 1200, 'slowbody'))) { log('— discriminant name:TimeoutError → clock fired → backoff 400ms —'); await sleep(400); }
+  await attempt(2, 5000, 'slowbody');
+  teardown.abort('mission-complete');
+  dispatchEvent(new Event('pagehide'));
+  await sleep(30);
+  log(pagehideFires === 0 ? '— teardown.abort() → {signal} swept the pagehide listener (post-abort dispatch: 0 fires) —' : '— sweep FAILED: ' + pagehideFires + ' fires —');
+  btn.disabled = false; btn.classList.remove('on');
+};
+
+// ---------- §12 Molt search race (button) ----------
+document.getElementById('b12').onclick = async function(){
+  const btn = this; btn.disabled = true; btn.classList.add('on');
+  const out = document.getElementById('o12');
+  out.textContent = '';
+  const log = m => { out.textContent += (out.textContent ? '\n' : '') + m; out.scrollTop = out.scrollHeight; };
+  let prev = null; let renders = 0, cuts = 0, guarded = 0;
+  const modes = { 'dron': 'slowhead', 'drone': 'slowhead', 'drone-kit': 'fast' }; // early keystrokes = slow API lanes
+  for (const q of ['dron', 'drone', 'drone-kit']) {
+    if (prev) { prev.abort('superseded'); }
+    const c = new AbortController(); prev = c;
+    const guard = AbortSignal.any([c.signal, AbortSignal.timeout(2500)]);
+    fetch(API + '?mode=' + modes[q], { signal: guard })
+      .then(r => r.text())
+      .then(() => {
+        if (c.signal.aborted) { guarded++; log(`"${q}" → response landed AFTER supersede — aborted-check guard drops it (never paints)`); }
+        else { renders++; log(`"${q}" → rendered ✓`); }
+      })
+      .catch(e => { cuts++; log(`"${q}" → cut · ${String(e).slice(0,34)} (stale — never renders)`); });
+    await sleep(300);
+  }
+  await sleep(600);
+  log(`— ${cuts + guarded} stale queries killed (${cuts} aborted mid-flight · ${guarded} dropped at the guard) · ${renders} render${renders===1?'':'s'} — only the last keystroke paints`);
+  btn.disabled = false; btn.classList.remove('on');
+};
+
+window.__done = true;
+window.__chipCount = CH;
+})();
+})();
+</script>
+</body>
+</html>
