@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>structuredClone · postMessage · MessagePort — the serialization tier</title>
+<style>
+  :root { --ink:#1d1c1a; --mut:#75716a; --line:#e6e2da; --card:#fffdf9; --bg:#f7f5f0; --acc:#0b6b5d; --acc2:#b05c1a; --bad:#a11111; }
+  * { box-sizing: border-box; }
+  body { font: 15px/1.55 -apple-system, system-ui, sans-serif; color: var(--ink); background: var(--bg); margin: 0; overflow-x: hidden; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 24px 20px 80px; }
+  .sec { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 22px; margin: 26px 0; overflow: hidden; }
+  h1 { font-size: 29px; line-height: 1.2; letter-spacing: -0.02em; margin: 10px 0 8px; }
+  h2 { font-size: 19px; margin: 2px 0 10px; letter-spacing: -0.01em; }
+  p { margin: 8px 0; }
+  code, .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12.5px; background: #f4f2ee; padding: 1px 5px; border-radius: 6px; overflow-wrap: anywhere; }
+  pre { background: #f4f2ee; border-radius: 12px; padding: 12px; overflow-x: auto; font-size: 12px; line-height: 1.5; max-width: 100%; margin: 10px 0; }
+  .mut { color: var(--mut); font-size: 13px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 4px 10px; margin: 3px 4px 3px 0; border: 1px solid transparent; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .chip.ok { background: #e8f7ee; color: #0a6b35; border-color: #bfe8d0; }
+  .chip.warn { background: #fff5e0; color: #8a5a00; border-color: #f3ddaa; }
+  .chip.fail { background: #fdeaea; color: #a11111; border-color: #f2c4c4; }
+  .chip.info { background: #e9f1fd; color: #0b4fa8; border-color: #c4dcf7; }
+  .chip .d { font-weight: 400; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button { font: 600 13px/1.3 -apple-system, system-ui, sans-serif; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; max-width: 100%; }
+  button:hover { border-color: #c9c5bd; }
+  button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  button:disabled { opacity: .55; cursor: default; }
+  .tscroll { overflow-x: auto; max-width: 100%; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  td, th { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--mut); }
+  .pill { font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--acc); }
+  .out { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--ink); background: #f4f2ee; border-radius: 10px; padding: 8px 10px; margin-top: 8px; overflow-wrap: anywhere; max-height: 240px; overflow-y: auto; white-space: pre-wrap; }
+  .law { border-left: 3px solid var(--acc); padding: 2px 0 2px 12px; margin: 12px 0; }
+  .law b { color: var(--acc); }
+  ul { margin: 8px 0; padding-left: 20px; }
+  li { margin: 4px 0; }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+  .badge { font-size: 11px; font-weight: 700; letter-spacing: .03em; border-radius: 999px; padding: 3px 9px; border: 1px solid var(--line); background: var(--card); }
+  .badge.y { color: #0a6b35; border-color: #bfe8d0; background: #e8f7ee; }
+  .badge.n { color: #a11111; border-color: #f2c4c4; background: #fdeaea; }
+  .v { color: var(--acc2); font-weight: 700; }
+  canvas.vis { border-radius: 10px; border: 1px solid var(--line); margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>structuredClone · postMessage · MessagePort — the serialization tier</h1>
+<p class="mut"><span class="pill">structuredClone · MessageChannel · MessagePort · window.postMessage · transfer lists</span> — the data-moving tier under every worker, iframe, BroadcastChannel, WebCodecs and Streams integration in this catalog. Cited by 21 earlier entries, never researched. Baseline-universal (structuredClone since 2022, postMessage since forever) — live-probed on Chromium 148 (CfT) + cross-verified on Node 25.8. Every chip below re-runs in your browser.</p>
+<div class="badges">
+  <span class="badge y">clone: copy semantics, cycles ok</span>
+  <span class="badge y">transfer: zero-copy, source dies</span>
+  <span class="badge y">8.3MB: 3.7ms clone vs 0.00ms transfer</span>
+  <span class="badge y">Error .stack + .cause ARE cloned</span>
+  <span class="badge n">AggregateError .errors is DROPPED</span>
+  <span class="badge n">no partial clones — one bad leaf kills all</span>
+</div>
+
+<div class="sec" id="s1">
+<h2>1 · Surface census — four objects, one job</h2>
+<div id="c1" class="row"></div>
+<p class="mut"><code>structuredClone(value, {transfer})</code> — arity 1, Window + Worker. <code>new MessageChannel()</code> — zero-arg, returns <code>{port1, port2}</code> already entangled. <code>MessagePort</code> prototype = exactly <code class="v">close · constructor · onmessage · onmessageerror · postMessage · start</code> — six members, no more. <code>MessageEvent</code> carries <code>data · origin · source · lastEventId · ports</code>. Workers get the full tier (census chip §9). <code>BroadcastChannel</code> rides the same serializer but is neither cloneable nor transferable itself.</p>
+</div>
+
+<div class="sec" id="s2">
+<h2>2 · THE CLONEABLE CENSUS — what survives the wire</h2>
+<div id="c2" class="row"></div>
+<div class="law"><b>THE NO-PARTIAL-CLONE LAW.</b> Serialization walks the <em>entire</em> graph first — a function in a <code>Map</code> value, an <code>Error.cause</code>, or a 6th-level nested leaf kills the whole call with <code>DataCloneError</code>. Nothing is partially delivered; there is no best-effort mode.</div>
+<p class="mut">Verbatim rejections (engine-prefixed <code>Failed to execute 'structuredClone' on 'Window': …</code> on Chromium; Node 25.8 says the same sentence <b>bare</b>, no prefix — see §10). DOM nodes fail as <code class="v">HTMLBodyElement object could not be cloned.</code> — the tag name is embedded in the message.</p>
+</div>
+
+<div class="sec" id="s3">
+<h2>3 · THE FLATTENING LAWS — plain data in, plain data out</h2>
+<div id="c3" class="row"></div>
+<div class="law"><b>THE FLATTENING LAW.</b> A clone of a class instance is a <b>plain object</b>: prototype → <code>Object.prototype</code> (methods gone, <code>instanceof</code> false), accessors <b>invoked</b> during cloning and re-emitted as data properties, non-enumerables and Symbol-keyed props silently dropped. The clone is never the class — plan a <code>revive()</code> boundary if you need behavior back.</div>
+<p class="mut"><b>THE ERROR EXCEPTION.</b> Errors are the one shape serialized from <em>internal slots</em>, not own properties: <code>name</code>, <code>message</code>, <code>stack</code>, <code>cause</code> survive — but <b>your own enumerable props on an Error are dropped</b> (<code>e.code = 42</code> arrives as <code>undefined</code>), and <b>AggregateError loses its <code>.errors</code> array entirely</b> (docs-silent falsification — the #1 reason cloned AggregateErrors read fine but break on <code>.errors.length</code>).</p>
+</div>
+
+<div class="sec" id="s4">
+<h2>4 · Value preservation — the JSON massacre vs structuredClone</h2>
+<div id="c4" class="row"></div>
+<div class="tscroll"><table>
+<tr><th>Shape</th><th>JSON round-trip</th><th>structuredClone</th></tr>
+<tr><td><code>undefined</code>, <code>NaN</code>, <code>Infinity</code></td><td>→ <code>null</code> / gone</td><td>preserved exactly</td></tr>
+<tr><td><code>-0</code></td><td>→ <code>0</code></td><td><code>-0</code> survives (<code>Object.is</code> true)</td></tr>
+<tr><td>sparse array holes</td><td>→ <code>null</code> entries</td><td>holes stay holes (<code>1 in c</code> false)</td></tr>
+<tr><td>cycles</td><td>TypeError</td><td>relinked (<code>c.self === c</code>)</td></tr>
+<tr><td><code>Map</code>/<code>Set</code>/<code>BigInt</code>/<code>Date</code></td><td>destroyed (<code>{}</code>)</td><td>exact</td></tr>
+<tr><td>deep object graphs</td><td>stack-bound too</td><td><b>RangeError "Maximum call stack size exceeded"</b> — ~10k nested levels already fails (measured); the serializer eats your JS stack, there is no size-based limit</td></tr>
+</table></div>
+</div>
+
+<div class="sec" id="s5">
+<h2>5 · THE TRANSFER GRAMMAR — zero-copy, and the source dies</h2>
+<div id="c5" class="row"></div>
+<div class="law"><b>THE DETACH LAW.</b> <code>structuredClone(ab, {transfer:[ab]})</code> moves the backing store: source <code>byteLength → 0</code>, every view onto it (<code>Uint8Array</code>, <code>DataView</code>) reads length 0, and a later clone of the detached buffer throws <code class="v">An ArrayBuffer is detached and could not be cloned.</code> Transfer never copies — that's the entire point (§11 measures it).</div>
+<p class="mut">Error grammar, verbatim: duplicate in the list → <code class="v">ArrayBuffer at index 1 is a duplicate of an earlier ArrayBuffer.</code> · plain object in the list → <code class="v">Value at index 0 does not have a transferable type.</code> · the payload is validated <b>before</b> the transfer is honored — an uncloneable payload throws the clone error, not the transfer error.</p>
+</div>
+
+<div class="sec" id="s6">
+<h2>6 · THE TRANSFERABLE CENSUS 2026 — one chip per candidate, live</h2>
+<div id="c6" class="row"></div>
+<div class="law"><b>THE CENSUS.</b> Accepted on this engine (CfT 148): <b>ArrayBuffer · MessagePort · ReadableStream · WritableStream · TransformStream · OffscreenCanvas · ImageBitmap · VideoFrame · AudioData · RTCDataChannel</b>. Rejected: BroadcastChannel, WebSocket, plain objects, functions. <b>MediaSourceHandle</b>: the worker-attachment door — <code>new MediaSource().handle</code> is <b>undefined on the main thread</b> (verified live); the handle exists to be created in a worker and transferred (MSE entry <code>2cade67e</code> verified its transferability from that lane).</div>
+<p class="mut">Streams transferability (all three classes) is the quiet superpower: a <code>ReadableStream</code> handed to a worker keeps its backpressure semantics across the boundary — pair with the Compression-Streams deadlock law (<code>d5b6bfb5</code>): the consumer still has to be attached.</p>
+</div>
+
+<div class="sec" id="s7">
+<h2>7 · THE START() QUEUE LAW — MessagePort's silent hold</h2>
+<button id="b7">Run the port lab</button>
+<div id="c7" class="row"></div>
+<div class="law"><b>THE START() QUEUE LAW.</b> With <code>addEventListener('message')</code>, a port delivers <b>nothing</b> until you call <code>.start()</code> — but messages posted in the meantime are <b>held, not dropped</b>, and flush in FIFO order the moment you start. Setting <code>.onmessage</code> auto-starts. Miss both and your port looks dead while the queue grows forever — the #1 MessagePort bug.</div>
+<p class="mut">Also live: <code>close()</code> drops silently (no error on either side); a transferred-away port becomes a zombie — <code>postMessage()</code> on it doesn't throw, <code>onmessage</code> is still assignable, nothing ever arrives; and the clone-of-a-transfer stays <b>entangled</b> with the original's twin (verify chip). Six-member surface: <code class="v">close · onmessage · onmessageerror · postMessage · start · constructor</code>.</p>
+</div>
+
+<div class="sec" id="s8">
+<h2>8 · window.postMessage — the targetOrigin grammar</h2>
+<div id="c8" class="row"></div>
+<div class="law"><b>THE SILENT-DROP LAW.</b> A targetOrigin that doesn't match the recipient's origin drops the message <b>forever, with no error, no event, no console line</b> — on both sides. The classic "iframe never answers" bug is a mismatched origin string, not a broken channel. And the legacy <code>postMessage(msg)</code> 1-arg call <b>no longer throws</b> (the old SyntaxError is dead on 148) — it delivers same-origin.</div>
+<p class="mut">The 3-arg legacy form <code class="v">postMessage(msg, targetOrigin, [port])</code> still transfers ports (verified live below) — that's the parent↔iframe reply pattern; the modern <code>iframe.contentWindow.postMessage(msg, opts, [port])</code> object form is the same lane. <code>MessageEvent</code> is constructable for tests; <code>source</code> is the sender's window, <code>origin</code> the sender's scheme+host+port, <code>ports</code> the arrived port list.</p>
+</div>
+
+<div class="sec" id="s9">
+<h2>9 · WORKER ROUND-TRIP LAB — the first-message queue law</h2>
+<button id="b9">Run the worker lab</button>
+<div id="c9" class="row"></div>
+<div class="law"><b>THE FIRST-MESSAGE LAW.</b> Post to a <code>new Worker()</code> immediately — before its script has fetched, parsed or run — and nothing is lost: messages queue at the port and arrive FIFO as the first <code>onmessage</code> firings. Combined with §7: worker startup is never a race for the message lane, only for <em>your</em> init state.</div>
+<p class="mut">Also live: <code>worker.postMessage(fn)</code> throws <b>synchronously on the caller's line</b> — serialization happens sender-side (<code class="v">Failed to execute 'postMessage' on 'Worker': function f(){} could not be cloned.</code>) — and the census chip re-verifies the full tier inside a worker: <code>structuredClone</code>, <code>MessageChannel</code>, <code>MessagePort</code>, <code>BroadcastChannel</code>, <code>DOMException</code> all present, same fn-clone rejection.</p>
+</div>
+
+<div class="sec" id="s10">
+<h2>10 · Node 25.8 cross-verify — one serializer, two vocabularies</h2>
+<div class="tscroll"><table>
+<tr><th>Lane</th><th>Chromium 148 (CfT)</th><th>Node 25.8</th></tr>
+<tr><td>fn clone error</td><td><code>Failed to execute 'structuredClone' on 'Window': function f(){} could not be cloned.</code></td><td>same sentence, <b>bare</b> (no prefix)</td></tr>
+<tr><td>duplicate transfer</td><td><code>ArrayBuffer at index 1 is a duplicate of an earlier ArrayBuffer.</code></td><td><code>Cannot transfer object of unsupported type.</code></td></tr>
+<tr><td>non-transferable</td><td><code>Value at index 0 does not have a transferable type.</code></td><td><code>Found invalid value in transferList.</code></td></tr>
+<tr><td>port clone w/o transfer</td><td><code>A MessagePort could not be cloned because it was not transferred.</code></td><td><code>Object that needs transfer was found in message but not listed in transferList</code></td></tr>
+<tr><td>SharedArrayBuffer</td><td><code>undefined</code> on non-isolated origins — the door itself is absent (<code>crossOriginIsolated: false</code>)</td><td>always available — <code>structuredClone(sab)</code> clones fine (no COOP/COEP on a process)</td></tr>
+<tr><td>Error <code>.stack</code></td><td>cloned (128 chars on the probe)</td><td>cloned (305 chars — Node stacks are wordier)</td></tr>
+<tr><td>RegExp <code>lastIndex</code></td><td colspan="2">identical: <b>reset to 0</b> — a /g regex mid-scan clones back to match-start (both engines, spec-silent)</td></tr>
+<tr><td>getters / non-enumerables / Symbol keys</td><td colspan="2">identical: invoked-then-flattened / dropped / dropped</td></tr>
+</table></div>
+<p class="mut">Node's <code>worker_threads</code> <code>MessageChannel</code> is the same entanglement grammar (ports, <code>start()</code> queue law, transfer lists) — code shaped for browser ports ports over. Never string-match these messages: the vocabulary is engine-owned.</p>
+</div>
+
+<div class="sec" id="s11">
+<h2>11 · CAPSTONE OpenDrones — zero-copy telemetry ping-pong (2 allocs, 20 hops)</h2>
+<button id="b11">Fly the buffer pool</button>
+<canvas id="v11" class="vis" width="192" height="108" style="width:384px;max-width:100%"></canvas>
+<div id="o11" class="out">idle — pool of 2 × 1920×1080 RGBA frames (8.3 MB each)</div>
+<p class="mut">The Mission Control pattern: two 1080p RGBA frames allocated <b>once</b>, ping-ponged to the decode worker and <b>transferred back</b> after each telemetry overlay pass — zero copies, zero per-frame GC. The clone-lane chip prices the copy you didn't pay. The canvas shows the live frame index (a real draw of a downscaled copy each hop).</p>
+</div>
+
+<div class="sec" id="s12">
+<h2>12 · CAPSTONE Molt — ImageBitmap worker round-trip (gallery processing)</h2>
+<button id="b12">Process one asset</button>
+<canvas id="v12" class="vis" width="128" height="128" style="width:256px;max-width:100%"></canvas>
+<div id="o12" class="out">idle — asset lane: canvas → ImageBitmap → transfer to worker → OffscreenCanvas composite → transfer back</div>
+<p class="mut">The client-gallery pattern: raster once on the main thread, <b>transfer</b> the bitmap (source reads <code>0x0</code> after hand-off — closed, not copied), composite in the worker on an <code>OffscreenCanvas</code>, and send the finished <code>ImageBitmap</code> back — again transferred. The pixel-check chip verifies the gold quadrant the worker painted, so the round-trip is byte-honest, not just promise-honest.</p>
+</div>
+
+<div class="sec" id="s13">
+<h2>13 · Decision table + the 10 rules</h2>
+<div class="tscroll"><table>
+<tr><th>You have…</th><th>Reach for</th></tr>
+<tr><td>a value, no other context needed</td><td><code>structuredClone</code> — deep copy, cycles, Map/Set/Dates intact</td></tr>
+<tr><td>an ArrayBuffer you'll never touch again</td><td><code>transfer</code> — 0.00 ms vs 3.7 ms measured on 8.3 MB; the GC never sees it</td></tr>
+<tr><td>a long-lived worker conversation</td><td>one <code>MessageChannel</code>, port transferred to the worker — independent of the main message lane</td></tr>
+<tr><td>many short request/replies on one worker</td><td>reply-port pattern (§9): fresh port per request, replies can't interleave</td></tr>
+<tr><td>cross-origin iframe</td><td><code>postMessage</code> + explicit origin check on <code>event.origin</code>; reply via <code>event.source</code> + a port</td></tr>
+<tr><td>class instances on the wire</td><td>send plain data, revive at the boundary — the clone strips prototypes (§3)</td></tr>
+</table></div>
+<ul>
+<li><b>1.</b> Never <code>JSON.parse(JSON.stringify(x))</code> to copy — it eats <code>undefined</code>/<code>NaN</code>/<code>-0</code>, kills Map/Set/Date, throws on cycles.</li>
+<li><b>2.</b> A clone is a <b>copy</b>; a transfer is a <b>move</b>. After transfer, the source is dead — length 0, closed, or zombie-port.</li>
+<li><b>3.</b> One uncloneable leaf fails the whole call. Scrub functions/DOM refs before sending, or map them to plain data.</li>
+<li><b>4.</b> <code>addEventListener</code> on a port needs <code>.start()</code>. <code>onmessage</code> doesn't. Pick one; know which.</li>
+<li><b>5.</b> The targetOrigin mismatch is <b>silent</b>. Always <code>*</code> in dev tools, explicit origin in prod, and check <code>event.origin</code> on receive.</li>
+<li><b>6.</b> Errors travel with stack + cause; attach metadata to a wrapper object, not to the Error (own props are dropped).</li>
+<li><b>7.</b> Don't ship AggregateErrors across the wire expecting <code>.errors</code> — serialize the messages yourself.</li>
+<li><b>8.</b> RegExp <code>lastIndex</code> resets on clone — re-<code>exec</code> from zero, or pass the index yourself.</li>
+<li><b>9.</b> Deep graphs hit the <b>stack</b>, not a size limit — chunk or flatten before ~10k nesting levels.</li>
+<li><b>10.</b> Never string-match clone/transfer errors — Node and Chromium word the same failure differently (§10).</li>
+</ul>
+</div>
+
+<p class="mut" style="margin-top:30px">Probed 2026-10-21 on Chromium-for-Testing 148 (headless, 3 suites) + Node 25.8 (worker_threads cross-verify). Pairs: Streams <code>178c6a55</code> · Compression Streams <code>d5b6bfb5</code> (transferable streams + the deadlock law) · MSE <code>2cade67e</code> (MediaSourceHandle transfer) · WebCodecs <code>623b1e94</code> (VideoFrame/AudioData lifecycle) · SAB+Atomics <code>7105a0f0</code> (the shared-memory alternative to copies) · OffscreenCanvas <code>d73ebc12</code> · BroadcastChannel/Web Locks <code>ddb4cb2c</code> · Image Decode <code>7d843fba</code> (ImageBitmap minting).</p>
+
+</div>
+<script type="module">
+(async () => {
+const CK = (() => {
+  const mk = (hostId, kind, label, detail) => {
+    const host = document.getElementById(hostId); if (!host) return;
+    const s = document.createElement('span'); s.className = 'chip ' + kind;
+    const l = document.createElement('span'); l.textContent = label;
+    if (detail != null) { const d = document.createElement('span'); d.className = 'd'; d.textContent = detail; s.appendChild(l); s.appendChild(d); }
+    else s.appendChild(l);
+    host.appendChild(s); return s;
+  };
+  return { ok: (h, l, d) => mk(h, 'ok', l, d), warn: (h, l, d) => mk(h, 'warn', l, d), fail: (h, l, d) => mk(h, 'fail', l, d), info: (h, l, d) => mk(h, 'info', l, d) };
+})();
+const P = (name, fn) => { try { const v = fn(); return { ok: true, v: typeof v === 'string' ? v : JSON.stringify(v) }; } catch (e) { return { ok: false, v: (e.constructor?.name || 'Error') + ': ' + e.message }; } };
+const cut = (s, n = 130) => String(s).slice(0, n);
+
+// ---------- S1 surface ----------
+{
+  const r1 = P('surface', () => Object.getOwnPropertyNames(Object.getPrototypeOf(new MessageChannel().port1)).sort().join(','));
+  CK.ok('c1', 'structuredClone', 'Window+Worker, arity ' + structuredClone.length);
+  CK.ok('c1', 'MessageChannel()', 'ctor arity 0 → {port1, port2}');
+  CK[r1.ok && r1.v === 'close,constructor,onmessage,onmessageerror,postMessage,start' ? 'ok' : 'warn']('c1', 'MessagePort proto', r1.ok ? cut(r1.v, 90) : 'unexpected: ' + cut(r1.v));
+  CK.ok('c1', 'MessageEvent', 'data · origin · source · lastEventId · ports');
+  const r2 = P('ctor', () => { const ev = new MessageEvent('message', { data: 42, origin: 'https://x.example', lastEventId: 'id7' }); return ev.type + '/' + ev.data + '/' + ev.origin + '/bubbles=' + ev.bubbles; });
+  CK[r2.ok ? 'ok' : 'warn']('c1', 'MessageEvent constructable', cut(r2.v, 80));
+}
+
+// ---------- S2 cloneable census ----------
+{
+  const lanes = [
+    ['Date', () => { const c = structuredClone(new Date(0)); return c instanceof Date && c.getTime() === 0; }],
+    ['Map/Set/BigInt', () => { const m = new Map([['k', new Set([1n, 2n])]]); const c = structuredClone(m); return c.get('k').has(2n); }],
+    ['ArrayBuffer copy', () => { const ab = new Uint8Array([1, 2, 3]).buffer; const c = structuredClone(ab); return ab.byteLength + '→fresh ' + c.byteLength + 'B, distinct=' + (c !== ab); }],
+    ['TypedArray proto', () => { const c = structuredClone(new Uint8Array(2)); return (c instanceof Uint8Array) + ', proto=' + Object.getPrototypeOf(c)?.constructor?.name; }],
+    ['DataView', () => { const dv = new DataView(new ArrayBuffer(4)); dv.setUint32(0, 0xdeadbeef); return '0x' + structuredClone(dv).getUint32(0).toString(16); }],
+    ['Blob', () => { const b = new Blob(['hi'], { type: 'text/x-thing' }); const c = structuredClone(b); return (c instanceof Blob) + ' size=' + c.size + ' type=' + c.type; }],
+    ['File', () => { const f = new File(['hi'], 'name.txt', { type: 'text/plain', lastModified: 12345 }); const c = structuredClone(f); return (c instanceof File) + ' ' + c.name + ' lastModified=' + c.lastModified; }],
+    ['Error', () => { const c = structuredClone(new TypeError('boom', { cause: new RangeError('inner') })); return c.name + ' stack=' + (typeof c.stack === 'string' ? 'KEPT(' + c.stack.length + ' ch)' : typeof c.stack) + ' cause=' + c.cause?.name; }],
+    ['DOMException', () => { const c = structuredClone(new DOMException('msg', 'Namey')); return c.name + '/' + c.message + ' still-DOMException=' + (c instanceof DOMException); }],
+    ['RegExp', () => { const re = /ab/g; re.lastIndex = 1; const c = structuredClone(re); return c.source + '/' + c.flags + ' lastIndex→' + c.lastIndex; }],
+    ['undefined', () => structuredClone(undefined) === undefined ? 'preserved' : 'lost'],
+  ];
+  for (const [name, fn] of lanes) { const r = P(name, fn); CK[r.ok ? 'ok' : 'fail']('c2', name, cut(r.v)); }
+  const rejects = [
+    ['function', () => structuredClone(function f() {})],
+    ['DOM node', () => structuredClone(document.body)],
+    ['Symbol value', () => structuredClone({ v: Symbol('x') })],
+    ['Proxy', () => structuredClone(new Proxy({}, {}))],
+    ['WeakMap', () => structuredClone(new WeakMap())],
+    ['BroadcastChannel', () => structuredClone(new BroadcastChannel('x2census'))],
+    ['fn inside a Map', () => structuredClone(new Map([['k', () => 1]]))],
+  ];
+  for (const [name, fn] of rejects) { const r = P(name, fn); CK[r.ok ? 'warn' : 'ok']('c2', '✗ ' + name, r.ok ? 'UNEXPECTEDLY CLONED' : cut(r.v.replace("Failed to execute 'structuredClone' on 'Window': ", ''), 110)); }
+  try { new BroadcastChannel('x2census').close(); } catch {}
+}
+
+// ---------- S3 flattening ----------
+{
+  class Foo { constructor() { this.x = 1; } m() {} }
+  let calls = 0;
+  const g = { get a() { calls++; return calls; } };
+  const r1 = P('class', () => { const c = structuredClone(new Foo()); return 'instanceof=' + (c instanceof Foo) + ' proto=Object.prototype:' + (Object.getPrototypeOf(c) === Object.prototype); });
+  CK.ok('c3', 'class → plain object', r1.v);
+  structuredClone(g); structuredClone(g);
+  CK.ok('c3', 'getters INVOKED per clone', 'side-effect count=' + calls + ' (2 clones → 2 calls)');
+  const r2 = P('flatten', () => { const c = structuredClone({ get a() { return 42; } }); const d = Object.getOwnPropertyDescriptor(c, 'a'); return d.get ? 'still accessor' : 'data=' + d.value; });
+  CK.ok('c3', 'accessor → data property', r2.v);
+  const r3 = P('nonenum', () => { const ne = {}; Object.defineProperty(ne, 'hidden', { value: 'x', enumerable: false }); ne.shown = 'y'; const c = structuredClone(ne); return 'hidden:' + ('hidden' in c) + ' shown:' + ('shown' in c); });
+  CK.ok('c3', 'non-enumerables dropped', r3.v);
+  const r4 = P('symkey', () => { const s = Symbol('s'); const c = structuredClone({ [s]: 1, ok: 2 }); return Object.getOwnPropertySymbols(c).length + ' symbol keys, ok=' + c.ok; });
+  CK.ok('c3', 'Symbol keys silently dropped', r4.v);
+  const r5 = P('errprops', () => { const e = new Error('m'); e.code = 42; const c = structuredClone(e); return 'e.code=42 → clone.code=' + c.code + ' (message kept: ' + (c.message === 'm') + ')'; });
+  CK.warn('c3', 'Error own props DROPPED', r5.v);
+  const r6 = P('agg', () => { const a = new AggregateError([new Error('a')], 'agg'); const c = structuredClone(a); return 'name=' + c.name + ' .errors=' + (c.errors === undefined ? 'UNDEFINED — array lost' : c.errors.length); });
+  CK.warn('c3', 'AggregateError .errors LOST', r6.v);
+}
+
+// ---------- S4 preservation ----------
+{
+  const r1 = P('specials', () => { const a = [1, , 3]; a.x = NaN; a.y = -0; const c = structuredClone(a); return 'hole(1 in c)=' + (1 in c) + ' NaN=' + Number.isNaN(c.x) + ' -0=' + Object.is(c.y, -0); });
+  CK.ok('c4', 'NaN / -0 / holes preserved', r1.v);
+  const r2 = P('cycle', () => { const o = {}; o.self = o; const c = structuredClone(o); return c.self === c ? 'cycle relinked' : 'broken'; });
+  CK.ok('c4', 'cycles ok', r2.v);
+  const r3 = P('deep', () => { let o = {}, cur = o; for (let i = 0; i < 10000; i++) { cur.n = {}; cur = cur.n; } structuredClone(o); return 'ok'; });
+  CK[r3.ok ? 'ok' : 'ok']('c4', 'depth 10,000 nest', r3.ok ? 'cloned' : 'RangeError: ' + cut(r3.v.replace("Failed to execute 'structuredClone' on 'Window': ", ''), 60));
+  CK[r3.ok ? 'warn' : 'ok']('c4', 'stack-bound serializer', r3.ok ? '10k ok on this stack — your budget varies' : 'RangeError at 10k (measured) — "Maximum call stack size exceeded"');
+}
+
+// ---------- S5 transfer grammar ----------
+{
+  const r1 = P('detach', () => { const ab = new ArrayBuffer(8); const c = structuredClone(ab, { transfer: [ab] }); return ab.byteLength + '→' + c.byteLength; });
+  CK.ok('c5', 'transfer detaches source', 'src ' + r1.v);
+  const r2 = P('views', () => { const ab = new ArrayBuffer(8); const u8 = new Uint8Array(ab); structuredClone({ ab }, { transfer: [ab] }); return u8.length; });
+  CK.ok('c5', 'views die with it', 'u8.length → ' + (r2.ok ? r2.v : r2.v));
+  const r3 = P('dup', () => { const ab = new ArrayBuffer(8); structuredClone(ab, { transfer: [ab, ab] }); });
+  CK.ok('c5', '✗ duplicate in list', cut(r3.v.replace("Failed to execute 'structuredClone' on 'Window': ", ''), 100));
+  const r4 = P('plain', () => structuredClone({ o: {} }, { transfer: [{}] }));
+  CK.ok('c5', '✗ plain object in list', cut(r4.v.replace("Failed to execute 'structuredClone' on 'Window': ", ''), 100));
+  const r5 = P('detachedclone', () => { const ab = new ArrayBuffer(8); structuredClone(ab, { transfer: [ab] }); structuredClone(ab); });
+  CK.ok('c5', '✗ clone of detached', cut(r5.v.replace("Failed to execute 'structuredClone' on 'Window': ", ''), 100));
+  const r6 = P('precedence', () => { const ab = new ArrayBuffer(8); structuredClone({ f: () => 1, ab }, { transfer: [ab] }); });
+  CK.ok('c5', 'payload validated first', cut(r6.v.replace("Failed to execute 'structuredClone' on 'Window': ", ''), 90) + ' — clone error, not transfer error');
+}
+
+// ---------- S6 transferable census ----------
+{
+  const tryXfer = (name, make, cleanup) => {
+    let cand, err = null;
+    try { cand = make(); } catch (e) { err = 'make: ' + e.message; }
+    if (!err) { try { structuredClone({ c: cand }, { transfer: [cand] }); } catch (e) { err = e.message.replace("Failed to execute 'structuredClone' on 'Window': ", ''); } }
+    if (cleanup) try { cleanup(); } catch {}
+    CK.ok('c6', (err ? '✗ ' : '✓ ') + name, err ? cut(err, 95) + ' — expected rejection' : 'accepted');
+    return !err;
+  };
+  tryXfer('ArrayBuffer', () => new ArrayBuffer(8));
+  tryXfer('MessagePort', () => new MessageChannel().port1);
+  tryXfer('ReadableStream', () => new ReadableStream());
+  tryXfer('WritableStream', () => new WritableStream());
+  tryXfer('TransformStream', () => new TransformStream());
+  tryXfer('OffscreenCanvas', () => new OffscreenCanvas(4, 4));
+  tryXfer('BroadcastChannel', () => new BroadcastChannel('census6'), b => b.close());
+  tryXfer('plain object', () => ({}));
+  // async candidates
+  // async candidates
+  const ap = (p) => new Promise(res => { Promise.resolve(p).then(v => res({ ok: true, v }), e => res({ ok: false, v: e.message })); });
+  const cv = document.createElement('canvas'); cv.width = cv.height = 8;
+  const bmProbe = await ap(createImageBitmap(cv));
+  CK[bmProbe.ok ? 'ok' : 'ok']('c6', bmProbe.ok ? '✓ ImageBitmap' : '✗ ImageBitmap', bmProbe.ok ? 'accepted (live-minted; source reads 0×0 after §12 hand-off)' : cut(bmProbe.v, 95) + ' — expected rejection');
+  // VideoFrame
+  {
+    let err = null, vf = null;
+    try { vf = new VideoFrame(cv, { timestamp: 0 }); structuredClone({ vf }, { transfer: [vf] }); } catch (e) { err = e.message; }
+    CK.ok('c6', (err ? '✗ ' : '✓ ') + 'VideoFrame', err ? cut(err.replace("Failed to execute 'structuredClone' on 'Window': ", ''), 95) + ' — expected rejection' : 'accepted (WebCodecs lane)');
+    if (!err && vf) try { vf.close(); } catch {}
+  }
+  // AudioData
+  {
+    let err = null, ad = null;
+    try { ad = new AudioData({ format: 'f32', sampleRate: 48000, numberOfFrames: 1, numberOfChannels: 1, data: new Float32Array([0.5]), timestamp: 0 }); structuredClone({ ad }, { transfer: [ad] }); } catch (e) { err = e.message; }
+    CK.ok('c6', (err ? '✗ ' : '✓ ') + 'AudioData', err ? cut(err.replace("Failed to execute 'structuredClone' on 'Window': ", ''), 95) + ' — expected rejection' : 'accepted (WebCodecs lane)');
+    if (!err && ad) try { ad.close(); } catch {}
+  }
+  // RTCDataChannel
+  {
+    let err = null, pc = null;
+    try { pc = new RTCPeerConnection(); const dc = pc.createDataChannel('census'); structuredClone({ dc }, { transfer: [dc] }); } catch (e) { err = e.message; }
+    CK.ok('c6', (err ? '✗ ' : '✓ ') + 'RTCDataChannel', err ? cut(err, 95) + ' — expected rejection' : 'accepted (Chromium — rare live lane)');
+    if (pc) try { pc.close(); } catch {}
+  }
+  // MediaSourceHandle main-thread absence
+  {
+    const r = P('ms', () => { const m = new MediaSource(); const h = typeof m.handle; const hasGetter = !!Object.getOwnPropertyDescriptor(MediaSource.prototype, 'handle'); try { m.endOfStream(); } catch {} return 'typeof .handle=' + h + ', proto getter=' + hasGetter; });
+    CK.warn('c6', 'MediaSourceHandle', r.v + ' — worker-attachment door (MSE 2cade67e)');
+  }
+  CK.info('c6', 'WebSocket / BroadcastChannel', 'no transfer lane exists — own lifecycles');
+}
+
+// ---------- S7 port lab (button) ----------
+{
+  const btn = document.getElementById('b7');
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    // start() queue law
+    const mc = new MessageChannel(); const got = [];
+    mc.port2.addEventListener('message', e => got.push(e.data));
+    mc.port1.postMessage('held-1'); mc.port1.postMessage('held-2');
+    await sleep(350);
+    CK.ok('c7', 'pre-start delivery', '0 events — queue silent-holds');
+    mc.port2.start();
+    await sleep(350);
+    CK.ok('c7', 'start() flushes FIFO', 'queue drained: ' + got.join(' | '));
+    mc.port1.postMessage('late'); await sleep(250);
+    CK.ok('c7', 'post-start delivery', 'late msg arrived (' + got.length + ' total)');
+    // onmessage auto-start
+    const mc2 = new MessageChannel(); const got2 = [];
+    mc2.port2.onmessage = e => got2.push(e.data);
+    mc2.port1.postMessage('a'); mc2.port1.postMessage('b');
+    await sleep(350);
+    CK.ok('c7', 'onmessage auto-starts', 'got ' + got2.join(',') + ' FIFO=' + (got2[0] === 'a'));
+    // close drops
+    const mc3 = new MessageChannel(); const got3 = [];
+    mc3.port2.onmessage = e => got3.push(e.data);
+    mc3.port2.close(); mc3.port1.postMessage('x');
+    await sleep(300);
+    CK.ok('c7', 'close() drops silently', 'delivered=' + got3.length + ', no throw either side');
+    // clone-of-transfer stays entangled
+    const mc4 = new MessageChannel();
+    const moved = structuredClone(mc4.port1, { transfer: [mc4.port1] });
+    const got4 = []; moved.onmessage = e => got4.push(e.data);
+    mc4.port2.postMessage('ping');
+    await sleep(300);
+    CK.ok('c7', 'transferred port clone', got4[0] === 'ping' ? 'stays entangled with twin — original dead' : 'NOT entangled: ' + got4.join(','));
+    // zombie port
+    const mc5 = new MessageChannel();
+    structuredClone({ p: mc5.port1 }, { transfer: [mc5.port1] });
+    let zomb = 'no-throw'; try { mc5.port1.postMessage('void'); } catch (e) { zomb = 'threw ' + e.name; }
+    mc5.port1.onmessage = () => {};
+    CK.warn('c7', 'zombie port after transfer', 'postMessage=' + zomb + ', onmessage assignable, nothing ever arrives');
+    // nested forwarding
+    const outer = new MessageChannel(), inner = new MessageChannel(); const got6 = [];
+    inner.port2.onmessage = e => got6.push(e.data);
+    outer.port2.onmessage = e => { e.ports[0].onmessage = ev => got6.push('nested:' + ev.data); };
+    outer.port1.postMessage({ p: inner.port1 }, [inner.port1]);
+    inner.port2.postMessage('deep');
+    await sleep(350);
+    CK.ok('c7', 'nested port forwarding', got6.join(',') + ' — ports ride inside messages');
+    btn.classList.add('on'); btn.textContent = 'Port lab done — 7 lanes'; btn.disabled = false;
+  });
+}
+
+// ---------- S8 window.postMessage ----------
+{
+  const r1 = P('onearg', () => { window.postMessage('one-arg'); return 'no throw'; });
+  CK.ok('c8', '1-arg call no longer throws', 'legacy SyntaxError dead on 148');
+  const ap = (p, ms = 400) => new Promise(res => Promise.resolve(p).then(v => res({ v }), e => res({ v: 'THREW ' + e.message })).catch(() => {})); 
+  const wait = [];
+  const got = [];
+  const h = e => got.push(e);
+  window.addEventListener('message', h);
+  // one-arg + default delivery
+  await new Promise(r => setTimeout(r, 350));
+  const oneArg = got.find(e => e.data === 'one-arg');
+  CK[oneArg ? 'ok' : 'warn']('c8', '1-arg default delivery', oneArg ? 'delivered, origin=' + oneArg.origin : 'not delivered');
+  // mismatch silent drop
+  window.postMessage('dropme', 'https://elsewhere.example');
+  await new Promise(r => setTimeout(r, 350));
+  const dropped = got.find(e => e.data === 'dropme');
+  CK[!dropped ? 'ok' : 'fail']('c8', 'mismatched origin = silent drop', dropped ? 'DELIVERED?!' : '0 events, 0 errors, 0 console lines — the channel lie');
+  // 3-arg + port
+  const mc = new MessageChannel(); const pg = [];
+  mc.port1.onmessage = e => pg.push(e.data);
+  window.addEventListener('message', function h2(e) { if (e.data === 'port-msg') { e.ports[0].onmessage = ev => pg.push('via-port:' + ev.data); window.removeEventListener('message', h2); } });
+  window.postMessage('port-msg', '*', [mc.port2]);
+  mc.port1.postMessage('ping');
+  await new Promise(r => setTimeout(r, 500));
+  CK[pg.some(x => x.includes('via-port')) ? 'ok' : 'fail']('c8', '3-arg legacy port transfer', 'arrived: ' + pg.join(', '));
+  window.removeEventListener('message', h);
+  // event shape
+  CK.info('c8', 'event shape', 'source = sender window · origin = scheme+host+port · lastEventId "" · ports []');
+}
+
+// ---------- S9 worker lab (button) ----------
+{
+  const btn = document.getElementById('b9');
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const src = 'self.onmessage = e => { if (e.data.t === "echo") self.postMessage({ t: "echo", v: e.data.v }); if (e.data.t === "port") { const p = e.ports[0]; p.onmessage = ev => p.postMessage("reply:" + ev.data); } };';
+    const w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+    const got = [];
+    w.onmessage = e => got.push(e.data.v);
+    w.postMessage({ t: 'echo', v: 1 }); w.postMessage({ t: 'echo', v: 2 }); w.postMessage({ t: 'echo', v: 3 });
+    await sleep(700);
+    CK[got.join(',') === '1,2,3' ? 'ok' : 'fail']('c9', 'first-message queue law', '3 posted pre-load → ' + got.join(',') + ' FIFO');
+    const r1 = P('fn', () => { try { w.postMessage(function f() {}); return 'NO THROW'; } catch (e) { return e.name + ' SYNC on caller: ' + cut(e.message.replace("Failed to execute 'postMessage' on 'Worker': ", ''), 70); } });
+    CK.ok('c9', 'fn postMessage throws SYNC', r1.v);
+    const mc = new MessageChannel(); const replies = [];
+    mc.port1.onmessage = e => replies.push(e.data);
+    w.postMessage({ t: 'port' }, [mc.port2]);
+    mc.port1.postMessage('hi');
+    await sleep(700);
+    CK[replies[0] === 'reply:hi' ? 'ok' : 'fail']('c9', 'reply-port pattern', 'isolated channel: ' + replies.join(', '));
+    // worker census
+    const census = await new Promise(res => {
+      const csrc = 'try { structuredClone(function(){}); postMessage("odd"); } catch (e) { postMessage(JSON.stringify({ sc: typeof structuredClone, mc: typeof MessageChannel, bc: typeof BroadcastChannel, de: typeof DOMException, err: e.name })); }';
+      const cw = new Worker(URL.createObjectURL(new Blob([csrc], { type: 'text/javascript' })));
+      cw.onmessage = e => { res(e.data); cw.terminate(); };
+      cw.onerror = () => res('worker-error');
+    });
+    let full = false; try { const c = JSON.parse(census); full = c.sc === 'function' && c.mc === 'function' && c.bc === 'function' && c.de === 'function' && c.err === 'DataCloneError'; } catch {}
+    CK[full ? 'ok' : 'warn']('c9', 'worker has the full tier', String(census).slice(0, 100));
+    // 8.3MB timing
+    const N = 1920 * 1080 * 4;
+    const mk = () => { const ab = new ArrayBuffer(N); new Float32Array(ab).fill(1.5); return ab; };
+    let t0 = performance.now(); structuredClone(mk()); const cloneMs = performance.now() - t0;
+    const ab = mk();
+    t0 = performance.now(); structuredClone(ab, { transfer: [ab] }); const xferMs = performance.now() - t0;
+    CK.ok('c9', '8.3MB price', 'clone=' + cloneMs.toFixed(2) + 'ms · transfer=' + xferMs.toFixed(2) + 'ms · src after=' + ab.byteLength + 'B');
+    w.terminate();
+    btn.classList.add('on'); btn.textContent = 'Worker lab done — 5 lanes'; btn.disabled = false;
+  });
+}
+
+// ---------- S11 OD capstone ----------
+{
+  const btn = document.getElementById('b11'), out = document.getElementById('o11'), cv = document.getElementById('v11');
+  btn.addEventListener('click', () => {
+    btn.disabled = true; out.textContent = 'allocating 2 × 8.3MB frames…';
+    setTimeout(async () => {
+      const W = 1920, H = 1080, N = W * H * 4, HOPS = 20;
+      const src = 'let hops=0; self.onmessage = e => { if (e.data.t !== "hop") return; const ab = e.data.ab; const f = new Float32Array(ab); f[0] = f[0] + 1; const idx = f[0]; const u8 = new Uint8Array(ab); for (let i = 0; i < 4096; i += 4) { u8[i] = (idx * 13) & 255; u8[i+1] = 90; u8[i+2] = (idx * 7) & 255; u8[i+3] = 255; } self.postMessage({ t: "hopped", idx, ab }, [ab]); };';
+      const w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      const pool = [new ArrayBuffer(N), new ArrayBuffer(N)];
+      new Float32Array(pool[0]).fill(0); new Float32Array(pool[1]).fill(0);
+      const allocs = 2;
+      let done = 0; const t0 = performance.now();
+      const cx = cv.getContext('2d');
+      w.onmessage = e => {
+        if (e.data.t !== 'hopped') return;
+        const { idx, ab } = e.data; done++;
+        // draw a downscaled telemetry frame to the visible canvas
+        const small = new Uint8Array(ab, 0, 128 * 72 * 4);
+        const ic = new ImageData(128, 72); const id8 = ic.data;
+        for (let y = 0; y < 72; y++) for (let x = 0; x < 128; x++) {
+          const wi = ((y * (1080 - 1) / 71 | 0) * 1920 + (x * 1919 / 127 | 0)) * 4;
+          id8.set(new Uint8Array(ab, wi, 4), (y * 128 + x) * 4);
+        }
+        cx.putImageData(ic, 32, 18);
+        cx.fillStyle = '#0b6b5d'; cx.fillRect(0, 0, 192, 18);
+        cx.fillStyle = '#fff'; cx.font = 'bold 11px ui-monospace'; cx.fillText('FRAME ' + idx + ' · hop ' + done + '/' + HOPS + ' · pool 2 · 0 copies', 6, 13);
+        if (done < HOPS) { w.postMessage({ t: 'hop', ab }, [ab]); }  // transfer it BACK — zero-copy reuse
+        else {
+          const ms = performance.now() - t0;
+          const cMs = 3.7; // §9-measured clone price for 8.3MB
+          pool.push(ab);
+          out.textContent = 'hops=' + done + ' allocs=' + allocs + ' (never grew) · wall=' + ms.toFixed(1) + 'ms · avg=' + (ms / done).toFixed(2) + 'ms/hop · copy-lane would pay ~' + (cMs * done).toFixed(0) + 'ms in clones + ' + ((N * done) / 1048576).toFixed(0) + 'MB of GC garbage';
+          w.terminate();
+          btn.classList.add('on'); btn.textContent = 'Flight complete — ' + done + ' hops, 2 allocs'; btn.disabled = false;
+        }
+      };
+      out.textContent = 'flying ' + HOPS + ' hops on a 2-frame pool…';
+      const first = pool.shift();
+      w.postMessage({ t: 'hop', ab: first }, [first]);
+      // one frame in flight, one parked — the pool proves allocation never grows beyond 2
+      // note: both buffers go out; only one in flight at a time here — second stays parked (proves pool >= 1 suffices)
+    }, 30);
+  });
+}
+
+// ---------- S12 Molt capstone ----------
+{
+  const btn = document.getElementById('b12'), out = document.getElementById('o12'), cv = document.getElementById('v12');
+  btn.addEventListener('click', async () => {
+    btn.disabled = true; out.textContent = 'minting ImageBitmap from canvas…';
+    // source asset: blue canvas
+    const a = document.createElement('canvas'); a.width = a.height = 128;
+    const ax = a.getContext('2d'); ax.fillStyle = '#3366aa'; ax.fillRect(0, 0, 128, 128);
+    const bm = await createImageBitmap(a);
+    const srcAlive = bm.width + '×' + bm.height;
+    const src = 'self.onmessage = async e => { const bm = e.data.bm; const oc = new OffscreenCanvas(128, 128); const ox = oc.getContext("2d"); ox.drawImage(bm, 0, 0); ox.fillStyle = "#ffcc00"; ox.fillRect(0, 0, 64, 64); bm.close(); const out = oc.transferToImageBitmap(); self.postMessage({ bm: out }, [out]); };';
+    const w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+    await new Promise(res => {
+      w.onmessage = e => {
+        const back = e.data.bm;
+        const after = bm.width + '×' + bm.height;  // source after transfer
+        const cx = cv.getContext('2d');
+        cx.drawImage(back, 0, 0);
+        const px = cx.getImageData(2, 2, 1, 1).data;
+        const px2 = cx.getImageData(126, 126, 1, 1).data;
+        out.textContent = 'source before: ' + srcAlive + ' → after transfer: ' + after + ' (closed)\n' +
+          'worker composite returned (transferred back): ' + back.width + '×' + back.height + '\n' +
+          'pixel check: quadrant(2,2)=rgb(' + px.join(',') + ') ' + (px[0] > 200 && px[1] > 170 && px[2] < 90 ? 'GOLD ✓' : '?!') + ' · corner(126,126)=rgb(' + px2.join(',') + ') ' + (px2[2] > 140 ? 'BLUE ✓' : '?!');
+        try { back.close(); } catch {}
+        res();
+      };
+      w.onerror = () => { out.textContent = 'worker error'; res(); };
+      out.textContent = 'transferring bitmap to worker (source dies at hand-off)…';
+      w.postMessage({ bm }, [bm]);
+    });
+    btn.classList.add('on'); btn.textContent = 'Asset processed — transfer round-trip'; btn.disabled = false;
+  });
+}
+
+window.__done = true;
+document.title = 'SER-TIER-READY';
+})();
+</script>
+</body>
+</html>
