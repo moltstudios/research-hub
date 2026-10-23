@@ -1,4 +1,31 @@
 
+## 209 · HTML `<model>` element — the 3D-in-HTML tier: unknown-element law, fallback law, GLB+USDZ byte anatomy, stagemode contract [2026-10-23]
+**MC:** `b4e9fac9-bced-4d6a-af26-e2b3a4161cf6` · P3 · 3d · demo `demos/html-model-element-3d-tier.html` (29,742 B byte-exact + fixtures `model-prism.glb` 2,008 B + `model-prism.usdz` 782 B, all 200) · commit `f5600ce` — **adopted orphan** (Oct 22 09:11 session built draft + hand-crafted fixtures, died at the 30-min cron ceiling pre-gate; git-status protocol caught it).
+**Scope:** 3D as first-class media element — Safari 27.0 (Sept 14, 2026) iOS/iPadOS/macOS, visionOS since 2025; Chromium/FF unshipped. Zero prior coverage (HTMLModelElement/usdz/stagemode: 0 hits in the 386-entry catalog). Chromium absence lanes live-probed CfT headless; Safari surface spec/WebKit-anchored (marked).
+**THE UNKNOWN-ELEMENT LAW:** no interface ⇒ `createElement('model')` → HTMLUnknownElement — inert tag, children render, no ladder fetch. Same grammar as `<video>` fallbacks.
+**THE FALLBACK LAW (live-measured):** unsupported ⇒ element transparent, poster `<img>` renders in place (rect 260×260 chip); ladder stays in DOM for engine catch-up. Never JS-gate — the ladder IS the feature test.
+**THE SOURCE-LADDER LAW:** USDZ first (`model/vnd.usdz+zip`, Apple, doubles as AR QuickLook link target), GLB second (`model/gltf-binary`), poster last. Order-sensitive.
+**THE STAGEMODE CONTRACT:** `stagemode="orbit"` ⇒ user owns the transform; `entityTransform` writes IGNORED. Programmatic camera = no stagemode + derive from initial (DOMMatrix methods return NEW matrices). 1 unit = 1 CSS metre, Y-up.
+**BYTE-ANATOMY LANES (run on every engine):** GLB — magic `glTF` LE, JSON+BIN chunks (4-aligned, `0x20`/`0x00` padding), POSITION accessors MUST carry min/max, indices 5123/target 34963. USDZ — PACKAGE contract not codec: ZIP STORE-only (deflated = invalid, engines memory-map), no extra fields, metersPerUnit=1 + upAxis="Y". 664 B geometry + 118 B zip = valid 3D asset smaller than most PNGs. Fixtures hand-assembled (no exporter), node-verified against every chip claim pre-gate.
+**JS surface:** ready · boundingBoxCenter/Extents · entityTransform (r/w DOMMatrixReadOnly) · duration/playbackRate · attrs stagemode/autoplay/loop/environmentmap — none reflected on Chromium (unknown element reflects nothing).
+**Capstones:** Molt product card (native 3D+AR on iOS, zero viewer lib, poster for Chromium — 2 files + 6 lines) · OD payload fit check (`display:none` load, await ready, boundingBoxExtents vs bay envelope; Chromium fallback reads the SAME numbers from GLB min/max — demo extracts (2.0,2.0,2.0) m live → ×0.13 fit scale lane).
+**Gate:** PASS ×2 viewports (1280/375): 39 chips (23 ok/15 info/1 deliberate warn/0 fail), 0 console/page errors, 0 reqfails, 0 h-overflow. Deployed 14 s, byte-exact ×3.
+**Adoption lessons:** (1) chip-router bug — `'chips'+id[0]` reads the FIRST CHAR of `c0-1` (→ `getElementById('chipsc')` → null → every chip silently skipped): syntax-valid, error-free, ZERO visible output — gate on observable side effects (chip count), never syntax alone; the un-invoked-IIFE family grows. (2) `map()`-over-min + destructure produced extent 0.0 instead of true 2.0 m — cross-check computed math against raw accessor arrays (validate-through-a-second-path lesson).
+**Reorg check:** none needed — P3 (direct Molt iOS-commerce value + fresh Safari-27 trigger, but single-engine caps it; three.js/`<model-viewer>` entries stand until a second engine ships; the ladder makes later adoption a one-attribute change).
+
+---
+
+## 208 · Intl.Segmenter — the grapheme-cluster tier [2026-10-22] *(backfill: killed session shipped MC+demo but never queue-logged; logged 2026-10-23)*
+**MC:** `53927b6b-6380-4208-b698-d0854e3d7a96` · P2 · ui-components · demo `demos/intl-segmenter-grapheme-clusters.html` (36,322 B byte-exact, 200) · commit `9c4e914`.
+**Scope:** text segmentation — corpus had Intl/ECMA-402 numbers+dates but ZERO on text. 10 sections, 55 chips, browser-verified end to end (canvas paints 34,628 px; truncation lab flags `slice()` AND `[...s]` broken on the 🛩️ sample while Segmenter stays safe).
+**JS HAS NO `\X` ESCAPE:** `new RegExp('\\X','gu')` AND literal `/\X/gu` both throw SyntaxError at PARSE time — the "just use a regex" workaround cannot even be written. Kill any grapheme-splitter dep.
+**`granularity:'line'` UNAVAILABLE:** RangeError in Chrome 144 AND Node 25.8/ICU 78, absent from MDN BCD. try/catch → fall back to `word`.
+**Segments object shape:** `segment()` returns a Segments object (proto = exactly `containing`); items `{segment,index,input}` with 3 enumerable keys — EACH holds the whole source string in `.input` → retaining one segment of a big log line pins it all. `containing()` takes a CODE-UNIT index.
+**Zero-orphan law + 3 granularities + live bench** in the demo; word-granularity across ja/zh/th/hi vs `split(' ')` contrast lane.
+**Reorg check (at ship):** none — P2, no displacement.
+
+---
+
 ## 207 · Server-Sent Events — the push tier: wire grammar, reconnect engine, terminal walls, 6-socket starvation [2026-10-18]
 **MC:** `8c303d85-fca4-478f-9b97-9bfa8c31233a` · P3 · javascript-apis · demo `demos/server-sent-events-push-tier.html` (33,478 B deployed, 200-verified byte-exact, HTTP/2 confirmed) · commit `48da1d9`.
 **Scope:** the fifth transport-family member (WS/WebSocketStream/WebTransport/fetch all previously cataloged) — a true zero-coverage gap (1 incidental mention catalog-wide). Baseline since forever (Ch 6+/2006-era, every engine). Probed CfT 148 + Brave 154 via CDP: local h1.1 server + production h2 backend (both live in the demo). 24 engine truths.
