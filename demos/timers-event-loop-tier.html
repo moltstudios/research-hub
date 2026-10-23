@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1 15 8 8 15 1 8Z' fill='%230b6b5d'/%3E%3C/svg%3E">
+<title>Timers &amp; the Event-Loop Tier — setTimeout · setInterval · queueMicrotask · requestIdleCallback</title>
+<style>
+  :root { --ink:#1d1c1a; --mut:#75716a; --line:#e6e2da; --card:#fffdf9; --bg:#f7f5f0; --acc:#0b6b5d; --acc2:#b05c1a; --bad:#a11111; }
+  * { box-sizing: border-box; }
+  body { font: 15px/1.55 -apple-system, system-ui, sans-serif; color: var(--ink); background: var(--bg); margin: 0; overflow-x: hidden; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 24px 20px 80px; }
+  .sec { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 22px; margin: 26px 0; overflow: hidden; }
+  h1 { font-size: 29px; line-height: 1.2; letter-spacing: -0.02em; margin: 10px 0 8px; }
+  h2 { font-size: 19px; margin: 2px 0 10px; letter-spacing: -0.01em; }
+  p { margin: 8px 0; }
+  code, .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12.5px; background: #f4f2ee; padding: 1px 5px; border-radius: 6px; overflow-wrap: anywhere; }
+  pre { background: #f4f2ee; border-radius: 12px; padding: 12px; overflow-x: auto; font-size: 12px; line-height: 1.5; max-width: 100%; margin: 10px 0; }
+  .mut { color: var(--mut); font-size: 13px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 4px 10px; margin: 3px 4px 3px 0; border: 1px solid transparent; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .chip.ok { background: #e8f7ee; color: #0a6b35; border-color: #bfe8d0; }
+  .chip.warn { background: #fff5e0; color: #8a5a00; border-color: #f3ddaa; }
+  .chip.fail { background: #fdeaea; color: #a11111; border-color: #f2c4c4; }
+  .chip.info { background: #e9f1fd; color: #0b4fa8; border-color: #c4dcf7; }
+  .chip .d { font-weight: 400; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button { font: 600 13px/1.3 -apple-system, system-ui, sans-serif; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; max-width: 100%; }
+  button:hover { border-color: #c9c5bd; }
+  .tscroll { overflow-x: auto; max-width: 100%; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  td, th { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--mut); }
+  .pill { font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--acc); }
+  .out { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--ink); background: #f4f2ee; border-radius: 10px; padding: 8px 10px; margin-top: 8px; overflow-wrap: anywhere; max-height: 240px; overflow-y: auto; white-space: pre-wrap; }
+  .law { border-left: 3px solid var(--acc); padding: 2px 0 2px 12px; margin: 12px 0; }
+  .law b { color: var(--acc); }
+  ul { margin: 8px 0; padding-left: 20px; }
+  li { margin: 4px 0; }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+  .badge { font-size: 11px; font-weight: 700; letter-spacing: .03em; border-radius: 999px; padding: 3px 9px; border: 1px solid var(--line); background: var(--card); }
+  .badge.y { color: #0a6b35; border-color: #bfe8d0; background: #e8f7ee; }
+  .badge.n { color: #a11111; border-color: #f2c4c4; background: #fdeaea; }
+  .badge.s { color: #0b4fa8; border-color: #c4dcf7; background: #e9f1fd; }
+  .v { color: var(--acc2); font-weight: 700; }
+  .bars { display: flex; align-items: flex-end; gap: 3px; height: 92px; padding: 8px 2px 0; flex-wrap: nowrap; }
+  .bars i { flex: 0 0 14px; max-width: 14px; min-width: 5px; border-radius: 3px 3px 0 0; background: var(--acc); display: block; position: relative; }
+  .bars i.clamp { background: var(--acc2); }
+  .bars i::after { content: attr(data-v); position: absolute; bottom: -17px; left: 50%; transform: translateX(-50%); font-size: 8.5px; color: var(--mut); font-style: normal; white-space: nowrap; }
+  .barswrap { padding-bottom: 20px; overflow-x: auto; max-width: 100%; }
+  .lane { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 10px; margin: 3px 0; font-size: 13px; background: #fff; border: 1px solid var(--line); }
+  .lane b { font-family: ui-monospace, Menlo, monospace; font-size: 12px; font-weight: 700; }
+  .lane .n { margin-left: auto; color: var(--mut); font-size: 11.5px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 9px; }
+  .cards { display: flex; flex-wrap: wrap; gap: 14px; align-items: stretch; }
+  .card { border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; background: #fff; flex: 1 1 250px; min-width: 230px; max-width: 100%; }
+  .card h3 { margin: 0 0 6px; font-size: 14.5px; }
+  .clock { font-family: ui-monospace, Menlo, monospace; font-size: 26px; font-weight: 700; letter-spacing: .02em; }
+  .clock small { font-size: 12px; font-weight: 400; color: var(--mut); display: block; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 700px) { .grid2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="sec">
+  <div class="pill">Engine-truth research · live-probed CfT 148 headless + in your engine now</div>
+  <h1>Timers &amp; the Event-Loop Tier</h1>
+  <div class="badges"><span class="badge y">setTimeout / setInterval — Baseline 199x</span><span class="badge y">queueMicrotask — Baseline 2018</span><span class="badge s">requestIdleCallback — Chromium 55+ only</span><span class="badge">self-verifying: every chip re-probes live</span></div>
+  <p>The oldest API on the platform, still full of unexplored engine laws. This tier sits under <b>every</b> pipeline we ship — polling loops, animations, retries, debounces, heartbeats. Measured on Chromium (Chrome for Testing 148, headless, M-series) with cross-checks in dedicated workers; every claim on this page re-probes in <i>your</i> engine on load.</p>
+  <div class="law"><b>THE HEADLINE FIVE.</b> ① <code>setTimeout(fn,0)</code> fires in <b>0.0–0.1 ms</b> at shallow nesting — the “0 means 4 ms” folklore only applies past nesting level 5. ② A hidden tab clamps timer gaps from ~10 ms to <b>≥1000 ms</b> — but a <b>dedicated worker’s timers are exempt</b>. ③ Missed intervals are <b>skipped, never burst</b>: one late fire, then realignment to the original grid. ④ <code>setTimeout(fn, 2³¹)</code> fires <b>immediately</b> — the delay field overflows to 0 at 2 147 483 648. ⑤ In the same event-loop turn, <b>rAF and rIC run BEFORE the 0-ms timeouts</b> — and the timer queue is delay-sorted (a later-armed 0 ms can fire after an earlier-armed 1 ms).</div>
+  <p class="mut">Sections 1–10 are live labs. Section 11 carries the OpenDrones + Molt capstones; section 12 is the decision table.</p>
+</div>
+
+<div class="sec" id="s1">
+  <h2>§1 · Surface census</h2>
+  <div class="row" id="c1"></div>
+  <p class="mut">Arity facts: <code>setTimeout.length === 1</code> (only the handler is required — <code>timeout</code> has a default), <code>requestIdleCallback.length === 1</code> (the options bag is optional). <code>setImmediate</code> never shipped outside Node — it is <code>undefined</code> here.</p>
+  <div class="law"><b>THE WORKER SPLIT.</b> A dedicated worker has <code>setTimeout/setInterval/queueMicrotask</code> — but <b>no <code>requestIdleCallback</code></b> (undefined), while <code>requestAnimationFrame</code> <b>exists and fires</b> (§8). Idle-scheduling code must not assume the idle lane exists off-main-thread.</div>
+</div>
+
+<div class="sec" id="s2">
+  <h2>§2 · THE NESTING CLAMP — chained timer lab</h2>
+  <p>Two chains armed from a clean task (a MessageChannel task, so no inherited nesting), re-arming themselves: one at delay 0, one at delay 1. Bars = measured per-hop gap (ms). <span class="v">Orange = clamped hop.</span></p>
+  <div class="row"><button id="run2">Run chains (14 hops)</button><span class="mut">runs live — ~80 ms</span></div>
+  <div class="barswrap"><div class="bars" id="bars0"></div></div>
+  <div class="barswrap"><div class="bars" id="bars1"></div></div>
+  <div class="row" id="c2"></div>
+  <div class="law"><b>THE CLAMP LAW.</b> Hops 1–5 dispatch at their nominal delay (0 ms measured 0.0–0.1 ms; 1 ms ≈ 1.2–1.4 ms). From nesting level 6 on, any delay &lt; 4 ms is raised to 4 ms — measured as a ~5 ms steady floor on this engine. A <i>fresh</i> timer armed from a non-timer task is never clamped, no matter how many timers you arm at once (a 12-at-once batch all fired at 1.3 ms — the “parallel timers slow down” folklore is a measurement artifact, see §4 note).</div>
+  <p class="mut">Practical: animation loops that re-arm <code>setTimeout(fn, 0)</code> silently degrade from sub-millisecond to 4 ms cadence after 5 laps. If you need tight loops, either stay at ≥ 4 ms honestly or move to <code>MessageChannel</code> (§4).</p>
+</div>
+
+<div class="sec" id="s3">
+  <h2>§3 · Delay conversion grammar — truncation, garbage, and the 2³¹ cliff</h2>
+  <div class="row" id="c3"></div>
+  <div class="law"><b>THE TRUNCATION LAW.</b> The fractional part of the delay is <b>dropped, not rounded</b>: min-of-7 fire for <code>200.9</code> is ~200.4 ms — it fires at the <b>200 ms deadline</b>. (The “rounds to nearest” folklore — including several books — is falsified by the minimum-fire lane; median/mean readings hide this under dispatch overhead.) Safe habit: pass integer delays.</div>
+  <div class="law"><b>THE 2³¹ CLIFF.</b> <code>setTimeout(fn, 2147483647)</code> is a real 24.8-day timer. One more — <code>2147483648</code> — <b>fires immediately</b>: the delay overflows the signed 32-bit field and lands at 0. This is the classic “my 25-day lease-renewal timeout ran instantly” bug. Any delay ≥ 2³¹ (including <code>Infinity</code>, <code>NaN</code>, negatives, and 1e308) fires at the 0-lane.</div>
+  <p class="mut">String delays coerce: <code>setTimeout(fn, '10')</code> = 10 ms. Everything else numeric-but-invalid (−500, NaN, Infinity) → 0-lane (~0–5 ms fire).</p>
+</div>
+
+<div class="sec" id="s4">
+  <h2>§4 · THE ORDERING CENSUS — one task schedules everything</h2>
+  <p>Press run. In a single task we schedule: two microtasks, a promise continuation, an <code>await</code> continuation, a MessageChannel post, rAF, rIC, and three timeouts (0, 1, 0 ms). The list below is the <b>actual dispatch order</b> in your engine.</p>
+  <div class="row"><button id="run4">Run the race</button><span class="mut">~1 frame</span></div>
+  <div id="order4" style="margin-top:10px"></div>
+  <div class="row" id="c4"></div>
+  <div class="law"><b>THE TURN GRAMMAR (measured, Chromium).</b> Microtasks first, in queue order — <code>queueMicrotask</code> and <code>Promise.then</code> interleave FIFO, they are the same queue. Then the next task: <b>MessageChannel before timers</b> (stable task-source priority). rAF and rIC dispatch at the frame boundary — <b>whether they beat same-turn timeouts is a frame-deadline race</b>: both orders were measured on this engine (rAF before timeouts in one run, after them in the next — a frame must land inside the window). The 0/1/0 timeouts fire delay-sorted: <code>0a, 1, 0b</code> — the second 0 ms armed AFTER the 1 ms still fires last among them. The timer queue is a <b>priority queue by deadline with FIFO tiebreak</b>, not a FIFO.</div>
+  <p class="mut">Folklore falsified twice: “setTimeout(0) beats rAF” (no — the frame runs first) and “timers fire in arm order” (no — in deadline order). Note for §2’s artifact: if you arm timers from a continuation whose promise was resolved <i>inside a deep timer callback</i>, your new timer inherits that nesting level — a 40-hop chain poisons a whole <code>await sleep()</code> lineage to the 4 ms clamp. Continuations of promises resolved by <i>non-timer</i> tasks (MessageChannel, events) inherit nothing.</p>
+</div>
+
+<div class="sec" id="s5">
+  <h2>§5 · Timer IDs &amp; the clear() that never throws</h2>
+  <div class="row" id="c5"></div>
+  <div class="law"><b>THE SHARED MONOTONIC ID LAW.</b> <code>setTimeout</code> and <code>setInterval</code> draw from one counter: interleaved calls give consecutive integers (107, 108, 109 measured). <code>clearTimeout</code> cancels an interval ID and <code>clearInterval</code> cancels a timeout ID — the pair are interchangeable. IDs are never reused after mass clears (next-fresh continues past the last cleared). And <code>clearTimeout()</code> accepts <i>anything</i> — <code>0, -1, 1.7, 'abc', null, {}, NaN, Infinity</code> — all silent, no TypeError. There is no feedback channel: clearing a fired or never-existed timer is indistinguishable from success.</div>
+</div>
+
+<div class="sec" id="s6">
+  <h2>§6 · THE SKIP LAW — what an interval does when you block</h2>
+  <p>An <code>setInterval(fn, 60)</code> ticker; at tick 3 the main thread blocks for 420 ms. Timeline shows actual fire times (relative ms):</p>
+  <div class="row"><button id="run6">Run the blocked interval</button><span class="mut">~1.3 s</span></div>
+  <div class="out" id="out6">—</div>
+  <div class="row" id="c6"></div>
+  <div class="law"><b>THE SKIP LAW.</b> The tick due during the block fires <b>once, late</b> (at ~540 ms instead of 180); the ~6 ticks that came due meanwhile are <b>skipped — no burst, no catch-up</b> — and the next fires realign to the original grid (600.3, 660.3 …). If you need “make up missed work,” you must diff wall-clock yourself; the interval engine silently drops backlog. (Contrast: at interval(1) the steady-state gap floor is the same 4/5 ms nesting clamp — intervals are chained timers internally.)</div>
+</div>
+
+<div class="sec" id="s7">
+  <h2>§7 · THE BACKGROUND MATRIX — hide this tab and watch</h2>
+  <p>Four tickers are running since page load: a main-thread <code>setTimeout(10)</code> chain, a <b>worker</b> timer(10) chain, a MessageChannel self-post loop (armed only while hidden), and rAF/rIC counters. <b>Switch to another tab for ~15 seconds, then come back.</b> On return you get the verdict:</p>
+  <div class="row"><button id="run7">Arm hide-test + show verdict on return</button><span class="mut">re-runnable</span></div>
+  <div class="out" id="out7" style="max-height:320px">not measured yet — hide the tab, come back, press “show verdict”</div>
+  <div class="row" id="c7"></div>
+  <div class="law"><b>THE 1 HZ LAW + THE WORKER EXEMPTION.</b> The moment <code>document.visibilityState === 'hidden'</code>, every main-thread timer lane clamps to <b>≥ 1000 ms</b> gaps (a 10 ms heartbeat becomes 1 Hz — a 100× telemetry slowdown for a Mission Control tab sitting in the background). Timers <i>armed while hidden</i> get the 1 s minimum from birth. rAF and rIC fire <b>zero</b> times while hidden. The dedicated worker’s timer chain keeps its ~10 ms cadence <b>unchanged</b> — workers are exempt from visibility throttling. That is the entire architecture of the §11 heartbeat capstone.</div>
+  <p class="mut">After 5 minutes continuously hidden, Chromium goes further: <i>intensive throttling</i> aligns wake-ups to ≤ 1/min (with a CPU-budget exemption for pages playing audio, holding WebRTC, or with active USB/serial). Probed headless: the hidden chain’s median gap widened from ~1000 ms to ~60000 ms in the intensive window; the worker stayed at ~10 ms. Budget-backed lanes (audio, USB) reset the counter — relevant for any ground-station page holding a serial port open.</p>
+</div>
+
+<div class="sec" id="s8">
+  <h2>§8 · rAF in a worker — the phantom that isn’t</h2>
+  <div class="row"><button id="run8">Probe worker rAF (600 ms)</button></div>
+  <div class="row" id="c8"></div>
+  <div class="law"><b>THE WORKER-RAF LAW.</b> In a dedicated worker with no OffscreenCanvas at all, <code>requestAnimationFrame</code> is present <b>and fires</b> — measured one-shot and looping. It is the frame clock without a document. Meanwhile <code>requestIdleCallback</code> is absent in workers entirely. The scheduling surface is not a subset of the page’s — it’s a different set.</div>
+</div>
+
+<div class="sec" id="s9">
+  <h2>§9 · THE DRIFT LAB — raw interval vs clock-corrected chain</h2>
+  <p>Two counters tick at 100 ms. Left: raw <code>setInterval(100)</code>. Right: a self-rescheduling chain whose delay is recomputed against <code>performance.now()</code> every lap (absolute-time correction). Watch the raw tick count sag behind wall time while you read.</p>
+  <div class="cards">
+    <div class="card"><h3>Raw setInterval(100)</h3><div class="clock" id="clockRaw">0<small>ticks · drift shown vs wall clock</small></div></div>
+    <div class="card"><h3>Clock-corrected chain</h3><div class="clock" id="clockFix">0<small>ticks · realigns every lap</small></div></div>
+  </div>
+  <div class="row" id="c9" style="margin-top:8px"></div>
+  <div class="law"><b>THE DRIFT LAW.</b> Every interval fire lands a little late (dispatch + clamp), and the error <b>accumulates</b> — raw interval(100) loses seconds per minute while the corrected chain stays within one lap of wall time forever. Any countdown, ETA, or rate display built on a raw interval lies progressively. Recompute against an absolute clock (the right-hand pattern) — never trust tick counts as time.</div>
+</div>
+
+<div class="sec" id="s10">
+  <h2>§10 · Callback grammar — this, args, strings, validation</h2>
+  <div class="row" id="c10"></div>
+  <div class="law"><b>THE THIS LAW (folklore falsified).</b> Timer callbacks run with <code>this === window</code> in sloppy mode — and <b>also in strict mode</b> (verified with a script-injected strict IIFE; the HTML spec passes the global as the callback this-value unconditionally). The common “strict mode makes timer this undefined” claim is wrong on this engine. Pass args or <code>bind</code> — never rely on this-binding. String handlers still evaluate (the eval family — blocked under CSP without <code>unsafe-eval</code>); <code>queueMicrotask(undefined)</code> throws a TypeError verbatim.</div>
+</div>
+
+<div class="sec" id="s11">
+  <h2>§11 · Capstones</h2>
+  <div class="grid2">
+    <div class="card">
+      <h3>OpenDrones — the background heartbeat</h3>
+      <p>Mission Control must keep telemetry flowing when the pilot’s tab is in the background. The 1 Hz clamp kills any main-thread poll — so own the clock in a worker:</p>
+      <pre>// heartbeat.js (dedicated worker)
+let next = performance.now();
+(function beat(){
+  next += 100;                       // absolute grid: no drift
+  setTimeout(beat, Math.max(0, next - performance.now()));
+  postMessage(tick());               // → page, even while hidden
+})();
+// page: no timers at all — just onmessage</pre>
+      <p class="mut">Worker timers are visibility-exempt (§7), the chain never drifts (§9), and the 4 ms clamp is moot at a 100 ms cadence (§2). Same pattern for the watchdog: an in-worker supervisor notices main-thread silence — because the page’s rAF stopped — without owning a page timer.</p>
+    </div>
+    <div class="card">
+      <h3>Molt — clamp-aware UX code</h3>
+      <ul>
+        <li><b>Debounce:</b> trailing debounces below 4 ms silently degrade under nesting — floor UI debounces at 4 ms+ (or use MessageChannel for sub-ms, §4).</li>
+        <li><b>Countdowns:</b> never count ticks; snapshot <code>performance.now()</code> and render against wall clock (§9).</li>
+        <li><b>Idle work:</b> rIC exists only on main-thread Chromium — pair with a <code>setTimeout(…, 0)</code> fallback; remember rIC never fires in hidden tabs (§7).</li>
+        <li><b>Retry/backoff:</b> keep delays under 2³¹−1 and finite — the overflow fires immediately (§3), turning “retry tomorrow” into a hot loop.</li>
+        <li><b>Order assumptions:</b> if ordering matters between a timeout and a postMessage/rAF, don’t rely on arm order — the queue is delay-sorted (§4).</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="sec" id="s12">
+  <h2>§12 · Decision table</h2>
+  <div class="tscroll"><table>
+    <tr><th>Job</th><th>Use</th><th>Why (law)</th></tr>
+    <tr><td>Sub-millisecond task deferral</td><td><code>queueMicrotask</code> / <code>Promise</code></td><td>Runs before any task, even 0 ms timers (§4)</td></tr>
+    <tr><td>Sub-ms deferral as a TASK (yield to rendering)</td><td><code>MessageChannel</code></td><td>Beats timers in the turn; no nesting clamp; not a timer under background throttle</td></tr>
+    <tr><td>Tight animation loop</td><td>rAF</td><td>Frame-synced; dies in hidden tabs by design (§7)</td></tr>
+    <tr><td>Background tab must keep time</td><td>Worker timer + postMessage</td><td>Worker exemption (§7)</td></tr>
+    <tr><td>Recurring exact-rate work</td><td>Clock-corrected chain</td><td>Raw intervals drift; missed work is skipped, not queued (§6, §9)</td></tr>
+    <tr><td>Idle-time background work</td><td><code>setTimeout(fn, 0)</code> fallback</td><td>rIC: main-thread Chromium only, never in hidden tabs or workers (§1, §8)</td></tr>
+    <tr><td>Very long delay (&gt; 24.8 d)</td><td>Chain of shorter timers / recompute</td><td>2³¹ overflow fires immediately (§3)</td></tr>
+  </table></div>
+  <p style="margin-top:12px"><b>Ten rules.</b></p>
+  <ul>
+    <li>A 0 ms timer at shallow nesting is sub-millisecond — don’t “optimize” it away out of fear of the 4 ms folklore (§2).</li>
+    <li>Nesting is per-chain: re-arming from within a timer callback at depth &gt; 5 clamps you to 4 ms (§2).</li>
+    <li>Promises resolved inside a deep timer callback pass that nesting to your continuation (§4 note).</li>
+    <li>Delay fractions truncate — 200.9 fires at the 200 deadline (§3).</li>
+    <li>Negative / NaN / Infinity / ≥ 2³¹ all mean “now” (§3).</li>
+    <li>clear* never throws and returns nothing — track your own handles (§5).</li>
+    <li>Intervals skip: one late fire, grid realign, backlog dropped (§6).</li>
+    <li>Hidden tab = 1 Hz main-thread, 0 rAF/rIC, worker unharmed (§7).</li>
+    <li>Tick counts are not time — always diff against performance.now() (§9).</li>
+    <li>this is window even in strict mode; string args are eval — use functions (§10).</li>
+  </ul>
+  <p class="mut">Probed 2026-10-23 · Chrome for Testing 148 headless (Apple silicon), Playwright-CDP harness, Node 25.8 cross-checks · sibling entries: scheduler.postTask (priority tier), bfcache/Page Lifecycle (the unload tier), Compute Pressure (adaptive tier).</p>
+</div>
+
+</div>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const now = () => performance.now();
+  const chip = (host, cls, label, detail) => { const s = document.createElement('span'); s.className = 'chip ' + cls; s.innerHTML = label + (detail ? ' <span class="d">' + detail + '</span>' : ''); $(host).appendChild(s); return s; };
+  const P = (host, label, fn, fmt) => new Promise(res => { try { const v = fn(); chip(host, 'ok', label, (fmt ? fmt(v) : JSON.stringify(v)) + ' ✓'); res(v); } catch (e) { chip(host, 'fail', label, e.constructor.name + ': ' + String(e.message).slice(0, 90)); res(null); } });
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const mcTask = fn => new Promise(r => { const mc = new MessageChannel(); mc.port1.onmessage = () => { mc.port1.close(); r(fn()); }; mc.port2.postMessage(0); });
+  const med = a => (a && a.length) ? a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)] : null;
+  window.__done = false;
+
+  // ── §1 surface census ──
+  (async () => {
+    const h = 'c1';
+    P(h, 'globals', () => [typeof setTimeout, typeof setInterval, typeof clearTimeout, typeof clearInterval, typeof queueMicrotask].every(t => t === 'function') ? 'all function' : 'MISSING SOME', v => v);
+    P(h, 'setImmediate', () => typeof setImmediate, v => String(v));
+    P(h, 'rIC (engine-dependent)', () => typeof requestIdleCallback, v => String(v));
+    P(h, 'arity', () => setTimeout.length === 1 && clearTimeout.length === 0 ? 'setTimeout.length=1, clearTimeout.length=0' : 'unexpected', v => v);
+    const w = await new Promise(res => { try { const wk = new Worker(URL.createObjectURL(new Blob(["onmessage=e=>postMessage({st:typeof setTimeout,qm:typeof queueMicrotask,ric:typeof requestIdleCallback,raf:typeof requestAnimationFrame})"], { type: 'text/javascript' }))); wk.onmessage = ev => { wk.terminate(); res(ev.data); }; wk.postMessage(0); setTimeout(() => res(null), 2000); } catch (e) { res({ err: String(e) }); } });
+    if (w && !w.err) { chip(h, w.st === 'function' && w.qm === 'function' ? 'ok' : 'fail', 'worker: setTimeout/queueMicrotask', 'present ✓'); chip(h, w.ric === 'undefined' ? 'ok' : 'warn', 'worker: requestIdleCallback', w.ric === 'undefined' ? 'undefined (absent by design)' : String(w.ric)); chip(h, w.raf === 'function' ? 'ok' : 'info', 'worker: requestAnimationFrame', w.raf === 'function' ? 'function — exists off-DOM (§8)' : String(w.raf)); }
+    else chip(h, 'warn', 'worker census', 'worker unavailable: ' + JSON.stringify(w));
+  })();
+
+  // ── §2 nesting clamp lab ──
+  const runChain = delay => new Promise(res => {
+    const d = []; let prev = null, n = 0;
+    const hop = () => { const t = now(); if (prev !== null) d.push(t - prev); prev = t; if (++n >= 14) return res(d); setTimeout(hop, delay); };
+    setTimeout(hop, delay);
+  });
+  const drawBars = (host, gaps, scaleMax) => {
+    const el = $(host); el.innerHTML = '';
+    gaps.forEach((g, i) => { const b = document.createElement('i'); const clamped = g >= 3.5 && (i >= 5); b.className = clamped ? 'clamp' : ''; b.style.height = Math.max(4, Math.min(88, (g / scaleMax) * 88)) + 'px'; b.dataset.v = g.toFixed(1); el.appendChild(b); });
+  };
+  window.__run2 = async () => {
+    $('run2').disabled = true;
+    const [g0, g1] = await Promise.all([mcTask(() => runChain(0)), sleep(30).then(() => mcTask(() => runChain(1)))]);
+    drawBars('bars0', g0, 5.5); drawBars('bars1', g1, 5.5);
+    const c = 'c2'; $(c).innerHTML = '';
+    const head0 = g0.slice(0, 5), tail0 = g0.slice(5);
+    const head1 = g1.slice(0, 5), tail1 = g1.slice(5);
+    chip(c, med(head0) < 1.5 ? 'ok' : 'warn', 'delay-0 hops 1–5 (median)', 'median ' + med(head0).toFixed(2) + ' ms · max ' + Math.max(...head0).toFixed(2) + ' (quiet-page floor: 0.0–0.1 ms — single hops stretch under load)');
+    chip(c, med(tail0) >= 4 ? 'ok' : 'warn', 'delay-0 hops 6+ clamped', 'median ' + med(tail0).toFixed(2) + ' ms (≥4 ms law)');
+    chip(c, med(head1) < 3 && med(head1) >= 0.9 ? 'ok' : 'warn', 'delay-1 hops 1–5', 'median ' + med(head1).toFixed(2) + ' ms (≈ nominal)');
+    chip(c, med(tail1) >= 4 ? 'ok' : 'warn', 'delay-1 hops 6+ clamped', 'median ' + med(tail1).toFixed(2) + ' ms');
+    $('run2').disabled = false;
+  };
+  $('run2').onclick = window.__run2;
+
+  // ── §3 coercion + 2^31 (boot-serialized under __boot3) ──
+  window.__boot3 = async () => {
+    const fire = v => new Promise(r => { const t0 = now(); setTimeout(() => r(now() - t0), v); });
+    const h = 'c3';
+    const runs = async v => { const a = []; for (let i = 0; i < 7; i++) a.push(await fire(v)); return Math.min(...a); };
+    const min40 = await runs(200.4), min49 = await runs(200.9);
+    const mNeg = await fire(-500), mStr = await fire('10');
+    if (min49 >= 200.95) chip(h, 'ok', 'fraction ROUNDS up', 'min fire: 200.4→' + min40.toFixed(1) + ' ms · 200.9→' + min49.toFixed(1) + ' ms (≥201 = the .9 crossed the integer)');
+    else if (min49 <= 200.6) chip(h, 'ok', 'fraction TRUNCATES', 'min fire: 200.9→' + min49.toFixed(1) + ' ms (fires at the 200 deadline — fraction dropped)');
+    else chip(h, 'info', 'conversion inconclusive at this jitter', 'min fire 200.9→' + min49.toFixed(1) + ' ms (probe lane measured truncation: min 200.3 ms)');
+    chip(h, min40 >= 200.0 && min40 <= 202.5 ? 'ok' : 'warn', '200.4 fires ≥200.0', min40.toFixed(1) + ' ms (min of 7)');
+    chip(h, mNeg < 30 ? 'ok' : 'warn', 'negative → 0-lane', mNeg.toFixed(1) + ' ms fire');
+    chip(h, mStr >= 10 && mStr < 20 ? 'ok' : 'warn', "string '10' coerces", mStr.toFixed(1) + ' ms fire');
+    // 2^31 fires immediately; 2^31-1 pending
+    const t0 = now(); await fire(2 ** 31);
+    chip(h, (now() - t0) < 100 ? 'ok' : 'fail', 'THE 2³¹ CLIFF: 2147483648 fires NOW', Math.round(now() - t0) + ' ms total (immediate lane)');
+    let pend = true; setTimeout(() => { pend = false; }, 2 ** 31 - 1);
+    await sleep(400);
+    chip(h, pend ? 'ok' : 'fail', '2147483647 still pending', pend ? 'real 24.8-day timer ✓' : 'fired early?! ✗');
+    const inf = await fire(Infinity);
+    chip(h, inf < 30 ? 'ok' : 'warn', 'Infinity → 0-lane', inf.toFixed(1) + ' ms');
+    const nan = await fire(NaN);
+    chip(h, nan < 30 ? 'ok' : 'warn', 'NaN → 0-lane', nan.toFixed(1) + ' ms');
+  };
+
+  // ── §4 ordering census ──
+  window.__run4 = () => new Promise(res => {
+    $('run4').disabled = true;
+    const order = []; const colors = { microtask: '#0b6b5d', promise: '#0b6b5d', MessageChannel: '#b05c1a', rAF: '#7a4fb0', rIC: '#7a4fb0', timeout: '#8a8378' };
+    const finish = () => {
+      const host = $('order4'); host.innerHTML = '';
+      order.forEach((name, i) => { const lane = document.createElement('div'); lane.className = 'lane'; const kind = name.startsWith('micro') || name.startsWith('promise') || name.startsWith('await') ? 'microtask' : name === 'MessageChannel' ? 'MessageChannel' : (name === 'rAF' || name === 'rIC') ? name : 'timeout'; lane.innerHTML = '<span class="dot" style="background:' + (colors[kind] || '#8a8378') + '"></span><b>#' + (i + 1) + ' · ' + name + '</b><span class="n">' + kind + '</span>'; host.appendChild(lane); });
+      const c = 'c4'; $(c).innerHTML = '';
+      const mi = order.findIndex(x => x === 'microtask-1'), to = order.findIndex(x => x === 'timeout-0a');
+      chip(c, mi > -1 && to > -1 && mi < to ? 'ok' : 'fail', 'microtasks before all tasks', 'microtask-1 @' + (mi + 1) + ' < timeout-0a @' + (to + 1));
+      const mc = order.indexOf('MessageChannel');
+      chip(c, mc > -1 && mc < to ? 'ok' : 'info', 'MessageChannel before timeouts', 'MessageChannel @' + (mc + 1) + ' vs timeout @' + (to + 1) + ' — stable task-source priority');
+      const raf = order.indexOf('rAF');
+      chip(c, 'info', 'rAF vs timeouts = a frame-deadline RACE', 'this run: rAF @' + (raf + 1) + ' vs timeout @' + (to + 1) + ' — both orders measured on this engine (a frame must land inside the window for rAF to go first; only microtask→task and MC-before-timer are stable)');
+      const i0a = order.indexOf('timeout-0a'), i1 = order.indexOf('timeout-1'), i0b = order.indexOf('timeout-0b');
+      chip(c, i0a < i1 && i1 < i0b ? 'ok' : 'info', 'delay-sorted queue', '0a → 1 → 0b (arm order broken by deadline sort)');
+      const qm = order.indexOf('microtask-1'), pt = order.indexOf('promise-then'), qm2 = order.indexOf('microtask-2');
+      chip(c, qm < pt && pt < qm2 ? 'ok' : 'info', 'queueMicrotask ≡ promise queue (FIFO)', 'microtask-1, promise-then, microtask-2');
+      $('run4').disabled = false; res(order);
+    };
+    queueMicrotask(() => order.push('microtask-1'));
+    Promise.resolve().then(() => order.push('promise-then'));
+    queueMicrotask(() => order.push('microtask-2'));
+    (async () => { await null; order.push('await-null'); })();
+    setTimeout(() => order.push('timeout-0a'), 0);
+    setTimeout(() => order.push('timeout-1'), 1);
+    setTimeout(() => order.push('timeout-0b'), 0);
+    const mc = new MessageChannel();
+    mc.port1.onmessage = () => { order.push('MessageChannel'); mc.port1.close(); };
+    mc.port2.postMessage(0);
+    requestAnimationFrame(() => order.push('rAF'));
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(() => order.push('rIC')); else order.push('rIC (absent)');
+    let finished = false; const finishOnce = () => { if (!finished) { finished = true; finish(); } };
+    const check = () => { if (order.includes('timeout-0b') && order.includes('MessageChannel') && order.includes('rAF') && (order.includes('rIC') || order.includes('rIC (absent)'))) finishOnce(); else setTimeout(check, 40); };
+    setTimeout(check, 50); setTimeout(() => { if (!order.includes('rIC') && !order.includes('rIC (absent)')) order.push('rIC (pending — idle never came)'); if (!order.includes('timeout-0b')) order.push('timeout-0b'); finishOnce(); }, 3000);
+  });
+  $('run4').onclick = window.__run4;
+
+  // ── §5 IDs + clear grammar ──
+  (async () => {
+    await sleep(300);
+    const h = 'c5';
+    const a = setTimeout(() => {}, 10000), b = setInterval(() => {}, 10000), c = setTimeout(() => {}, 10000);
+    chip(h, b === a + 1 && c === b + 1 ? 'ok' : 'warn', 'shared monotonic IDs', a + ', ' + b + ', ' + c + ' (consecutive across both setters)');
+    // cross-clear verification by non-fire
+    let fired = false; const iv = setInterval(() => { fired = true; }, 30); clearTimeout(iv); // interval ID through clearTimeout
+    await sleep(120);
+    chip(h, !fired ? 'ok' : 'fail', 'clearTimeout cancels an interval', fired ? 'still fired ✗' : 'silent — verified non-fire ✓');
+    const junk = [0, -1, 1.7, 'abc', null, undefined, {}, [], true, NaN, Infinity];
+    let allSilent = true;
+    for (const v of junk) { try { clearTimeout(v); clearInterval(v); } catch (e) { allSilent = false; } }
+    chip(h, allSilent ? 'ok' : 'fail', 'clear* accepts 11 garbage types', allSilent ? 'all silent — never throws ✓' : 'threw ✗');
+    const ids = []; for (let i = 0; i < 30; i++) ids.push(setTimeout(() => {}, 10000));
+    ids.forEach(clearTimeout);
+    const fresh = setTimeout(() => {}, 0); clearTimeout(fresh);
+    chip(h, fresh > ids[29] ? 'ok' : 'warn', 'no ID reuse after mass clear', 'last ' + ids[29] + ' → next ' + fresh);
+  })();
+
+  // ── §6 interval skip lab ──
+  window.__run6 = () => {
+    $('run6').disabled = true;
+    const stamps = [];
+    let n = 0, blocked = false;
+    const iv = setInterval(() => {
+      stamps.push(now());
+      if (++n === 3 && !blocked) { blocked = true; const t = now() + 420; while (now() < t) { } }
+      if (n >= 12) {
+        clearInterval(iv);
+        const rel = stamps.map(s => Math.round((s - stamps[0])));
+        const diffs = rel.slice(1).map((v, i) => v - rel[i]);
+        $('out6').textContent = 'fires (rel ms): ' + rel.join(', ') + '\ngaps: ' + diffs.join(', ') + '\nblock: 420 ms at tick 3 → tick due @180 fired @' + rel[3] + '; ticks @240–480 skipped; next @' + rel[4] + ' (grid realign, no burst)';
+        const c = 'c6'; $(c).innerHTML = '';
+        chip(c, rel[3] >= 400 && rel[3] <= 560 ? 'ok' : 'warn', 'late-fire lane', 'due @180 fired @' + rel[3]);
+        chip(c, (rel[4] - rel[3]) >= 55 && (rel[4] - rel[3]) <= 66 ? 'ok' : 'warn', 'realigned to grid', 'gap ' + (rel[4] - rel[3]) + ' ms ≈ 60');
+        const burst = diffs.slice(4).some(d => d < 30);
+        chip(c, !burst ? 'ok' : 'fail', 'NO catch-up burst', burst ? 'sub-interval gaps found ✗' : 'missed ticks skipped ✓');
+        $('run6').disabled = false;
+      }
+    }, 60);
+  };
+  $('run6').onclick = window.__run6;
+
+  // ── §7 background matrix (collectors since load) ──
+  const BG = { chain: [], iv: [], raf: 0, ric: 0, workerHops: [], armedAt: null, armedFire: null, mcHops: [], mcLoop: null, vis: [] };
+  const QUIET = /[?&]quiet=1/.test(location.search); // gate lane: no ambient collectors for clean §3 timing
+  if (!QUIET) {
+    (function chain10() { BG.chain.push(now()); setTimeout(chain10, 10); })();
+    setInterval(() => BG.iv.push(now()), 500);
+    (function raf() { BG.raf++; requestAnimationFrame(raf); })();
+    (function ric() { BG.ric++; if (typeof requestIdleCallback === 'function') requestIdleCallback(ric, { timeout: 1000 }); })();
+  }
+  let w7 = null;
+  if (!QUIET) {
+    w7 = new Worker(URL.createObjectURL(new Blob(["(function(){const h=[];(function c(){h.push(performance.now());if(h.length>4000)h.splice(0,2000);setTimeout(c,10);})();setInterval(()=>postMessage(h.slice()),1000);})()"], { type: 'text/javascript' })));
+    w7.onmessage = e => { BG.workerHops = e.data; };
+  }
+  document.addEventListener('visibilitychange', () => {
+    BG.vis.push({ vis: document.visibilityState, t: now() });
+    if (document.visibilityState === 'hidden') {
+      BG.armedAt = now(); setTimeout(() => { BG.armedFire = now(); }, 50); // armed WHILE hidden → ≥1s?
+      const mc = new MessageChannel();
+      mc.port1.onmessage = () => { BG.mcHops.push(now()); if (document.visibilityState === 'hidden') mc.port2.postMessage(0); else mc.port1.close(); };
+      BG.mcLoop = mc; mc.port2.postMessage(0);
+    }
+  });
+  window.__run7 = () => {
+    const hiddenIdx = BG.vis.findIndex(v => v.vis === 'hidden');
+    const out = $('out7');
+    if (hiddenIdx === -1) { out.textContent = 'not measured yet — hide the tab for ~15 s, come back, press again'; return; }
+    const tHide = BG.vis[hiddenIdx].t, tShow = (BG.vis.find(v => v.vis === 'visible' && v.t > tHide) || { t: now() }).t;
+    const seg = (arr) => { const s = arr.filter(t => t >= tHide && t <= tShow); return s.map((t, i) => i ? Math.round((t - s[i - 1]) * 10) / 10 : 0).slice(1); };
+    const chainG = seg(BG.chain), wG = seg(BG.workerHops), ivG = seg(BG.iv), mcG = seg(BG.mcHops);
+    const line = (k, v) => k + ': ' + v;
+    out.textContent = [
+      line('hidden window', Math.round((tShow - tHide) / 100) / 10 + ' s'),
+      line('main chain(10ms) — hidden gaps', chainG.length ? 'median ' + med(chainG) + ' ms · max ' + Math.max(...chainG) + ' ms · n=' + chainG.length : 'none recorded'),
+      line('worker chain(10ms) — hidden gaps', wG.length ? 'median ' + med(wG) + ' ms · max ' + Math.max(...wG) + ' ms · n=' + wG.length : 'none recorded'),
+      line('interval(500) — hidden gaps', ivG.length ? ivG.join(', ') + ' ms' : 'none'),
+      line('MessageChannel loop — hidden gaps', mcG.length ? 'median ' + med(mcG) + ' ms (n=' + mcG.length + ')' : 'not armed / none'),
+      line('timer armed(50ms) while hidden', BG.armedAt && BG.armedFire ? 'fired after ' + Math.round(BG.armedFire - BG.armedAt) + ' ms (≥1000 = the armed-while-hidden law)' : 'pending'),
+      line('rAF fires while hidden', '(global count includes visible eras — see verdict chips)'),
+      line('visibility events', BG.vis.map(v => v.vis + '@' + Math.round(v.t)).join(' → '))
+    ].join('\n');
+    const c = 'c7'; $(c).innerHTML = '';
+    const chainMed = chainG.length ? med(chainG) : null, wMed = wG.length ? med(wG) : null;
+    if (chainMed !== null) chip(c, chainMed >= 900 ? 'ok' : (chainMed > 100 ? 'warn' : 'fail'), 'THE 1 HZ LAW', 'hidden main-chain median gap ' + chainMed + ' ms (visible ≈ 10–12)');
+    else chip(c, 'info', 'main chain', 'no hidden samples — hide longer');
+    if (wMed !== null) chip(c, wMed < 50 ? 'ok' : 'warn', 'THE WORKER EXEMPTION', 'hidden worker-chain median gap ' + wMed + ' ms — visibility throttling does not reach workers');
+    else chip(c, 'info', 'worker chain', 'no hidden samples');
+    if (BG.armedAt && BG.armedFire) chip(c, (BG.armedFire - BG.armedAt) >= 990 ? 'ok' : 'info', 'armed-while-hidden ≥ 1 s', Math.round(BG.armedFire - BG.armedAt) + ' ms for a 50 ms timer');
+    if (mcG.length) chip(c, med(mcG) < 100 ? 'ok' : 'info', 'MessageChannel lane', 'median ' + med(mcG) + ' ms while hidden — task lane, not a timer');
+  };
+  $('run7').onclick = window.__run7;
+
+  // ── §8 worker rAF ──
+  window.__run8 = () => new Promise(res => {
+    $('run8').disabled = true;
+    const w = new Worker(URL.createObjectURL(new Blob([`
+      const out = { typeof: typeof requestAnimationFrame, oneShot: null, frames: null, ms: null };
+      requestAnimationFrame(() => { out.oneShot = performance.now(); });
+      let n = 0; const t0 = performance.now();
+      const loop = () => { n++; if (performance.now() - t0 < 600) requestAnimationFrame(loop); else { out.frames = n; out.ms = Math.round(performance.now() - t0); postMessage(out); } };
+      requestAnimationFrame(loop);
+    `], { type: 'text/javascript' })));
+    const to = setTimeout(() => { chip('c8', 'warn', 'worker rAF', 'no reply in 2.5 s'); $('run8').disabled = false; res(); }, 2500);
+    w.onmessage = e => {
+      clearTimeout(to); w.terminate();
+      const d = e.data; const c = 'c8'; $(c).innerHTML = '';
+      chip(c, d.typeof === 'function' ? 'ok' : 'info', 'typeof in worker', String(d.typeof));
+      chip(c, d.oneShot !== null ? 'ok' : 'fail', 'one-shot rAF fired', d.oneShot !== null ? 'yes ✓ (no OffscreenCanvas involved)' : 'never fired');
+      if (d.frames !== null) {
+        const fps = Math.round(d.frames / (d.ms / 1000));
+        chip(c, d.frames > 3 ? 'ok' : 'info', 'rAF loop in worker', d.frames + ' frames / ' + d.ms + ' ms ≈ ' + fps + ' Hz — the frame clock without a document');
+      }
+      $('run8').disabled = false; res();
+    };
+  });
+  $('run8').onclick = window.__run8;
+
+  // ── §9 drift lab ──
+  if (!QUIET) (async () => {
+    await sleep(400);
+    let raw = 0, fix = 0; const t0 = now(); let nextFix = t0 + 100;
+    setInterval(() => { raw++; $('clockRaw').innerHTML = raw + '<small>ticks · wall ' + ((now() - t0) / 1000).toFixed(1) + ' s · ideal ' + Math.floor((now() - t0) / 100) + '</small>'; }, 100);
+    (function beat() { nextFix += 100; setTimeout(beat, Math.max(0, nextFix - now())); fix++; $('clockFix').innerHTML = fix + '<small>ticks · wall ' + ((now() - t0) / 1000).toFixed(1) + ' s · ideal ' + Math.floor((now() - t0) / 100) + '</small>'; })();
+    let reported = false;
+    setInterval(() => {
+      if (reported || now() - t0 < 20000) return; reported = true;
+      const ideal = Math.floor((now() - t0) / 100);
+      const driftRaw = ideal - raw, driftFix = ideal - fix;
+      const c = 'c9';
+      chip(c, driftFix >= -1 && driftFix <= 1 ? 'ok' : 'warn', 'corrected chain on-grid', driftFix + ' ticks behind ideal after ' + Math.round((now() - t0) / 1000) + ' s');
+      chip(c, driftRaw <= driftFix ? 'ok' : 'info', 'raw interval drifts', driftRaw + ' ticks behind ideal (raw) vs ' + driftFix + ' (corrected)');
+    }, 2000);
+  })();
+
+  // ── §10 callback grammar ──
+  (async () => {
+    await sleep(350);
+    const h = 'c10';
+    const sloppy = await new Promise(r => { (function () { setTimeout(function () { r(this === window ? 'window' : String(this)); }, 0); }).call({}); });
+    chip(h, sloppy === 'window' ? 'ok' : 'fail', 'sloppy this', sloppy);
+    const strict = await new Promise(r => { const s = document.createElement('script'); s.textContent = '(function(){"use strict";setTimeout(function(){window.__st(this===window?"window":String(this));},0);})();'; window.__st = v => r(v); document.head.appendChild(s); });
+    chip(h, strict === 'window' ? 'ok' : 'warn', 'STRICT this (folklore falsified)', strict + ' — spec passes the global unconditionally');
+    const args = await new Promise(r => setTimeout((...a) => r(a.length), 0, 1, 2, 3));
+    chip(h, args === 3 ? 'ok' : 'fail', 'extra args pass through', args + ' args delivered');
+    const strEval = await new Promise(r => { window.__se10 = () => r(true); try { setTimeout('window.__se10()', 0); setTimeout(() => r(false), 80); } catch (e) { r('throws: ' + e.constructor.name); } });
+    chip(h, strEval === true ? 'ok' : (strEval === false ? 'warn' : 'info'), 'string handler', strEval === true ? 'evaluated (eval family — CSP-gated)' : String(strEval));
+    const qmErr = (() => { try { queueMicrotask(); return 'no-throw'; } catch (e) { return e.constructor.name; } })();
+    chip(h, qmErr === 'TypeError' ? 'ok' : 'warn', 'queueMicrotask() validation', qmErr + ' (1 argument required)');
+    const qmThis = await new Promise(r => queueMicrotask(function () { r(this === undefined ? 'undefined' : (this === globalThis ? 'globalThis' : String(this))); }));
+    chip(h, (qmThis === 'globalThis' || qmThis === 'undefined') ? 'ok' : 'fail', 'queueMicrotask this', qmThis + ' — no thisArg passed: strict callbacks keep undefined, sloppy coerce to global');
+  })();
+
+  // boot labs run SERIALLY: §2 chains first (they need a quiet loop), then §3 (long fires), then §4
+  (async () => {
+    await window.__run2();
+    await window.__boot3();
+    window.__run4();
+    setTimeout(() => { window.__done = true; }, 500);
+  })();
+})();
+</script>
+</body>
+</html>
