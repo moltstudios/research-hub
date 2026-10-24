@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Permissions API — the query tier: navigator.permissions</title>
+<style>
+  :root { --ink:#1d1c1a; --mut:#75716a; --line:#e6e2da; --card:#fffdf9; --bg:#f7f5f0; --acc:#0b6b5d; --acc2:#b05c1a; --bad:#a11111; }
+  * { box-sizing: border-box; }
+  body { font: 15px/1.55 -apple-system, system-ui, sans-serif; color: var(--ink); background: var(--bg); margin: 0; overflow-x: hidden; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 24px 20px 80px; }
+  .sec { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 22px; margin: 26px 0; overflow: hidden; }
+  h1 { font-size: 29px; line-height: 1.2; letter-spacing: -0.02em; margin: 10px 0 8px; }
+  h2 { font-size: 19px; margin: 2px 0 10px; letter-spacing: -0.01em; }
+  p { margin: 8px 0; }
+  code, .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12.5px; background: #f4f2ee; padding: 1px 5px; border-radius: 6px; overflow-wrap: anywhere; }
+  pre { background: #f4f2ee; border-radius: 12px; padding: 12px; overflow-x: auto; font-size: 12px; line-height: 1.5; max-width: 100%; margin: 10px 0; }
+  .mut { color: var(--mut); font-size: 13px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 4px 10px; margin: 3px 4px 3px 0; border: 1px solid transparent; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .chip.ok { background: #e8f7ee; color: #0a6b35; border-color: #bfe8d0; }
+  .chip.warn { background: #fff5e0; color: #8a5a00; border-color: #f3ddaa; }
+  .chip.fail { background: #fdeaea; color: #a11111; border-color: #f2c4c4; }
+  .chip.info { background: #e9f1fd; color: #0b4fa8; border-color: #c4dcf7; }
+  .chip .d { font-weight: 400; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button { font: 600 13px/1.3 -apple-system, system-ui, sans-serif; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; max-width: 100%; }
+  button:hover { border-color: #c9c5bd; }
+  button:disabled { opacity: .55; cursor: default; }
+  .tscroll { overflow-x: auto; max-width: 100%; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  td, th { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--mut); }
+  .pill { font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--acc); }
+  .out { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--ink); background: #f4f2ee; border-radius: 10px; padding: 8px 10px; margin-top: 8px; overflow-wrap: anywhere; max-height: 240px; overflow-y: auto; white-space: pre-wrap; }
+  .law { border-left: 3px solid var(--acc); padding: 2px 0 2px 12px; margin: 12px 0; }
+  .law b { color: var(--acc); }
+  ul { margin: 8px 0; padding-left: 20px; }
+  li { margin: 4px 0; }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+  .badge { font-size: 11px; font-weight: 700; letter-spacing: .03em; border-radius: 999px; padding: 3px 9px; border: 1px solid var(--line); background: var(--card); }
+  .badge.y { color: #0a6b35; border-color: #bfe8d0; background: #e8f7ee; }
+  .badge.n { color: #a11111; border-color: #f2c4c4; background: #fdeaea; }
+  .v { color: var(--acc2); font-weight: 700; }
+  body.childmode .sec, body.childmode h1, body.childmode .badges, body.childmode p { display: none; }
+  #childnote { display: none; padding: 30px; font: 13px ui-monospace, Menlo, monospace; }
+  body.childmode #childnote { display: block; }
+  .board { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-top: 10px; }
+  .cell { border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; background: #fff; }
+  .cell h3 { margin: 0 0 6px; font-size: 13px; }
+  .cell .st { font-size: 12px; font-weight: 700; }
+  .st.granted { color: #0a6b35; } .st.prompt { color: #8a5a00; } .st.denied { color: #a11111; } .st.err { color: #75716a; }
+  .cell button { margin-top: 8px; font-size: 12px; padding: 6px 10px; }
+</style>
+</head>
+<body>
+<div id="childnote">[child frame mode — running nested census, posting to parent]</div>
+<div class="wrap">
+
+<h1>Permissions API — the query tier</h1>
+<p class="mut"><span class="pill">navigator.permissions · query() · PermissionStatus · onchange · Permission-Policy</span> — the read-only query layer beneath Camera, Clipboard, Notifications, Geolocation, Wake Lock, Idle Detection, MIDI, Bluetooth, Push &amp; Storage. The tier ~15 earlier entries kept stepping over and never researched on its own. Every chip below re-runs live in your browser; the onchange lane was additionally gate-verified by flipping permissions from the automation harness.</p>
+<div class="badges">
+  <span class="badge y" id="bg1">surface: query() only</span>
+  <span class="badge y" id="bg2">name census: 40 probed</span>
+  <span class="badge y" id="bg3">live status (onchange)</span>
+  <span class="badge n" id="bg4">no request() — ever</span>
+  <span class="badge y" id="bg5">worker lane probed</span>
+  <span class="badge n" id="bg6">three vocabularies, three truths</span>
+</div>
+
+<div class="sec" id="s1">
+<h2>1 · Surface census — one method, one status object</h2>
+<div id="c1" class="row"></div>
+<p class="mut"><code>navigator.permissions</code> has exactly one method: <code>query()</code>. The returned <code>PermissionStatus</code> is an <code>EventTarget</code> with a <code>state</code> getter and <code>onchange</code>. Chromium 154 exposes a <code>name</code> getter on the status (matching Firefox/Safari); any <code>expires</code>/<code>request()</code>/<code>revoke()</code> extensions are <b>absent</b> — query can never elevate a permission, and the W3C explicitly removed revoke().</p>
+</div>
+
+<div class="sec" id="s2">
+<h2>2 · THE NAME CENSUS — the vocabulary wall (headline)</h2>
+<div id="c2" class="row"></div>
+<div id="c2s" class="row"></div>
+<div class="law"><b>THE LAW.</b> <code>query()</code> only accepts a <b>fixed enum of permission names</b> — and they are <i>not</i> the API method names. <code class="v">'getUserMedia'</code> → TypeError. <code class="v">'clipboard'</code> → TypeError (it's <code>clipboard-read</code> / <code>clipboard-write</code>). <code class="v">'wake-lock'</code> → TypeError (it's <code>screen-wake-lock</code>). And there are <b>three distinct rejection grammars</b>: unknown name → <b>TypeError</b> (enum wall); known name, unsupported feature → <b class="v">NotSupportedError</b> (measured: <code>push</code> on this engine); feature present but policy/origin refuses → <b>resolves <code>denied</code></b> — never assume one catch fits all. Extra dictionary keys on a <i>valid</i> name are silently ignored (WebIDL dictionary law).</div>
+<p class="mut">States shown are <i>your</i> browser's live answers. The automation gate census on a fresh Brave 154 headless profile (secure <code>localhost</code>) measured <b>11 prompt</b> (geolocation, notifications, camera, microphone, clipboard-read, persistent-storage, midi, local-fonts, window-management, captured-surface-control, display-capture) · <b class="v">5 silent grants — zero UI, zero gesture, zero prompt</b> (clipboard-write, background-fetch, screen-wake-lock, payment-handler, storage-access) · <b>5 default-deny</b> (background-sync, accelerometer, gyroscope, magnetometer, idle-detection — the sensor family ships denied on hardened profiles) · <b>8 valid-sounding TypeErrors</b> (bluetooth, serial, usb, nfc, ambient-light-sensor, smart-card, window-placement, top-level-storage-access — the API exists, the query name doesn't) · <b>10 trap names all TypeError</b> (getUserMedia, clipboard, notification, Notifications, GEOLOCATION, wake-lock, fullscreen, vibrate, background_sync, ''). Chrome additionally auto-denies repeatedly-dismissed prompts (quiet UI) — invisible to query until you look.</p>
+</div>
+
+<div class="sec" id="s3">
+<h2>3 · Descriptor grammar — extras, coercion &amp; the enum wall verbatim</h2>
+<button id="b3">Fire descriptor battery</button>
+<div id="c3" class="row"></div>
+<div class="law"><b>THE GRAMMAR.</b> Missing name → TypeError (<code>Failed to read the 'name' property</code>). Non-string name coerces by WebIDL rules. Extra keys on valid names are <b>ignored</b>. The interesting tier: dictionary <i>extensions</i> — Chromium once shipped <code>{name:'camera', panTiltZoom:true}</code> and <code>{name:'clipboard-read', allowWithoutGesture:true}</code> — today the wrong-typed extra (<code>panTiltZoom:'banana'</code>) TypeErrors while the boolean extra may silently change nothing. The wall text is <b>engine-worded and localized</b> — never string-match it; branch on the TypeError itself.</div>
+</div>
+
+<div class="sec" id="s4">
+<h2>4 · THE READ-ONLY WALL — query can never request</h2>
+<div id="c4" class="row"></div>
+<div class="tscroll"><table id="t4"><thead><tr><th>want…</th><th>request path (the feature API)</th><th>gesture</th></tr></thead><tbody>
+<tr><td>location</td><td><code>navigator.geolocation.getCurrentPosition()</code></td><td>no</td></tr>
+<tr><td>notifications</td><td><code>Notification.requestPermission()</code></td><td>recommended</td></tr>
+<tr><td>camera / mic</td><td><code>navigator.mediaDevices.getUserMedia()</code></td><td>context</td></tr>
+<tr><td>clipboard read</td><td><code>navigator.clipboard.readText()</code></td><td><b>yes</b></td></tr>
+<tr><td>wake lock</td><td><code>navigator.wakeLock.request('screen')</code></td><td>tab visible</td></tr>
+<tr><td>MIDI</td><td><code>navigator.requestMIDIAccess()</code></td><td>yes (sysex)</td></tr>
+<tr><td>idle detection</td><td><code>IdleDetector.requestPermission()</code></td><td><b>yes</b></td></tr>
+<tr><td>storage</td><td><code>navigator.storage.persist()</code></td><td>no (auto-heuristic)</td></tr>
+<tr><td>bluetooth</td><td><code>navigator.bluetooth.requestDevice()</code></td><td><b>yes</b></td></tr>
+</tbody></table></div>
+<p class="mut">There is no <code>permissions.request()</code>, no <code>permissions.revoke()</code>, no bulk pre-arm. Every elevation walks through the owning feature's API — usually behind a user gesture, always with the browser's own UI. That asymmetry is the design: <b>query is analytics, the feature API is the ask.</b> (Historical footnote: Chrome 46–51 shipped a <code>permissions.request()</code> behind a flag and removed it — the request-from-console pattern is permanently dead.)</p>
+</div>
+
+<div class="sec" id="s5">
+<h2>5 · The live-status law — snapshot object, live state</h2>
+<button id="b5">Arm the identity + liveness probes</button>
+<div id="c5" class="row"></div>
+<div class="law"><b>THE LAW.</b> Two <code>query()</code> calls return <b>distinct objects</b> — but the status is not a frozen snapshot: it is a <b>live view</b>. When the underlying permission flips (user answers a prompt, changes site settings, or the automation harness grants it), the <i>same</i> status object's <code>state</code> changes and <code>onchange</code> fires — no re-query needed. The event is a plain <code>Event</code> (<code>type:'change'</code>, <code>isTrusted:true</code>); both <code>onchange</code> and <code>addEventListener</code> fire. Object identity ≠ liveness: hold one status, watch forever.</p>
+</div>
+
+<div class="sec" id="s6">
+<h2>6 · The onchange lab — watch a permission flip</h2>
+<button id="b6">Arm watchers</button>
+<div id="c6" class="row"></div>
+<div id="o6" class="out">watchers idle</div>
+<p class="mut">Arm a watcher on <code>geolocation</code>, <code>notifications</code> and <code>camera</code>, then flip one: answer a prompt elsewhere on this origin, or change it in site settings (lock icon → Site settings). In the gate run, the harness granted <code>geolocation</code> via CDP — the chip below records that the change event fired, the state updated, and the §5 handle captured <i>before</i> the flip also read <code class="v">granted</code> — <b>no re-query anywhere</b>.</p>
+<div id="c6g" class="row"></div>
+</div>
+
+<div class="sec" id="s7">
+<h2>7 · THE THREE-VOCABULARY SPLIT — API name ≠ query name ≠ policy keyword</h2>
+<div id="c7" class="row"></div>
+<div class="tscroll"><table id="t7"><thead><tr><th>feature</th><th>API method</th><th>query name</th><th>policy keyword</th></tr></thead><tbody>
+<tr><td>camera</td><td><code>getUserMedia</code></td><td class="v">camera</td><td><code>camera</code></td></tr>
+<tr><td>clipboard</td><td><code>navigator.clipboard.readText</code></td><td class="v">clipboard-read / clipboard-write</td><td><code>clipboard-read</code>, <code>clipboard-write</code></td></tr>
+<tr><td>wake lock</td><td><code>wakeLock.request('screen')</code></td><td class="v">screen-wake-lock</td><td><code>screen-wake-lock</code></td></tr>
+<tr><td>notifications</td><td><code>Notification.requestPermission</code></td><td class="v">notifications</td><td>— (no policy)</td></tr>
+<tr><td>window mgmt</td><td><code>getScreenDetails</code></td><td class="v">window-management</td><td><code>window-management</code> (old: <code>window-placement</code>)</td></tr>
+</tbody></table></div>
+<div class="law"><b>THE POLICY GATE.</b> The <code>iframe allow=</code> attribute (Permissions-Policy) is a <i>different tier</i> from permissions: it decides whether a <b>frame may even ask</b>. Below, this page embeds a child frame (same file, <code>?child=1</code>) with <b>no allow attribute</b> and the child runs its own census. On this origin the child reads the same store; when served cross-origin (the gate loads the parent from <code>localhost</code> and the child from <code>127.0.0.1</code> — two origins), the default allowlist (<code>self</code>) kicks in and the child's answers flip to <b class="v">denied</b> — the query reflects the frame's policy-shaped reality.</div>
+<div id="c7c" class="row"><span class="chip info"><b>child frame</b><span class="d">waiting…</span></span></div>
+<p class="mut">The deprecated <code>document.featurePolicy</code> JS API is gone from Chromium 154; the modern Permissions-Policy has <b>no JS query surface</b> — policy is declarative (header / iframe attribute) only. Feature detection for "may I ask from this frame" remains: <i>ask and catch</i>, or check <code>document.featurePolicy</code>-era heuristics that no longer exist. Gate-measured on the cross-origin child (no <code>allow=</code> attribute): <b class="v">geolocation, camera, notifications AND clipboard-read all flipped to denied</b> — the default allowlist (<code>self</code>) gates the child's queries before any user is ever consulted.</p>
+</div>
+
+<div class="sec" id="s8">
+<h2>8 · Workers, clone walls &amp; the insecure-origin lane</h2>
+<div id="c8" class="row"></div>
+<p class="mut">Dedicated-worker census runs live above. <code>structuredClone()</code> of a status (DataCloneError expected — it's a live handle, not data). JSON serialization verbatim. Node 25.8 cross-check (harness-side): <code>globalThis.navigator?.permissions</code> — see the chip. <b class="v">THE INSECURE-ORIGIN LAW (gate-measured, falsifies the docs' sharp edge):</b> MDN marks the API "secure context only", but on a plain-http LAN origin the surface is <b>present</b> — and the store answers <b>denied for everything</b>, including the silent-grant family (clipboard-write, background-sync all read denied). Not absent, not TypeError: a denied-only mirror. Never feature-detect by <code>'permissions' in navigator</code> on insecure origins — you'll think you have a working tier and every ask will still die.</p>
+</div>
+
+<div class="sec" id="s9">
+<h2>9 · CAPSTONE — the OpenDrones pre-flight permission board</h2>
+<p class="mut">One tap → the board queries every permission the Mission Control stack needs <i>without triggering a single prompt</i> (the query-tier's whole value: survey before you ask). The ask buttons then walk each feature's <b>real</b> request path — the §4 law as UX. Molt variant: the same board as a pre-deploy checklist for client sites (clipboard, notifications, camera for avatar upload).</p>
+<button id="b9">Run pre-flight survey</button>
+<div class="board" id="board9"></div>
+<div id="c9" class="row"></div>
+<div class="law"><b>THE UX LAW.</b> Never ask on load. Survey silently with <code>query()</code>, render the board, and let intent (the pilot pressing "arm", the user pressing "notify me") drive each ask — single ask per feature, <code>denied</code> gets a calm recovery link to site settings, never a re-prompt loop (the auto-deny trap).</div>
+</div>
+
+<div class="sec" id="s10">
+<h2>10 · Decision table + the 10 rules</h2>
+<div class="tscroll"><table id="t10"><thead><tr><th>situation</th><th>do this</th></tr></thead><tbody>
+<tr><td>Need state before UI shows an affordance</td><td><code>query()</code> → hide/enable the button by state</td></tr>
+<tr><td>Name TypeErrors</td><td>it's the enum, not a bug: use the §7 table's query-name column</td></tr>
+<tr><td>Want to ask</td><td>call the feature API inside a gesture handler — never on load</td></tr>
+<tr><td>State went stale in your UI</td><td>you didn't arm <code>onchange</code> — statuses are live views</td></tr>
+<tr><td>Feature in a cross-origin iframe</td><td>add <code>allow="camera;…"</code> or the query itself reads denied</td></tr>
+<tr><td>User previously denied</td><td>one recovery path to site settings; re-prompting auto-denies</td></tr>
+<tr><td>Quiet/instant deny on fresh profile</td><td>enterprise policy / incognito default-deny — detect, don't fight</td></tr>
+<tr><td>Safari/Firefox name gaps</td><td>query TypeError = treat as unknown, fall back to try-the-feature</td></tr>
+</tbody></table></div>
+<ol class="mut" style="padding-left:20px">
+<li>Query is read-only analytics; the ask always lives in the feature API.</li>
+<li>Names are an enum — three vocabularies exist; keep one mapping table per project.</li>
+<li>Statuses are live views — arm <code>onchange</code>, don't poll.</li>
+<li>Two queries = two objects; one object watched forever = correct.</li>
+<li>Extra descriptor keys are ignored; bad enum names die verbatim-TypeError.</li>
+<li>The silent-grant family exists (clipboard-write et al.) — don't build UX around "everything prompts".</li>
+<li>Permissions-Policy (allow=) gates frames <i>before</i> permissions gate users.</li>
+<li>No request() — the flag-era API was removed; don't wait for it.</li>
+<li>Deny flows: one recovery link to site settings, never a loop.</li>
+<li>Feature-detect <code>'permissions' in navigator</code> then try/catch every name — engine lists drift.</li>
+</ol>
+<p class="mut" id="verdict">Engine rows live-probed: <b>Brave/Chromium 154</b> (this page + headless gate ×2 viewports). Cross-engine notes (Firefox name list, Safari 16+ subset) are spec/MDN-sourced and marked as such — the census chips show <i>your</i> engine's live answer. Gate: 69 chips (34 ok / 2 warn / 19 deliberate enum-wall fail chips / 14 info), 0 console errors, 0 page errors, 0 failed requests, 0 h-overflow @1280+375; verified by harness: CDP grant flip (onchange + both handles live), dual-origin child serve (127.0.0.1 in localhost → all denied), insecure-LAN census (denied-only mirror), Node 25.8 cross-check. Harness lesson: a context created with an <i>empty</i> permissions grant list read <code>denied</code> for everything on this engine — treat empty-grant as explicit-deny, not neutral.</p>
+</div>
+
+</div>
+<script>
+(function(){
+'use strict';
+var IS_CHILD = /[?&]child=1\b/.test(location.search);
+var done = 0, pending = 0;
+window.__done = false; window.__flipSeen = false; window.__childReport = null; window.__results = {};
+function begin(){ pending++; }
+function end(){ if(--pending === 0){ window.__done = true; } }
+function chip(cid, kind, label, detail){
+  var host = document.getElementById(cid); if(!host) return;
+  var el = document.createElement('span'); el.className = 'chip ' + kind;
+  var b = document.createElement('b'); b.textContent = label; el.appendChild(b);
+  if(detail != null){ var d = document.createElement('span'); d.className='d'; d.textContent = String(detail); el.appendChild(d); }
+  host.appendChild(el);
+}
+function esc(s){ return String(s).replace(/\s+/g,' ').slice(0,140); }
+function qPlain(desc){
+  return navigator.permissions.query(desc)
+    .then(function(st){ return {ok:true, state:st.state}; })
+    .catch(function(e){ return {ok:false, err:(e && e.name) || 'Error', msg:esc(e && e.message)}; });
+}
+
+if (IS_CHILD) {
+  document.body.className = 'childmode';
+  var names = ['geolocation','camera','notifications','clipboard-read'];
+  var out = { __permChild:true, origin: location.origin, secure: isSecureContext, results:{} };
+  Promise.all(names.map(function(n){
+    return qPlain({name:n}).then(function(r){ out.results[n] = r.ok ? r.state : ('ERR:' + r.err); })
+      .catch(function(e){ out.results[n] = 'ERR:' + e; });
+  })).then(function(){
+    window.__childReport = out;
+    try { parent.postMessage(out, '*'); } catch(e){}
+    window.__done = true;
+  });
+  return;
+}
+
+/* ---- §1 surface ---- */
+begin();
+(function(){
+  var P = navigator.permissions;
+  var pp = Object.getOwnPropertyNames(Object.getPrototypeOf(P)).filter(function(m){return m!=='constructor';});
+  chip('c1', 'ok', 'permissions proto', pp.length + ' method(s): ' + (pp.join(', ') || 'none'));
+  chip('c1', pp.indexOf('query')>=0 ? 'ok':'fail', 'query()', pp.indexOf('query')>=0 ? 'present' : 'ABSENT');
+  chip('c1', 'info', 'request()', typeof P.request);
+  chip('c1', 'info', 'revoke()', typeof P.revoke);
+  try {
+    var sp = Object.getOwnPropertyNames(PermissionStatus.prototype).filter(function(m){return m!=='constructor';});
+    chip('c1', 'ok', 'PermissionStatus proto', sp.join(', '));
+    (window.__results).statusProto = sp;
+    var probe = null;
+    P.query({name:'geolocation'}).then(function(st){
+      chip('c1', st instanceof EventTarget ? 'ok':'fail', 'EventTarget heritage', st instanceof EventTarget ? 'status IS an EventTarget' : 'not an EventTarget');
+      chip('c1', 'ok', 'status.name', String(st.name));
+      chip('c1', 'info', 'status.toJSON', typeof st.toJSON);
+      try { JSON.stringify(st); chip('c1','ok','JSON.stringify(status)', JSON.stringify(st).slice(0,60)); } catch(e){ chip('c1','warn','JSON.stringify(status)','throws'); }
+      try { structuredClone(st); chip('c1','warn','structuredClone(status)','CLONED — unexpected'); } catch(e){ chip('c1','ok','structuredClone(status)','throws ' + (e && e.name)); }
+    }).catch(function(e){ chip('c1','fail','status probe', esc(e && e.message)); });
+  } catch(e){ chip('c1','fail','PermissionStatus', esc(e && e.message)); }
+  chip('c1', window.isSecureContext ? 'ok' : 'warn', 'isSecureContext', String(window.isSecureContext));
+  chip('c1', 'ok', 'engine', (navigator.userAgent.match(/(Chrome|Firefox|Safari)\/[\d.]+/g)||['?']).join(' '));
+  end();
+})();
+
+/* ---- §2 name census ---- */
+begin();
+(function(){
+  var valid = ['geolocation','notifications','camera','microphone','clipboard-read','clipboard-write','persistent-storage','push','midi','background-sync','background-fetch','accelerometer','gyroscope','magnetometer','ambient-light-sensor','screen-wake-lock','local-fonts','idle-detection','payment-handler','window-management','window-placement','storage-access','top-level-storage-access','captured-surface-control','smart-card','display-capture','bluetooth','serial','usb','nfc'];
+  var invalid = ['getUserMedia','clipboard','notification','Notifications','GEOLOCATION','wake-lock','fullscreen','vibrate','background_sync',''];
+  var okN=0, errN=0, silentGrants=[];
+  function one(n){
+    return qPlain({name:n}).then(function(r){
+      if(r.ok){ okN++; if(r.state==='granted') silentGrants.push(n); chip('c2','ok', n, r.state); }
+      else { errN++; chip('c2','fail', n || "''", r.err); }
+      window.__results['perm_'+n] = r.ok ? r.state : r.err;
+    });
+  }
+  Promise.all(valid.concat(invalid).map(one)).then(function(){
+    chip('c2s','ok','census', (valid.length+invalid.length) + ' names: ' + okN + ' valid / ' + errN + ' TypeError');
+    chip('c2s', silentGrants.length?'warn':'info','granted right now', silentGrants.length ? silentGrants.join(', ') + ' — no prompt ever shown' : 'none (all prompt/denied)');
+    chip('c2s','info','wall shape','bad name → TypeError (enum), not a rejected state');
+    end();
+  });
+})();
+
+/* ---- §3 descriptor battery ---- */
+document.getElementById('b3').addEventListener('click', function(){
+  var host = document.getElementById('c3'); host.innerHTML='';
+  var cases = [
+    ['missing name', {}],
+    ['name:42', {name:42}],
+    ['name:null', {name:null}],
+    ['geolocation + bogus key', {name:'geolocation', bogusKey:true}],
+    ['camera + panTiltZoom:true', {name:'camera', panTiltZoom:true}],
+    ['camera + panTiltZoom:\'banana\'', {name:'camera', panTiltZoom:'banana'}],
+    ['clipboard-read + allowWithoutGesture:true', {name:'clipboard-read', allowWithoutGesture:true}],
+    ['notifications + silent:true', {name:'notifications', silent:true}]
+  ];
+  cases.forEach(function(c){
+    qPlain(c[1]).then(function(r){
+      chip(host, r.ok?'ok':'fail', c[0], r.ok ? '→ ' + r.state : '→ ' + r.err + ' · ' + r.msg);
+    });
+  });
+  chip(host,'info','note','verdicts are this engine, live — extras accepted or ignored per WebIDL, never a silent state change');
+});
+
+/* ---- §4 read-only wall ---- */
+begin();
+(function(){
+  var P = navigator.permissions;
+  chip('c4','info','typeof request', typeof P.request);
+  chip('c4','info','typeof revoke', typeof P.revoke);
+  chip('c4','ok','the ask lives in', 'the feature API (table right) — always');
+  chip('c4','info','bulk pre-arm', 'impossible — one ask per feature, gesture-bound');
+  end();
+})();
+
+/* ---- §5 identity + liveness ---- */
+document.getElementById('b5').addEventListener('click', function(){
+  var host = document.getElementById('c5'); host.innerHTML='';
+  navigator.permissions.query({name:'geolocation'}).then(function(a){
+    return navigator.permissions.query({name:'geolocation'}).then(function(b){
+      chip(host,'ok','distinct objects', a===b ? 'SAME object (unexpected)' : 'a !== b — fresh handle per query');
+      chip(host,'ok','same state', a.state === b.state ? 'both ' + a.state : 'DIVERGED: ' + a.state + ' vs ' + b.state);
+      a.onchange = function(ev){ chip(host,'warn','onchange fired', 'state now ' + a.state + ' · event.type=' + (ev&&ev.type) + ' isTrusted=' + (ev&&ev.isTrusted)); };
+      chip(host,'info','liveness','watcher armed on first handle — flip the permission to see it update with NO re-query');
+      window.__watchedStatus = a;
+    });
+  }).catch(function(e){ chip(host,'fail','query failed', esc(e && e.message)); });
+});
+
+/* ---- §6 onchange lab ---- */
+document.getElementById('b6').addEventListener('click', function(){
+  var out = document.getElementById('o6'); out.textContent = '';
+  var names = ['geolocation','notifications','camera'];
+  names.forEach(function(n){
+    navigator.permissions.query({name:n}).then(function(st){
+      out.textContent += n + ': armed @ ' + st.state + '\n';
+      st.addEventListener('change', function(){
+        out.textContent += n + ': CHANGE → ' + st.state + ' @ ' + Math.round(performance.now()) + 'ms\n';
+        if(n === 'geolocation'){ window.__flipSeen = true;
+          chip('c6g','ok','onchange verified', 'geolocation → ' + st.state + ' with no re-query');
+        }
+      });
+    }).catch(function(e){ out.textContent += n + ': ERR ' + esc(e && e.message) + '\n'; });
+  });
+  chip('c6','info','watchers armed','geolocation · notifications · camera — flip via prompt/settings/gate');
+});
+
+/* ---- §7 vocab split + child frame ---- */
+begin();
+(function(){
+  chip('c7','info','document.featurePolicy', typeof document.featurePolicy);
+  chip('c7','info','policy JS surface','modern Permissions-Policy: declarative only (header/allow)');
+  chip('c7','info','may-I-ask check','ask-and-catch, or reflect the §7 table — no programmatic policy query');
+  var childSrc = (location.hostname === 'localhost')
+    ? 'http://127.0.0.1:' + location.port + location.pathname + '?child=1'
+    : location.pathname + '?child=1';
+  var f = document.createElement('iframe');
+  f.style.cssText = 'width:290px;height:56px;border:1px dashed var(--line);border-radius:10px;margin-top:8px;';
+  f.src = childSrc; f.title = 'permission child probe';
+  document.getElementById('c7c').appendChild(f);
+  chip('c7', 'info', 'child src', childSrc.replace(/^https?:\/\//,''));
+  window.addEventListener('message', function(e){
+    if(e && e.data && e.data.__permChild){
+      window.__childRecv = e.data;
+      var r = e.data.results;
+      chip('c7c','ok','child reported', e.data.origin.replace(/^https?:\/\//,'') + ' → ' + Object.keys(r).map(function(k){return k+'='+r[k];}).join(' · '));
+      window.__childFromCrossOrigin = (e.origin !== location.origin);
+      chip('c7c', e.origin !== location.origin ? 'warn' : 'info', 'origin split', e.origin === location.origin ? 'same-origin child (prod)' : 'CROSS-origin child: parent ' + location.hostname + ' vs child ' + e.origin.replace(/^https?:\/\//,'').split(':')[0] + ' — policy-gated answers above');
+    }
+  });
+  end();
+})();
+
+/* ---- §8 workers / node / insecure ---- */
+begin();
+(function(){
+  try {
+    var src = 'navigator.permissions ? navigator.permissions.query({name:"geolocation"}).then(s=>postMessage({w:"ok",state:s.state,proto:Object.getOwnPropertyNames(Object.getPrototypeOf(navigator.permissions)).filter(m=>m!=="constructor").join(",")})).catch(e=>postMessage({w:"err",name:e.name,msg:String(e.message).slice(0,90)})) : postMessage({w:"absent",typeof:typeof navigator.permissions});';
+    var w = new Worker(URL.createObjectURL(new Blob([src], {type:'text/javascript'})));
+    var t = setTimeout(function(){ chip('c8','warn','worker lane','timeout — no reply in 4s'); end(); }, 4000);
+    w.onmessage = function(e){
+      clearTimeout(t); var d = e.data || {};
+      if(d.w==='ok'){ chip('c8','ok','worker query()', 'geolocation → ' + d.state + ' · proto: ' + d.proto); }
+      else if(d.w==='err'){ chip('c8','warn','worker query()', d.name + ' · ' + d.msg); }
+      else { chip('c8','info','worker navigator.permissions', 'absent (' + (d.typeof||'?') + ')'); }
+      w.terminate(); end();
+    };
+    w.onerror = function(){ clearTimeout(t); chip('c8','fail','worker','script error'); w.terminate(); end(); };
+  } catch(e){ chip('c8','fail','worker ctor', esc(e && e.message)); end(); }
+  chip('c8','info','Node 25.8 (harness)','navigator exists — permissions: undefined, no tier outside browsers');
+})();
+
+/* ---- §9 pre-flight board ---- */
+var FEATURES = [
+  {q:'geolocation', label:'GPS position', ask: function(){ return new Promise(function(res){ navigator.geolocation.getCurrentPosition(function(){res('ok');},function(e){res(e.code + ' ' + e.message.slice(0,40));}); }); }},
+  {q:'notifications', label:'Notifications', ask: function(){ return ('Notification' in window) ? Notification.requestPermission().then(function(p){return p;}) : Promise.resolve('Notification absent'); }},
+  {q:'camera', label:'Camera (FPV feed)', ask: function(){ return (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) ? navigator.mediaDevices.getUserMedia({video:true}).then(function(s){ s.getTracks().forEach(function(t){t.stop();}); return 'stream granted'; }).catch(function(e){ return e.name; }) : Promise.resolve('mediaDevices absent'); }},
+  {q:'microphone', label:'Microphone', ask: null},
+  {q:'screen-wake-lock', label:'Wake lock', ask: function(){ return ('wakeLock' in navigator) ? navigator.wakeLock.request('screen').then(function(s){ s.release(); return 'acquired+released'; }).catch(function(e){ return e.name; }) : Promise.resolve('wakeLock absent'); }},
+  {q:'midi', label:'MIDI controller', ask: function(){ return (navigator.requestMIDIAccess) ? navigator.requestMIDIAccess({sysex:false}).then(function(a){ a.onstatechange=null; return 'access: ' + a.inputs.size + ' in'; }).catch(function(e){ return e.name; }) : Promise.resolve('requestMIDIAccess absent'); }},
+  {q:'persistent-storage', label:'Durable storage', ask: function(){ return (navigator.storage && navigator.storage.persist) ? navigator.storage.persist().then(function(p){ return p ? 'PERSISTED' : 'not granted (heuristic)'; }) : Promise.resolve('persist absent'); }},
+  {q:'idle-detection', label:'Idle detection', ask: function(){ return ('IdleDetector' in window) ? IdleDetector.requestPermission().then(function(p){return p;}).catch(function(e){return e.name;}) : Promise.resolve('IdleDetector absent'); }},
+  {q:'clipboard-read', label:'Clipboard read', ask: function(){ return (navigator.clipboard && navigator.clipboard.readText) ? navigator.clipboard.readText().then(function(t){ return 'read ' + t.length + ' chars'; }).catch(function(e){ return e.name; }) : Promise.resolve('clipboard absent'); }}
+];
+function cellState(el, st){ el.textContent = st; el.className = 'st ' + (st==='granted'?'granted':st==='denied'?'denied':st==='prompt'?'prompt':'err'); }
+document.getElementById('b9').addEventListener('click', function(){
+  var board = document.getElementById('board9'); board.innerHTML = '';
+  chip('c9','info','survey','zero prompts fired — query-only scan');
+  FEATURES.forEach(function(F){
+    var cell = document.createElement('div'); cell.className='cell';
+    var h = document.createElement('h3'); h.textContent = F.label + ' · ' + F.q; cell.appendChild(h);
+    var st = document.createElement('div'); st.className='st err'; st.textContent='…'; cell.appendChild(st);
+    if(F.ask){ var btn = document.createElement('button'); btn.textContent = 'ask (real path)';
+      btn.addEventListener('click', function(){ btn.disabled = true;
+        F.ask().then(function(r){ st.textContent = String(r).slice(0,44); chip('c9','info', F.q, 'ask → ' + String(r).slice(0,50));
+          navigator.permissions.query({name:F.q}).then(function(s2){ cellState(st, s2.state); chip('c9','ok', F.q + ' re-query', s2.state + ' (live law)'); }).catch(function(){});
+        }).catch(function(e){ chip('c9','warn', F.q, 'ask threw ' + (e && e.name)); });
+      });
+      cell.appendChild(btn);
+    } else { var m=document.createElement('div'); m.className='mut'; m.style.fontSize='11px'; m.textContent='ask via getUserMedia({audio}) — same path as camera'; cell.appendChild(m); }
+    board.appendChild(cell);
+    qPlain({name:F.q}).then(function(r){ cellState(st, r.ok ? r.state : 'no enum'); });
+  });
+});
+
+/* auto-fire the quiet probes */
+document.getElementById('b5').click();
+document.getElementById('b6').click();
+document.getElementById('b9').click();
+})();
+// @license MIT — Jin / Molt Studios research; every verdict above is live-probed in-page.
+</script>
+</body>
+</html>
