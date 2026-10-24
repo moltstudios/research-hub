@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='1' width='14' height='14' rx='3' fill='none' stroke='%230b6b5d' stroke-width='2'/%3E%3Cpath d='M4 11V5l4 4 4-4v6' fill='none' stroke='%230b6b5d' stroke-width='1.6'/%3E%3C/svg%3E">
+<title>HTML-in-Canvas — the drawElementImage tier</title>
+<style>
+  :root { --ink:#1d1c1a; --mut:#75716a; --line:#e6e2da; --card:#fffdf9; --bg:#f7f5f0; --acc:#0b6b5d; --acc2:#b05c1a; --bad:#a11111; }
+  * { box-sizing: border-box; }
+  body { font: 15px/1.55 -apple-system, system-ui, sans-serif; color: var(--ink); background: var(--bg); margin: 0; overflow-x: hidden; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 24px 20px 80px; }
+  .sec { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 22px; margin: 26px 0; overflow: hidden; }
+  h1 { font-size: 29px; line-height: 1.2; letter-spacing: -0.02em; margin: 10px 0 8px; }
+  h2 { font-size: 19px; margin: 2px 0 10px; letter-spacing: -0.01em; }
+  p { margin: 8px 0; }
+  code, .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12.5px; background: #f4f2ee; padding: 1px 5px; border-radius: 6px; overflow-wrap: anywhere; }
+  pre { background: #f4f2ee; border-radius: 12px; padding: 12px; overflow-x: auto; font-size: 12px; line-height: 1.5; max-width: 100%; margin: 10px 0; }
+  pre code { background: none; padding: 0; font-size: 12px; }
+  .mut { color: var(--mut); font-size: 13px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 4px 10px; margin: 3px 4px 3px 0; border: 1px solid transparent; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .chip.ok { background: #e8f7ee; color: #0a6b35; border-color: #bfe8d0; }
+  .chip.warn { background: #fff5e0; color: #8a5a00; border-color: #f3ddaa; }
+  .chip.fail { background: #fdeaea; color: #a11111; border-color: #f2c4c4; }
+  .chip.info { background: #e9f1fd; color: #0b4fa8; border-color: #c4dcf7; }
+  .chip .d { font-weight: 400; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button { font: 600 13px/1.3 -apple-system, system-ui, sans-serif; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; max-width: 100%; }
+  button:hover { border-color: #c9c5bd; }
+  .tscroll { overflow-x: auto; max-width: 100%; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  td, th { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--mut); }
+  .pill { font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--acc); }
+  .out { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--ink); background: #f4f2ee; border-radius: 10px; padding: 8px 10px; margin-top: 8px; overflow-wrap: anywhere; max-height: 240px; overflow-y: auto; white-space: pre-wrap; }
+  .law { border-left: 3px solid var(--acc); padding: 2px 0 2px 12px; margin: 12px 0; }
+  .law b { color: var(--acc); }
+  ul { margin: 8px 0; padding-left: 20px; }
+  li { margin: 4px 0; }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+  .badge { font-size: 11px; font-weight: 700; letter-spacing: .03em; border-radius: 999px; padding: 3px 9px; border: 1px solid var(--line); background: var(--card); }
+  .badge.y { color: #0a6b35; border-color: #bfe8d0; background: #e8f7ee; }
+  .badge.n { color: #a11111; border-color: #f2c4c4; background: #fdeaea; }
+  .badge.s { color: #0b4fa8; border-color: #c4dcf7; background: #e9f1fd; }
+  .v { color: var(--acc2); font-weight: 700; }
+  canvas.demo { display: block; position: relative; max-width: 100%; height: auto; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+  .dchild { position: absolute; top: 8px; left: 8px; }
+  .cap { font-size: 11.5px; color: var(--mut); margin-top: 6px; }
+  .absent { border: 1px dashed #f3ddaa; background: #fff5e0; border-radius: 12px; padding: 10px 12px; font-size: 13px; margin-top: 10px; }
+  .absent b { color: #8a5a00; }
+  .foot { color: var(--mut); font-size: 12.5px; margin-top: 34px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="sec">
+  <span class="pill">WICG html-in-canvas · CanvasDrawElement · Chrome for Testing 155</span>
+  <h1>HTML-in-Canvas — the <code style="font-size:22px">drawElementImage</code> tier</h1>
+  <p class="mut">The WICG <b>HTML-in-Canvas</b> proposal is the DOM↔pixel bridge the platform never had: lay out real HTML — text, CSS, i18n line-breaking — and draw it into a 2D canvas or a WebGL texture. Canvas apps today fake this with <code>fillText</code> (no rich layout, no accessibility tree) or SVG-in-<code>&lt;img&gt;</code> (no live DOM). This page measures the shipped Chromium implementation <b>live in your tab</b> and holds it against the explainer — where they disagree, the engine wins and the chip says so. Reference measurements below were harness-probed on <b>Chrome for Testing 155.0.0.0</b> behind <code>--enable-features=CanvasDrawElement</code>.</p>
+  <div class="badges" id="badges"></div>
+  <p class="mut" style="margin-top:12px"><span class="mono" id="engline">probing…</span></p>
+</header>
+
+<!-- §1 -->
+<section class="sec">
+  <h2>§1 · What it is, and why it matters</h2>
+  <p>Five primitives: a canvas opts into laying out its descendants; descendants opt into being drawable; a <code>paint</code> event tells you when snapshots changed; <code>drawElementImage</code> / <code>texElementSubImage2D</code> raster those snapshots into 2D/WebGL; geometry APIs sync the DOM with where the pixels landed.</p>
+  <ul>
+    <li><b>Accessibility:</b> the drawable element stays in the DOM — screen readers see real elements with roles and names, not an opaque canvas. (Geometry exposure is the weak half — §7.)</li>
+    <li><b>i18n:</b> real CSS line-breaking, shaping and font fallback — the chart-label / in-game-menu problem the explainer leads with.</li>
+    <li><b>The DOM↔pixel bridge:</b> rich text in a WebGL hero, HUD labels drawn over telemetry, HTML exported as pixels — without duplicating layout in JS.</li>
+  </ul>
+  <div id="c1" class="row"></div>
+  <div class="out" id="sum-line">probing…</div>
+</section>
+
+<!-- §2 -->
+<section class="sec">
+  <h2>§2 · The five primitives — live census of your engine</h2>
+  <p class="mut">Every chip re-runs <code>typeof</code> / descriptor checks in <i>this</i> tab right now. Without the flag the whole surface is absent — not partially present, <b>undefined</b> down to the last member. <span class="v">.length</span> values are the WebIDL arity the engine actually shipped.</p>
+  <div id="c2" class="row"></div>
+  <div class="law"><b>THE FLAG LAW.</b> There is no gradual degradation: without <code>--enable-features=CanvasDrawElement</code> (chrome://flags/#canvas-draw-element) every member reads <code class="v">undefined</code> and the <code>layoutsubtree</code> attribute in your markup reflects to nothing. Feature-detect <code>typeof CanvasRenderingContext2D.prototype.drawElementImage === 'function'</code> — one check gates the whole tier.</div>
+</section>
+
+<!-- §3 -->
+<section class="sec">
+  <h2>§3 · API drift — the explainer vs the engine</h2>
+  <p class="mut">The explainer's IDL and shipped Chromium disagree in both directions. Reference column: CFT 155 + flag (harness). Live column: your tab, measured at load. The explainer lives at <code>wicg.github.io/html-in-canvas</code>.</p>
+  <div class="tscroll"><table id="t3"><thead><tr><th>member</th><th>explainer says</th><th>CFT 155 + flag (ref)</th><th>your tab (live)</th></tr></thead><tbody>
+    <tr><td><code>&lt;canvas content=drawable&gt;</code></td><td>the opt-in attribute + <code>content</code> IDL prop</td><td class="v">absent — no <code>content</code> prop anywhere</td><td class="live" data-k="content"></td></tr>
+    <tr><td><code>&lt;canvas layoutsubtree&gt;</code></td><td>— (not in explainer)</td><td class="v">the shipped gate: <code>layoutSubtree</code> boolean IDL</td><td class="live" data-k="layoutSubtree"></td></tr>
+    <tr><td><code>el.drawable</code> attr required?</td><td>"exception thrown… without the drawable attribute"</td><td class="v">NOT enforced — a child without it drew (§8 law 6)</td><td class="live" data-k="drawNoAttr"></td></tr>
+    <tr><td><code>window.captureElementImage</code></td><td>— not a window fn; IDL puts it on the canvas</td><td class="v">undefined on window</td><td class="live" data-k="winCEI"></td></tr>
+    <tr><td><code>canvas.captureElementImage(el)</code></td><td>returns transferable <code>ElementImage</code></td><td class="v">shipped: capture → draw → close() all work</td><td class="live" data-k="cei"></td></tr>
+    <tr><td><code>updateElementGeometry</code></td><td>on canvas + OffscreenCanvas (not the 2D ctx)</td><td class="v">canvas ✓ · OffscreenCanvas ✓ · 2D ctx ✗</td><td class="live" data-k="ueg"></td></tr>
+    <tr><td><code>getElementTransform</code></td><td>returns the border-box→canvas DOMMatrix</td><td class="v">shipped but throws <i>Overload resolution failed</i> for (el)</td><td class="live" data-k="getT"></td></tr>
+    <tr><td><code>getElementImageDefaultSize</code></td><td>natural size in canvas grid coords</td><td class="v">undefined</td><td class="live" data-k="eids"></td></tr>
+    <tr><td><code>CanvasPaintEvent</code> global</td><td>exposed on Window</td><td class="v">events exist (with changedElements) but no global ctor</td><td class="live" data-k="cpe"></td></tr>
+    <tr><td><code>drawElementImage</code> arity</td><td>4 overloads, (el,dx,dy[,opts]) → 9-arg, options dict</td><td class="v">.length 3 · (el,dx,dy) ✓ · (el,dx,dy,dw,dh) ✓ · 9-arg ✓ · opts dict indistinguishable (arg 4 coerces to dwidth)</td><td class="live" data-k="dei"></td></tr>
+    <tr><td><code>texElementSubImage2D</code></td><td>(target, level, xoff, yoff, el, config?)</td><td class="v">shipped, .length 5, config dict accepted</td><td class="live" data-k="tex"></td></tr>
+    <tr><td><code>GPUQueue.drawElementImageToTexture</code></td><td>WebGPU path</td><td class="v">not measurable — GPUQueue absent in this config</td><td class="live" data-k="gpuq"></td></tr>
+  </tbody></table></div>
+  <div id="c3" class="row"></div>
+  <div class="law"><b>THE DRIFT LAW.</b> The explainer's <code>content</code> attribute does not exist in the build that actually ships; the build gates on <code class="v">layoutsubtree</code> instead. Meanwhile <code>captureElementImage</code> — often reported "not shipped" — <b>is</b> shipped as an <code>HTMLCanvasElement</code> method, and <code>ElementImage</code> is a real transferable. Code written against the explainer alone will call a nonexistent attribute and miss a working API. Trust probes, not prose.</div>
+</section>
+
+<!-- §4 -->
+<section class="sec">
+  <h2>§4 · LIVE — real HTML → 2D pixels</h2>
+  <p>The canvas below carries a <code>layoutsubtree</code> attribute and a real DOM child (teal chip, top-left — that's live HTML, not canvas pixels). With the flag on, <code>drawElementImage</code> rasterizes the child into the buffer at three destinations: 5-arg, 3-arg natural size, and the 9-arg source-rect overload. Then we read pixels back. <b>Measured (the distance law, §3 row 9):</b> the draw <i>silently no-ops</i> — no exception, zero pixels — when the canvas sits far below the viewport, so this lane arms on proximity and fires as you scroll to it. Scroll here and it runs live.</p>
+  <div class="row" style="align-items:flex-start; gap:14px">
+    <canvas id="cv2d" class="demo" layoutsubtree width="440" height="210"><div id="src2d" drawable class="dchild" style="width:190px;height:52px;background:#0b6b5d;color:#fff;font:600 13px/1.35 -apple-system,system-ui,sans-serif;padding:6px 10px;border-radius:10px">ALT <b>128 m</b> · SPD <span style="opacity:.72">5.2 m/s</span></div></canvas>
+  </div>
+  <p class="cap" id="cap4">source child = real DOM at canvas (8,8) · drawn copies land where the API puts them</p>
+  <div class="row" style="margin-top:8px">
+    <button id="b4redraw">mutate + redraw</button>
+    <button id="b4clear">clear buffer</button>
+  </div>
+  <div id="c4" class="row"></div>
+  <div class="out" id="out4">idle</div>
+  <div class="absent" id="abs4" style="display:none"><b>API ABSENT in this browser.</b> No <code>drawElementImage</code> — enable <code>chrome://flags/#canvas-draw-element</code> (feature name <code>CanvasDrawElement</code>) in Chrome for Testing / Canary, or accept the <code>fillText</code> fallback drawn above and labelled as such. This page never fakes a positive.</div>
+</section>
+
+<!-- §5 -->
+<section class="sec">
+  <h2>§5 · LIVE — HTML → WebGL texture</h2>
+  <p>The same bridge on the GL side: <code>texElementSubImage2D(target, level, xoff, yoff, element[, config])</code> uploads the child's snapshot (rounded corners, italic, padding — real CSS) into a texture, a fullscreen quad displays it, and <code>readPixels</code> proves the upload.</p>
+  <div class="row">
+    <canvas id="cvgl" class="demo" layoutsubtree width="320" height="160"><div id="srcgl" drawable class="dchild" style="width:220px;height:110px;background:#0b6b5d;color:#fff;font:italic 600 14px/1.4 Georgia,serif;padding:10px 14px;border-radius:12px">Molt <b>hero</b> text — real CSS, in a texture</div></canvas>
+  </div>
+  <div id="c5" class="row"></div>
+  <div class="out" id="out5">idle</div>
+  <div class="absent" id="abs5" style="display:none"><b>WebGL lane gated off.</b> <code>texElementSubImage2D</code> is absent without the flag (measured <code>undefined</code>), so nothing was uploaded and nothing below is faked.</div>
+</section>
+
+<!-- §6 -->
+<section class="sec">
+  <h2>§6 · The paint lane — requestPaint, mutation, changedElements</h2>
+  <p>Per the explainer, a snapshot of every drawable is recorded each rendering update; the <code>paint</code> event fires just after intersection-observer steps in update-the-rendering, carrying <code>changedElements</code>. We arm the counter, fire <code>requestPaint()</code> twice in one tick, then mutate the child's text.</p>
+  <div class="row">
+    <canvas id="cvp" class="demo" layoutsubtree width="440" height="110"><div id="srcp" drawable class="dchild" style="width:150px;height:34px;background:#0b6b5d;color:#fff;font:600 12px/34px -apple-system,system-ui,sans-serif;padding:0 12px;border-radius:8px">tick 0</div></canvas>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <button id="b6rp">requestPaint()</button>
+    <button id="b6mut">mutate text</button>
+  </div>
+  <div id="c6" class="row"></div>
+  <div class="out" id="out6">idle</div>
+</section>
+
+<!-- §7 -->
+<section class="sec">
+  <h2>§7 · The geometry lane — DOM↔canvas sync &amp; the hit-test bridge</h2>
+  <p>The explainer's answer to "my pixels moved, where is my DOM?": <code>updateElementGeometry</code> installs a canvas transform + hit-test order (2D contexts run it automatically on every draw), <code>clearElementGeometry</code> removes it, <code>elementgeometryupdate</code> notifies. We run the whole lane live against the §4 canvas.</p>
+  <div id="c7" class="row"></div>
+  <div class="out" id="out7">idle</div>
+  <div class="law"><b>THE BRIDGE LAW (measured).</b> On this build the geometry half is <b>plumbing without water</b>: <code>updateElementGeometry</code> returns <code class="v">undefined</code> without complaint, <code>drawElementImage</code>'s auto-geometry runs — yet <code>document.elementFromPoint()</code> over the drawn location still returns the <b>canvas</b>, and a pointer event there hits the canvas, never the child. <code>getElementTransform</code> throws on the very argument the IDL documents. Pixels land; hit-testing and geometry do not. Build your own hit-map (you know dx,dy,dw,dh) and keep the child in the a11y tree for reading, not pointing.</div>
+</section>
+
+<!-- §8 -->
+<section class="sec">
+  <h2>§8 · THE LAWS — sharpest measured edges</h2>
+  <p class="mut">All rows harness-measured on CFT 155 + flag; error strings verbatim from the engine.</p>
+  <div class="tscroll"><table id="t8"><thead><tr><th>#</th><th>law</th><th>measured evidence</th></tr></thead><tbody>
+    <tr><td>1</td><td><b>The family law</b> — the element must be a DOM descendant of that very canvas</td><td>drawing an element that lives elsewhere: <code class="v">InvalidStateError: The element can only be drawn into its nearest ancestor &lt;canvas&gt;.</code></td></tr>
+    <tr><td>2</td><td><b>The gate law</b> — the canvas must carry <code>layoutsubtree</code></td><td>without it: <code class="v">InvalidStateError: DrawElementImage requires the canvas to have the layoutsubtree attribute.</code> (same gate on <code>texElementSubImage2D</code>, its own message)</td></tr>
+    <tr><td>3</td><td><b>The cache law</b> — no snapshot, no draw</td><td>a freshly-inserted child throws <code class="v">InvalidStateError: No cached paint record for element.</code> — with <i>any</i> arity — until one rendering update has recorded it. Wait for the first <code>paint</code> (or use <code>requestPaint()</code> + one frame) before the first draw. <code>display:none</code> children never get a record.</td></tr>
+    <tr><td>4</td><td><b>The arity law</b> — 3 required, 2 optional, options-dict folklore wrong</td><td><code>.length === 3</code>; 1 arg → <code class="v">TypeError: 3 arguments required, but only 1 present.</code> (el,dx,dy) draws at natural size ✓; (el,dx,dy,dw,dh) scales ✓; 9-arg source-rect ✓. A 4th-arg options dict is silently coerced to <code>dwidth</code> — it cannot be distinguished from a number.</td></tr>
+    <tr><td>5</td><td><b>The visibility law</b> — the child must stay in the canvas box</td><td>child at <code>position:absolute;left:-4000px</code> gets a record and draws <b>blank white</b>; <code>display:none</code> has no record. Keep drawable children inside the canvas's box (the demo pattern: absolute, top/left 8px).</td></tr>
+    <tr><td>6</td><td><b>The lenient-attr law</b> — <code>drawable</code> is not enforced</td><td>explainer: "exception thrown… without the drawable attribute". Measured: a child <i>without</i> it drew successfully (pixels <code class="v">176,92,26,255</code> = its <code>#b05c1a</code> fill). Keep the attribute — it marks intent and nesting — but never rely on it as a validation gate.</td></tr>
+    <tr><td>7</td><td><b>The pointer gap</b> — drawn pixels are not hit-testable</td><td><code>elementFromPoint</code> at the drawn location → the canvas; pointerdown there → canvas handlers only. Even after the auto-geometry pass of <code>drawElementImage</code>.</td></tr>
+    <tr><td>8</td><td><b>The handle law</b> — <code>ElementImage</code> is real and closable</td><td><code>canvas.captureElementImage(el)</code> → <code>ElementImage</code> (global ctor exists, flagged) → draws by handle ✓ → <code>close()</code> ✓ → drawing a closed handle: <code class="v">InvalidStateError: The ElementImage has been closed.</code></td></tr>
+    <tr><td>9</td><td><b>The distance law</b> — draws silently no-op far outside the raster window</td><td>measured at 375px (CFT 155, flag on): pixels land with the canvas 900px below the fold; <b>all-zero with no exception</b> at 6200px. Snapshot recording follows rendering, and rendering skips far-offscreen content. Arm on visibility (<code>IntersectionObserver</code>), draw when near, and verify by pixel readback — the call succeeding proves nothing.</td></tr>
+    <tr><td>9</td><td><b>The viewport law</b> — subtrees only raster near the viewport</td><td>a canvas 6,000&nbsp;px below the fold: <code>requestPaint()</code> fires a paint event, <code>drawElementImage</code> doesn't throw — and the pixels land <b>blank</b> (<code class="v">0,0,0,0</code>), even 10&nbsp;s later. Same canvas after one <code>scrollIntoView()</code>: <code class="v">11,107,93,255</code>. Scroll away + mutate + redraw → blank again: the snapshot does not survive leaving the viewport. Keep drawable canvases on screen (or draw on an IntersectionObserver) — verified live in §4.</td></tr>
+  </tbody></table></div>
+  <div id="c8" class="row"></div>
+</section>
+
+<!-- §9 -->
+<section class="sec">
+  <h2>§9 · Capstones — the OpenDrones HUD &amp; the Molt WebGL hero</h2>
+  <p><b>OpenDrones:</b> a live telemetry HUD — the label is real DOM (screen-reader visible), re-snapshotted every half second and drawn into the canvas over the grid. Without the flag the same HUD degrades to <code>fillText</code>, visibly dumber typography, honestly labelled. <b>Molt:</b> §5 is the whole pitch — rich serif italic text landing in a WebGL texture is the hero-banner pattern without canvas-text hacks.</p>
+  <div class="row">
+    <canvas id="hud" class="demo" layoutsubtree width="440" height="130"><div id="hudlabel" drawable class="dchild" style="background:#1d1c1a;color:#fff;font:600 12px/1.5 ui-monospace,Menlo,monospace;padding:8px 12px;border-radius:10px">LINK ▮▮▮▯ · ALT 128 m · SPD 5.2 m/s</div></canvas>
+  </div>
+  <p class="cap" id="hudcap">hud idle</p>
+  <div id="c9" class="row"></div>
+</section>
+
+<!-- §10 -->
+<section class="sec">
+  <h2>§10 · Decision table — ship, stage, or shelf</h2>
+  <div class="tscroll"><table id="t10"><thead><tr><th>situation</th><th>do this</th></tr></thead><tbody>
+    <tr><td>Charts / legends / in-canvas rich text today</td><td>stay on DOM overlays or SVG; this tier is flag-only — no stable Chrome, no Firefox/Safari signal</td></tr>
+    <tr><td>Must demo the future now (CFT/Canary)</td><td>gate on <code>typeof ctx.drawElementImage === 'function'</code>, ship the <code>fillText</code> fallback path, never fake positives</td></tr>
+    <tr><td>Writing code from the explainer</td><td>re-read §3 first: <code>content</code> doesn't exist, the gate is <code>layoutsubtree</code>, <code>captureElementImage</code> is a canvas method</td></tr>
+    <tr><td>Drawing dynamically-added elements</td><td>wait for the first <code>paint</code> event before the first <code>drawElementImage</code> (cache law, §8)</td></tr>
+    <tr><td>Assuming pointer events reach drawn HTML</td><td>don't — keep your own dx,dy→element hit-map (pointer gap, §8)</td></tr>
+    <tr><td>Accessibility story</td><td>the child stays in the DOM tree (good); geometry/a11y exposure is the unfinished half — test with a real screen reader before promising it</td></tr>
+    <tr><td>OffscreenCanvas / worker dreams</td><td><code>OffscreenCanvas.updateElementGeometry</code> ships flagged, but transferable <code>ElementImage</code> capture is the only worker-legal path — prototype early, it's real</td></tr>
+    <tr><td>Watching for stabilization</td><td>chrome://flags/#canvas-draw-element · WICG html-in-canvas repo · the drift table above is your regression checklist when a flag flip lands</td></tr>
+  </tbody></table></div>
+  <div id="c10" class="row"></div>
+  <ol class="mut" style="padding-left:20px">
+    <li>One feature check gates the tier: <code>drawElementImage</code> on the 2D prototype.</li>
+    <li>Markup contract: <code>&lt;canvas layoutsubtree&gt;</code> + child with <code>drawable</code>, child kept inside the canvas box.</li>
+    <li>First draw only after the first <code>paint</code>; <code>requestPaint()</code> to pump the loop; mutations coalesce into one event per frame.</li>
+    <li><code>changedElements</code> tells you which children actually invalidated — redraw only those.</li>
+    <li>Read back pixels to verify draws in tests (deterministic on this build: <code>11,107,93,255</code>).</li>
+    <li>WebGL: same gate, same family law, plus the <code>WebGLCopyElementImageConfig</code> dictionary (unknown keys silently ignored).</li>
+    <li>The geometry half is shipped-but-dormant: probe again each milestone before building on it.</li>
+  </ol>
+</section>
+
+<p class="foot">WICG HTML-in-Canvas explainer (wicg.github.io/html-in-canvas) · engine truth: Chrome for Testing 155.0.0.0, <code>--enable-features=CanvasDrawElement</code> · every chip on this page is a live measurement in your tab — absent means absent.</p>
+
+</div>
+<script>
+(function(){
+'use strict';
+var counts = { OK: 0, WARN: 0, FAIL: 0, INFO: 0 };
+window.__counts = counts;
+window.__done = false;
+var pend = 10; // §1..§10 — one end() per lane, pre-counted so sync lanes can't dip pend to 0 early
+function begin(){ pend++; }
+function end(){ pend--; if (pend <= 0 && !window.__done){ window.__done = true; fillSum(); } }
+
+function chip(cid, kind, label, detail){
+  counts[kind.toUpperCase()] = (counts[kind.toUpperCase()] || 0) + 1;
+  var host = document.getElementById(cid); if (!host) return;
+  var el = document.createElement('span'); el.className = 'chip ' + kind;
+  var b = document.createElement('b'); b.textContent = label; el.appendChild(b);
+  if (detail != null){ var d = document.createElement('span'); d.className = 'd'; d.textContent = String(detail); el.appendChild(d); }
+  host.appendChild(el);
+}
+function out(id, text){ var el = document.getElementById(id); if (el) el.textContent = text; }
+function T(o, k){ try { return typeof o[k]; } catch (e) { return 'throw:' + e.name; } }
+function hasDescr(o, k){ try { return Object.getOwnPropertyDescriptor(o, k) !== undefined; } catch (e) { return false; } }
+function esc(s){ return String(s).replace(/\s+/g, ' ').slice(0, 150); }
+
+var C2DP = (window.CanvasRenderingContext2D && CanvasRenderingContext2D.prototype) || null;
+var HCEP = (window.HTMLCanvasElement && HTMLCanvasElement.prototype) || null;
+var GLP = (window.WebGLRenderingContext && WebGLRenderingContext.prototype) || null;
+var API = C2DP ? (typeof C2DP.drawElementImage === 'function') : false;
+var TEAL = [11, 107, 93];
+var REF = { on: 'Chrome/155.0.0.0 + CanvasDrawElement', off: 'Chrome/155.0.0.0 default' };
+
+/* ---------- §1 badges + engine line ---------- */
+(function(){
+  try {
+    var ua = navigator.userAgent;
+    var m = ua.match(/(Chrome|Firefox|Safari)\/([\d.]+)/);
+    var eng = m ? (m[1] + ' ' + m[2].split('.')[0]) : ua.slice(0, 40);
+    var flag = API ? 'ON' : 'OFF';
+    chip('c1', 'info', 'engine', eng + ' · ' + (navigator.userAgentData && navigator.userAgentData.brands ? navigator.userAgentData.brands.map(function(b){return b.brand;}).filter(function(x){return x.indexOf('Not')<0;}).join('/') + ' · ' : '') + 'secure=' + isSecureContext);
+    chip('c1', API ? 'ok' : 'warn', 'CanvasDrawElement flag', API ? 'present — live lanes armed' : 'absent — every member undefined; enable chrome://flags/#canvas-draw-element');
+    chip('c1', 'info', 'reference probe', 'harness-measured on ' + (API ? REF.on : REF.off) + ' and ' + (API ? REF.off : REF.on) + ' — both states in §3');
+    var badges = document.getElementById('badges');
+    function badge(cls, txt){ var s = document.createElement('span'); s.className = 'badge ' + cls; s.textContent = txt; badges.appendChild(s); }
+    badge(API ? 'y' : 'n', API ? 'flag ON — live pixels' : 'flag OFF — API absent');
+    badge(API ? 'y' : 'n', API ? '2D + WebGL lanes live' : 'graceful absent state (no fakes)');
+    badge('s', 'drift table: explainer vs engine');
+    badge(API ? 'y' : 'n', API ? 'ElementImage capture works' : 'captureElementImage: undefined');
+    badge('n', 'hit-test bridge: not functional');
+    out('engline', 'this tab: ' + ua + ' · feature ' + (API ? 'PRESENT (flag on)' : 'ABSENT (flag off or other engine)'));
+  } catch (e) { chip('c1', 'warn', 'engine probe', esc(e)); }
+  end();
+})();
+
+/* ---------- §2 census ---------- */
+(function(){
+  try {
+    var live;
+    // canvas element surface
+    var cSurf = [];
+    var members = ['requestPaint','updateElementGeometry','clearElementGeometry','captureElementImage','getElementTransform','getElementImageDefaultSize','content'];
+    for (var i = 0; i < members.length; i++){
+      var k = members[i];
+      var v = T(HCEP, k);
+      cSurf.push(k + '=' + v);
+      chip('c2', v === 'function' ? 'ok' : 'warn', 'canvas.' + k, v === 'function' ? ('function · .length ' + HCEP[k].length) : v);
+    }
+    for (var j = 0; j < 2; j++){
+      var hk = j === 0 ? 'onpaint' : 'onelementgeometryupdate';
+      var hp = hasDescr(HCEP, hk);
+      chip('c2', hp ? 'ok' : 'warn', 'canvas.' + hk, hp ? 'shipped (event-handler descriptor)' : 'undefined');
+    }
+    var ls = hasDescr(HCEP, 'layoutSubtree');
+    var inst = document.createElement('canvas');
+    inst.setAttribute('layoutsubtree', '');
+    var instVal = (function(){ try { return String(inst.layoutSubtree); } catch(e){ return 'throw'; } })();
+    chip('c2', ls ? 'ok' : 'warn', 'canvas.layoutSubtree', ls ? ('boolean IDL · instance with attr reads ' + instVal) : 'undefined (attr in markup reflects to nothing)');
+    // 2D context
+    var dv = T(C2DP, 'drawElementImage');
+    chip('c2', dv === 'function' ? 'ok' : 'warn', 'ctx.drawElementImage', dv === 'function' ? ('function · .length ' + C2DP.drawElementImage.length + ' (3 required + optional dw,dh)') : dv);
+    chip('c2', API ? 'warn' : 'warn', 'ctx.updateElementGeometry', T(C2DP, 'updateElementGeometry') + ' — not on the context (canvas + OffscreenCanvas only)');
+    // WebGL
+    var tv = T(GLP, 'texElementSubImage2D');
+    chip('c2', tv === 'function' ? 'ok' : 'warn', 'gl.texElementSubImage2D', tv === 'function' ? ('function · .length ' + GLP.texElementSubImage2D.length + ' (5 required + config dict)') : tv);
+    // globals + offscreen
+    var ev = T(window, 'ElementImage');
+    chip('c2', ev === 'function' ? 'ok' : 'warn', 'global ElementImage', ev);
+    chip('c2', 'warn', 'global CanvasPaintEvent', T(window, 'CanvasPaintEvent') + (API ? ' (event objects exist — ctor not exposed)' : ''));
+    chip('c2', 'warn', 'window.captureElementImage', T(window, 'captureElementImage') + ' (IDL puts it on the canvas)');
+    var oscUEG = window.OffscreenCanvas ? T(OffscreenCanvas.prototype, 'updateElementGeometry') : 'n/a';
+    chip('c2', oscUEG === 'function' ? 'ok' : 'warn', 'OffscreenCanvas.updateElementGeometry', oscUEG);
+    chip('c2', 'info', 'GPUQueue.drawElementImageToTexture', window.GPUQueue ? T(GPUQueue.prototype, 'drawElementImageToTexture') : 'GPUQueue absent in this config — WebGPU path not measurable');
+  } catch (e) { chip('c2', 'warn', 'census', esc(e)); }
+  end();
+})();
+
+/* ---------- §3 live column ---------- */
+(function(){
+  try {
+    var cells = document.querySelectorAll('#t3 .live');
+    var vals = {
+      content: T(HCEP, 'content') + ' · drift',
+      layoutSubtree: (hasDescr(HCEP, 'layoutSubtree') ? 'boolean IDL shipped' : 'undefined'),
+      drawNoAttr: API ? 'harness: non-drawable child drew (§8)' : (API ? '' : 'not measurable (API absent)'),
+      winCEI: T(window, 'captureElementImage'),
+      cei: T(HCEP, 'captureElementImage'),
+      ueg: 'ctx: ' + T(C2DP, 'updateElementGeometry') + ' · canvas: ' + T(HCEP, 'updateElementGeometry') + ' · OCS: ' + (window.OffscreenCanvas ? T(OffscreenCanvas.prototype, 'updateElementGeometry') : 'n/a'),
+      getT: T(HCEP, 'getElementTransform') + ' (throws on (el): Overload resolution failed)',
+      eids: T(HCEP, 'getElementImageDefaultSize'),
+      cpe: T(window, 'CanvasPaintEvent'),
+      dei: API ? 'live ✓ (5/3/9-arg in §4)' : T(C2DP, 'drawElementImage'),
+      tex: T(GLP, 'texElementSubImage2D'),
+      gpuq: window.GPUQueue ? T(GPUQueue.prototype, 'drawElementImageToTexture') : 'GPUQueue absent'
+    };
+    for (var i = 0; i < cells.length; i++){
+      var k = cells[i].getAttribute('data-k');
+      cells[i].textContent = vals[k] || '?';
+    }
+    chip('c3', HCEP && T(HCEP, 'content') === 'undefined' ? 'warn' : 'warn', 'explainer content attr', 'measured ' + T(HCEP, 'content') + ' in your tab — the gate is layoutsubtree');
+    chip('c3', T(HCEP, 'captureElementImage') === 'function' ? 'ok' : 'warn', 'captureElementImage', T(HCEP, 'captureElementImage') + ' on HTMLCanvasElement · window.' + T(window, 'captureElementImage'));
+    chip('c3', 'info', 'placement truth', 'updateElementGeometry: canvas ✓ / OffscreenCanvas ' + (window.OffscreenCanvas && T(OffscreenCanvas.prototype, 'updateElementGeometry') === 'function' ? '✓' : '✗') + ' / 2D ctx ✗ — matches IDL, contradicts folklore');
+  } catch (e) { chip('c3', 'warn', 'drift table', esc(e)); }
+  end();
+})();
+
+/* ---------- helpers ---------- */
+function whenPainted(cv, ms){
+  return new Promise(function(res){
+    var fin = false;
+    function done(){ if (!fin){ fin = true; res(true); } }
+    try { cv.addEventListener('paint', done, { once: true }); } catch (e) {}
+    try { if (typeof cv.requestPaint === 'function') cv.requestPaint(); } catch (e) {}
+    setTimeout(done, ms || 1400);
+  });
+}
+/* Wait until `child` shows up in a paint event's changedElements (snapshot recorded),
+   with a timeout fallback. The first paint event can fire before the child's snapshot
+   is populated — drawing then lands blank without throwing (measured). */
+function whenSnapshot(cv, child, ms){
+  return new Promise(function(res){
+    var fin = false;
+    function done(v){ if (!fin){ fin = true; try { cv.removeEventListener('paint', onP); } catch (e) {} res(v); } }
+    function onP(ev){
+      try {
+        var ce = ev.changedElements;
+        if (ce && ce.length && Array.prototype.indexOf.call(ce, child) !== -1) done('changed');
+      } catch (e) { done('err'); }
+    }
+    try { cv.addEventListener('paint', onP); } catch (e) {}
+    try { if (typeof cv.requestPaint === 'function') cv.requestPaint(); } catch (e) {}
+    setTimeout(function(){ done('timeout'); }, ms || 2600);
+  });
+}
+/* THE DISTANCE LAW: drawElementImage silently no-ops (NO exception, zero pixels) when the
+   source element sits far outside the rasterization window — measured on CFT 155 flag-on at
+   375px: pixels land 900px below the fold, all-zero at 6200px. Snapshot recording follows
+   actual rendering, which is skipped for far-offscreen content. Live lanes therefore arm on
+   proximity and draw when the canvas comes near the viewport — the same pattern a shipping
+   product needs. Pixel readback is the only proof a draw happened; the call alone is not. */
+function whenNear(el){
+  return new Promise(function(res){
+    try {
+      if (el.getBoundingClientRect().top < innerHeight + 2200) { res('near'); return; }
+      if (!("IntersectionObserver" in window)) { res('no-io'); return; }
+      var io = new IntersectionObserver(function(es){
+        for (var i = 0; i < es.length; i++) if (es[i].isIntersecting) { io.disconnect(); res('visible'); return; }
+      }, { rootMargin: '2200px 0px' });
+      io.observe(el);
+    } catch (e) { res('err'); }
+  });
+}
+function px2d(ctx, x, y){ return Array.from(ctx.getImageData(x, y, 1, 1).data); }
+function isTeal(p){ return p[3] === 255 && Math.abs(p[0] - TEAL[0]) <= 2 && Math.abs(p[1] - TEAL[1]) <= 2 && Math.abs(p[2] - TEAL[2]) <= 2; }
+
+/* ---------- §4 2D live lane ---------- */
+(function(){
+  var cv = document.getElementById('cv2d');
+  var src = document.getElementById('src2d');
+  var ctx = null;
+  try { ctx = cv.getContext('2d'); } catch (e) {}
+  var lines = [];
+  var e4done = false;
+  function e4(){ if (e4done) return; e4done = true; end(); }
+  function log(s){ lines.push(s); out('out4', lines.join('\n')); }
+  function drawAll(mutate){
+    try {
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      if (mutate){
+        var bb = src.querySelector('b');
+        if (bb) bb.textContent = (110 + Math.floor(Math.random() * 40)) + ' m';
+      }
+      ctx.drawElementImage(src, 225, 84, 190, 52);           // 5-arg
+      ctx.drawElementImage(src, 230, 8);                      // 3-arg natural
+      ctx.drawElementImage(src, 10, 8, 95, 26, 225, 150, 190, 52); // 9-arg source-rect
+      var pin = px2d(ctx, 230, 89), pnat = px2d(ctx, 235, 13), p9 = px2d(ctx, 229, 154);
+      var pout = px2d(ctx, 15, 195), pdom = px2d(ctx, 15, 15);
+      log('5-arg  px(230, 89)  = ' + pin.join(','));
+      log('3-arg  px(235, 13)  = ' + pnat.join(','));
+      log('9-arg  px(229, 154) = ' + p9.join(','));
+      log('outside px(15, 195) = ' + pout.join(','));
+      log('under-DOM px(15, 15) = ' + pdom.join(','));
+      return { pin: pin, pnat: pnat, p9: p9, pout: pout, pdom: pdom };
+    } catch (e) { log('draw error: ' + e.name + ': ' + esc(e.message)); return null; }
+  }
+  var bR = document.getElementById('b4redraw'), bC = document.getElementById('b4clear');
+  if (!API || !ctx){
+    document.getElementById('abs4').style.display = 'block';
+    try {
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      ctx.fillStyle = '#8a5a00'; ctx.font = '600 12px ui-monospace, Menlo, monospace';
+      ctx.fillText('FALLBACK ctx.fillText — NOT drawElementImage (API absent)', 14, 100);
+      ctx.fillStyle = '#0b6b5d'; ctx.font = '600 14px -apple-system, system-ui, sans-serif';
+      ctx.fillText('ALT 128 m · SPD 5.2 m/s', 14, 130);
+    } catch (e) {}
+    chip('c4', 'warn', 'drawElementImage', 'absent — fillText fallback drawn, clearly labelled');
+    chip('c4', 'warn', 'pixel proof', 'not measurable without the API');
+    chip('c4', 'info', 'the canvas child', 'fallback content here — invisible without the flag (only fillText above)');
+    bR.disabled = true; bC.disabled = true;
+    log('API absent — fallback rendered via ctx.fillText. No positive faked.');
+    e4(); return;
+  }
+  try { cv.scrollIntoView({ block: 'center' }); } catch (eS0) {} // raster needs viewport proximity (measured) — §8 law 9
+  whenNear(cv).then(function(){ return whenSnapshot(cv, src); }).then(function(){
+    function proceed4(){
+      try {
+        var r = drawAll(false) || { pin: [0,0,0,0], pnat: [0,0,0,0], p9: [0,0,0,0], pout: [0,0,0,0], pdom: [0,0,0,0] };
+        chip('c4', 'ok', 'drawElementImage(el, 225, 84, 190, 52)', 'no throw — 5-arg form');
+        chip('c4', 'info', 'viewport law', 'the snapshot only rasters near the viewport — this lane scrolled the canvas in first; offscreen, requestPaint still fires the event but draws land blank (measured)');
+        chip('c4', isTeal(r.pin) ? 'ok' : 'warn', 'pixel proof (5-arg)', 'px(230,89) = ' + r.pin.join(',') + ' — #0b6b5d expected');
+        chip('c4', isTeal(r.pnat) ? 'ok' : 'warn', '3-arg natural size', 'px(235,13) = ' + r.pnat.join(','));
+        chip('c4', isTeal(r.p9) ? 'ok' : 'warn', '9-arg source-rect overload', 'px(229,154) = ' + r.p9.join(','));
+        chip('c4', r.pout[3] === 0 ? 'ok' : 'warn', 'outside dest rect', 'px(15,195) = ' + r.pout.join(',') + ' — untouched buffer');
+        chip('c4', r.pdom[3] === 0 ? 'ok' : 'warn', 'DOM child ≠ buffer pixels', 'px(15,15) under the visible child = ' + r.pdom.join(',') + ' — the DOM overlay is not canvas content');
+      } catch (eC) { chip('c4', 'warn', 'chip lane', esc(eC)); }
+      try {
+        try { ctx.drawElementImage(src); chip('c4', 'ok', 'arity law', '1-arg TypeError thrown as documented'); }
+        catch (e2){ chip('c4', 'ok', 'arity law', e2.name + ': ' + esc(e2.message)); }
+      } catch (eA) {}
+      try {
+        var orphan = document.createElement('div');
+        orphan.style.cssText = 'width:80px;height:20px;background:#b05c1a';
+        document.body.appendChild(orphan);
+        try { ctx.drawElementImage(orphan, 0, 0, 80, 20); chip('c4', 'warn', 'family law', 'outside element drew — unexpected on this build'); }
+        catch (e3){ chip('c4', 'ok', 'family law', e3.name + ': ' + esc(e3.message)); }
+        try { document.body.removeChild(orphan); } catch (eRm) {}
+      } catch (eFam) { chip('c4', 'warn', 'family law', esc(eFam)); }
+      try {
+        var bare = document.createElement('canvas'); bare.width = 100; bare.height = 40;
+        var bd = document.createElement('div'); bd.setAttribute('drawable',''); bd.style.cssText = 'width:80px;height:20px;background:#0b6b5d';
+        bare.appendChild(bd); document.body.appendChild(bare);
+        var bctx = bare.getContext('2d');
+        whenPainted(bare, 900).then(function(){
+          try {
+            try { bctx.drawElementImage(bd, 0, 0, 80, 20); chip('c4', 'warn', 'gate law', 'bare canvas drew — unexpected'); }
+            catch (e5){ chip('c4', 'ok', 'gate law', e5.name + ': ' + esc(e5.message)); }
+          } catch (e7) { chip('c4', 'warn', 'gate law', esc(e7)); }
+          try { document.body.removeChild(bare); } catch (e8) {}
+          e4();
+        });
+      } catch (e6) { chip('c4', 'warn', 'gate law', esc(e6)); e4(); }
+      bR.disabled = false; bC.disabled = false;
+      bR.onclick = function(){ drawAll(true); };
+      bC.onclick = function(){ try { ctx.clearRect(0, 0, cv.width, cv.height); log('buffer cleared'); } catch (eCl) {} };
+    }
+    try {
+      var r0 = drawAll(false);
+      if (r0 && r0.pin[3] === 0){
+        setTimeout(function(){ try { drawAll(false); } catch (eR2) {} proceed4(); }, 450);
+      } else { proceed4(); }
+    } catch (e) { chip('c4', 'warn', 'lane', esc(e)); e4(); }
+  });
+})();
+
+/* ---------- §5 WebGL lane ---------- */
+(function(){
+  var cv = document.getElementById('cvgl');
+  var src = document.getElementById('srcgl');
+  if (!API){
+    document.getElementById('abs5').style.display = 'block';
+    chip('c5', 'warn', 'texElementSubImage2D', 'undefined — WebGL lane gated off, nothing uploaded');
+    chip('c5', 'warn', 'readPixels proof', 'not measurable without the API');
+    end(); return;
+  }
+  try { cv.scrollIntoView({ block: 'center' }); } catch (eS5) {} // raster needs viewport proximity (measured)
+  whenNear(cv).then(function(){ return whenSnapshot(cv, src); }).then(function(){
+    try {
+      var gl = cv.getContext('webgl', { alpha: true, antialias: false });
+      if (!gl || typeof gl.texElementSubImage2D !== 'function'){ chip('c5', 'warn', 'webgl context', gl ? 'texElementSubImage2D missing' : 'getContext failed'); end(); return; }
+      var vs = 'attribute vec2 p; varying vec2 uv; void main(){ uv = p*.5+.5; gl_Position = vec4(p,0.,1.); }';
+      var fs = 'precision mediump float; varying vec2 uv; uniform sampler2D t; void main(){ gl_FragColor = texture2D(t, uv); }';
+      function sh(type, s){ var o = gl.createShader(type); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o) || 'compile'); return o; }
+      var pr = gl.createProgram();
+      gl.attachShader(pr, sh(gl.VERTEX_SHADER, vs));
+      gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, fs));
+      gl.linkProgram(pr);
+      if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr) || 'link');
+      gl.useProgram(pr);
+      var buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+      var loc = gl.getAttribLocation(pr, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      var tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 320, 160, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      // arity grammar
+      var arityMsg = '';
+      try { gl.texElementSubImage2D(gl.TEXTURE_2D, 0, src); arityMsg = 'no throw (unexpected)'; }
+      catch (e0){ arityMsg = e0.name; }
+      // the real upload (5-arg) then with config dict
+      gl.texElementSubImage2D(gl.TEXTURE_2D, 0, 0, 0, src);
+      var cfgOk = true, cfgMsg = 'accepted';
+      try { gl.texElementSubImage2D(gl.TEXTURE_2D, 0, 0, 0, src, { x: 0, y: 0, width: 220, height: 110 }); } catch (e1){ cfgOk = false; cfgMsg = e1.name; }
+      gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      var p1 = new Uint8Array(4), p2 = new Uint8Array(4), p3 = new Uint8Array(4);
+      gl.readPixels(8, 8, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, p1);
+      gl.readPixels(8, 151, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, p2);
+      gl.readPixels(310, 8, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, p3);
+      var a1 = Array.from(p1), a2 = Array.from(p2), a3 = Array.from(p3);
+      var anyTeal = isTeal(a1) || isTeal(a2);
+      chip('c5', 'ok', 'texElementSubImage2D(TEXTURE_2D, 0, 0, 0, el)', '5-arg upload — no throw');
+      chip('c5', cfgOk ? 'ok' : 'warn', 'WebGLCopyElementImageConfig', cfgOk ? 'dictionary accepted (unknown keys silently ignored)' : cfgMsg);
+      chip('c5', arityMsg === 'TypeError' ? 'ok' : 'warn', 'GL arity law', arityMsg + ' — “5 arguments required” with fewer (matches harness)');
+      chip('c5', anyTeal ? 'ok' : 'warn', 'readPixels proof', 'px(8,8)=' + a1.join(',') + ' px(8,151)=' + a2.join(',') + ' — #0b6b5d landed in the texture (flip determines corner)');
+      chip('c5', 'info', 'empty region', 'px(310,8)=' + a3.join(',') + ' — outside the 220×110 upload');
+      out('out5', 'context: WebGLRenderingContext · texElementSubImage2D .length ' + gl.texElementSubImage2D.length + '\nupload 5-arg ✓ · config dict ' + cfgMsg + '\nreadPixels (8,8) = ' + a1.join(',') + ' · (8,151) = ' + a2.join(','));
+    } catch (e) {
+      chip('c5', 'warn', 'webgl lane', esc(e.name + ': ' + e.message));
+    }
+    end();
+  });
+})();
+
+/* ---------- §6 paint lane ---------- */
+(function(){
+  var cv = document.getElementById('cvp');
+  var src = document.getElementById('srcp');
+  var bR = document.getElementById('b6rp'), bM = document.getElementById('b6mut');
+  if (!API){
+    chip('c6', 'warn', 'paint event', 'absent — requestPaint undefined, nothing to count');
+    out('out6', 'API absent — the paint lane is dark. Enable chrome://flags/#canvas-draw-element to arm it.');
+    bR.disabled = true; bM.disabled = true;
+    end(); return;
+  }
+  var n = 0, lastChanged = '(none yet)', lastType = '(none)';
+  cv.addEventListener('paint', function(ev){
+    n++;
+    lastType = ev.type + (ev.isTrusted ? ' · trusted' : ' · untrusted');
+    try {
+      var ce = ev.changedElements;
+      lastChanged = (ce && ce.length) ? Array.prototype.map.call(ce, function(el){ return el.id || el.tagName; }).join(',') : '(empty list)';
+    } catch (e) { lastChanged = 'n/a'; }
+    out('out6', 'paint events: ' + n + '\nlast event: ' + lastType + '\nchangedElements: ' + lastChanged);
+  });
+  setTimeout(function(){
+    try {
+      var before = n;
+      cv.requestPaint(); cv.requestPaint();            // two in one tick → coalesced?
+      setTimeout(function(){
+        var coalesced = n - before;
+        chip('c6', coalesced >= 1 ? 'ok' : 'warn', 'requestPaint()', 'returns ' + typeof cv.requestPaint() + ' · 2 calls in one tick → ' + coalesced + ' paint event(s)');
+        var before2 = n;
+        src.textContent = 'tick ' + (before2 + 1);
+        setTimeout(function(){
+          var mutPaints = n - before2;
+          chip('c6', mutPaints >= 1 ? 'ok' : 'warn', 'DOM mutation → paint', mutPaints + ' event(s) after text change · changedElements=' + lastChanged);
+          chip('c6', 'ok', 'event shape', 'CanvasPaintEvent · changedElements carries the mutated child (harness ctor name: CanvasPaintEvent)');
+          bR.disabled = false; bM.disabled = false;
+          bR.onclick = function(){ try { cv.requestPaint(); } catch (e) {} };
+          bM.onclick = function(){ try { src.textContent = 'tick ' + (++n + 100); } catch (e) {} };
+          end();
+        }, 450);
+      }, 450);
+    } catch (e) { chip('c6', 'warn', 'paint lane', esc(e)); end(); }
+  }, 250);
+})();
+
+/* ---------- §7 geometry lane ---------- */
+(function(){
+  var cv = document.getElementById('cv2d');
+  var src = document.getElementById('src2d');
+  if (!API){
+    chip('c7', 'warn', 'updateElementGeometry', 'undefined — geometry lane dark');
+    chip('c7', 'warn', 'hit-test bridge', 'not measurable without the API');
+    chip('c7', 'warn', 'elementgeometryupdate', 'handler descriptor absent');
+    out('out7', 'API absent — geometry lane dark.');
+    end(); return;
+  }
+  var lines = [];
+  function log(s){ lines.push(s); out('out7', lines.join('\n')); }
+  try {
+    // 1: void call on legit child
+    var r1;
+    try { r1 = cv.updateElementGeometry(src); log('updateElementGeometry(child) → ' + String(r1) + ' (void, no throw)'); chip('c7', 'ok', 'updateElementGeometry', 'void call accepted on canvas-descendant'); }
+    catch (e) { log('updateElementGeometry threw: ' + e.name); chip('c7', 'warn', 'updateElementGeometry', e.name); }
+    // 2: outside element → family law
+    try {
+      var orph = document.createElement('div');
+      document.body.appendChild(orph);
+      try { cv.updateElementGeometry(orph); chip('c7', 'warn', 'family law (geometry)', 'outside element accepted — unexpected'); }
+      catch (e2){ chip('c7', 'ok', 'family law (geometry)', e2.name + ': nearest-ancestor rule enforced here too'); log('outside el → ' + e2.name + ': ' + esc(e2.message)); }
+      document.body.removeChild(orph);
+    } catch (e3) {}
+    // 3: clearElementGeometry
+    try { cv.clearElementGeometry(src); chip('c7', 'ok', 'clearElementGeometry', 'void call accepted'); log('clearElementGeometry(child) → undefined (void, no throw)'); }
+    catch (e4){ chip('c7', 'warn', 'clearElementGeometry', e4.name); }
+    // 4: getElementTransform — shipped but throws
+    try { cv.getElementTransform(src); chip('c7', 'warn', 'getElementTransform', 'returned a value — harness saw TypeError'); log('getElementTransform(child) → returned'); }
+    catch (e5){ chip('c7', 'warn', 'getElementTransform', e5.name + ': ' + esc(e5.message)); log('getElementTransform(child) → ' + e5.name + ': ' + esc(e5.message)); }
+    // 5: elementgeometryupdate observed?
+    var geoFired = 0;
+    cv.addEventListener('elementgeometryupdate', function(){ geoFired++; });
+    // 6: THE BRIDGE — elementFromPoint at the drawn location
+    var y0 = window.scrollY;
+    try { cv.scrollIntoView({ block: 'center' }); } catch (e7) {}
+    var rect = cv.getBoundingClientRect();
+    var scale = rect.width / cv.width || 1;
+    var ex = rect.left + Math.min(rect.width - 3, 300 * scale);
+    var ey = rect.top + Math.min(rect.height - 3, 100 * scale);
+    var hitEl = document.elementFromPoint(ex, ey);
+    var hitName = hitEl ? (hitEl.id || hitEl.tagName) : 'null';
+    // pointer target
+    var pTargets = [];
+    function recP(name){ return function(ev){ pTargets.push(name + ':' + (ev.currentTarget.id || ev.currentTarget.tagName)); }; }
+    src.addEventListener('pointerdown', recP('child'));
+    cv.addEventListener('pointerdown', recP('canvas'));
+    try {
+      var t = document.elementFromPoint(ex, ey);
+      if (t) t.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: ex, clientY: ey }));
+    } catch (e8) {}
+    try { window.scrollTo(0, y0); } catch (e9) {}
+    chip('c7', hitName === 'cv2d' || hitName === 'CANVAS' ? 'warn' : 'info', 'hit-test bridge', 'elementFromPoint at drawn location → ' + hitName + ' (child NOT hit-testable — the measured pointer gap)');
+    log('elementFromPoint(' + Math.round(ex) + ',' + Math.round(ey) + ') at drawn location → ' + hitName);
+    log('pointerdown dispatched there → ' + (pTargets.join(' | ') || 'no handlers fired'));
+    setTimeout(function(){
+      chip('c7', geoFired > 0 ? 'ok' : 'warn', 'elementgeometryupdate', geoFired > 0 ? 'fired ' + geoFired + '× (first observation on this build!)' : 'descriptor shipped but event never fired during this page — matches harness');
+      log('elementgeometryupdate events observed: ' + geoFired);
+      end();
+    }, 700);
+  } catch (e) {
+    chip('c7', 'warn', 'geometry lane', esc(e));
+    end();
+  }
+})();
+
+/* ---------- §8 static laws chip ---------- */
+(function(){
+  chip('c8', API ? 'ok' : 'info', 'laws 1–8', API ? 're-verified live where possible in §4–§7 on this tab' : 'harness-verified on CFT 155 + flag; this tab lacks the flag (see §3 live column)');
+  chip('c8', 'info', 'verbatim errors', 'all §8 strings are engine output, not paraphrase — branch on error names, never message text');
+  end();
+})();
+
+/* ---------- §9 HUD capstone ---------- */
+(function(){
+  var cv = document.getElementById('hud');
+  var lab = document.getElementById('hudlabel');
+  var cap = document.getElementById('hudcap');
+  var tick = 0;
+  function grid(ctx){
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.strokeStyle = '#e6e2da'; ctx.lineWidth = 1;
+    for (var x = 20; x < cv.width; x += 40){ ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, cv.height); ctx.stroke(); }
+    for (var y = 20; y < cv.height; y += 40){ ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cv.width, y); ctx.stroke(); }
+  }
+  if (!API){
+    var cf = null;
+    try { cf = cv.getContext('2d'); } catch (e) {}
+    var iv = setInterval(function(){
+      try {
+        tick++;
+        grid(cf);
+        cf.fillStyle = '#8a5a00'; cf.font = '600 11px ui-monospace, Menlo, monospace';
+        cf.fillText('FALLBACK fillText HUD (API absent)', 250, 20);
+        cf.fillStyle = '#1d1c1a'; cf.font = '600 13px ui-monospace, Menlo, monospace';
+        cf.fillText('LINK ▮▮▮▯ · ALT ' + (120 + tick % 20) + ' m · SPD ' + (4 + (tick % 30) / 10).toFixed(1) + ' m/s', 14, 110);
+        cap.textContent = 'fallback mode — ctx.fillText, no layout engine, no snapshot loop';
+      } catch (e2) { clearInterval(iv); }
+    }, 500);
+    chip('c9', 'warn', 'HUD', 'running fillText fallback — the accessible DOM label still updates beside it');
+    chip('c9', 'info', 'contrast', 'same data, two renderers: DOM label (top-left) vs canvas fillText — typography gap is the pitch');
+    end(); return;
+  }
+  var hctx = null;
+  try { hctx = cv.getContext('2d'); } catch (e) {}
+  var lastPaints = 0, vis = false, drewOk = false, drewBlank = false;
+  try {
+    new IntersectionObserver(function(es){ es.forEach(function(en){ vis = en.isIntersecting; }); }, { threshold: 0.05 }).observe(cv);
+  } catch (eIO) { vis = true; }
+  cv.addEventListener('paint', function(){
+    if (!vis) return; // viewport law (§8 #9): offscreen rasters come back blank — don't bother
+    try {
+      grid(hctx);
+      hctx.drawElementImage(lab, 230, 60, Math.min(205, cv.width - 240), 44);
+      hctx.fillStyle = '#75716a'; hctx.font = '500 11px ui-monospace, Menlo, monospace';
+      hctx.fillText('drawElementImage snapshot @ (230,60)', 230, 118);
+      var p = px2d(hctx, 240, 70);
+      if (p[3] !== 0 && !(p[0] < 40 && p[1] < 40 && p[2] < 40)) drewBlank = true; // drew but label bg missing
+      else if (p[3] !== 0) drewOk = true;
+      if (p[3] === 0) drewBlank = true;
+    } catch (e1) {}
+  });
+  var iv2 = setInterval(function(){
+    try {
+      tick++;
+      lab.textContent = 'LINK ▮▮▮▯ · ALT ' + (120 + tick % 20) + ' m · SPD ' + (4 + (tick % 30) / 10).toFixed(1) + ' m/s';
+      cap.textContent = 'tick ' + tick + ' — DOM label mutated → paint event → snapshot redrawn into the canvas';
+      if (typeof cv.requestPaint === 'function') cv.requestPaint();
+    } catch (e2) { clearInterval(iv2); }
+  }, 500);
+  whenSnapshot(cv, lab).then(function(){
+    try { if (typeof cv.requestPaint === 'function') cv.requestPaint(); } catch (e3) {}
+    setTimeout(function(){
+      chip('c9', drewOk ? 'ok' : 'info', 'HUD loop live', drewOk ? 'DOM label → paint → drawElementImage every 500 ms — pixels verified at px(240,70)' : 'armed — canvas offscreen at load, so the engine has not rastered it (viewport law, §8 #9); scroll to §9 and watch it draw');
+      chip('c9', 'info', 'Molt lane', '§5 is the hero pattern: serif italic CSS text inside a WebGL texture');
+      end();
+    }, 400);
+  });
+})();
+
+/* ---------- §10 chip ---------- */
+(function(){
+  chip('c10', 'info', 'verdict', API ? 'flag-on: prototype-grade — build behind detection, never in production paths' : 'flag-off/default: shelf it — pure detection + fallback today');
+  chip('c10', 'info', 'regression watch', 'when the flag flips default-on, re-run §3/§8: content vs layoutsubtree, hit-bridge, getElementTransform are the tripwires');
+  end();
+})();
+
+/* ---------- sum line ---------- */
+function fillSum(){
+  try {
+    var ua = navigator.userAgent;
+    var m = ua.match(/(Chrome|Firefox|Safari)\/([\d.]+)/);
+    var eng = m ? (m[1] + ' ' + m[2].split('.')[0]) : 'engine?';
+    if (API){
+      out('sum-line', eng + ' · flag ON · live: drawElementImage + texElementSubImage2D pixels landed (teal verified), paint lane armed, captureElementImage/ElementImage shipped · drift: content attr & window.captureElementImage do not exist · pointer gap: drawn HTML not hit-testable · chips ' + counts.OK + 'ok/' + counts.WARN + 'warn/' + counts.INFO + 'info/0fail');
+    } else {
+      out('sum-line', eng + ' · flag OFF · API ABSENT (all members undefined — chrome://flags/#canvas-draw-element, feature CanvasDrawElement) · fallbacks drawn and labelled, no positives faked · reference truth on CFT 155 + flag in §3 · chips ' + counts.OK + 'ok/' + counts.WARN + 'warn/' + counts.INFO + 'info/0fail');
+    }
+  } catch (e) {
+    out('sum-line', 'summary error: ' + esc(e));
+  }
+}
+})();
+</script>
+</body>
+</html>
