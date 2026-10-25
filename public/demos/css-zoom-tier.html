@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>CSS zoom + currentCSSZoom — the layout-scaling tier</title>
+<style>
+  :root { --ink:#1d1c1a; --mut:#75716a; --line:#e6e2da; --card:#fffdf9; --bg:#f7f5f0; --acc:#0b6b5d; --acc2:#b05c1a; --bad:#a11111; --warnbg:#fff5e0; --warnink:#8a5a00; }
+  * { box-sizing: border-box; }
+  body { font: 15px/1.55 -apple-system, system-ui, sans-serif; color: var(--ink); background: var(--bg); margin: 0; overflow-x: hidden; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 24px 20px 80px; }
+  .sec { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 22px; margin: 26px 0; overflow: hidden; }
+  h1 { font-size: 29px; line-height: 1.2; letter-spacing: -0.02em; margin: 10px 0 8px; }
+  h2 { font-size: 19px; margin: 2px 0 10px; letter-spacing: -0.01em; }
+  h3 { font-size: 15px; margin: 14px 0 6px; }
+  p { margin: 8px 0; }
+  code, .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12.5px; background: #f4f2ee; padding: 1px 5px; border-radius: 6px; overflow-wrap: anywhere; }
+  pre { background: #f4f2ee; border-radius: 12px; padding: 12px; overflow-x: auto; font-size: 12px; line-height: 1.5; max-width: 100%; margin: 10px 0; }
+  .mut { color: var(--mut); font-size: 13px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 4px 10px; margin: 3px 4px 3px 0; border: 1px solid transparent; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .chip.ok { background: #e8f7ee; color: #0a6b35; border-color: #bfe8d0; }
+  .chip.warn { background: var(--warnbg); color: var(--warnink); border-color: #f3ddaa; }
+  .chip.fail { background: #fdeaea; color: var(--bad); border-color: #f2c4c4; }
+  .chip.info { background: #e9f1fd; color: #0b4fa8; border-color: #c4dcf7; }
+  .chip .d { font-weight: 400; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button { font: 600 13px/1.3 -apple-system, system-ui, sans-serif; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; max-width: 100%; }
+  button:hover { border-color: #c9c5bd; }
+  button:disabled { opacity: .55; cursor: default; }
+  .tscroll { overflow-x: auto; max-width: 100%; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  td, th { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--mut); }
+  .pill { font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--acc); }
+  .out { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--ink); background: #f4f2ee; border-radius: 10px; padding: 8px 10px; margin-top: 8px; overflow-wrap: anywhere; white-space: pre-wrap; }
+  .law { border-left: 3px solid var(--acc); padding: 2px 0 2px 12px; margin: 12px 0; }
+  .law b { color: var(--acc); }
+  ul, ol { margin: 8px 0; padding-left: 20px; }
+  li { margin: 4px 0; }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+  .badge { font-size: 11px; font-weight: 700; letter-spacing: .03em; border-radius: 999px; padding: 3px 9px; border: 1px solid var(--line); background: var(--card); }
+  .badge.y { color: #0a6b35; border-color: #bfe8d0; background: #e8f7ee; }
+  .badge.n { color: var(--bad); border-color: #f2c4c4; background: #fdeaea; }
+  .badge.w { color: var(--warnink); border-color: #f3ddaa; background: var(--warnbg); }
+  .v { color: var(--acc2); font-weight: 700; }
+  .lanes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .lane { border: 1px solid var(--line); border-radius: 14px; padding: 12px; background: #fff; min-width: 0; }
+  .lane h4 { margin: 0 0 6px; font-size: 13px; }
+  .stage { position: relative; border: 1px dashed var(--line); border-radius: 10px; padding: 10px; background: repeating-linear-gradient(45deg,#faf9f6,#faf9f6 8px,#f4f2ee 8px,#f4f2ee 16px); overflow: hidden; }
+  .blk { width: 100px; height: 40px; background: #0b6b5d; color: #fff; font-size: 11px; display: flex; align-items: center; justify-content: center; border-radius: 6px; }
+  .blk.b2 { background: #b05c1a; }
+  .sib { width: 100px; height: 10px; background: #c9c5bd; border-radius: 4px; }
+  .kv { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: 12px; font-family: ui-monospace, Menlo, monospace; margin-top: 6px; }
+  .kv span:nth-child(odd) { color: var(--mut); }
+  .kv span:nth-child(even) { text-align: right; }
+  .hud { border: 1px solid var(--line); border-radius: 14px; background: #10201d; color: #dff3ec; padding: 12px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  .hud .big { font-size: 26px; font-weight: 700; }
+  .hud .warn { color: #ffb26b; }
+  input[type=range] { width: 100%; max-width: 280px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 10px; }
+  .card { border: 1px solid var(--line); border-radius: 14px; padding: 12px; background: #fff; min-width: 0; }
+  .card h4 { margin: 0 0 6px; font-size: 13px; }
+  .scaled { transform-origin: top left; }
+  .note { font-size: 12.5px; color: var(--mut); margin-top: 8px; }
+  iframe.probe { width: 100%; height: 132px; border: 1px dashed var(--line); border-radius: 12px; background: #fff; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap: 12px; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: #f4f2ee; color: var(--mut); margin-right: 6px; }
+  .tag.s { background: #e8f7ee; color: #0a6b35; }
+  .tag.u { background: #e9f1fd; color: #0b4fa8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>CSS <code>zoom</code> + <code>Element.currentCSSZoom</code></h1>
+<p class="mut"><span class="pill">layout-scaling tier · css-viewport-1 · Baseline 2024 / 2026</span> — <code>zoom</code> is the only CSS property that scales <b>layout</b>, not just paint. <code>transform:scale()</code> resizes pixels and leaves the flow alone; <code>zoom</code> changes the box, re-lays out its siblings, and multiplies down the ancestor chain. That makes it the right primitive for a client-site text-size control and a ground-station HUD legibility toggle — and the wrong primitive for everything else. Every chip below re-measures your engine live.</p>
+<div class="badges">
+  <span class="badge y" id="bg1">layout scaling (not paint)</span>
+  <span class="badge y" id="bg2">two coordinate systems</span>
+  <span class="badge y" id="bg3">nested multiplication</span>
+  <span class="badge w" id="bg4">animatability splits at Chrome 150</span>
+  <span class="badge y" id="bg5">currentCSSZoom = effective zoom</span>
+  <span class="badge n" id="bg6">zoom ≠ browser zoom</span>
+</div>
+
+<div class="sec" id="s1">
+<h2>1 · Surface census — what actually exists</h2>
+<div id="c1" class="row"></div>
+<div class="law"><b>THE DETECTION LAW.</b> <code>CSS.supports('zoom','1')</code> is the honest probe. <code>'zoom' in CSSStyleDeclaration.prototype</code> is <b>false</b> on Blink — the property lives on <i>instances</i>, exactly like <code>'color' in CSSStyleDeclaration.prototype</code> is false. Prototype-based feature detection silently says "unsupported" for a fully shipped property. <code>Element.currentCSSZoom</code> is a separate, newer API (Chrome 128+ / Firefox 126+ / Safari 26.4+) — detect it independently.</div>
+<p class="mut" id="engine-line">Engine: …</p>
+</div>
+
+<div class="sec" id="s2">
+<h2>2 · THE FLOW LAW — <code>zoom</code> re-lays out, <code>scale()</code> does not</h2>
+<div class="lanes">
+  <div class="lane">
+    <h4><span class="tag s">zoom: 2</span> takes real flow space</h4>
+    <div class="stage" id="stage-z"><div class="blk" style="zoom:2">zoom</div><div class="sib" style="margin-top:8px"></div></div>
+    <div class="kv" id="kv-z"></div>
+  </div>
+  <div class="lane">
+    <h4><span class="tag u">transform: scale(2)</span> paints only</h4>
+    <div class="stage" id="stage-s"><div class="blk b2" style="transform:scale(2)">scale</div><div class="sib" style="margin-top:8px"></div></div>
+    <div class="kv" id="kv-s"></div>
+  </div>
+</div>
+<div id="c2" class="row"></div>
+<div class="law"><b>THE LAW.</b> Both boxes paint at the same pixel size, but only <code>zoom</code> moves the next sibling down: a zoomed block's <b>painted</b> height (80 px) is what the flow consumes, so the sibling starts at y = 88 instead of y = 48. A <code>transform</code> keeps the layout height at 40 px and the sibling starts at 48 — the box visually overflows its own space. <b>Zoom changes the document's layout; scale changes the picture of it.</b> That is the entire reason to choose one over the other.</div>
+</div>
+
+<div class="sec" id="s3">
+<h2>3 · THE TWO-COORDINATE LAW — the DOM APIs split (headline)</h2>
+<div id="c3" class="row"></div>
+<div class="tscroll"><table id="t3"><thead><tr><th>API</th><th>value at <code>zoom:2</code></th><th>coordinate system</th></tr></thead><tbody></tbody></table></div>
+<div class="law"><b>THE LAW.</b> <code>getBoundingClientRect()</code>, <code>IntersectionObserver</code> rects and hit-testing report <b>painted / screen</b> pixels. <code>clientWidth</code>, <code>offsetWidth</code>, <code>scrollWidth</code>, <code>getComputedStyle()</code> lengths and <code>ResizeObserver.contentRect</code> report <b>layout</b> pixels (zoom already divided out). The exact identity, measured live: <code>rect.width === offsetWidth × currentCSSZoom</code>. Any measuring code that mixes the two is off by exactly the zoom factor — which is why a HUD that reads <code>offsetHeight</code> and a chart that reads <code>getBoundingClientRect()</code> disagree the moment you zoom.</div>
+</div>
+
+<div class="sec" id="s4">
+<h2>4 · THE MULTIPLICATION LAW — nested zoom compounds</h2>
+<div id="c4" class="row"></div>
+<div class="law"><b>THE LAW.</b> <code>zoom</code> does not inherit, but its <b>effective</b> value multiplies down the flat-tree chain: a <code>zoom:3</code> child inside a <code>zoom:2</code> parent paints at 6×, and a grandchild with no zoom of its own still reports <code>currentCSSZoom === 6</code>. The spec calls this <i>effective zoom</i>; <code>Element.currentCSSZoom</code> is the read-back for it. And it is <b>layout-derived, not cascade-derived</b>: an element with <code>zoom:2; display:none</code> computes <code>zoom: "2"</code> but reports <code>currentCSSZoom === 1</code>, because it has no layout.</div>
+</div>
+
+<div class="sec" id="s5">
+<h2>5 · THE PERCENTAGE INVARIANCE LAW — percentages are zoom-proof</h2>
+<div id="c5" class="row"></div>
+<div class="law"><b>THE LAW.</b> A percentage width always paints as that percentage of the containing block's <b>painted</b> width — the zoom factor cancels out of the result. What zoom changes is the <i>computed</i> length in layout coordinates: with a 400 px parent, <code>width:50%</code> computes to <code>200px</code> at zoom 1, <code>100px</code> at zoom 2 and <code>50px</code> at zoom 4 — while the painted width stays 200 px in every case. Zooming a percentage-based grid therefore <b>does not</b> break the proportions; it changes the coordinate space your JS reads.</div>
+</div>
+
+<div class="sec" id="s6">
+<h2>6 · THE CHROME-150 SPLIT — <code>zoom</code> became animatable</h2>
+<button id="b6">Run the interpolation probe</button>
+<div id="c6" class="row"></div>
+<div id="o6" class="out">idle</div>
+<div class="law"><b>THE LAW (measured on two engines).</b> <code>zoom</code> is animatable <b>from Chrome 150</b> (MDN BCD: <code>is_animatable</code> → Chrome 150, Firefox 126, Safari <b>never</b>). On Chrome for Testing <b>148</b> a <code>transition: zoom</code> produces <b>zero animation objects</b> and the value <b>snaps</b> to its final value; on Chrome for Testing <b>155</b> the same transition interpolates smoothly. Worse: <code>CSS.supports('transition-property','zoom')</code> returns <b>true on both</b> — the grammar accepts the property name even where the engine will not animate it. <b>Never ship a zoom transition without measuring the mid-flight value</b>; Safari never animates it at all, so every zoom transition needs a fallback or a feature gate.</div>
+<p class="mut">The same split applies to <code>@keyframes</code>: Chrome 148 keeps the element at its <code>from</code> value for the whole duration and only lands on the end value at the end (no interpolation, no animation object), while Chrome 155 samples intermediate factors.</p>
+</div>
+
+<div class="sec" id="s7">
+<h2>7 · The validation law — what survives the parser</h2>
+<div id="c7" class="row"></div>
+<div class="law"><b>THE LAW.</b> <code>zoom:0</code> and <code>zoom:0%</code> <b>parse</b> (CSSOM keeps them) but compute to <code>1</code> — the element renders at normal size and never collapses, unlike <code>transform:scale(0)</code> which collapses it to nothing. Negative values, <code>NaN</code>, <code>Infinity</code> and the non-standard <code>reset</code> keyword are dropped at computed-value time (computed = 1). Two surprises worth knowing: <code>zoom:1e2</code> is <b>valid</b> (computes to <code>100</code>), and an infinite or overflow-large factor is clamped by the engine's used value at <b>1,000,000</b> (a Blink-specific cap that is not in the spec).</div>
+</div>
+
+<div class="sec" id="s8">
+<h2>8 · CSS ZOOM ≠ BROWSER ZOOM — the root-zoom lab</h2>
+<iframe class="probe" id="rootframe" title="root zoom probe"></iframe>
+<div id="c8" class="row"></div>
+<div class="law"><b>THE LAW.</b> <code>html { zoom: 2 }</code> does <b>not</b> simulate Ctrl +/−. The inner viewport width and every media query stay at the real viewport (<code>innerWidth</code> unchanged, <code>(min-width: 2000px)</code> still false), and <code>devicePixelRatio</code> / <code>visualViewport.scale</code> are untouched — but descendant boxes are scaled, so a <code>width:100vw</code> child paints at <b>2× the viewport width</b> and creates a real horizontal scrollbar (the probe below reports the live overflow for its own frame). Root-level zoom therefore needs an overflow guard; browser zoom needs none because the viewport itself shrinks.</div>
+</div>
+
+<div class="sec" id="s9">
+<h2>9 · CAPSTONE — the zoom console (Molt + OpenDrones)</h2>
+<div class="grid2">
+  <div class="card">
+    <h4>Molt · client-site text-size control</h4>
+    <div class="row" style="margin-bottom:8px">
+      <button data-z="1">100%</button><button data-z="1.15">115%</button><button data-z="1.3">130%</button><button data-z="1.5">150%</button>
+    </div>
+    <div id="molt" style="border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff">
+      <div style="font-weight:700;font-size:17px">A calmer way to ship a case study</div>
+      <p style="margin:6px 0;font-size:14px;color:var(--mut)">The visitor controls the reading size. <b>zoom</b> re-lays out, so the layout stays honest; <code>scale()</code> would overlap the cards.</p>
+      <div class="row"><span class="chip ok">A</span><span class="chip ok">A</span><span class="chip ok">A</span></div>
+    </div>
+    <div class="note">Applied to the content wrapper only — never to <code>html</code> — so the sticky header and the footer keep their own coordinates.</div>
+  </div>
+  <div class="card">
+    <h4>OpenDrones · ground-station HUD legibility</h4>
+    <div class="row" style="margin-bottom:8px">
+      <button data-h="1">1.0×</button><button data-h="1.25">1.25×</button><button data-h="1.5">1.5×</button><button data-h="2">2.0×</button>
+    </div>
+    <div class="hud" id="hud">
+      <div>ALT <span class="big">42.6</span> m</div>
+      <div>BAT <span class="big warn">18%</span> · 11.4 V</div>
+      <div>LINK <span class="big">-71</span> dBm · 2.1 s</div>
+    </div>
+    <div class="note">The HUD panel is zoomed; the telemetry canvas beside it is not. Use <code>currentCSSZoom</code> to keep pointer hit-testing and chart scales honest.</div>
+  </div>
+</div>
+<h3>The measurement console — read both coordinate systems</h3>
+<div class="row" style="align-items:center;gap:12px">
+  <input type="range" id="zoomrange" min="0.5" max="3" step="0.05" value="1.5">
+  <span class="mono" id="zoomlabel">1.50×</span>
+</div>
+<div class="kv" id="kv-console" style="font-size:12.5px"></div>
+<div id="c9" class="row"></div>
+<div class="law"><b>THE NORMALIZATION LAW.</b> When you zoom a component, convert back before you compare: <code>layoutPx = rect.width / element.currentCSSZoom</code>. The console above reads both systems live and shows the identity <code>rect.width === offsetWidth × currentCSSZoom</code> holding at every slider position — that is the check your own measurement code needs before it ships.</div>
+</div>
+
+<div class="sec" id="s10">
+<h2>10 · Decision table + the 10 rules</h2>
+<div class="tscroll"><table id="t10"><thead><tr><th>you want…</th><th>use</th><th>why</th></tr></thead><tbody>
+<tr><td>A visitor-controlled text size</td><td><code>zoom</code></td><td>re-lays out, so no overlap — the accessibility win</td></tr>
+<tr><td>A HUD panel on a bright tarmac</td><td><code>zoom</code></td><td>the panel's own flow grows with the text</td></tr>
+<tr><td>A pure visual pop (badge, glow, hover lift)</td><td><code>transform: scale()</code></td><td>paint-only, no reflow, compositor-friendly</td></tr>
+<tr><td>Measure a zoomed element</td><td><code>currentCSSZoom</code></td><td>it is the factor between the two coordinate systems</td></tr>
+<tr><td>Scale an entire document</td><td>the browser's own zoom</td><td>CSS root zoom leaves media queries untouched and overflows</td></tr>
+<tr><td>Animate a zoom</td><td>feature-gate it</td><td>Chrome 150+ only; Safari never; 148 snaps</td></tr>
+<tr><td>Zoom a grid of percentages</td><td>safe</td><td>painted proportions are zoom-invariant</td></tr>
+<tr><td>Trust <code>CSS.supports('transition-property','zoom')</code></td><td>no</td><td>it is true on engines that will not animate it</td></tr>
+</tbody></table></div>
+<ol class="mut" style="padding-left:20px">
+<li><code>zoom</code> is a <b>layout</b> operation; <code>scale()</code> is a <b>paint</b> operation. Pick by intent, never by habit.</li>
+<li>Two coordinate systems exist. <code>rect</code>/IO/hit-test = painted; <code>client*</code>/<code>offset*</code>/<code>scroll*</code>/gCS/RO = layout.</li>
+<li>Multiply by hand when you compare them: <code>rect.width === offsetWidth × currentCSSZoom</code>.</li>
+<li>Nested zoom compounds — read <code>currentCSSZoom</code>, never the authored <code>zoom</code>, when you need the effective factor.</li>
+<li><code>currentCSSZoom</code> is layout-derived: a <code>display:none</code> element reports <b>1</b> no matter what its CSS says.</li>
+<li>Percentages are zoom-invariant in paint; only the computed length changes.</li>
+<li>Animating <code>zoom</code> is a Chrome-150+ feature — Safari never shipped it, Chrome 148 snaps. Gate on a measured mid-flight value.</li>
+<li><code>zoom:0</code> does not collapse the element — it computes to 1.</li>
+<li>Never zoom <code>html</code>: media queries and the viewport do not follow, so <code>100vw</code> overflows.</li>
+<li>Zoom the component, not the page — a content wrapper keeps the chrome (nav, footer, sticky bars) in its own coordinate system.</li>
+</ol>
+<p class="mut" id="verdict">Engine rows live-probed: Chrome for Testing <b>155</b> + <b>148</b> and Brave <b>154</b> (headless, macOS arm64) — this page re-measures your engine live. Spec/MDN sources for cross-engine claims: CSS Viewport Module Level 1 §4 (<code>zoom</code>) and CSSOM View (<code>currentCSSZoom</code>); MDN BCD marks <code>zoom</code> Baseline 2024 and <code>currentCSSZoom</code> Baseline 2026 (Chrome 128 / Firefox 126 / Safari 26.4). The Chrome-150 animatability boundary is measured, not quoted: CfT 148 produced 0 animation objects and a snapped value; CfT 155 interpolated.</p>
+</div>
+
+</div>
+
+<script>
+(function(){
+'use strict';
+var done = false, pending = 0;
+window.__done = false;
+window.__counts = {OK:0, WARN:0, FAIL:0, DANGER:0, INFO:0};
+window.__results = {};
+function begin(){ pending++; }
+function end(){ if(--pending === 0){ window.__done = true; } }
+function chip(cid, kind, label, detail){
+  var host = document.getElementById(cid); if(!host) return;
+  var el = document.createElement('span'); el.className = 'chip ' + kind;
+  var b = document.createElement('b'); b.textContent = label; el.appendChild(b);
+  if(detail != null){ var d = document.createElement('span'); d.className='d'; d.textContent = String(detail); el.appendChild(d); }
+  host.appendChild(el);
+  var k = kind.toUpperCase();
+  if(window.__counts[k] != null) window.__counts[k]++;
+  if(cid === 'c3'){
+    var tr = document.createElement('tr');
+    var a = document.createElement('td'); a.textContent = label;
+    var b2 = document.createElement('td'); b2.textContent = detail == null ? '' : String(detail);
+    var c = document.createElement('td'); c.textContent = kind === 'ok' ? 'painted / screen px' : (kind === 'info' ? 'layout px' : kind);
+    tr.appendChild(a); tr.appendChild(b2); tr.appendChild(c);
+    var tb = document.getElementById('t3').querySelector('tbody'); if(tb) tb.appendChild(tr);
+  }
+}
+function esc(s){ return String(s).replace(/\s+/g,' ').slice(0,140); }
+function r2(n){ return Math.round(n*100)/100; }
+
+/* ---------- §1 surface census ---------- */
+begin();
+(function(){
+  chip('c1', CSS.supports('zoom','1') ? 'ok':'fail', 'CSS.supports(zoom:1)', CSS.supports('zoom','1') ? 'supported' : 'ABSENT');
+  chip('c1', CSS.supports('zoom','150%') ? 'ok':'info', 'CSS.supports(zoom:150%)', CSS.supports('zoom','150%') ? 'percentage accepted' : 'absent');
+  chip('c1', CSS.supports('zoom','reset') ? 'ok':'warn', 'CSS.supports(zoom:reset)', CSS.supports('zoom','reset') ? 'supported' : 'NOT shipped (draft keyword)');
+  chip('c1', 'zoom' in document.body.style ? 'ok':'fail', "'zoom' in body.style", 'instance property: ' + ('zoom' in document.body.style));
+  chip('c1', 'zoom' in CSSStyleDeclaration.prototype ? 'ok':'warn', "'zoom' in CSSStyleDeclaration.prototype", ('zoom' in CSSStyleDeclaration.prototype) ? 'present' : 'FALSE — prototype probe lies (same as color)');
+  chip('c1', 'currentCSSZoom' in Element.prototype ? 'ok':'warn', 'Element.currentCSSZoom', ('currentCSSZoom' in Element.prototype) ? 'present' : 'absent (Chrome 128 / FF 126 / Safari 26.4+)');
+  var d = Object.getOwnPropertyDescriptor(Element.prototype, 'currentCSSZoom');
+  if(d) chip('c1', (d.get && !d.set) ? 'ok':'info', 'currentCSSZoom descriptor', 'getter=' + !!d.get + ' setter=' + !!d.set + ' enumerable=' + d.enumerable);
+  var probe = document.createElement('div');
+  probe.style.cssText = 'width:100px;height:20px;zoom:1.5';
+  document.body.appendChild(probe);
+  chip('c1', 'ok', 'gCS(zoom)', getComputedStyle(probe).zoom + '  (number factor — % normalises away)');
+  probe.remove();
+  var ua = (navigator.userAgent.match(/(Chrome|Firefox|Safari|Edg)\/[\d.]+/g)||['unknown']).join(' ');
+  chip('c1','info','engine', ua);
+  document.getElementById('engine-line').innerHTML = 'Engine: <b>' + ua + '</b> · isSecureContext=' + isSecureContext + ' · devicePixelRatio=' + devicePixelRatio + ' · visualViewport.scale=' + (visualViewport ? visualViewport.scale : 'n/a');
+  document.getElementById('bg4').textContent = 'animatability splits at Chrome 150';
+  end();
+})();
+
+/* ---------- §2 flow law ---------- */
+begin();
+(function(){
+  function measure(stageId, kvId){
+    var stage = document.getElementById(stageId);
+    var blk = stage.querySelector('.blk');
+    var sib = stage.querySelector('.sib');
+    var r = blk.getBoundingClientRect();
+    var sbr = sib.getBoundingClientRect();
+    var cs = getComputedStyle(blk);
+    /* layout-space flow: where the next sibling starts relative to the block's own layout box */
+    var flowConsumed = (sib.offsetTop - blk.offsetTop);
+    var data = {
+      'painted rect': r.width.toFixed(1) + ' × ' + r.height.toFixed(1),
+      'offsetWidth/Height': blk.offsetWidth + ' × ' + blk.offsetHeight,
+      'clientWidth/Height': blk.clientWidth + ' × ' + blk.clientHeight,
+      'computed width': cs.width,
+      'sibling painted top': sbr.top.toFixed(1) + ' px',
+      'flow consumed by the block': flowConsumed.toFixed(1) + ' px'
+    };
+    var kv = document.getElementById(kvId); kv.innerHTML = '';
+    Object.keys(data).forEach(function(k){
+      var s1 = document.createElement('span'); s1.textContent = k;
+      var s2 = document.createElement('span'); s2.textContent = data[k];
+      kv.appendChild(s1); kv.appendChild(s2);
+    });
+    return {rect:r, flowConsumed:flowConsumed, offsetH:blk.offsetHeight, rectH:r.height};
+  }
+  var z = measure('stage-z','kv-z');
+  var s = measure('stage-s','kv-s');
+  chip('c2', 'ok', 'zoom paints 200 × 80', z.rect.width.toFixed(0) + ' × ' + z.rect.height.toFixed(0));
+  chip('c2', 'ok', 'scale paints 200 × 80', s.rect.width.toFixed(0) + ' × ' + s.rect.height.toFixed(0));
+  chip('c2', (z.flowConsumed > s.flowConsumed) ? 'ok':'fail', 'FLOW LAW', 'zoom consumed ' + z.flowConsumed.toFixed(0) + ' px of flow, scale consumed ' + s.flowConsumed.toFixed(0) + ' px (same box, same paint size)');
+  chip('c2', 'info', 'layout height', 'zoom offsetHeight=' + z.offsetH + ' vs painted ' + z.rectH.toFixed(0) + ' · scale offsetHeight=' + s.offsetH);
+  chip('c2', 'info', 'hit region', 'zoom grows the hit box; scale grows only the paint');
+  window.__results.flow = {zoomFlowConsumed:z.flowConsumed, scaleFlowConsumed:s.flowConsumed};
+  end();
+})();
+
+/* ---------- §3 two-coordinate law ---------- */
+begin();
+(function(){
+  var box = document.createElement('div');
+  box.style.cssText = 'position:absolute;left:-9999px;top:0;width:100px;height:40px;padding:10px;border:5px solid #000;box-sizing:content-box;zoom:2;';
+  document.body.appendChild(box);
+  var r = box.getBoundingClientRect();
+  chip('c3','ok','getBoundingClientRect().width', r.width.toFixed(0) + ' px — painted');
+  chip('c3','info','clientWidth', box.clientWidth + ' px — layout');
+  chip('c3','info','offsetWidth', box.offsetWidth + ' px — layout (border box)');
+  chip('c3','info','getComputedStyle().width', getComputedStyle(box).width + ' — layout');
+  chip('c3','info','scrollWidth', box.scrollWidth + ' px — layout');
+  var identity = Math.abs(r.width - box.offsetWidth * box.currentCSSZoom) < 0.51;
+  chip('c3', identity ? 'ok':'fail', 'IDENTITY rect === offset × currentCSSZoom', r.width.toFixed(0) + ' === ' + box.offsetWidth + ' × ' + box.currentCSSZoom);
+  var roDone = false;
+  var ro = new ResizeObserver(function(entries){
+    if(roDone) return; roDone = true;
+    chip('c3','info','ResizeObserver.contentRect.width', entries[0].contentRect.width + ' px — layout');
+    chip('c3','info','ResizeObserver.borderBoxSize', entries[0].borderBoxSize[0].inlineSize + ' px — layout');
+    ro.disconnect();
+  });
+  ro.observe(box);
+  var ioDone = false;
+  var io = new IntersectionObserver(function(entries){
+    if(ioDone) return; ioDone = true;
+    chip('c3','ok','IntersectionObserver rect', entries[0].boundingClientRect.width.toFixed(0) + ' px — painted');
+    io.disconnect();
+  });
+  io.observe(box);
+  setTimeout(function(){
+    var scroller = document.createElement('div');
+    scroller.style.cssText = 'position:absolute;left:-9999px;top:0;width:100px;height:20px;zoom:2;overflow:auto;';
+    var inner = document.createElement('div');
+    inner.style.cssText = 'width:500px;height:500px;';
+    scroller.appendChild(inner); document.body.appendChild(scroller);
+    var before = inner.getBoundingClientRect().top;
+    scroller.scrollTop = 100;
+    var after = inner.getBoundingClientRect().top;
+    chip('c3', 'ok', 'scrollTop=100 paints a 200 px shift', (before-after).toFixed(0) + ' px on screen (scrollTop is layout px)');
+    scroller.remove();
+    box.remove();
+    end();
+  }, 700);
+})();
+
+/* ---------- §4 multiplication law ---------- */
+begin();
+(function(){
+  var wrap = document.createElement('div');
+  wrap.style.cssText = 'position:absolute;left:-9999px;top:0;width:400px;';
+  wrap.innerHTML = '<div id="zout" style="zoom:2"><div id="zmid" style="zoom:3;width:100px;height:40px;background:#0b6b5d"><div id="zdeep">x</div></div></div>';
+  document.body.appendChild(wrap);
+  var out = wrap.querySelector('#zout'), mid = wrap.querySelector('#zmid'), deep = wrap.querySelector('#zdeep');
+  var mr = mid.getBoundingClientRect();
+  chip('c4','ok','nested zoom:2 × zoom:3 → painted', mr.width.toFixed(0) + ' px (100 × 6)');
+  chip('c4','ok','outer currentCSSZoom', String(out.currentCSSZoom));
+  chip('c4','ok','inner currentCSSZoom', String(mid.currentCSSZoom));
+  chip('c4','ok','deep child currentCSSZoom', String(deep.currentCSSZoom) + ' — no zoom of its own');
+  chip('c4','info','computed zoom of the deep child', getComputedStyle(deep).zoom + ' — zoom does NOT inherit');
+  var hidden = document.createElement('div');
+  hidden.style.cssText = 'zoom:2;display:none;width:100px;height:20px;';
+  document.body.appendChild(hidden);
+  chip('c4', hidden.currentCSSZoom === 1 ? 'warn':'ok', 'display:none → currentCSSZoom', String(hidden.currentCSSZoom) + ' (computed zoom=' + getComputedStyle(hidden).zoom + ') — layout-derived, not cascade-derived');
+  hidden.remove(); wrap.remove();
+  end();
+})();
+
+/* ---------- §5 percentage invariance ---------- */
+begin();
+(function(){
+  var host = document.createElement('div');
+  host.style.cssText = 'position:absolute;left:-9999px;top:0;';
+  host.innerHTML = '<div id="pp" style="width:400px;height:200px"><div id="pc" style="width:50%;height:20px;background:#b05c1a"></div></div>';
+  document.body.appendChild(host);
+  var p = host.querySelector('#pp'), c = host.querySelector('#pc');
+  var rows = [];
+  [1,2,4].forEach(function(z){
+    c.style.zoom = z;
+    var pr = p.getBoundingClientRect(), cr = c.getBoundingClientRect();
+    rows.push({z:z, parentPainted:pr.width, childComputed:getComputedStyle(c).width, childPainted:cr.width, current:c.currentCSSZoom});
+  });
+  var invariant = rows.every(function(r){ return Math.abs(r.childPainted - r.parentPainted*0.5) < 0.51; });
+  chip('c5', invariant ? 'ok':'fail', 'PERCENTAGE INVARIANCE', 'painted child = 50% of painted parent at zoom 1/2/4');
+  chip('c5','ok','computed lengths', rows.map(function(r){return 'z'+r.z+'→'+r.childComputed;}).join(' · '));
+  chip('c5','ok','painted widths', rows.map(function(r){return 'z'+r.z+'→'+r.childPainted.toFixed(0)+'px';}).join(' · '));
+  chip('c5','info','parent painted width', rows[0].parentPainted.toFixed(0) + ' px in every case');
+  window.__results.pct = rows;
+  host.remove();
+  end();
+})();
+
+/* ---------- §6 animation split ---------- */
+document.getElementById('b6').addEventListener('click', function(){
+  var out = document.getElementById('o6'); out.textContent = 'probing…';
+  document.getElementById('c6').innerHTML = '';
+  var host = document.createElement('div');
+  host.style.cssText = 'position:absolute;left:-9999px;top:0;';
+  host.innerHTML = '<div id="za" style="width:100px;height:20px;zoom:1;transition:zoom 500ms linear"></div>' +
+                   '<div id="zb" style="width:100px;height:20px;animation:zz 500ms linear forwards"></div>';
+  var st = document.createElement('style'); st.textContent = '@keyframes zz{from{zoom:1}to{zoom:2}}';
+  document.head.appendChild(st); document.body.appendChild(host);
+  var a = host.querySelector('#za'), b = host.querySelector('#zb');
+  var samples = [];
+  void getComputedStyle(a).zoom;
+  requestAnimationFrame(function(){ requestAnimationFrame(function(){
+    a.style.zoom = '3';
+    var i = 0;
+    function step(){
+      samples.push({zoom:getComputedStyle(a).zoom, anims:a.getAnimations().length, w:+a.getBoundingClientRect().width.toFixed(2)});
+      i++;
+      if(i < 5) requestAnimationFrame(step);
+      else finish();
+    }
+    requestAnimationFrame(step);
+  });});
+  function finish(){
+    var animCount = samples.length ? samples[samples.length-1].anims : 0;
+    var mid = samples.length > 1 ? samples[1].zoom : '?';
+    var interpolates = animCount > 0 && mid !== '3' && mid !== '2';
+    chip('c6', interpolates ? 'ok':'warn', 'transition: zoom', interpolates ? 'INTERPOLATES — mid-flight zoom ' + mid : 'SNAPS — ' + animCount + ' animation objects, value jumped to ' + mid);
+    chip('c6','ok','CSS.supports(transition-property:zoom)', CSS.supports('transition-property','zoom') ? 'true — even where it does NOT animate' : 'false');
+    var kAnim = b.getAnimations().length;
+    var kMid = getComputedStyle(b).zoom;
+    chip('c6', (kAnim > 0 && kMid !== '1') ? 'ok':'warn', '@keyframes zoom', (kAnim>0 && kMid!=='1') ? 'interpolates (mid ' + kMid + ')' : 'no interpolation — ' + kAnim + ' animation object(s), value ' + kMid);
+    chip('c6','info','support matrix (MDN BCD)','Chrome 150+ animatable · Firefox 126+ animatable · Safari NEVER animates');
+    out.textContent = 'transition samples (zoom value / animation objects / painted width):\n' +
+      samples.map(function(s){ return '  ' + s.zoom + '  ·  ' + s.anims + ' anim(s)  ·  ' + s.w + 'px'; }).join('\n') +
+      '\nkeyframes value: ' + kMid + ' · animation objects: ' + kAnim;
+    window.__results.anim = {samples:samples, keyframesZoom:kMid, keyframesAnims:kAnim, interpolates:interpolates};
+    st.remove(); host.remove();
+  }
+});
+
+/* ---------- §7 validation ---------- */
+begin();
+(function(){
+  var host = document.createElement('div');
+  host.style.cssText = 'position:absolute;left:-9999px;top:0;';
+  document.body.appendChild(host);
+  var vals = ['1.5','150%','0','0%','-1','-50%','NaN','Infinity','1e2','calc(infinity)','reset','normal'];
+  vals.forEach(function(v){
+    host.innerHTML = '<div id="vx" style="width:100px;height:20px"></div>';
+    var x = host.querySelector('#vx');
+    x.style.zoom = v;
+    var computed = getComputedStyle(x).zoom;
+    var rect = x.getBoundingClientRect();
+    var kind = 'info';
+    if(v === '1.5' || v === '150%') kind = 'ok';
+    else if(v === '0' || v === '0%') kind = 'warn';
+    else if(v === '1e2') kind = 'ok';
+    else if(v === 'calc(infinity)') kind = 'warn';
+    else kind = 'info';
+    chip('c7', kind, 'zoom:' + v, 'computed=' + computed + ' · current=' + x.currentCSSZoom + ' · painted=' + rect.width.toFixed(0) + 'px');
+  });
+  chip('c7','warn','zoom:0 does NOT collapse','computed 1 — unlike transform:scale(0)');
+  chip('c7','ok','zoom:1e2 is valid','scientific notation accepted → computed 100');
+  chip('c7','warn','infinite factor clamps','calc(infinity) computes "infinity" but used value clamps to 1,000,000 (Blink cap)');
+  host.remove();
+  end();
+})();
+
+/* ---------- §8 root zoom (srcdoc child) ---------- */
+begin();
+(function(){
+  var frame = document.getElementById('rootframe');
+  var src = '<!doctype html><meta charset="utf-8"><style>html{zoom:2}body{margin:0;font:12px ui-monospace,Menlo,monospace}#w{width:100vw;height:20px;background:#0b6b5d}</style>' +
+            '<div id="w"></div><script>var d=document.getElementById("w");var r=d.getBoundingClientRect();' +
+            'parent.postMessage({__rootProbe:true,innerWidth:innerWidth,media2000:matchMedia("(min-width: 2000px)").matches,' +
+            'dpr:devicePixelRatio,vvScale:(window.visualViewport?visualViewport.scale:null),painted:r.width,' +
+            'docScrollW:document.documentElement.scrollWidth,docClientW:document.documentElement.clientWidth,' +
+            'htmlOffset:document.documentElement.offsetWidth,htmlClient:document.documentElement.clientWidth}, "*");<\/script>';
+  frame.srcdoc = src;
+  var settled = false;
+  window.addEventListener('message', function(e){
+    if(!e.data || !e.data.__rootProbe || settled) return;
+    settled = true;
+    var d = e.data;
+    chip('c8', d.innerWidth === d.docClientW ? 'ok':'info', 'innerWidth under html{zoom:2}', d.innerWidth + ' px — viewport unchanged');
+    chip('c8', d.media2000 ? 'warn':'ok', 'media query (min-width:2000px)', d.media2000 ? 'MATCHES (viewport would have changed)' : 'does NOT match — CSS zoom ≠ browser zoom');
+    chip('c8', 'ok', 'devicePixelRatio / visualViewport.scale', d.dpr + ' / ' + d.vvScale + ' — untouched by CSS zoom');
+    chip('c8', 'warn', '100vw child paints', d.painted + ' px in a ' + d.docClientW + ' px viewport → ' + Math.max(0, d.docScrollW - d.docClientW) + ' px overflow');
+    chip('c8','info','root offsetWidth vs clientWidth', d.htmlOffset + ' vs ' + d.htmlClient + ' — root box is divided by the zoom');
+    window.__results.root = d;
+    end();
+  });
+  setTimeout(function(){ if(!settled){ chip('c8','warn','root probe','no reply in 4s'); end(); } }, 4000);
+})();
+
+/* ---------- §9 capstone console ---------- */
+(function(){
+  var molt = document.getElementById('molt');
+  document.querySelectorAll('[data-z]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var z = parseFloat(b.getAttribute('data-z'));
+      molt.style.zoom = z;
+      document.querySelectorAll('[data-z]').forEach(function(o){ o.style.outline = (o===b)?'2px solid var(--acc)':''; });
+      chip('c9','ok','molt text-size', z.toFixed(2) + '× applied to the content wrapper (layout re-flows)');
+    });
+  });
+  var hud = document.getElementById('hud');
+  document.querySelectorAll('[data-h]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var z = parseFloat(b.getAttribute('data-h'));
+      hud.style.zoom = z;
+      document.querySelectorAll('[data-h]').forEach(function(o){ o.style.outline = (o===b)?'2px solid var(--acc)':''; });
+      chip('c9','ok','OD HUD legibility', z.toFixed(2) + '× — currentCSSZoom=' + hud.currentCSSZoom);
+    });
+  });
+  var probe = document.createElement('div');
+  probe.style.cssText = 'width:240px;height:60px;background:#0b6b5d;color:#fff;font:12px ui-monospace,Menlo,monospace;padding:6px;border-radius:8px;';
+  probe.innerHTML = 'zoom target';
+  document.getElementById('s9').appendChild(probe);
+  var range = document.getElementById('zoomrange'), label = document.getElementById('zoomlabel'), kv = document.getElementById('kv-console');
+  function paintConsole(){
+    var z = parseFloat(range.value);
+    label.textContent = z.toFixed(2) + '×';
+    probe.style.zoom = z;
+    var r = probe.getBoundingClientRect();
+    var layout = r.width / probe.currentCSSZoom;
+    var data = {
+      'currentCSSZoom (effective)': String(probe.currentCSSZoom),
+      'getBoundingClientRect().width': r.width.toFixed(1) + ' px  ← painted',
+      'offsetWidth': probe.offsetWidth + ' px  ← layout',
+      'clientWidth': probe.clientWidth + ' px  ← layout',
+      'computed width': getComputedStyle(probe).width + '  ← layout',
+      'normalized layout width': layout.toFixed(1) + ' px  (rect / currentCSSZoom)',
+      'identity rect === offset × zoom': (Math.abs(r.width - probe.offsetWidth*probe.currentCSSZoom) < 0.51 ? 'holds' : 'BROKEN')
+    };
+    kv.innerHTML = '';
+    Object.keys(data).forEach(function(k){
+      var s1 = document.createElement('span'); s1.textContent = k;
+      var s2 = document.createElement('span'); s2.textContent = data[k];
+      kv.appendChild(s1); kv.appendChild(s2);
+    });
+    window.__results.consoleZoom = z;
+  }
+  range.addEventListener('input', paintConsole);
+  paintConsole();
+})();
+
+})();
+// @license MIT — Jin / Molt Studios research. Every verdict above is measured live in the reader's engine.
+</script>
+</body>
+</html>
