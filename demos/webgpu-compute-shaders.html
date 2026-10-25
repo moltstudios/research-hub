@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WebGPU Compute Shaders — Parallel GPU Kernels from JavaScript (Baseline 2025)</title>
+<link rel="icon" href="data:,">
+<title>WebGPU Compute Shaders — Parallel GPU Kernels from JavaScript (Baseline 2026)</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -357,11 +358,11 @@
       <div class="brand-mark"></div>
       <div>
         <h1>WebGPU Compute Shaders</h1>
-        <div class="sub">Parallel GPU kernels from JavaScript · Baseline 2025</div>
+        <div class="sub">Parallel GPU kernels from JavaScript · Baseline 2026</div>
       </div>
     </div>
     <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
-      <span class="pill baseline">Baseline 2025</span>
+      <span class="pill baseline">Baseline 2026</span>
       <span class="pill gpu">WebGPU</span>
       <span class="pill compute">Compute</span>
     </div>
@@ -386,7 +387,7 @@
     <!-- Stats -->
     <div class="card span-4">
       <h3><span class="dot"></span> Performance</h3>
-      <div class="label">Measured via timestamp queries + browser performance API</div>
+      <div class="label" id="measLabel">Measuring GPU compute time…</div>
       <div class="stats">
         <div class="stat">
           <div class="k">GPU Compute</div>
@@ -406,7 +407,7 @@
         </div>
       </div>
       <div style="font-size:0.7rem; color:var(--text-muted); margin-top:0.6rem; line-height:1.5;">
-        *CPU baseline runs same workload on main thread. Compute time varies by GPU; relative speedup is what matters.
+        *CPU baseline runs the same workload on the main thread. GPU time is a real GPU-clock measurement from WebGPU timestamp queries; the CPU figure is wall-clock around the same number of iterations, so the ratio is indicative, not a like-for-like kernel benchmark.
       </div>
     </div>
 
@@ -537,7 +538,7 @@
           <div class="ic">⏱️</div>
           <div>
             <div class="tt">Timestamp Queries</div>
-            <div class="dd">Measure exact GPU time with writeTimestamp / GPU timestamp feature.</div>
+            <div class="dd">Measure real GPU time — an OPTIONAL adapter feature ("timestamp-query"); the device must request it explicitly.</div>
           </div>
         </div>
       </div>
@@ -561,7 +562,7 @@
 
   <footer>
     <div>WebGPU Compute Shaders · <a href="https://webgpu.dev" target="_blank" rel="noopener">webgpu.dev</a> · <a href="https://www.w3.org/TR/WGSL/" target="_blank" rel="noopener">WGSL spec</a></div>
-    <div>Baseline 2025 · Chrome 113+ · Firefox 111+ · Safari 18+</div>
+    <div>Baseline 2026 · Chrome 113+ · Edge 113+ · Firefox 141+ · Safari 18+ desktop / 26+ full</div>
   </footer>
 
 </div>
@@ -588,7 +589,10 @@
     return;
   }
 
-  const device = await adapter.requestDevice();
+  // Real GPU-clock timing needs the 'timestamp-query' feature. It is OPTIONAL:
+  // the adapter may expose it while the device must still ask for it explicitly.
+  const canTimestamp = adapter.features.has('timestamp-query');
+  const device = await adapter.requestDevice(canTimestamp ? { requiredFeatures: ['timestamp-query'] } : {});
   const canvas = document.getElementById('stage');
   const ctx = canvas.getContext('webgpu');
   const format = navigator.gpu.getPreferredCanvasFormat();
@@ -771,7 +775,7 @@
       entryPoint: 'fs',
       targets: [{ format }],
     },
-    primitive: { topology: 'point' },
+    primitive: { topology: 'point-list' },
   });
 
   // ============================================================
@@ -800,7 +804,26 @@
   rebuildBindGroup();
 
   status.className = 'ready';
-  status.innerHTML = '<span class="ind"></span> WebGPU ready · compute pipeline active';
+  status.innerHTML = '<span class="ind"></span> WebGPU ready · compute pipeline active'
+    + (canTimestamp ? ' · timestamp-query on' : ' · no timestamp-query (GPU time not measured)');
+
+  // ============================================================
+  // Timestamp-query plumbing (real GPU-clock measurement)
+  // ============================================================
+  let tsQuerySet = null, tsResolveBuf = null, tsReadBuf = null;
+  let tsBusy = false, tsLastMs = null;
+  if (canTimestamp) {
+    tsQuerySet = device.createQuerySet({ type: 'timestamp', count: 2 });
+    tsResolveBuf = device.createBuffer({ size: 16, usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC });
+    tsReadBuf = device.createBuffer({ size: 16, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+    document.getElementById('measLabel').textContent =
+      'Measured via WebGPU timestamp queries — GPU clock, nanosecond resolution';
+  } else {
+    document.getElementById('measLabel').textContent =
+      'GPU timing unavailable — this adapter does not expose the "timestamp-query" feature';
+    document.getElementById('gpuMs').innerHTML = 'n/a<span class="u"></span>';
+    document.getElementById('particlesPerSec').innerHTML = 'n/a<span class="u"></span>';
+  }
 
   // ============================================================
   // Interaction state
@@ -837,7 +860,9 @@
     const commandEncoder = device.createCommandEncoder();
 
     // Compute pass
-    const computePass = commandEncoder.beginComputePass();
+    const computePass = commandEncoder.beginComputePass(canTimestamp ? {
+      timestampWrites: { querySet: tsQuerySet, beginningOfPassWriteIndex: 0, endOfPassWriteIndex: 1 },
+    } : undefined);
     computePass.setPipeline(computePipeline);
     computePass.setBindGroup(0, bindGroup);
     computePass.dispatchWorkgroups(Math.ceil(PARTICLE_COUNT / WORKGROUP_SIZE));
@@ -859,6 +884,22 @@
     renderPass.end();
 
     device.queue.submit([commandEncoder.finish()]);
+
+    // Read the GPU clock for this dispatch back to the CPU (async, never blocks the frame).
+    if (canTimestamp && !tsBusy) {
+      tsBusy = true;
+      const enc = device.createCommandEncoder();
+      enc.resolveQuerySet(tsQuerySet, 0, 2, tsResolveBuf, 0);
+      enc.copyBufferToBuffer(tsResolveBuf, 0, tsReadBuf, 0, 16);
+      device.queue.submit([enc.finish()]);
+      tsReadBuf.mapAsync(GPUMapMode.READ).then(() => {
+        const arr = new BigUint64Array(tsReadBuf.getMappedRange().slice(0));
+        tsReadBuf.unmap();
+        const ns = Number(arr[1] - arr[0]);
+        tsLastMs = ns > 0 ? ns / 1e6 : null;
+        tsBusy = false;
+      }).catch(() => { tsBusy = false; });
+    }
 
     requestAnimationFrame(tick);
   }
@@ -957,25 +998,21 @@
     }
   }
 
-  // Estimate GPU time using frame budget (rough but useful)
-  let lastFrame = performance.now();
-  let frameHistory = [];
-  function trackGpuTime() {
-    const now = performance.now();
-    const frameTime = now - lastFrame;
-    lastFrame = now;
-    frameHistory.push(frameTime);
-    if (frameHistory.length > 60) frameHistory.shift();
-    // Approximate GPU compute ≈ 30% of frame time on this workload
-    const avgFrame = frameHistory.reduce((a, b) => a + b, 0) / frameHistory.length;
-    const gpuMs = Math.max(0.1, avgFrame * 0.35);
-    document.getElementById('gpuMs').innerHTML = gpuMs.toFixed(2) + '<span class="u">ms</span>';
-    document.getElementById('particlesPerSec').innerHTML =
-      Math.round((PARTICLE_COUNT / (gpuMs / 1000)) / 1000) + '<span class="u">K/s</span>';
+  // Stats updaters — the GPU figure is a real timestamp-query measurement.
+  // When the feature is missing the stat stays "n/a": never a fabricated number.
+  function updateStats() {
+    if (canTimestamp && tsLastMs != null) {
+      document.getElementById('gpuMs').innerHTML = tsLastMs.toFixed(3) + '<span class="u">ms</span>';
+      document.getElementById('particlesPerSec').innerHTML =
+        Math.round((PARTICLE_COUNT / (tsLastMs / 1000)) / 1000) + '<span class="u">K/s</span>';
+    }
     updateSpeedup();
-    requestAnimationFrame(trackGpuTime);
   }
-  trackGpuTime();
+  function tickStats() {
+    updateStats();
+    requestAnimationFrame(tickStats);
+  }
+  tickStats();
 
 })();
 </script>
