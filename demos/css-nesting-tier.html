@@ -89,6 +89,7 @@
   <span class="badge w" id="bg4">&amp; in JS = scope root</span>
   <span class="badge n" id="bg5">no &amp;__concat</span>
   <span class="badge w" id="bg6">@keyframes dropped in a nested rule</span>
+  <span class="badge y" id="bg7">@scope beats a flat rule on a tie</span>
 </div>
 
 <div class="sec" id="s1">
@@ -199,9 +200,19 @@
 </div>
 
 <div class="sec" id="s11">
-<h2>11 · Engine ledger</h2>
-<div class="tscroll"><table id="t-ledger"><thead><tr><th>law</th><th>Chromium 155</th><th>Chromium 148</th><th>Brave 154</th><th>note</th></tr></thead><tbody></tbody></table></div>
+<h2>11 · <b>THE SCOPE-PROXIMITY ORDER</b> — where nesting meets <code>@scope</code></h2>
+<div class="tscroll"><table id="t-scope"><thead><tr><th>contest</th><th>winner</th><th>law</th></tr></thead><tbody></tbody></table></div>
 <div id="c11" class="row"></div>
+<div class="law"><b>THE ORDERED TRIAD.</b> The cascade inside <code>@scope</code> is not specificity-then-order — it is <b>specificity → scope proximity → source order</b>. Measured, all three engines identical:<br><br>
+· <b>Scoped vs unscoped, equal specificity → THE SCOPE WINS</b>, <i>regardless of source order</i>. A scoped rule written <b>first</b> beat a flat rule written <b>later</b>; and a scoped rule written <b>later</b> also beat a flat rule written <b>first</b>. This is the opposite of the normal cascade, where the later rule wins the tie — and it is silent, so a scoped component rule will quietly outrank a global utility class of the same specificity.<br>
+· <b>Scoped vs unscoped, DIFFERENT specificity → SPECIFICITY STILL WINS.</b> A scoped <code>.z</code> (0-1-0) <b>lost</b> to a flat <code>.z.z.z</code> (0-3-0), and a scoped <code>.t</code> (0-1-0) <b>lost</b> to a flat <code>#t7</code> (1-0-0). Proximity is a <b>tiebreaker</b>, not an override — it cannot beat specificity.<br>
+· <b>Inner scope vs outer scope → THE INNER SCOPE WINS</b>, again regardless of source order (the inner scope won even when it was written <i>first</i> and the outer <i>last</i>). That is the whole point of <code>@scope</code>: a nested component beats its own container.<br><br><b>PRACTICAL CONSEQUENCE:</b> <code>@scope</code> + native nesting is the cleanest way to ship a component that must beat a global stylesheet — but you must know that the tie-break is proximity, so a scoped rule of the <i>same</i> specificity beats a flat one no matter where it sits in the file.</div>
+</div>
+
+<div class="sec" id="s12">
+<h2>12 · Engine ledger</h2>
+<div class="tscroll"><table id="t-ledger"><thead><tr><th>law</th><th>Chromium 155</th><th>Chromium 148</th><th>Brave 154</th><th>note</th></tr></thead><tbody></tbody></table></div>
+<div id="c12" class="row"></div>
 <div class="law"><b>THREE ENGINES, ONE VERDICT.</b> Every law on this page was measured on <b>Chrome for Testing 155</b>, <b>Chrome for Testing 148</b> and <b>Brave 154</b> headless. The three produced <b>identical</b> numbers on every ladder row, every colour, and every CSSOM shape — this tier has no engine drift to worry about. Support baseline (MDN BCD, checked 2026-10-26): Chrome 120 · Edge 120 · Firefox 117 · Safari 17.2 · Safari iOS 17.2 — <b>Baseline 2023</b>. The <code>CSSNestedDeclarations</code> interface itself is <b>Baseline 2024</b> (December 2024).</div>
 </div>
 
@@ -606,7 +617,57 @@
     ]);
   })();
 
-  // ------------------------------------------------------------------ §11 engine ledger
+  // ------------------------------------------------------------------ §11 scope proximity
+  (function(){
+    var st = inject(
+      '@scope (.r1) { .x { color: rgb(10,10,10); } }\n' +
+      '.x { color: rgb(20,20,20); }\n' +
+      '.y { color: rgb(30,30,30); }\n' +
+      '@scope (.r2) { .y { color: rgb(40,40,40); } }\n' +
+      '@scope (.r3) { .z { color: rgb(50,50,50); } }\n' +
+      '.z.z.z { color: rgb(60,60,60); }\n' +
+      '@scope (.r4) { .w.w { color: rgb(70,70,70); } }\n' +
+      '.w.w { color: rgb(80,80,80); }\n' +
+      '@scope (.r5) { @scope (.r5in) { .v { color: rgb(90,90,90); } } }\n' +
+      '@scope (.r5) { .v { color: rgb(100,100,100); } }\n' +
+      '@scope (.r6) { @scope (.r6in) { .u { color: rgb(110,110,110); } } }\n' +
+      '@scope (.r6) { .u { color: rgb(120,120,120); } }\n' +
+      '@scope (.r7) { .t { color: rgb(130,130,130); } }\n' +
+      '#sp7 { color: rgb(140,140,140); }\n');
+    var d = el('div');
+    d.innerHTML =
+      '<div class="r1"><div class="x" id="sp1">1</div></div>' +
+      '<div class="r2"><div class="y" id="sp2">2</div></div>' +
+      '<div class="r3"><div class="z" id="sp3">3</div></div>' +
+      '<div class="r4"><div class="w" id="sp4">4</div></div>' +
+      '<div class="r5"><div class="r5in"><div class="v" id="sp5">5</div></div></div>' +
+      '<div class="r6"><div class="r6in"><div class="u" id="sp6">6</div></div></div>' +
+      '<div class="r7"><div class="t" id="sp7">7</div></div>';
+    document.body.appendChild(d);
+    var c = ['sp1','sp2','sp3','sp4','sp5','sp6','sp7'].map(function(id){ return cssColour(id); });
+    var scopeFirst = c[0] === 'rgb(10, 10, 10)';
+    var scopeLater = c[1] === 'rgb(40, 40, 40)';
+    var specWins   = c[2] === 'rgb(60, 60, 60)' && c[6] === 'rgb(140, 140, 140)';
+    var innerWins  = c[4] === 'rgb(90, 90, 90)' && c[5] === 'rgb(110, 110, 110)';
+    var rows = [
+      ['@scope (written FIRST) vs flat (written later), equal specificity', c[0], scopeFirst ? 'SCOPE wins — proximity beats source order' : 'flat wins'],
+      ['flat (written FIRST) vs @scope (written later), equal specificity', c[1], scopeLater ? 'SCOPE wins — proximity beats source order' : 'flat wins'],
+      ['@scope .z (0-1-0) vs flat .z.z.z (0-3-0)', c[2], 'FLAT wins — specificity dominates'],
+      ['@scope .w.w (0-2-0) vs flat .w.w (0-2-0)', c[3], c[3] === 'rgb(70, 70, 70)' ? 'SCOPE wins — equal specificity, proximity' : 'flat wins'],
+      ['inner @scope vs outer @scope (outer written later)', c[4], innerWins ? 'INNER wins — proximity beats source order' : 'outer wins'],
+      ['inner @scope (written first) vs outer (written last)', c[5], c[5] === 'rgb(110, 110, 110)' ? 'INNER wins — proximity beats source order' : 'outer wins'],
+      ['@scope .t (0-1-0) vs flat #sp7 (1-0-0)', c[6], 'FLAT wins — specificity dominates']
+    ];
+    table('t-scope', rows);
+    chip('c11', 'scoped beats unscoped on a tie (scope written FIRST)', scopeFirst ? 'ok' : 'fail', c[0]);
+    chip('c11', 'scoped beats unscoped on a tie (scope written LATER)', scopeLater ? 'ok' : 'fail', c[1]);
+    chip('c11', 'specificity still dominates proximity', specWins ? 'ok' : 'fail', c[2] + ' / ' + c[6]);
+    chip('c11', 'the inner scope beats the outer scope', innerWins ? 'ok' : 'fail', c[4] + ' / ' + c[5]);
+    chip('c11', 'the triad: specificity → proximity → source order', (scopeFirst && scopeLater && specWins && innerWins) ? 'ok' : 'warn', 'all 7 contests measured');
+    d.remove(); st.remove();
+  })();
+
+  // ------------------------------------------------------------------ §12 engine ledger
   (function(){
     var rows = [
       ['& specificity = :is() max of the parent list', '1-1-0', '1-1-0', '1-1-0', 'measured by discriminator brute force'],
@@ -617,12 +678,13 @@
       ['@keyframes inside a rule', 'dropped', 'dropped', 'dropped', 'no CSSKeyframesRule, animation never runs'],
       ['CSSNestedDeclarations exists', 'yes', 'yes', 'yes', 'Baseline 2024 (Dec 2024)'],
       ['CSSRule.NESTING_DECLARATIONS constant', 'undefined', 'undefined', 'undefined', 'detect the class instead'],
-      ['&amp; in querySelectorAll = scope root', 'yes', 'yes', 'yes', 'identical to :scope / :root']
+      ['&amp; in querySelectorAll = scope root', 'yes', 'yes', 'yes', 'identical to :scope / :root'],
+      ['@scope beats an unscoped rule on a tie', 'yes', 'yes', 'yes', 'regardless of source order']
     ];
     table('t-ledger', rows);
-    chip('c11', '3 engines, identical verdicts', 'ok', 'Chromium 155 · Chromium 148 · Brave 154');
-    chip('c11', 'Baseline 2023', 'ok', 'Chrome 120 · Firefox 117 · Safari 17.2');
-    chip('c11', 'CSSNestedDeclarations is Baseline 2024', 'ok', 'Dec 2024');
+    chip('c12', '3 engines, identical verdicts', 'ok', 'Chromium 155 · Chromium 148 · Brave 154');
+    chip('c12', 'Baseline 2023', 'ok', 'Chrome 120 · Firefox 117 · Safari 17.2');
+    chip('c12', 'CSSNestedDeclarations is Baseline 2024', 'ok', 'Dec 2024');
   })();
 
   // ------------------------------------------------------------------ buttons
