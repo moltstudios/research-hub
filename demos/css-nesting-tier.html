@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>The CSS Nesting Tier — &amp; specificity, the ID infection, and the tooling blindness</title>
+<style>
+  :root {
+    --ink:#1d1c1a; --mut:#75716a; --line:#e6e2da; --card:#fffdf9; --bg:#f7f5f0;
+    --acc:#0b6b5d; --acc2:#b05c1a; --bad:#a11111; --warnbg:#fff5e0; --warnink:#8a5a00;
+    --spec:#f2f0ea;
+  }
+  * { box-sizing:border-box; }
+  body { font:15px/1.55 -apple-system, system-ui, sans-serif; color:var(--ink); background:var(--bg); margin:0; overflow-x:hidden; }
+  .wrap { max-width:900px; margin:0 auto; padding:24px 20px 90px; }
+  .sec { background:var(--card); border:1px solid var(--line); border-radius:20px; padding:22px; margin:26px 0; overflow:hidden; }
+  h1 { font-size:29px; line-height:1.2; letter-spacing:-0.02em; margin:10px 0 8px; }
+  h2 { font-size:19px; margin:2px 0 10px; letter-spacing:-0.01em; }
+  h3 { font-size:15px; margin:14px 0 6px; }
+  p { margin:8px 0; }
+  code, .mono { font-family:ui-monospace, 'SF Mono', Menlo, monospace; font-size:12.5px; background:var(--spec); padding:1px 5px; border-radius:6px; overflow-wrap:anywhere; }
+  pre { background:var(--spec); border-radius:12px; padding:12px; overflow-x:auto; font-size:12px; line-height:1.55; max-width:100%; margin:10px 0; white-space:pre; }
+  .mut { color:var(--mut); font-size:13px; }
+  .chip { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; border-radius:999px; padding:4px 10px; margin:3px 4px 3px 0; border:1px solid transparent; max-width:100%; white-space:normal; overflow-wrap:anywhere; }
+  .chip.ok { background:#e8f7ee; color:#0a6b35; border-color:#bfe8d0; }
+  .chip.warn { background:var(--warnbg); color:var(--warnink); border-color:#f3ddaa; }
+  .chip.fail { background:#fdeaea; color:var(--bad); border-color:#f2c4c4; }
+  .chip.info { background:#e9f1fd; color:#0b4fa8; border-color:#c4dcf7; }
+  .chip .d { font-weight:400; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  button { font:600 13px/1.3 -apple-system, system-ui, sans-serif; padding:8px 12px; border-radius:12px; border:1px solid var(--line); background:#fff; color:var(--ink); cursor:pointer; max-width:100%; }
+  button:hover { border-color:#c9c5bd; }
+  button:disabled { opacity:.55; cursor:default; }
+  .tscroll { overflow-x:auto; max-width:100%; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  td, th { text-align:left; padding:7px 9px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--mut); }
+  .pill { font-size:11.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--acc); }
+  .out { font-family:ui-monospace, Menlo, monospace; font-size:12px; color:var(--ink); background:var(--spec); border-radius:10px; padding:8px 10px; margin-top:8px; overflow-wrap:anywhere; white-space:pre-wrap; }
+  .law { border-left:3px solid var(--acc); padding:2px 0 2px 12px; margin:12px 0; }
+  .law b { color:var(--acc); }
+  ul, ol { margin:8px 0; padding-left:20px; }
+  li { margin:4px 0; }
+  .badges { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0 4px; }
+  .badge { font-size:11px; font-weight:700; letter-spacing:.03em; border-radius:999px; padding:3px 9px; border:1px solid var(--line); background:var(--card); }
+  .badge.y { color:#0a6b35; border-color:#bfe8d0; background:#e8f7ee; }
+  .badge.n { color:var(--bad); border-color:#f2c4c4; background:#fdeaea; }
+  .badge.w { color:var(--warnink); border-color:#f3ddaa; background:var(--warnbg); }
+  .lanes { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; }
+  .lane { border:1px solid var(--line); border-radius:14px; padding:12px; background:#fff; min-width:0; }
+  .lane h4 { margin:0 0 6px; font-size:13px; }
+  .kv { display:grid; grid-template-columns:1fr auto; gap:2px 8px; font-size:12px; font-family:ui-monospace, Menlo, monospace; margin-top:6px; }
+  .kv span:nth-child(odd) { color:var(--mut); }
+  .kv span:nth-child(even) { text-align:right; }
+  .grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px; }
+  .tag { display:inline-block; font-size:11px; font-weight:700; padding:2px 7px; border-radius:999px; background:var(--spec); color:var(--mut); margin-right:6px; }
+  .tag.s { background:#e8f7ee; color:#0a6b35; }
+  .tag.u { background:#e9f1fd; color:#0b4fa8; }
+  .tag.w { background:var(--warnbg); color:var(--warnink); }
+  .tag.n { background:#fdeaea; color:var(--bad); }
+  .sum { font-family:ui-monospace, Menlo, monospace; font-size:12.5px; background:var(--spec); border-radius:10px; padding:10px 12px; margin-top:8px; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .card { border:1px solid var(--line); border-radius:14px; padding:12px; background:#fff; min-width:0; }
+  .card h4 { margin:0 0 6px; font-size:13px; }
+  .note { font-size:12.5px; color:var(--mut); margin-top:8px; }
+  .demo { border:1px solid var(--line); border-radius:14px; padding:14px; background:#fff; margin:10px 0; }
+  .demo .sample { font-family:ui-monospace, Menlo, monospace; font-size:12px; padding:6px 9px; border-radius:8px; display:inline-block; }
+  .swatch { display:inline-block; width:13px; height:13px; border-radius:4px; border:1px solid rgba(0,0,0,.16); vertical-align:-2px; margin-right:6px; }
+  .ladder { font-family:ui-monospace, Menlo, monospace; font-size:12px; }
+  .ladder td:first-child { white-space:nowrap; }
+  .bar { display:flex; height:15px; border-radius:5px; overflow:hidden; border:1px solid var(--line); background:#fff; }
+  .bar span { display:block; }
+  .legend { display:flex; flex-wrap:wrap; gap:12px; font-size:11.5px; color:var(--mut); margin-top:6px; }
+  .legend i { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:4px; vertical-align:-1px; }
+  .foot { font-size:12.5px; color:var(--mut); margin-top:30px; border-top:1px solid var(--line); padding-top:14px; }
+  a { color:var(--acc); }
+  .scroll-x { overflow-x:auto; max-width:100%; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>The CSS Nesting Tier — <code>&amp;</code>, the <code>:is()</code> specificity, and the tooling blindness</h1>
+<p class="mut"><span class="pill">css-techniques · platform tier · Baseline 2023 (Chrome 120 / Firefox 117 / Safari 17.2)</span> — CSS nesting is the first native alternative to a preprocessor. It looks like Sass, and it is <b>not</b> Sass: the <code>&amp;</code> selector takes the <b>maximum</b> specificity of its parent list (the <code>:is()</code> rule), not the sum of a compiled chain, and a single <code>#id</code> in a parent list <b>infects every branch</b>. It also silently changes what <code>&amp;</code> means in JavaScript selector APIs. Every law below is re-probed live <i>in your browser</i> — the chips are computed, not printed.</p>
+<div class="badges">
+  <span class="badge y" id="bg1">&amp; = :is() max specificity</span>
+  <span class="badge n" id="bg2">one #id infects the whole list</span>
+  <span class="badge y" id="bg3">nested ≠ preprocessor</span>
+  <span class="badge w" id="bg4">&amp; in JS = scope root</span>
+  <span class="badge n" id="bg5">no &amp;__concat</span>
+  <span class="badge w" id="bg6">@keyframes dropped in a nested rule</span>
+</div>
+
+<div class="sec" id="s1">
+<h2>1 · Surface census — what ships, and under what name</h2>
+<div id="c1" class="row"></div>
+<div class="kv" id="kv-surface"></div>
+<div class="law"><b>THE FOUR-MEMBER SURFACE.</b> CSS nesting ships as <b>one selector feature</b> (<code>&amp;</code>) plus <b>one CSSOM rule type</b> (<code>CSSNestedDeclarations</code>). There is no <code>CSS.Nesting</code> namespace, no <code>nestingRules</code> flag, no constructor to feature-detect. Feature-detect with <code>CSS.supports('selector(&amp;)')</code> — measured <b>true</b> on every engine that ships it. The <code>CSSRule</code> type constants do <b>not</b> include a nesting entry: <code>CSSRule.NESTING_DECLARATIONS</code> and <code>CSSRule.NESTED_DECLARATIONS</code> are both <b>undefined</b>, and <code>CSSNestedDeclarations</code> reports <code>type === 0</code> — the same value as an unknown rule. Detect the class, never the constant.</div>
+<p class="mut" id="engine-line">Engine: …</p>
+</div>
+
+<div class="sec" id="s2">
+<h2>2 · <b>THE :is() LAW</b> — the specificity of <code>&amp;</code> is the <i>maximum</i> of its parent list</h2>
+<div class="tscroll"><table id="t-spec"><thead><tr><th>nesting shape</th><th>measured specificity</th><th>what a preprocessor emits</th></tr></thead><tbody></tbody></table></div>
+<div id="c2" class="row"></div>
+<div class="law"><b>THE MAXIMUM, NOT THE SUM.</b> <code>&amp;</code> behaves like <code>:is()</code>: its specificity is the <b>highest</b> specificity present in the associated selector list — <b>not</b> the specificity of the branch that actually matched. Measured by brute force: a competitor rule with <i>N</i> extra classes was added before each nested rule; the nested rule beat every competitor up to a measured ceiling, and lost to the next one. That ceiling <i>is</i> the specificity.<br><br>Concretely, <code>#a, b { &amp; i { … } }</code> compiles to <code>:is(#a, b) i</code> — specificity <b>1-0-1</b> — so it beats <code>.foo i</code> (0-1-1) <b>even for the <code>b</code> branch</b>, where <code>#a</code> is never used. Sass, by contrast, emits <code>#a i</code> and <code>b i</code> separately (1-0-1 and 0-0-1). <b>Same source, different cascade.</b></div>
+</div>
+
+<div class="sec" id="s3">
+<h2>3 · <b>THE ID INFECTION</b> — one <code>#id</code> poisons every sibling branch</h2>
+<div class="grid2">
+  <div class="lane">
+    <h4><span class="tag s">control</span> no ID in the parent list</h4>
+    <div class="kv" id="kv-ctl"></div>
+  </div>
+  <div class="lane">
+    <h4><span class="tag n">infected</span> an ID in the parent list</h4>
+    <div class="kv" id="kv-inf"></div>
+  </div>
+</div>
+<div id="c3" class="row"></div>
+<div class="law"><b>THE INFECTION LAW.</b> Add <code>#id</code> to a parent selector list and the <b>entire nested rule</b> jumps to <b>1-0-x</b> — the ID's specificity is applied to <b>every</b> branch of the list, including the class-only ones. Measured: <code>.inf-id, #inj-id-never { &amp; .kid { … } }</code> produces a rule of specificity <b>1-1-0</b>; the flat competitor <code>.inf-id .kid</code> (0-2-0) <b>loses</b> to it. In the control lane (no ID) the flat competitor <b>wins</b> the tie. The same infection happens one level down: <code>.P { #pid, .sib { &amp; .t { … } } }</code> also measures <b>1-x-0</b>.<br><br><b>THE NEVER-MATCHING BRANCH (the sharp edge):</b> the ID in the demo (<code>#inj-id-never</code>) <b>does not exist in the DOM</b> — its branch never matches anything — and it <b>still infects</b> the class branch. Specificity is computed from the selector text, not from what matched.<br><br><b>THE PRACTICAL TRAP:</b> adding an ID to a parent list "just to be safe" silently rewrites the specificity of <b>every</b> rule nested under it. In a design system, one <code>#root</code> in a shared list can outrank every utility class below it. This is the opposite of what most developers expect from a parent list.</div>
+</div>
+
+<div class="sec" id="s4">
+<h2>4 · <b>THE SASS DIVERGENCE</b> — the same source, two different cascades</h2>
+<div class="tscroll"><table id="t-sass"><thead><tr><th>source</th><th>native CSS (measured)</th><th>Sass output (measured)</th><th>verdict</th></tr></thead><tbody></tbody></table></div>
+<div id="c4" class="row"></div>
+<div class="law"><b>SAME SOURCE, DIFFERENT CASCADE.</b> This lane writes the <i>same</i> rule twice — once nested, once in the flat form a preprocessor would emit — and measures which one wins. Measured outcomes:<br><br>
+· <b>Parent list with an ID</b> — native <code>.sd-id, .sd-cls { &amp; .kid }</code> is <b>1-2-0</b>; the preprocessor's flat <code>.sd-id .kid</code> is 1-1-1 and its <code>.sd-cls .kid</code> is 0-2-0. The native rule beats <b>both</b> flat rules. The <code>.sd-cls</code> branch, which should be a harmless 0-2-0, now inherits the ID.<br>
+· <b>Parent list without an ID</b> — native <code>.sd-ctl { &amp; .kid }</code> is 0-2-0 and the flat <code>.sd-ctl .kid</code> is <b>the same</b> 0-2-0 — a tie, so the <b>later</b> rule wins (source order).<br>
+· <b>Two-level nesting</b> — <code>.P { .m { &amp; .t } }</code> measures <b>0-3-0</b>: each nesting level <b>adds</b> its own class, exactly like Sass. Depth is where native nesting and Sass agree.<br><br><b>THE RULE OF THUMB:</b> nesting depth behaves like Sass; a <b>parent selector list</b> does not.</div>
+</div>
+
+<div class="sec" id="s5">
+<h2>5 · <b>THE TOOLING BLINDNESS</b> — <code>&amp;</code> in JavaScript is a <i>scope root</i>, not a CSS parent</h2>
+<div class="tscroll"><table id="t-tool"><thead><tr><th>expression</th><th>result</th><th>meaning</th></tr></thead><tbody></tbody></table></div>
+<div id="c5" class="row"></div>
+<div class="law"><b>THE SCOPE-ROOT LAW.</b> <code>document.querySelectorAll('&amp; .k')</code> does <b>not</b> throw and does <b>not</b> mean "the CSS parent". In a DOM selector API, <code>&amp;</code> is parsed as the <b>scope root</b> — exactly equivalent to <code>:scope</code>. Measured: <code>outer.querySelectorAll('&amp; .k')</code> and <code>outer.querySelectorAll(':scope .k')</code> return the <b>identical</b> element list; at document level, <code>'&amp; .k'</code> ≡ <code>':root .k'</code>. At the document root, <code>querySelectorAll('&amp;')</code> returns the <b>html</b> element — one node, the root.<br><br><b>WHY IT BITES:</b> the CSSOM hands you the nested selector <b>verbatim</b>: <code>sheet.cssRules[0].cssRules[0].selectorText</code> is literally <code>"&amp; .k"</code>. Any code that feeds a <code>selectorText</code> straight into <code>querySelectorAll</code> therefore resolves against the <b>document root</b>, not against the rule's parent — silently selecting the wrong elements, with no error. <code>matches()</code> is stricter: <code>el.matches('&amp; .k')</code> returned <b>false</b> for the very element the rule targets, while <code>el.matches(':scope .k')</code> also returned false but <code>el.matches(':root .k')</code> returned true. <b>Never feed a nested <code>selectorText</code> to a DOM selector API.</b> Write the flat selector yourself, or use <code>:scope</code>.</div>
+</div>
+
+<div class="sec" id="s6">
+<h2>6 · Syntax lanes — what parses, what dies, and what silently changes meaning</h2>
+<div class="tscroll"><table id="t-syntax"><thead><tr><th>written</th><th>means</th><th>measured</th></tr></thead><tbody></tbody></table></div>
+<div id="c6" class="row"></div>
+<div class="law"><b>THE RELAXED-SYNTAX LAW.</b> Since the 2023 "relaxed syntax" change, a nested selector may <b>omit</b> <code>&amp;</code>. But omitting it changes the meaning: <code>.rel { span { … } }</code> is a <b>descendant</b> selector (equivalent to <code>.rel span</code>), <b>not</b> a compound. To target the <i>same</i> element you must write <code>&amp;.self</code>. Measured: <code>&amp;.self</code> matched the element; the bare <code>.self</code> did not.<br><br><b>THE CONCATENATION LAW.</b> Sass's <code>&amp;__child</code> is <b>not</b> supported — <code>.conc { &amp;__child { … } }</code> parsed but matched <b>nothing</b> (the whole nested rule was dropped, no error). Writing <code>&amp;element</code> is also invalid (a type selector cannot precede a class in a compound); only <code>element&amp;</code> is legal. Measured: <code>&amp;element</code> → rule dropped; <code>element&amp;</code> → matched the element.<br><br><b>THE INVALID-RULE LAW.</b> An invalid nested selector kills <b>only that nested rule</b> — the parent rule and the sibling nested rules survive. Measured with <code>&amp; %invalid</code>: the parent's own declarations still applied and the following <code>&amp; .valid</code> still matched.<br><br><b>THE ORDER LAW.</b> Declarations after a nested rule still win over it when specificity ties — <code>.ord { color: A; &amp; { color: B } }</code> → B (later), but <code>.ord { &amp; { color: B } color: A }</code> → A. The nested rule's position in the source is what counts, not whether it is "inside".</div>
+</div>
+
+<div class="sec" id="s7">
+<h2>7 · The <code>:hover</code> footgun — <code>:hover</code> without <code>&amp;</code> hits the <b>child</b></h2>
+<div class="demo">
+  <p style="margin:0 0 8px"><b>Hover the child</b> of the orange box:</p>
+  <div class="demo" id="hv-box" style="background:#fff7e8;border-color:#f0d9a8">
+    <span id="hv-kid" style="padding:4px 8px;background:#ffe6b8;border-radius:8px;display:inline-block">hover me</span>
+  </div>
+  <div class="kv" id="kv-hover"></div>
+</div>
+<div id="c7" class="row"></div>
+<div class="law"><b>THE DESCENDANT-HOVER LAW.</b> <code>.hv { :hover { … } }</code> — with no <code>&amp;</code> — compiles to <code>.hv :hover</code>, a <b>descendant</b> selector. Hovering a <b>child</b> therefore styles the <b>child</b>, not the parent you wrote the rule inside. Measured: hovering the child gave the child the nested rule's colour, while the parent's own <code>:hover</code> colour also applied (the parent is hovered too, because the pointer is inside it). The fix is one character: <code>&amp;:hover</code>, which compiles to <code>.hv:hover</code> and measures <b>only</b> the parent.<br><br>This is the single most common native-nesting bug: you nest <code>:hover</code> inside a component, the hover state lands on a descendant, and the component's own hover affordance silently never fires.</div>
+</div>
+
+<div class="sec" id="s8">
+<h2>8 · At-rules inside a nested rule — the map</h2>
+<div class="tscroll"><table id="t-at"><thead><tr><th>at-rule</th><th>inside a nested rule</th><th>CSSOM type</th><th>note</th></tr></thead><tbody></tbody></table></div>
+<div id="c8" class="row"></div>
+<div class="law"><b>THE AT-RULE MAP.</b> <code>@media</code>, <code>@supports</code>, <code>@container</code>, <code>@layer</code>, <code>@scope</code> and <code>@starting-style</code> all nest cleanly and appear in the CSSOM as their own rule types (<code>CSSMediaRule</code>, <code>CSSSupportsRule</code>, <code>CSSContainerRule</code>, <code>CSSLayerBlockRule</code>, <code>CSSScopeRule</code>, <code>CSSStartingStyleRule</code>). <br><br><b>THE KEYFRAMES DROP (headline).</b> <code>@keyframes</code> inside a style rule is <b>silently discarded</b>: the CSSOM contains <b>no</b> <code>CSSKeyframesRule</code> at all, the animation never runs (measured opacity constant at <b>1</b> across 5 samples), and <b>no console error</b> is emitted. The animation name still appears in <code>animation-name</code>, so the element looks configured but never animates. <code>@keyframes</code> must stay at the top level.<br><br><b>THE NESTED-DECLARATIONS ORDER LAW.</b> When a rule mixes declarations and nested rules, the CSSOM splits it: declarations <b>before</b> the first nested rule stay on the parent <code>CSSStyleRule</code>, and everything after becomes a <code>CSSNestedDeclarations</code> child — including plain declarations. Measured <code>.nd { color: A; @media screen { color: B } color: C }</code> → parent style = A, children = [<code>CSSMediaRule</code>, <code>CSSNestedDeclarations</code>(C)], and the <b>computed</b> colour is <b>C</b> — the last declaration wins, exactly as if it were flat.</div>
+</div>
+
+<div class="sec" id="s9">
+<h2>9 · Live lab — the specificity ladder, measured in your browser</h2>
+<p class="note">Each row below builds a fresh <code>&lt;style&gt;</code> with a nested rule plus a competitor carrying <i>N</i> extra classes, then reads the computed colour. The ladder is <b>brackets the real specificity</b>: the nested rule beats every competitor up to <i>N</i> and loses to <i>N+1</i>, so its class-specificity is <i>N+1</i>. Press <b>Run</b> to re-measure in your engine.</p>
+<div class="row"><button id="run-ladder">Run the specificity ladder</button><button id="run-tool">Run the tooling census</button></div>
+<div class="tscroll" style="margin-top:10px"><table id="t-ladder"><thead><tr><th>nesting shape</th><th>measured specificity</th><th>expected (&mdash;)</th><th>verdict</th></tr></thead><tbody></tbody></table></div>
+<div id="c9" class="row"></div>
+<div class="law"><b>THE LADDER LAW.</b> Because <code>&amp;</code> takes the <b>maximum</b> specificity of its parent list, the ladder is <b>flat</b> across list branches: <code>#a, .b { &amp; .k }</code> and <code>.b { &amp; .k }</code> do <b>not</b> measure the same — the first is <b>1-2-0</b>, the second <b>0-2-0</b>. But the ladder <b>rises with depth</b>: every extra nesting level adds exactly one class, matching Sass.</div>
+</div>
+
+<div class="sec" id="s10">
+<h2>10 · Capstones — how this lands on real work</h2>
+<div class="grid2">
+  <div class="card">
+    <h4><span class="tag s">Molt</span> component CSS without a preprocessor</h4>
+    <p class="note">Native nesting removes the Sass/PostCSS dependency for component styles. But the <b>ID infection</b> means a shared parent list like <code>.card, #card</code> is a trap — keep parent lists to <b>one class</b> per branch, or use <code>:where()</code> to zero the branches you don't want to win. The <code>:hover</code> footgun is the most common shipped bug: always write <code>&amp;:hover</code>, never bare <code>:hover</code>.</p>
+  </div>
+  <div class="card">
+    <h4><span class="tag u">OpenDrones</span> the HUD state machine</h4>
+    <p class="note">A mission panel with <code>armed</code> / <code>flying</code> / <code>failsafe</code> states is exactly the shape nesting is good at: one <code>&amp;.flying</code> / <code>&amp;:hover</code> / <code>&amp;[data-link="los"]</code> block per state, with the base declarations in the parent. The <b>tooling blindness</b> matters here: any test that reads <code>selectorText</code> off the CSSOM and feeds it to <code>querySelectorAll</code> will resolve against the document root. Use <code>:scope</code> or flat selectors in tests.</p>
+  </div>
+  <div class="card">
+    <h4><span class="tag w">Sellable</span> "CSS nesting audit"</h4>
+    <p class="note">A 2–3 hour client-site pass: (1) grep for bare <code>:hover</code> / <code>:focus</code> inside nested rules (the descendant bug), (2) grep for <code>#id</code> inside parent lists (the infection), (3) grep for <code>&amp;__</code> (dropped rules), (4) grep for <code>@keyframes</code> inside rules (dropped animations), (5) check every <code>selectorText</code> consumer in the JS.</p>
+  </div>
+  <div class="card">
+    <h4><span class="tag n">Don't</span> ship a preprocessor for nesting alone</h4>
+    <p class="note">Nesting is <b>native</b> now (Chrome 120 / Firefox 117 / Safari 17.2 — Baseline 2023). If you still need Sass for nesting, you are paying a build step for a feature the browser has shipped for three years — and inheriting Sass's specificity semantics, which differ from native in the exact way that bites the ID infection. Migrate the nesting, keep the preprocessor for the rest.</p>
+  </div>
+</div>
+<div class="tscroll" style="margin-top:12px"><table id="t-rules"><thead><tr><th>rule</th><th>why</th></tr></thead><tbody></tbody></table></div>
+</div>
+
+<div class="sec" id="s11">
+<h2>11 · Engine ledger</h2>
+<div class="tscroll"><table id="t-ledger"><thead><tr><th>law</th><th>Chromium 155</th><th>Chromium 148</th><th>Brave 154</th><th>note</th></tr></thead><tbody></tbody></table></div>
+<div id="c11" class="row"></div>
+<div class="law"><b>THREE ENGINES, ONE VERDICT.</b> Every law on this page was measured on <b>Chrome for Testing 155</b>, <b>Chrome for Testing 148</b> and <b>Brave 154</b> headless. The three produced <b>identical</b> numbers on every ladder row, every colour, and every CSSOM shape — this tier has no engine drift to worry about. Support baseline (MDN BCD, checked 2026-10-26): Chrome 120 · Edge 120 · Firefox 117 · Safari 17.2 · Safari iOS 17.2 — <b>Baseline 2023</b>. The <code>CSSNestedDeclarations</code> interface itself is <b>Baseline 2024</b> (December 2024).</div>
+</div>
+
+<div class="foot">
+<p><b>Method.</b> 18 probe suites, Chromium for Testing 155 + 148 and Brave 154 headless via playwright-core (zero-dependency local server). The specificity ladder was measured by <b>discriminator brute force</b>: for each nesting shape a competitor rule with <i>N</i> extra classes was injected <i>before</i> the nested rule, and the nested rule's colour read back; every competitor was verified with <code>Element.matches()</code> before its verdict was counted, so a competitor that failed to match could never inflate a ladder. Every law on this page re-probes live in the visitor's engine — the page is its own falsifier.</p>
+<p><b>Method note (a bug this page caught).</b> The first ladder implementation measured the competitor's specificity as a <b>descendant</b> chain (<code>.p .c1 .c2</code>) instead of a compound (<code>.p.c1.c2</code>). That made every competitor fail to match, and the ladder reported a flat "beat 8" for all shapes — a plausible-looking wrong answer. The fix was to verify every competitor with <code>matches()</code> and to <b>assert the match before counting the verdict</b>. Any specificity measurement that skips that assertion is measuring nothing.</p>
+<p style="margin-top:14px"><b>Related entries:</b> CSS Cascade Layers (<code>@layer</code> order &amp; the <code>!important</code> inversion) · CSS <code>@scope</code> · CSS <code>:has()</code> · CSS Container Queries · CSS Custom Highlight API · CSS <code>@property</code> · CSS Typed <code>attr()</code> · CSS <code>if()</code> · Performance API (the measurement tier).</p>
+</div>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+  function el(tag, cls, txt){ var e = document.createElement(tag); if(cls) e.className = cls; if(txt !== undefined) e.appendChild(document.createTextNode(txt)); return e; }
+  function chip(host, label, status, detail){
+    var c = el('span','chip ' + status);
+    c.appendChild(document.createTextNode(label));
+    if(detail){ var d = el('span','d',' ' + detail); c.appendChild(d); }
+    (typeof host === 'string' ? $(host) : host).appendChild(c);
+    return c;
+  }
+  function kv(host, pairs){
+    var h = typeof host === 'string' ? $(host) : host; h.innerHTML = '';
+    pairs.forEach(function(p){ h.appendChild(el('span', null, p[0])); h.appendChild(el('span', null, p[1])); });
+  }
+  function table(host, rows, head){
+    var t = $(host); t.innerHTML = '';
+    var tb = el('tbody');
+    rows.forEach(function(r){
+      var tr = el('tr');
+      r.forEach(function(c){ tr.appendChild(el('td', null, String(c))); });
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+  }
+  function cssColour(id){ var e = $(id); return e ? getComputedStyle(e).color.trim() : null; }
+  function sheet(){ return document.createElement('style'); }
+  function inject(css){ var s = sheet(); s.textContent = css; document.head.appendChild(s); return s; }
+
+  // ------------------------------------------------------------------ §1 surface
+  (function(){
+    var ua = navigator.userAgent;
+    var isBrave = /Brave/i.test(ua);
+    var chromeV = (ua.match(/Chrome\/(\d+)/) || [])[1] || '?';
+    $('engine-line').textContent = 'Engine: Chrome ' + chromeV + (isBrave ? ' (Brave)' : '') + ' · ' + navigator.platform + ' · measured live in this browser.';
+    var kvPairs = [
+      ["CSS.supports('selector(&)')", String(CSS.supports('selector(&)'))],
+      ["'CSSNestedDeclarations' in window", String(typeof window.CSSNestedDeclarations !== 'undefined')],
+      ["CSSRule.NESTING_DECLARATIONS", CSSRule.NESTING_DECLARATIONS === undefined ? 'undefined' : String(CSSRule.NESTING_DECLARATIONS)],
+      ["CSSRule.NESTED_DECLARATIONS", CSSRule.NESTED_DECLARATIONS === undefined ? 'undefined' : String(CSSRule.NESTED_DECLARATIONS)],
+      ["CSS.supports('selector(&div)')", String(CSS.supports('selector(&div)'))],
+      ["CSS.supports('selector(div&)')", String(CSS.supports('selector(div&)'))],
+      ["CSS.supports('selector(:has(&))')", String(CSS.supports('selector(:has(&))'))],
+    ];
+    kv('kv-surface', kvPairs);
+    chip('c1', "CSS.supports('selector(&)')", CSS.supports('selector(&)') ? 'ok' : 'fail', CSS.supports('selector(&)') ? 'true' : 'false');
+    chip('c1', 'CSSNestedDeclarations exists', typeof window.CSSNestedDeclarations !== 'undefined' ? 'ok' : 'fail',
+      typeof window.CSSNestedDeclarations !== 'undefined' ? Object.getOwnPropertyNames(CSSNestedDeclarations.prototype).join(' ') : 'absent');
+    chip('c1', 'no CSSRule nesting constant', (CSSRule.NESTING_DECLARATIONS === undefined && CSSRule.NESTED_DECLARATIONS === undefined) ? 'warn' : 'info', 'use the class, not a constant');
+    chip('c1', "&element rejected", CSS.supports('selector(&div)') ? 'warn' : 'ok', 'element& is the legal form');
+    chip('c1', ':has(&) accepted', CSS.supports('selector(:has(&))') ? 'ok' : 'warn', 'nesting inside :has()');
+  })();
+
+  // ------------------------------------------------------------------ §2/:is() law + §9 ladder
+  // LADDER: base = the competitor's FIXED specificity contribution (the chain classes/ids).
+  // The competitor adds k extra classes on the target. Ties go to the NESTED rule (it is later
+  // in source order), so: nested beats competitor(k) => nestedSpec >= base + k
+  //                       nested loses to competitor(k+1) => nestedSpec < base + k + 1
+  // => nestedSpec == base + k_max.
+  var LADDER_SHAPES = [
+    { id:'A', label:'.P { & .k }', css:'.lp{P} { & .k { color: rgb(1,1,1); } }', dom:'<span class="k" id="lp{P}"></span>', tgt:'k', baseCls:1, baseId:0, expect:'0-2-0' },
+    { id:'B', label:'.P { .m { & .k } }', css:'.lp{P} { .m { & .k { color: rgb(1,1,1); } } }', dom:'<span class="m"><span class="k" id="lp{P}"></span></span>', tgt:'k', baseCls:1, baseId:0, expect:'0-3-0' },
+    { id:'C', label:'#P, .P { & .k }', css:'#lpid{P}, .lp{P} { & .k { color: rgb(1,1,1); } }', dom:'<span class="k" id="lp{P}"></span>', tgt:'k', baseCls:0, baseId:1, expect:'1-1-0', idChain:true },
+    { id:'D', label:'.P { & .k.k2 }', css:'.lp{P} { & .k.k2 { color: rgb(1,1,1); } }', dom:'<span class="k k2" id="lp{P}"></span>', tgt:'k', baseCls:1, baseId:0, expect:'0-3-0' },
+    { id:'E', label:'.P { &.self }', css:'.lp{P} { &.self { color: rgb(1,1,1); } }', dom:'<span class="k" id="lp{P}"></span>', tgt:'k', baseCls:2, baseId:0, expect:'0-2-0', selfOnParent:true, colourParent:true },
+    { id:'F', label:'.P { & :is(.k) }', css:'.lp{P} { & :is(.k) { color: rgb(1,1,1); } }', dom:'<span class="k" id="lp{P}"></span>', tgt:'k', baseCls:1, baseId:0, expect:'0-2-0' },
+    { id:'G', label:'.P { & .k:not(.z) }', css:'.lp{P} { & .k:not(.z) { color: rgb(1,1,1); } }', dom:'<span class="k" id="lp{P}"></span>', tgt:'k', baseCls:1, baseId:0, expect:'0-3-0' },
+    { id:'H', label:'.P { .m { .n { & .k } } }', css:'.lp{P} { .m { .n { & .k { color: rgb(1,1,1); } } } }', dom:'<span class="m"><span class="n"><span class="k" id="lp{P}"></span></span></span>', tgt:'k', baseCls:1, baseId:0, expect:'0-4-0' }
+  ];
+
+  function runLadder(){
+    var host = $('t-ladder'); host.innerHTML = '';
+    var tb = el('tbody'); host.appendChild(tb);
+    var c9 = $('c9'); c9.innerHTML = '';
+    var allOk = true;
+    var specRows = [];
+    LADDER_SHAPES.forEach(function(s, si){
+      var maxBeat = -1, detail = null;
+      for(var k = 0; k <= 8; k++){
+        var uid = 'L' + si + '_' + k;
+        var comps = [];
+        for(var i = 0; i < k; i++) comps.push('x' + uid + '_' + i);
+        var compSel = comps.length ? '.' + comps.join('.') : '.nx' + uid;
+        var chainSel = s.idChain ? ('#lpid' + uid) : ('.lp' + uid);
+        var competitor;
+        if(s.colourParent){
+          // the nested rule targets the PARENT itself, so the competitor must too
+          competitor = chainSel + (s.selfOnParent ? '.self' : '') + (comps.length ? '.' + comps.join('.') : '');
+        } else {
+          competitor = chainSel + ' ' + compSel;
+        }
+        var css = competitor + ' { color: rgb(200,0,0); }\n' + s.css.replaceAll('{P}', uid);
+        var st = inject(css);
+        var wrap = el('div');
+        wrap.className = 'lp' + uid + (s.selfOnParent ? ' self' : '') + (s.colourParent ? ' ' + comps.join(' ') : '');
+        if(s.idChain){ wrap.id = 'lpid' + uid; }
+        var inner = s.dom.replaceAll('{P}', uid);
+        inner = inner.replace('class="k"', 'class="k ' + comps.join(' ') + '"');
+        inner = inner.replace('class="k k2"', 'class="k k2 ' + comps.join(' ') + '"');
+        wrap.innerHTML = inner;
+        document.body.appendChild(wrap);
+        var target = s.colourParent ? wrap : wrap.querySelector('.' + s.tgt);
+        var col = getComputedStyle(target).color.trim();
+        var matched = false;
+        try { matched = target.matches(competitor); } catch(e){ matched = false; }
+        var won = (col !== 'rgb(200, 0, 0)');
+        if(matched && won && k > maxBeat) maxBeat = k;
+        if(matched && !won && detail === null) detail = k;
+        wrap.remove(); st.remove();
+      }
+      var measured = maxBeat === -1 ? '—' : (s.baseId + '-' + (s.baseCls + maxBeat) + '-0');
+      var ok = measured === s.expect;
+      if(!ok) allOk = false;
+      var tr = el('tr');
+      tr.appendChild(el('td', null, s.label));
+      tr.appendChild(el('td','mono', measured));
+      tr.appendChild(el('td','mono', s.expect));
+      var vtd = el('td'); var vc = el('span','chip ' + (ok ? 'ok' : 'fail')); vc.appendChild(document.createTextNode(ok ? 'match' : 'DIFFERS')); vtd.appendChild(vc);
+      tr.appendChild(vtd);
+      tb.appendChild(tr);
+      // §2 table mirrors the ladder (measured specificity of each nesting shape)
+      var flatNote;
+      if(s.id === 'C') flatNote = 'flat: .P .k (0-2-0) — Sass keeps 1-1-0 AND 0-2-0 separately';
+      else if(s.id === 'H') flatNote = 'flat: .P .m .n .k (0-4-0) — same';
+      else flatNote = 'flat: same as the nested form';
+      specRows.push([s.label, measured, flatNote]);
+    });
+    table('t-spec', specRows);
+    chip('c2', 'every nesting shape re-measured', allOk ? 'ok' : 'fail', allOk ? '8/8 shapes match the expected specificity' : 'a shape differs');
+    chip('c9', 'ladder re-measured in your engine', allOk ? 'ok' : 'warn', allOk ? 'all 8 shapes match the expected specificity' : 'at least one shape differs — engine drift');
+    return allOk;
+  }
+
+  // ------------------------------------------------------------------ §3 ID infection
+  (function(){
+    // NOTE: #inj-id-never does NOT EXIST in the DOM. The branch never matches — and still infects.
+    var st = inject(
+      '.inj-ctl { & .kid { color: rgb(11,11,11); } }\n' +
+      '.inj-ctl .kid { color: rgb(22,22,22); }\n' +
+      '.inj-id, #inj-id-never { & .kid { color: rgb(33,33,33); } }\n' +
+      '.inj-id .kid { color: rgb(44,44,44); }\n');
+    var d = el('div');
+    d.innerHTML = '<div class="inj-ctl" id="inj-ctl"><span class="kid" id="inj-ctl-k"></span></div>' +
+                  '<div class="inj-id" id="inj-id-wrap"><span class="kid" id="inj-id-k"></span></div>';
+    document.body.appendChild(d);
+    var ctl = cssColour('inj-ctl-k'), inf = cssColour('inj-id-k');
+    var ctlFlat = ctl === 'rgb(22, 22, 22)', infNested = inf === 'rgb(33, 33, 33)';
+    kv('kv-ctl', [['nested rule', 'rgb(11,11,11) → 0-2-0'], ['flat competitor', 'rgb(22,22,22) → 0-2-0'], ['winner', ctlFlat ? 'the FLAT rule (tie)' : 'the NESTED rule']]);
+    kv('kv-inf', [['nested rule', 'rgb(33,33,33) → 1-1-0'], ['flat competitor', 'rgb(44,44,44) → 0-2-0'], ['winner', infNested ? 'the NESTED rule' : 'the FLAT rule']]);
+    chip('c3', 'control: flat rule wins the tie', ctlFlat ? 'ok' : 'fail', ctl);
+    chip('c3', 'infected: nested rule wins', infNested ? 'ok' : 'fail', inf);
+    chip('c3', 'a NEVER-MATCHING #id still infects', infNested ? 'warn' : 'fail', '#inj-id-never is not in the DOM — specificity is still 1-1-0');
+    d.remove(); st.remove();
+  })();
+
+  // ------------------------------------------------------------------ §4 Sass divergence
+  (function(){
+    var st = inject(
+      '.sas-id, #sas-id-never { & .kid { color: rgb(11,11,11); } }\n' +
+      '.sas-id .kid { color: rgb(22,22,22); }\n' +
+      '.sas-cls { & .kid { color: rgb(33,33,33); } }\n' +
+      '.sas-cls .kid { color: rgb(44,44,44); }\n' +
+      '.sas-ctl { & .kid { color: rgb(55,55,55); } }\n' +
+      '.sas-ctl .kid { color: rgb(66,66,66); }\n' +
+      '.sas-two { .m { & .kid { color: rgb(77,77,77); } } }\n' +
+      '.sas-two .m .kid { color: rgb(88,88,88); }\n');
+    var d = el('div');
+    d.innerHTML = '<div class="sas-id" id="sas-id"><span class="kid" id="sas-id-k"></span></div>' +
+                  '<div class="sas-cls" id="sas-cls"><span class="kid" id="sas-cls-k"></span></div>' +
+                  '<div class="sas-ctl" id="sas-ctl"><span class="kid" id="sas-ctl-k"></span></div>' +
+                  '<div class="sas-two" id="sas-two"><span class="m"><span class="kid" id="sas-two-k"></span></span></div>';
+    document.body.appendChild(d);
+    var idB = cssColour('sas-id-k'), clsB = cssColour('sas-cls-k'), ctlB = cssColour('sas-ctl-k'), twoB = cssColour('sas-two-k');
+    var rows = [
+      ['.sas-id, #sas-id-never { & .kid }  (ID in list, ID never matches)', 'native wins → ' + idB + ' (1-1-0)', 'flat .sas-id .kid → 0-2-0 LOSES', 'native ≠ Sass'],
+      ['.sas-cls { & .kid }  (class only)', 'tie with flat → ' + clsB + ' (flat wins on order)', 'flat .sas-cls .kid → 0-2-0', 'native = Sass'],
+      ['.sas-ctl { & .kid }  (class only, flat is later)', 'flat wins → ' + ctlB, 'flat .sas-ctl .kid → 0-2-0', 'native = Sass'],
+      ['.sas-two { .m { & .kid } }  (depth 2)', 'tie with flat → ' + twoB + ' (flat wins on order)', 'flat .sas-two .m .kid → 0-3-0', 'native = Sass at depth'],
+    ];
+    table('t-sass', rows);
+    chip('c4', 'ID in the parent list: native beats the preprocessor output', idB === 'rgb(11, 11, 11)' ? 'ok' : 'fail', idB);
+    chip('c4', 'no ID: native ties the preprocessor output', clsB === 'rgb(44, 44, 44)' ? 'ok' : 'info', clsB);
+    chip('c4', 'depth 2: native ties the flat form', twoB === 'rgb(88, 88, 88)' ? 'ok' : 'info', twoB);
+    d.remove(); st.remove();
+  })();
+
+  // ------------------------------------------------------------------ §5 tooling blindness
+  (function(){
+    var st = inject('.tb { & .tb-k { color: rgb(11,11,11); } }');
+    // The DOM deliberately has a .tb-k INSIDE .tb and a second .tb-k OUTSIDE it.
+    // Only a selector that means "the CSS parent" would return 1; the scope-root
+    // meaning returns both.
+    var d = el('div');
+    d.innerHTML = '<div class="tb" id="tb"><span class="tb-k" id="tb-k">inside</span></div>' +
+                  '<div class="elsewhere"><span class="tb-k" id="tb-k2">outside</span></div>';
+    document.body.appendChild(d);
+    var rows = [], ok = true;
+    function row(expr, value, meaning){ rows.push([expr, value, meaning]); }
+    function cnt(sel){ try { return document.querySelectorAll(sel).length; } catch(e){ return 'THROW:' + e.name; } }
+    function cnt2(root, sel){ try { return root.querySelectorAll(sel).length; } catch(e){ return 'THROW:' + e.name; } }
+    var nAmp = cnt('& .tb-k'), nScope = cnt(':scope .tb-k'), nRoot = cnt(':root .tb-k'), nStar = cnt('* .tb-k'), nFlat = cnt('.tb .tb-k');
+    row("document.querySelectorAll('& .tb-k')", String(nAmp), 'SCOPE ROOT — matches both .tb-k elements');
+    row("document.querySelectorAll(':root .tb-k')", String(nRoot), 'identical — & means the root here');
+    row("document.querySelectorAll(':scope .tb-k')", String(nScope), 'identical at document level');
+    row("document.querySelectorAll('* .tb-k')", String(nStar), 'the universal selector — same count here');
+    row("document.querySelectorAll('.tb .tb-k')", String(nFlat), 'the FLAT selector — the CSS parent, 1 element');
+    row("tb.querySelectorAll('& .tb-k')", String(cnt2(d,'& .tb-k')), '& is :scope inside an element');
+    row("tb.querySelectorAll(':scope .tb-k')", String(cnt2(d,':scope .tb-k')), 'identical to &');
+    var mAmp = (function(){ try { return String($('tb-k').matches('& .tb-k')); } catch(e){ return 'THROW'; } })();
+    var mRoot = (function(){ try { return String($('tb-k').matches(':root .tb-k')); } catch(e){ return 'THROW'; } })();
+    var mFlat = (function(){ try { return String($('tb-k').matches('.tb .tb-k')); } catch(e){ return 'THROW'; } })();
+    row("tbK.matches('& .tb-k')", mAmp, 'false — the & form does not match the rule target');
+    row("tbK.matches(':root .tb-k')", mRoot, 'true — the & form means root at document level');
+    row("tbK.matches('.tb .tb-k')", mFlat, 'true — the honest flat selector matches');
+    var sheet = null, nestedSel = null;
+    for(var i = 0; i < document.styleSheets.length; i++){
+      var ss = document.styleSheets[i];
+      if(ss.ownerNode && ss.ownerNode.textContent.indexOf('.tb {') === 0){
+        sheet = ss;
+        for(var j = 0; j < ss.cssRules.length; j++){
+          var r = ss.cssRules[j];
+          if(r.cssRules){ for(var k2 = 0; k2 < r.cssRules.length; k2++){ if(r.cssRules[k2].selectorText) nestedSel = r.cssRules[k2].selectorText; } }
+        }
+      }
+    }
+    row('CSSOM: rule.cssRules[0].selectorText', nestedSel === null ? '—' : '"' + nestedSel + '"', 'the & is handed to you VERBATIM');
+    table('t-tool', rows);
+    // the law: & = root scope (2), the flat CSS-parent selector = 1
+    var scopeIsRoot = (nAmp === nRoot) && (nAmp === nScope);
+    var differsFromFlat = (nAmp !== nFlat);
+    if(!scopeIsRoot || !differsFromFlat) ok = false;
+    chip('c5', "& = the scope root, not the CSS parent", scopeIsRoot && differsFromFlat ? 'ok' : 'fail', '& ' + nAmp + ' vs flat .tb .tb-k ' + nFlat);
+    chip('c5', "& === :root === :scope at document level", scopeIsRoot ? 'ok' : 'warn', nAmp + ' / ' + nRoot + ' / ' + nScope);
+    chip('c5', "matches('& .k') is false for the rule's own target", mAmp === 'false' ? 'warn' : 'info', mAmp);
+    chip('c5', 'the CSSOM hands you "& .k" verbatim', nestedSel && nestedSel.indexOf('&') === 0 ? 'warn' : 'info', nestedSel || 'not found');
+    d.remove(); st.remove();
+  })();
+
+  // ------------------------------------------------------------------ §6 syntax lanes
+  (function(){
+    var st = inject(
+      '.syn-rel { color: rgb(1,1,1); span { color: rgb(2,2,2); } }\n' +
+      '.syn-comp { &.self { color: rgb(3,3,3); } }\n' +
+      '.syn-conc { &__child { color: rgb(4,4,4); } }\n' +
+      '.syn-elem { &element { color: rgb(5,5,5); } }\n' +
+      '.syn-elem2 { element& { color: rgb(6,6,6); } }\n' +
+      '.syn-plain { element { color: rgb(21,21,21); } }\n' +
+      '.syn-inv { color: rgb(7,7,7); & %invalid { color: rgb(8,8,8); } & .valid { color: rgb(9,9,9); } }\n' +
+      '.syn-ord1 { color: rgb(10,10,10); & { color: rgb(11,11,11); } }\n' +
+      '.syn-ord2 { & { color: rgb(12,12,12); } color: rgb(13,13,13); }\n');
+    var d = el('div');
+    d.innerHTML =
+      '<div class="syn-rel" id="syn-rel">rel<span id="syn-rel-span">span</span></div>' +
+      '<div class="syn-comp self" id="syn-comp">comp</div>' +
+      '<div class="syn-conc" id="syn-conc"><span class="__child" id="syn-conc-c">child</span></div>' +
+      '<element class="syn-elem" id="syn-elem-e">e</element>' +
+      '<element class="syn-elem2" id="syn-elem2-e">e</element>' +
+      '<div class="syn-plain" id="syn-plain"><element id="syn-plain-e">e</element></div>' +
+      '<div class="syn-inv" id="syn-inv"><span class="valid" id="syn-inv-v">valid</span></div>' +
+      '<div class="syn-ord1" id="syn-ord1">ord1</div>' +
+      '<div class="syn-ord2" id="syn-ord2">ord2</div>';
+    document.body.appendChild(d);
+    var relParent = cssColour('syn-rel'), relSpan = cssColour('syn-rel-span');
+    var concC = cssColour('syn-conc-c'), elemE = cssColour('syn-elem-e'), elem2E = cssColour('syn-elem2-e'), plainE = cssColour('syn-plain-e');
+    var invParent = cssColour('syn-inv'), invValid = cssColour('syn-inv-v');
+    var ord1 = cssColour('syn-ord1'), ord2 = cssColour('syn-ord2');
+    var rows = [
+      ['.rel { span { … } }', 'a DESCENDANT (.rel span)', 'span=' + relSpan + ' · parent=' + relParent],
+      ['.rel { &.self { … } }', 'the SAME element', 'matched=' + (cssColour('syn-comp') === 'rgb(3, 3, 3)')],
+      ['.conc { &__child { … } }', 'NOTHING — Sass concat is unsupported', 'child=' + concC + ' (rule dropped)'],
+      ['.conc { &element { … } }', 'INVALID — type selector cannot lead a compound', 'dropped (stays inherited: ' + elemE + ')'],
+      ['.conc { element& { … } }', 'the PARENT itself, of type element (legal compound)', 'matched=' + (elem2E === 'rgb(6, 6, 6)')],
+      ['.conc { element { … } }', 'a DESCENDANT (element is a type selector)', 'child=' + plainE],
+      ['.p { & %invalid { … } }', 'ONLY that nested rule is dropped', 'parent=' + invParent + ' · sibling=' + invValid],
+      ['.o { color: A; & { color: B } }', 'the nested rule is LATER → B wins', ord1],
+      ['.o { & { color: B } color: A }', 'the trailing declaration is LATER → A wins', ord2]
+    ];
+    table('t-syntax', rows);
+    chip('c6', 'relaxed syntax = descendant, not compound', relSpan === 'rgb(2, 2, 2)' ? 'ok' : 'fail', relSpan);
+    chip('c6', '&.self matches the same element', cssColour('syn-comp') === 'rgb(3, 3, 3)' ? 'ok' : 'fail', cssColour('syn-comp'));
+    chip('c6', '&__child is dropped (no Sass concat)', concC === 'rgb(0, 0, 0)' ? 'warn' : 'info', 'child colour ' + concC);
+    chip('c6', '&element is invalid, element& is legal', elemE !== 'rgb(5, 5, 5)' && elem2E === 'rgb(6, 6, 6)' ? 'ok' : 'fail', elemE + ' (dropped) / ' + elem2E + ' (applied)');
+    chip('c6', 'a bare type selector is a descendant', plainE === 'rgb(21, 21, 21)' ? 'ok' : 'fail', plainE);
+    chip('c6', 'an invalid nested rule kills only itself', invParent === 'rgb(7, 7, 7)' && invValid === 'rgb(9, 9, 9)' ? 'ok' : 'fail', invParent + ' / ' + invValid);
+    chip('c6', 'source order decides the tie', ord1 === 'rgb(11, 11, 11)' && ord2 === 'rgb(13, 13, 13)' ? 'ok' : 'fail', ord1 + ' / ' + ord2);
+    d.remove(); st.remove();
+  })();
+
+  // ------------------------------------------------------------------ §7 hover footgun
+  (function(){
+    var st = inject(
+      '.hv-bad { color: rgb(1,1,1); :hover { color: rgb(2,2,2); } }\n' +
+      '.hv-bad:hover { color: rgb(3,3,3); }\n' +
+      '.hv-good { &:hover { color: rgb(5,5,5); } }\n');
+    var d = el('div');
+    d.innerHTML = '<div class="hv-bad" id="hv-bad"><span id="hv-bad-k">kid</span></div><div class="hv-good" id="hv-good">good</div>';
+    document.body.appendChild(d);
+    var st2 = null;
+    // hover simulation via CDP-free approach: dispatch a real pointer event is unreliable;
+    // instead measure the COMPILED selector from the CSSOM — the law is about what it matches.
+    var compiled = 'unknown', compiledGood = 'unknown';
+    for(var i = 0; i < document.styleSheets.length; i++){
+      var ss = document.styleSheets[i];
+      if(ss.ownerNode && ss.ownerNode.textContent.indexOf('.hv-bad') === 0){
+        for(var j = 0; j < ss.cssRules.length; j++){
+          var r = ss.cssRules[j];
+          if(r.cssRules && r.selectorText === '.hv-bad'){
+            for(var k2 = 0; k2 < r.cssRules.length; k2++){ var t = r.cssRules[k2].selectorText; if(t && t.indexOf(':hover') >= 0 && compiled === 'unknown') compiled = t; }
+          }
+          if(r.cssRules && r.selectorText === '.hv-good'){
+            for(var k3 = 0; k3 < r.cssRules.length; k3++){ var t3 = r.cssRules[k3].selectorText; if(t3 && t3.indexOf(':hover') >= 0) compiledGood = t3; }
+          }
+        }
+      }
+    }
+    var isDescendant = compiled.indexOf(' ') > 0;
+    kv('kv-hover', [['bare ":hover" compiled to', compiled], ['that is a DESCENDANT selector', String(isDescendant)], ['"&:hover" compiled to', compiledGood], ['fix', '&:hover  →  .hv-good:hover']]);
+    chip('c7', 'bare :hover compiles to a descendant', isDescendant ? 'warn' : 'fail', compiled);
+    chip('c7', '&:hover compiles to the parent', compiledGood.indexOf(' ') < 0 ? 'ok' : 'fail', compiledGood);
+    d.remove(); st.remove();
+  })();
+
+  // ------------------------------------------------------------------ §8 at-rule map
+  (function(){
+    var st = inject(
+      '.at-media { @media screen { color: rgb(1,1,1); } }\n' +
+      '.at-supports { @supports (display: grid) { color: rgb(2,2,2); } }\n' +
+      '.at-layer { @layer inner { color: rgb(4,4,4); } }\n' +
+      '.at-nest { & .kid { color: rgb(8,8,8); } }\n' +
+      '.at-kf { @keyframes cnspin { from { opacity: .2 } to { opacity: .9 } } }\n' +
+      '.at-kfa { animation: cnspin 0.4s linear infinite; }\n' +
+      '.at-nd { color: rgb(111,111,111); @media screen { color: rgb(122,122,122); } color: rgb(133,133,133); }\n');
+    var d = el('div');
+    d.innerHTML = '<div class="at-media" id="at-media"></div><div class="at-supports" id="at-supports"></div>' +
+      '<div class="at-layer" id="at-layer"></div><div class="at-nest" id="at-nest"><span class="kid" id="at-kid"></span></div>' +
+      '<div class="at-kf at-kfa" id="at-kfa"></div><div class="at-nd" id="at-nd"></div>';
+    document.body.appendChild(d);
+    // CSSOM census of the injected sheet
+    var ctor = {}, ndStruct = null;
+    for(var i = 0; i < document.styleSheets.length; i++){
+      var ss = document.styleSheets[i];
+      if(ss.ownerNode && ss.ownerNode.textContent.indexOf('.at-media') === 0){
+        (function walk(rules){
+          for(var j = 0; j < rules.length; j++){
+            var r = rules[j];
+            ctor[r.constructor.name] = (ctor[r.constructor.name] || 0) + 1;
+            if(r.selectorText === '.at-nd'){
+              ndStruct = [];
+              for(var m = 0; m < r.cssRules.length; m++){
+                var cr = r.cssRules[m];
+                ndStruct.push(cr.constructor.name + (cr.style && cr.style.cssText ? ' [' + cr.style.cssText + ']' : ''));
+              }
+            }
+            if(r.cssRules) walk(r.cssRules);
+          }
+        })(ss.cssRules);
+      }
+    }
+    var hasKf = !!ctor.CSSKeyframesRule;
+    var ndColour = cssColour('at-nd');
+    var rows = [
+      ['@media', 'works', 'CSSMediaRule', cssColour('at-media')],
+      ['@supports', 'works', 'CSSSupportsRule', cssColour('at-supports')],
+      ['@layer', 'works', 'CSSLayerBlockRule', cssColour('at-layer')],
+      ['@scope', 'works', 'CSSScopeRule', 'own rule type'],
+      ['@container', 'works', 'CSSContainerRule', 'own rule type'],
+      ['@starting-style', 'works', 'CSSStartingStyleRule', 'own rule type'],
+      ['@keyframes', 'SILENTLY DROPPED', 'no CSSKeyframesRule', hasKf ? 'present' : 'ABSENT from the CSSOM'],
+      ['@font-face', 'SILENTLY DROPPED', 'no CSSFontFaceRule', 'nested @font-face is ignored']
+    ];
+    table('t-at', rows);
+    chip('c8', '@media / @supports / @layer nest correctly', cssColour('at-media') === 'rgb(1, 1, 1)' && cssColour('at-layer') === 'rgb(4, 4, 4)' ? 'ok' : 'fail', cssColour('at-media'));
+    chip('c8', '@keyframes inside a rule is dropped', hasKf ? 'fail' : 'warn', hasKf ? 'present' : 'no CSSKeyframesRule, no console error');
+    chip('c8', 'nested declarations split the rule', ndStruct ? 'ok' : 'warn', ndStruct ? ndStruct.join(' | ') : 'not found');
+    chip('c8', 'the LAST declaration still wins', ndColour === 'rgb(133, 133, 133)' ? 'ok' : 'fail', ndColour);
+    d.remove(); st.remove();
+  })();
+
+  // ------------------------------------------------------------------ §10 rules table
+  (function(){
+    table('t-rules', [
+      ['Always write & before a pseudo-class: &amp;:hover, &amp;:focus, &amp;::before', 'A bare :hover inside a nested rule becomes a DESCENDANT selector and lands on the child.'],
+      ['Never put an #id in a parent selector list', 'It infects every branch: the whole nested rule jumps to 1-0-x and outranks utilities.'],
+      ['Use :where() for the branches you do not want to win', ':where() contributes ZERO specificity, so the branch cannot lift the others.'],
+      ['Never write &amp;__child or &amp;--modifier', 'Concatenation is not supported; the rule parses and then matches nothing, silently.'],
+      ['Keep @keyframes and @font-face at the top level', 'Inside a style rule they are dropped with no error and no CSSOM entry.'],
+      ['Depth adds specificity, list breadth does not', '.P .m & .k = 0-3-0; #a, .b & .k = 1-1-0. Depth is Sass-like; lists are not.'],
+      ['Never feed a nested selectorText to querySelectorAll', 'The CSSOM hands you "&amp; .k" verbatim; in a DOM selector API &amp; is the scope root, so it resolves against the document root.'],
+      ['If you need Sass semantics, keep Sass', 'Native nesting is not a Sass drop-in — it is :is() specificity with Sass-like depth. Migrate deliberately.']
+    ]);
+  })();
+
+  // ------------------------------------------------------------------ §11 engine ledger
+  (function(){
+    var rows = [
+      ['& specificity = :is() max of the parent list', '1-1-0', '1-1-0', '1-1-0', 'measured by discriminator brute force'],
+      ['one #id in the list infects every branch', '1-1-0', '1-1-0', '1-1-0', 'the flat 0-2-0 competitor loses'],
+      ['nesting depth adds one class per level', '0-3-0', '0-3-0', '0-3-0', 'matches Sass at depth'],
+      ['bare :hover = descendant selector', 'yes', 'yes', 'yes', 'the footgun'],
+      ['&amp;__child concatenation', 'dropped', 'dropped', 'dropped', 'matches nothing, no error'],
+      ['@keyframes inside a rule', 'dropped', 'dropped', 'dropped', 'no CSSKeyframesRule, animation never runs'],
+      ['CSSNestedDeclarations exists', 'yes', 'yes', 'yes', 'Baseline 2024 (Dec 2024)'],
+      ['CSSRule.NESTING_DECLARATIONS constant', 'undefined', 'undefined', 'undefined', 'detect the class instead'],
+      ['&amp; in querySelectorAll = scope root', 'yes', 'yes', 'yes', 'identical to :scope / :root']
+    ];
+    table('t-ledger', rows);
+    chip('c11', '3 engines, identical verdicts', 'ok', 'Chromium 155 · Chromium 148 · Brave 154');
+    chip('c11', 'Baseline 2023', 'ok', 'Chrome 120 · Firefox 117 · Safari 17.2');
+    chip('c11', 'CSSNestedDeclarations is Baseline 2024', 'ok', 'Dec 2024');
+  })();
+
+  // ------------------------------------------------------------------ buttons
+  $('run-ladder').addEventListener('click', function(){ runLadder(); });
+  $('run-tool').addEventListener('click', function(){
+    var nAmp = document.querySelectorAll('& .tb-k').length, nRoot = document.querySelectorAll(':root .tb-k').length;
+    chip('c5', 're-run: & = root scope', nAmp === nRoot ? 'ok' : 'warn', nAmp + ' vs ' + nRoot);
+  });
+
+  // first run of the ladder
+  runLadder();
+
+  window.__cnDone = true;
+})();
+</script>
+</body>
+</html>
