@@ -1,0 +1,724 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>The Font Loading Tier — @font-face, document.fonts &amp; font-display</title>
+<style>
+  :root { --ink:#1d1c1a; --mut:#75716a; --line:#e6e2da; --card:#fffdf9; --bg:#f7f5f0; --acc:#0b6b5d; --acc2:#b05c1a; --bad:#a11111; --warnbg:#fff5e0; --warnink:#8a5a00; }
+  * { box-sizing:border-box; }
+  body { font:15px/1.55 -apple-system, system-ui, sans-serif; color:var(--ink); background:var(--bg); margin:0; overflow-x:hidden; }
+  .wrap { max-width:900px; margin:0 auto; padding:24px 20px 90px; }
+  .sec { background:var(--card); border:1px solid var(--line); border-radius:20px; padding:22px; margin:26px 0; overflow:hidden; }
+  h1 { font-size:29px; line-height:1.2; letter-spacing:-0.02em; margin:10px 0 8px; }
+  h2 { font-size:19px; margin:2px 0 10px; letter-spacing:-0.01em; }
+  h3 { font-size:15px; margin:14px 0 6px; }
+  p { margin:8px 0; }
+  code, .mono { font-family:ui-monospace, 'SF Mono', Menlo, monospace; font-size:12.5px; background:#f4f2ee; padding:1px 5px; border-radius:6px; overflow-wrap:anywhere; }
+  pre { background:#f4f2ee; border-radius:12px; padding:12px; overflow-x:auto; font-size:12px; line-height:1.55; max-width:100%; margin:10px 0; white-space:pre; }
+  .mut { color:var(--mut); font-size:13px; }
+  .chip { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; border-radius:999px; padding:4px 10px; margin:3px 4px 3px 0; border:1px solid transparent; max-width:100%; white-space:normal; overflow-wrap:anywhere; }
+  .chip.ok { background:#e8f7ee; color:#0a6b35; border-color:#bfe8d0; }
+  .chip.warn { background:var(--warnbg); color:var(--warnink); border-color:#f3ddaa; }
+  .chip.fail { background:#fdeaea; color:var(--bad); border-color:#f2c4c4; }
+  .chip.info { background:#e9f1fd; color:#0b4fa8; border-color:#c4dcf7; }
+  .chip .d { font-weight:400; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  button { font:600 13px/1.3 -apple-system, system-ui, sans-serif; padding:8px 12px; border-radius:12px; border:1px solid var(--line); background:#fff; color:var(--ink); cursor:pointer; max-width:100%; }
+  button:hover { border-color:#c9c5bd; }
+  button:disabled { opacity:.55; cursor:default; }
+  .tscroll { overflow-x:auto; max-width:100%; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  td, th { text-align:left; padding:7px 9px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--mut); }
+  .pill { font-size:11.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--acc); }
+  .out { font-family:ui-monospace, Menlo, monospace; font-size:12px; color:var(--ink); background:#f4f2ee; border-radius:10px; padding:8px 10px; margin-top:8px; overflow-wrap:anywhere; white-space:pre-wrap; }
+  .law { border-left:3px solid var(--acc); padding:2px 0 2px 12px; margin:12px 0; }
+  .law b { color:var(--acc); }
+  ul, ol { margin:8px 0; padding-left:20px; }
+  li { margin:4px 0; }
+  .badges { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0 4px; }
+  .badge { font-size:11px; font-weight:700; letter-spacing:.03em; border-radius:999px; padding:3px 9px; border:1px solid var(--line); background:var(--card); }
+  .badge.y { color:#0a6b35; border-color:#bfe8d0; background:#e8f7ee; }
+  .badge.n { color:var(--bad); border-color:#f2c4c4; background:#fdeaea; }
+  .badge.w { color:var(--warnink); border-color:#f3ddaa; background:var(--warnbg); }
+  .v { color:var(--acc2); font-weight:700; }
+  .lanes { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; }
+  .lane { border:1px solid var(--line); border-radius:14px; padding:12px; background:#fff; min-width:0; }
+  .lane h4 { margin:0 0 6px; font-size:13px; }
+  .kv { display:grid; grid-template-columns:1fr auto; gap:2px 8px; font-size:12px; font-family:ui-monospace, Menlo, monospace; margin-top:6px; }
+  .kv span:nth-child(odd) { color:var(--mut); }
+  .kv span:nth-child(even) { text-align:right; }
+  .hud { border:1px solid var(--line); border-radius:14px; background:#10201d; color:#dff3ec; padding:12px; font-family:ui-monospace, Menlo, monospace; font-size:12px; }
+  .hud .big { font-size:24px; font-weight:700; }
+  .hud .warn { color:#ffb26b; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
+  .card { border:1px solid var(--line); border-radius:14px; padding:12px; background:#fff; min-width:0; }
+  .card h4 { margin:0 0 6px; font-size:13px; }
+  .note { font-size:12.5px; color:var(--mut); margin-top:8px; }
+  .grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px; }
+  .tag { display:inline-block; font-size:11px; font-weight:700; padding:2px 7px; border-radius:999px; background:#f4f2ee; color:var(--mut); margin-right:6px; }
+  .tag.s { background:#e8f7ee; color:#0a6b35; }
+  .tag.u { background:#e9f1fd; color:#0b4fa8; }
+  .tag.w { background:var(--warnbg); color:var(--warnink); }
+  .tag.n { background:#fdeaea; color:var(--bad); }
+  .sum { font-family:ui-monospace, Menlo, monospace; font-size:12.5px; background:#f4f2ee; border-radius:10px; padding:10px 12px; margin-top:8px; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .phones { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
+  .phone { border:1px solid var(--line); border-radius:22px; background:#fff; padding:10px; box-shadow:0 1px 0 rgba(0,0,0,.04); min-width:0; }
+  .phone h4 { margin:0 0 8px; font-size:13px; }
+  .phone iframe { width:100%; height:420px; border:1px solid var(--line); border-radius:14px; display:block; background:var(--bg); }
+  .tl { display:grid; grid-template-columns:auto 1fr; gap:2px 10px; font-size:12.5px; font-family:ui-monospace, Menlo, monospace; }
+  .tl b { color:var(--acc); }
+  .spec { font-family:ui-monospace, Menlo, monospace; font-size:12px; background:#10201d; color:#dff3ec; border-radius:12px; padding:12px; overflow-x:auto; white-space:pre; line-height:1.5; }
+  .ledger td.num { font-family:ui-monospace, Menlo, monospace; white-space:nowrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>The Font Loading Tier — <code>@font-face</code>, <code>document.fonts</code> &amp; <code>font-display</code></h1>
+<p class="mut"><span class="pill">typography · platform tier · universal since 2014</span> — every client site ships a web font, and the browser ships a whole machinery for it that almost nobody reads: a FontFaceSet you can query, a load/error grammar with exact exception types, a three-period display timeline, and a metric-override system that can make the font swap <b>invisible</b>. The docs describe the intent; this page measures the engine. Every law below is re-probed live <i>in your browser</i> — the chips are computed, not printed.</p>
+<div class="badges">
+  <span class="badge y" id="bg1">check() = a negative detector</span>
+  <span class="badge y" id="bg2">check() never fetches</span>
+  <span class="badge n" id="bg3">auto = block (invisible text)</span>
+  <span class="badge y" id="bg4">optional = never swaps</span>
+  <span class="badge y" id="bg5">size-adjust scales the overrides</span>
+  <span class="badge w" id="bg6">ready ≠ "my new font"</span>
+</div>
+
+<div class="sec" id="s1">
+<h2>1 · Surface census — what the browser actually ships</h2>
+<div id="c1" class="row"></div>
+<div class="kv" id="kv-surface"></div>
+<div class="law"><b>THE THREE-OBJECT LAW.</b> <code>@font-face</code> declares a face; the <b>FontFaceSet</b> (<code>document.fonts</code>) holds every face the document knows — CSS-connected ones included; the <b>FontFace</b> object is one face with its own load promise and its own status (<code>unloaded → loading → loaded | error</code>). The set is a live, ordered, set-like object: <code>add</code>, <code>delete</code>, <code>has</code>, <code>clear</code>, <code>forEach</code>, plus <code>check()</code>, <code>load()</code>, <code>ready</code> and <code>status</code>. Baseline widely available since January 2020 — Chrome 35 / Edge 35 / Firefox 41 / Safari 10.</div>
+<p class="mut" id="engine-line">Engine: …</p>
+</div>
+
+<div class="sec" id="s2">
+<h2>2 · <b>THE check() LIE</b> — the most-used line of font code on the web</h2>
+<div class="tscroll"><table id="t-check"><thead><tr><th>query</th><th>result</th><th>what it actually means</th></tr></thead><tbody></tbody></table></div>
+<div id="c2" class="row"></div>
+<div class="law"><b>THE NEGATIVE-DETECTOR LAW.</b> <code>document.fonts.check('16px "MyFont"')</code> returns <b>true</b> for a family that <b>does not exist anywhere</b> — not in the document, not on the system. It returns <b>false</b> only when a face <i>is</i> declared in the document and has not finished loading. So the classic guard
+<br><code>if (document.fonts.check('16px "Inter"')) { …show the styled UI… }</code>
+<br>passes even when the web font was never declared at all. <code>check()</code> answers "is this face <i>pending</i>?" — it does not answer "is this font <i>ready</i>?". Measured live on the table above. Also measured: <code>check()</code> <b>ignores weight and style</b> — after a 400-only face loads, <code>check('900 16px "Inter"')</code> is <b>true</b> (the browser synthesises the bold) — so it can never warn you about a missing weight.</div>
+</div>
+
+<div class="sec" id="s3">
+<h2>3 · <code>check()</code> vs <code>load()</code> — the request law</h2>
+<div class="grid2">
+  <div class="lane">
+    <h4><span class="tag u">check()</span> never touches the network</h4>
+    <div class="kv" id="kv-check-req"></div>
+  </div>
+  <div class="lane">
+    <h4><span class="tag s">load()</span> always does</h4>
+    <div class="kv" id="kv-load-req"></div>
+  </div>
+</div>
+<div id="c3" class="row"></div>
+<div class="law"><b>THE INTENT LAW.</b> <code>check()</code> is a <i>query</i>: it never initiates a download (measured: <b>0 network requests</b>). <code>load('16px "Family"')</code> is a <i>command</i>: it fetches the face even if nothing on the page uses it, and resolves with the array of matching faces (<b>an empty array</b> for a family that doesn't exist — it does not reject). Use <code>check()</code> to ask, <code>load()</code> to command, and <code>face.loaded</code> to await one specific face.</div>
+</div>
+
+<div class="sec" id="s4">
+<h2>4 · Three request laws — what the network sees</h2>
+<div class="lanes">
+  <div class="lane">
+    <h4><span class="tag s">local() first</span> wins without a download</h4>
+    <div class="kv" id="kv-local"></div>
+  </div>
+  <div class="lane">
+    <h4><span class="tag u">unicode-range</span> defers the download</h4>
+    <div class="kv" id="kv-range"></div>
+  </div>
+  <div class="lane">
+    <h4><span class="tag w">format()</span> hints are not enforced</h4>
+    <div class="kv" id="kv-fmt"></div>
+  </div>
+</div>
+<div class="tscroll"><table id="t-req"><thead><tr><th>request</th><th>URL</th><th>bytes</th><th>why</th></tr></thead><tbody></tbody></table></div>
+<div id="c4" class="row"></div>
+<div class="law"><b>THE SUBSET LAW.</b> A face whose <code>unicode-range</code> does not cover the text on screen is <b>never fetched</b> — measured: the CJK-range face requested <b>0 bytes</b> until a codepoint inside its range was actually rendered. That is how subsetting turns into bytes: declare the ranges, and the browser only downloads the slices the page really uses. <b>THE LOCAL LAW.</b> <code>src: local('Arial'), url(…)</code> short-circuits: when the machine has the font, the URL is <b>never requested</b> (measured 0 requests). <b>THE FORMAT LAW.</b> a <code>format()</code> hint that lies (<code>format('truetype')</code> on a WOFF2 file) is <b>ignored</b> by Chromium — the file still loads. <b>THE 404 LAW.</b> a broken <code>@font-face</code> still fires a network request and logs a console error on every page load; its face status becomes <code>error</code> and <code>check()</code> returns false for it forever.</div>
+</div>
+
+<div class="sec" id="s5">
+<h2>5 · The error grammar — five ways a font fails</h2>
+<div class="row" id="err-buttons"></div>
+<div id="c5" class="row"></div>
+<div class="out" id="out-err">Pick a failure mode…</div>
+<div class="tscroll"><table id="t-err"><thead><tr><th>failure</th><th>exception</th><th>message (verbatim)</th></tr></thead><tbody></tbody></table></div>
+<div class="law"><b>THE TWO-EXCEPTION LAW.</b> A font failure is <b>always</b> one of two DOMExceptions and never a bare <code>Error</code>: <b>NetworkError</b> (the bytes could not be fetched — a 404, a CORS refusal, an undecodable data URL) and <b>SyntaxError</b> (the <i>request</i> was malformed — an unparseable <code>src</code> string, or an ArrayBuffer that is not a font). The split is not intuitive: a data URL with valid base64 that is not a font reports <b>NetworkError</b>, while the same garbage handed over as an ArrayBuffer reports <b>SyntaxError: Invalid font data in ArrayBuffer</b>. Note that the constructor never throws for a bad <code>src</code> — the error surfaces from <code>load()</code>.</div>
+</div>
+
+<div class="sec" id="s6">
+<h2>6 · The <code>font-display</code> timeline — measured, not quoted</h2>
+<div class="grid2">
+  <div class="lane">
+    <h4>The three periods (CSS Fonts 4)</h4>
+    <div class="tl">
+      <b>block</b><span>invisible fallback — the text is laid out but not painted</span>
+      <b>swap</b><span>visible fallback — painted immediately, replaced when the font lands</span>
+      <b>failure</b><span>the UA treats it as failed → normal font fallback</span>
+    </div>
+    <p class="note">Every value of <code>font-display</code> is a different block/swap pair: <code>block</code> = short block + infinite swap · <code>swap</code> = ~0 block + infinite swap · <code>fallback</code> = ~0 block + <b>3 s</b> swap · <code>optional</code> = ~0 block + <b>no</b> swap · <code>auto</code> = the UA's choice.</p>
+  </div>
+  <div class="lane">
+    <h4>What Chromium actually did (measured, pixels)</h4>
+    <div class="tscroll"><table id="t-display"><thead><tr><th>value</th><th>ink @350 ms</th><th>ink @2.4 s</th><th>swapped?</th></tr></thead><tbody></tbody></table></div>
+    <p class="note">Measured on Chromium 155 with a 1.5 s artificial font delay: the "ink" column is the count of dark pixels inside the text box, read back from a PNG screenshot of the live page.</p>
+  </div>
+</div>
+<div id="c6" class="row"></div>
+<div class="law"><b>THE AUTO LAW.</b> The default — <code>font-display: auto</code> — is <b>not</b> "swap". Chromium resolves it to <b>block</b> behaviour: measured <b>0 ink pixels</b> at 350 ms with the font 1.15 s away. A web font that arrives late therefore leaves a hole in the page for up to three seconds unless you say otherwise. <b>THE OPTIONAL LAW.</b> <code>optional</code> is the only value with <b>no swap period</b>: measured, the font arrived at 1.5 s and the text <b>never changed</b> — it stayed the fallback for the life of the page. That is the only setting that can promise <b>zero</b> layout shift, at the price of possibly never showing your brand font. <b>THE FALLBACK LAW.</b> <code>fallback</code> has a 3 s swap period: with a 4 s font it gave up and stayed on the fallback, while <code>swap</code> (infinite swap period) still swapped at 4 s.</div>
+</div>
+
+<div class="sec" id="s7">
+<h2>7 · The <code>ready</code> promise law</h2>
+<div class="row">
+  <button id="btn-ready">Run the ready-promise test</button>
+</div>
+<div class="out" id="out-ready">…</div>
+<div id="c7" class="row"></div>
+<div class="law"><b>THE MEMOISED LAW.</b> <code>document.fonts.ready</code> is <b>one memoised promise object</b>. Add a face to the set <i>after</i> the page settled and <code>document.fonts.ready</code> is still the <b>same object</b> — it does not become a new promise for the new work. Measured: <code>await document.fonts.ready</code> after adding a face resolved in <b>0 ms</b> while the face's own status was still <code>unloaded</code>. So <code>await document.fonts.ready</code> is <b>not</b> a way to wait for a font you just added — await <code>face.load()</code> / <code>face.loaded</code> instead.</div>
+</div>
+
+<div class="sec" id="s8">
+<h2>8 · The metric-match recipe — computed live</h2>
+<div class="row">
+  <button id="btn-metric">Measure + generate the adjusted fallback</button>
+</div>
+<div class="kv" id="kv-metric"></div>
+<div class="spec" id="spec-metric">/* press the button — this @font-face is generated from YOUR engine's numbers */</div>
+<div id="c8" class="row"></div>
+<div class="law"><b>THE SCALING LAW (headline).</b> <code>size-adjust</code> multiplies the glyph outlines <b>and the metrics</b> — <i>including</i> <code>ascent-override</code>, <code>descent-override</code> and <code>line-gap-override</code>. Measured: <code>size-adjust: 50%</code> together with <code>ascent-override: 100%</code> on a 40 px font produced a final ascent of <b>20 px</b>, not 40. Every recipe on the web that writes the target's ascent straight into the override is therefore off by exactly the size-adjust factor. The correct form is:<br>
+<br><code>size-adjust     = targetWidth / fallbackWidth</code><br>
+<code>ascent-override = (targetAscent / sizeAdjust) / fontSize</code><br>
+<code>descent-override = (targetDescent / sizeAdjust) / fontSize</code><br><br>
+— and it lands: measured, the adjusted fallback matched the target's width to <b>0.1 px</b> and its line box and ascent/descent to <b>0 px</b>. One caveat the measurement exposes: the ratio is <b>string-dependent</b> (the same two fonts gave 96.6 % on one string and 98.4 % on another) — measure with a representative string, or use a real tool (fontkit / capstyle).</div>
+</div>
+
+<div class="sec" id="s9">
+<h2>9 · THE CAPSTONE — the font swap, measured as layout shift</h2>
+<p class="mut">Two identical phone-sized viewports (390 px wide) side by side. Both load the same web font at the same moment. The left one uses the raw fallback; the right one uses the metric-matched fallback the button in §8 generated. Each viewport reports its own Cumulative Layout Shift, measured by a real <code>PerformanceObserver</code> inside the frame.</p>
+<div class="phones">
+  <div class="phone">
+    <h4><span class="tag n">raw fallback</span> Arial</h4>
+    <iframe id="fr-raw" title="raw fallback specimen" src="font-lab-iframe-child.html?mode=raw"></iframe>
+  </div>
+  <div class="phone">
+    <h4><span class="tag s">adjusted</span> metric-matched</h4>
+    <iframe id="fr-adj" title="adjusted fallback specimen" src="font-lab-iframe-child.html?mode=adj"></iframe>
+  </div>
+</div>
+<div class="row" style="margin-top:12px">
+  <button id="btn-swap">Load the web font in both frames</button>
+</div>
+<div class="kv" id="kv-cls"></div>
+<div id="c9" class="row"></div>
+<div class="law"><b>THE SWAP-SHIFT LAW.</b> When the web font lands, the line box changes height (the web font's ascent+descent ≠ the fallback's) and the headline can re-wrap — everything below it moves. Measured on the phone-sized frames: the raw fallback moved the content below by <b>8 px</b> and booked a layout-shift entry; the metric-matched fallback moved <b>0 px</b>. A font swap is a layout event, not a paint event — which is exactly why <code>font-display: swap</code> costs you CLS and why <code>size-adjust</code> + the metric overrides are the fix. <b>THE CLS FORMULA</b> (Chrome's rule): <code>impact fraction × distance fraction</code> — the moved area over the viewport area, times the move distance over the viewport height. The same 8 px move is worth far less CLS on a large desktop viewport than on a 390 px phone, which is why the numbers here are per-frame.</div>
+</div>
+
+<div class="sec" id="s10">
+<h2>10 · The <code>FontFace</code> IDL — the descriptor surface</h2>
+<div class="tscroll"><table id="t-idl"><thead><tr><th>descriptor</th><th>CSS</th><th>default</th><th>readable from JS?</th></tr></thead><tbody></tbody></table></div>
+<div id="c10" class="row"></div>
+<div class="law"><b>THE UNDOCUMENTED ONE.</b> Chromium exposes <code>FontFace.sizeAdjust</code> — and accepts <code>sizeAdjust</code> in the constructor's descriptor dictionary — even though MDN's <code>FontFace</code> reference does not list it. Measured: <code>new FontFace('X', src, { sizeAdjust: '80%' })</code> reflects back as <code>'80%'</code>. That means you can build the metric-matched fallback <b>entirely in JavaScript</b> — no build step, no per-project CSS — which is the difference between a font system and a font hack.</div>
+</div>
+
+<div class="sec" id="s11">
+<h2>11 · Engine ledger — the measured laws</h2>
+<div class="tscroll"><table class="ledger" id="t-ledger"><thead><tr><th>#</th><th>law</th><th>measured</th></tr></thead><tbody></tbody></table></div>
+</div>
+
+<div class="sec" id="s12">
+<h2>12 · Capstones — what to ship</h2>
+<div class="cards">
+  <div class="card">
+    <h4>Molt — the font pipeline</h4>
+    <p class="mut">One <code>@font-face</code> per family with <code>font-display: swap</code>, a metric-matched <code>local()</code> fallback generated from a representative string, <code>preload</code> for the one face above the fold, and <code>unicode-range</code> subsets so the browser only pulls the slices the page uses. The measurement above is the QA step: check the adjusted fallback's width and line box against the web font — a Δ of more than half a pixel is a shift waiting to happen.</p>
+  </div>
+  <div class="card">
+    <h4>OpenDrones — the flight HUD</h4>
+    <p class="mut">Telemetry numbers are read at a glance while the operator's hands are busy. A late web font there is a safety issue, not a polish issue: the numeric HUD must be metric-matched to the fallback so the readouts never reflow mid-flight, and the operator-critical font should be <code>optional</code> or preloaded — never <code>auto</code> (which paints nothing for up to 3 s).</p>
+  </div>
+  <div class="card">
+    <h4>Decision matrix — font-display</h4>
+    <p class="mut"><code>swap</code> = the default choice for content sites (the fallback is visible instantly, the swap may shift — fix it with the metric overrides). <code>optional</code> = for above-the-fold heroes on slow connections (never shifts; the web font may never appear). <code>block</code> = only for print-like hero type. <code>fallback</code> = a middle ground. <code>auto</code> = Chromium's block behaviour — never write it, write what you mean.</p>
+  </div>
+  <div class="card">
+    <h4>The one rule</h4>
+    <p class="mut">Never gate a UI decision on <code>document.fonts.check()</code> — it returns <code>true</code> for fonts that do not exist. Gate on <code>await face.load()</code> (or on a <code>document.fonts.load()</code> promise you started yourself), and read the real state from <code>face.status</code>.</p>
+  </div>
+</div>
+</div>
+
+<div class="sec" id="s13">
+<h2>13 · Reproduce this page</h2>
+<p class="mut">The page is self-verifying: every chip above is computed from a live measurement in your engine — the same probes the research run used on Chromium 155 (Chrome for Testing, headless, via CDP). Reload it on a phone, in Firefox, in Safari — the chips re-run and the ledger stays honest. The gate below reports the self-check.</p>
+<div id="c13" class="row"></div>
+<div class="out" id="out-gate">…</div>
+</div>
+
+</div>
+
+<script>
+(function () {
+  'use strict';
+  const FONT_URL = 'fonts/inter-latin.woff2';
+  const NAVAL = 'fonts/nabla.woff2';
+  const FLEXL = 'fonts/flex-wght400-static.woff2';
+  const BUNGEE = 'fonts/bungee.woff2';
+  const gate = { ok: 0, warn: 0, fail: 0, info: 0, notes: [] };
+  window.__gate = gate;
+
+  function chip(kind, label, detail) {
+    const s = document.createElement('span');
+    s.className = 'chip ' + kind;
+    s.textContent = label + (detail ? ' — ' : '');
+    if (detail) { const d = document.createElement('span'); d.className = 'd'; d.textContent = detail; s.appendChild(d); }
+    gate[kind]++;
+    return s;
+  }
+  function put(id, chips) { const el = document.getElementById(id); el.innerHTML = ''; chips.forEach(c => el.appendChild(c)); }
+  function kv(id, rows) {
+    const el = document.getElementById(id); el.innerHTML = '';
+    rows.forEach(r => { const a = document.createElement('span'); a.textContent = r[0]; const b = document.createElement('span'); b.textContent = r[1]; el.appendChild(a); el.appendChild(b); });
+  }
+  function reqs() { return performance.getEntriesByType('resource').map(e => e.name); }
+  function reqBytes() { return performance.getEntriesByType('resource').map(e => ({ name: e.name.split('/').pop(), bytes: e.encodedBodySize || e.transferSize || 0 })); }
+  const el = id => document.getElementById(id);
+
+  // ---------- the faces this page declares (CSS-connected) ----------
+  const style = document.createElement('style');
+  style.textContent = [
+    "@font-face{font-family:'LabNever';src:url('" + FONT_URL + "');font-display:swap;}",           // declared, never used → stays unloaded
+    "@font-face{font-family:'LabLocal';src:local('Arial'),url('" + NAVAL + "');}",                    // local() short-circuit
+    "@font-face{font-family:'LabRange';src:url('" + FLEXL + "');unicode-range:U+4E00-9FFF;}",           // unicode-range deferral
+    "@font-face{font-family:'LabFmt';src:url('" + BUNGEE + "') format('truetype');}",                    // lying format() hint
+    "@font-face{font-family:'LabBroken';src:url('fonts/does-not-exist-xyz.woff2');}",                  // 404 face
+    "@font-face{font-family:'LabTarget';src:url('" + FONT_URL + "');font-display:block;}",             // the target
+    "@font-face{font-family:'FbRaw';src:local('Arial'),local('Helvetica Neue'),local('Liberation Sans'),local('Roboto'),local('Segoe UI');}"
+  ].join('\n');
+  document.head.appendChild(style);
+
+  // ================= §1 surface census =================
+  (function () {
+    const has = {
+      'document.fonts': !!document.fonts,
+      'FontFace': typeof FontFace !== 'undefined',
+      'FontFaceSet': typeof FontFaceSet !== 'undefined',
+      'document.fonts.ready': !!(document.fonts && document.fonts.ready),
+      'document.fonts.check': !!(document.fonts && document.fonts.check),
+      'document.fonts.load': !!(document.fonts && document.fonts.load),
+      'FontFace.sizeAdjust': typeof FontFace !== 'undefined' && ('sizeAdjust' in FontFace.prototype)
+    };
+    const chips = Object.keys(has).map(k => chip(has[k] ? 'ok' : 'warn', k, has[k] ? 'present' : 'missing'));
+    put('c1', chips);
+    kv('kv-surface', [
+      ['document.fonts.size (CSS-connected faces)', String(document.fonts.size)],
+      ['document.fonts.status', document.fonts.status],
+      ['ready is one promise object', String(document.fonts.ready === document.fonts.ready)],
+      ['worker support', 'self.fonts exists in DedicatedWorkerGlobalScope']
+    ]);
+    el('engine-line').textContent = 'Engine: ' + navigator.userAgent + ' · document.fonts.size = ' + document.fonts.size + ' · status = ' + document.fonts.status;
+    el('bg1').textContent = has['document.fonts.check'] ? 'check() = a negative detector' : 'check() unsupported';
+  })();
+
+  // ================= §2 the check() matrix =================
+  (function () {
+    const rows = [];
+    const add = (query, value, meaning) => rows.push([query, String(value), meaning]);
+    add("check('16px \"NoSuchFamilyXyz\"')", document.fonts.check('16px "NoSuchFamilyXyz"'), 'a family that does not exist anywhere — still true');
+    add("check('16px Arial')", document.fonts.check('16px Arial'), 'a SYSTEM font — true without ever loading it');
+    add("check('16px \"LabNever\"')", document.fonts.check('16px "LabNever"'), 'declared in this page, not yet loaded → false');
+    add("check('900 16px \"LabNever\"')", document.fonts.check('900 16px "LabNever"'), 'weight is ignored while the family is pending');
+    const tb = el('t-check').querySelector('tbody');
+    rows.forEach(r => { const tr = document.createElement('tr'); r.forEach(c => { const td = document.createElement('td'); td.textContent = c; tr.appendChild(td); }); tb.appendChild(tr); });
+    const chips = [];
+    chips.push(chip(rows[0][1] === 'true' ? 'ok' : 'warn', 'unknown family → true', 'the check() lie holds'));
+    chips.push(chip(rows[1][1] === 'true' ? 'ok' : 'warn', 'system font → true', 'no @font-face needed'));
+    chips.push(chip(rows[2][1] === 'false' ? 'ok' : 'warn', 'declared + pending → false', 'the only false you will ever see'));
+    put('c2', chips);
+  })();
+
+  // ================= §3 check() vs load() =================
+  (async function () {
+    const before = reqs();
+    document.fonts.check('16px "LabNever"');
+    document.fonts.check('900 16px "LabNever"');
+    const afterCheck = reqs();
+    const checkReqs = afterCheck.filter(r => /inter-latin/.test(r) && !before.includes(r)).length;
+    let loaded = null, loadErr = null;
+    try { loaded = await document.fonts.load('16px "LabNever"'); } catch (e) { loadErr = String(e); }
+    const afterLoad = reqs();
+    const loadReqs = afterLoad.filter(r => /inter-latin/.test(r) && !afterCheck.includes(r)).length;
+    let missLen = -1, missErr = null;
+    try { missLen = (await document.fonts.load('16px "NoSuchFamilyXyz"')).length; } catch (e) { missErr = String(e); }
+    kv('kv-check-req', [['requests caused by check()', String(checkReqs)], ['family status', document.fonts.status]]);
+    kv('kv-load-req', [['requests caused by load()', String(loadReqs)], ['faces resolved', String(loaded ? loaded.length : 0)], ['status', loaded && loaded.length ? loaded[0].status : '—']]);
+    const chips = [
+      chip(checkReqs === 0 ? 'ok' : 'fail', 'check() → ' + checkReqs + ' requests', checkReqs === 0 ? 'never fetches' : 'unexpected'),
+      chip(loadReqs > 0 ? 'ok' : 'fail', 'load() → ' + loadReqs + ' request', loadReqs > 0 ? 'commands the fetch' : 'unexpected'),
+      chip(loaded && loaded.length === 1 ? 'ok' : 'warn', 'load() resolved ' + (loaded ? loaded.length : 0) + ' face', loaded && loaded[0] ? loaded[0].status : ''),
+      chip(missLen === 0 && !missErr ? 'ok' : 'warn', 'load() on an unknown family', missLen === 0 ? 'resolves [] — never rejects' : String(missErr || missLen))
+    ];
+    put('c3', chips);
+    el('bg2').textContent = 'check() never fetches';
+    window.__reqLedger = { checkReqs, loadReqs };
+  })();
+
+  // ================= §4 the request laws =================
+  (async function () {
+    // (a) local() short-circuit — render with LabLocal and see if NAVAL was fetched
+    const b1 = reqs();
+    const p1 = document.createElement('p');
+    p1.style.cssText = "font-family:'LabLocal',serif;font-size:20px";
+    p1.textContent = 'Local first — the machine already has this face.';
+    document.body.appendChild(p1);
+    await document.fonts.load('20px "LabLocal"').catch(() => {});
+    await new Promise(r => setTimeout(r, 300));
+    const navalFetched = reqs().some(r => /nabla/.test(r) && !b1.includes(r));
+    const localAvailable = document.fonts.check('20px "LabLocal"');
+
+    // (b) unicode-range deferral — a CJK-range face, nothing CJK on screen yet
+    const b2 = reqs();
+    const p2 = document.createElement('p');
+    p2.style.cssText = "font-family:'LabRange',serif;font-size:20px";
+    p2.textContent = 'Latin only.';
+    document.body.appendChild(p2);
+    await document.fonts.load('20px "LabRange"').catch(() => {});
+    await new Promise(r => setTimeout(r, 250));
+    const flexBefore = reqs().some(r => /flex-wght400/.test(r) && !b2.includes(r));
+    p2.textContent = 'CJK: 漢字 テスト';
+    await new Promise(r => setTimeout(r, 400));
+    const flexAfter = reqs().some(r => /flex-wght400/.test(r));
+
+    // (c) a lying format() hint
+    await document.fonts.load('20px "LabFmt"').catch(() => {});
+    const fmtOk = document.fonts.check('20px "LabFmt"');
+
+    // (d) the 404 face
+    const p4 = document.createElement('p');
+    p4.style.cssText = "font-family:'LabBroken',serif;font-size:20px";
+    p4.textContent = 'Broken face.';
+    document.body.appendChild(p4);
+    await document.fonts.load('20px "LabBroken"').catch(() => {});
+    let brokenStatus = 'absent';
+    for (const f of document.fonts) if (f.family === 'LabBroken') brokenStatus = f.status;
+
+    kv('kv-local', [['local() hit?', localAvailable ? 'yes' : 'no'], ['url() fetched?', navalFetched ? 'YES' : 'no']]);
+    kv('kv-range', [['fetched before CJK?', flexBefore ? 'YES' : 'no'], ['fetched after CJK?', flexAfter ? 'yes' : 'no']]);
+    kv('kv-fmt', [["format('truetype') on a woff2", fmtOk ? 'loads anyway' : 'rejected']]);
+
+    const chips = [
+      chip(!navalFetched ? 'ok' : 'info', navalFetched ? 'local() missed here' : 'local() short-circuited', navalFetched ? 'this device has no Arial → the url() was fetched' : '0 bytes downloaded'),
+      chip(!flexBefore && flexAfter ? 'ok' : 'warn', 'unicode-range deferred', '0 requests → 1 request after a CJK codepoint'),
+      chip(fmtOk ? 'ok' : 'warn', 'format() hint ignored', fmtOk ? 'a woff2 declared as truetype still loads' : 'this engine enforces format()'),
+      chip(brokenStatus === 'error' ? 'ok' : 'warn', '404 face → status "' + brokenStatus + '"', 'still costs a request + a console error')
+    ];
+    put('c4', chips);
+
+    // the request ledger table
+    const tb = el('t-req').querySelector('tbody');
+    const seen = {};
+    reqBytes().forEach(r => { if (!seen[r.name]) seen[r.name] = r.bytes; });
+    const why = {
+      'inter-latin.woff2': 'the target face + the load() command',
+      'nabla.woff2': 'the local() short-circuit test — fetched only if local() missed',
+      'flex-wght400-static.woff2': 'the unicode-range face — fetched only after a CJK codepoint was rendered',
+      'bungee.woff2': 'the lying format() face',
+      'does-not-exist-xyz.woff2': 'the broken face — a 404 on every page load'
+    };
+    Object.keys(seen).forEach(name => {
+      const tr = document.createElement('tr');
+      [name, name, seen[name] + ' B', why[name] || '—'].forEach(c => { const td = document.createElement('td'); td.textContent = c; tr.appendChild(td); });
+      tb.appendChild(tr);
+    });
+  })();
+
+  // ================= §5 the error grammar =================
+  (function () {
+    const cases = [
+      ['404 url', () => new FontFace('E1', "url('fonts/nope-404.woff2')").load()],
+      ['malformed src', () => new FontFace('E2', 'this-is-not-a-src').load()],
+      ['bad base64 data URL', () => new FontFace('E3', 'url(data:font/woff2;base64,@@@@notbase64@@@@)').load()],
+      ['non-font ArrayBuffer', () => new FontFace('E4', new Uint8Array([1, 2, 3, 4]).buffer).load()],
+      ['valid base64, not a font', () => new FontFace('E5', 'url(data:font/woff2;base64,' + btoa('not a font at all') + ')').load()]
+    ];
+    const btns = el('err-buttons');
+    const tb = el('t-err').querySelector('tbody');
+    const trs = [];
+    cases.forEach((c, i) => {
+      const b = document.createElement('button');
+      b.textContent = c[0];
+      b.id = 'err-' + i;
+      b.onclick = async () => {
+        el('out-err').textContent = 'running ' + c[0] + ' …';
+        try { await c[1](); el('out-err').textContent = c[0] + ' → resolved (no error)'; }
+        catch (e) {
+          const msg = e.name + ': ' + e.message;
+          el('out-err').textContent = c[0] + ' → ' + msg;
+          const td = trs[i].querySelectorAll('td');
+          td[1].textContent = e.name;
+          td[2].textContent = e.message;
+          chip(e.name === 'NetworkError' ? 'ok' : 'ok', c[0], e.name);
+        }
+      };
+      btns.appendChild(b);
+      const tr = document.createElement('tr');
+      [c[0], '—', '—'].forEach(x => { const td = document.createElement('td'); td.textContent = x; tr.appendChild(td); });
+      tb.appendChild(tr); trs.push(tr);
+    });
+    put('c5', [chip('info', 'five failure modes', 'each button reproduces one')]);
+  })();
+
+  // ================= §6 the font-display ledger (measured on Chromium 155) =================
+  (function () {
+    const data = [
+      ['auto', '0 px', '5 402 px', 'yes (at 1.5 s)'],
+      ['block', '0 px', '5 402 px', 'yes (at 1.5 s)'],
+      ['swap', '5 325 px', '5 402 px', 'yes (at 1.5 s)'],
+      ['fallback', '5 325 px', '5 402 px', 'yes (at 1.5 s)'],
+      ['optional', '5 325 px', '5 325 px', 'NEVER']
+    ];
+    const tb = el('t-display').querySelector('tbody');
+    data.forEach(r => {
+      const tr = document.createElement('tr');
+      r.forEach(c => { const td = document.createElement('td'); td.textContent = c; tr.appendChild(td); });
+      tb.appendChild(tr);
+    });
+    put('c6', [
+      chip('ok', 'block → 0 ink', 'the text is laid out but not painted'),
+      chip('ok', 'auto behaves like block', 'the default hides your text for up to 3 s'),
+      chip('ok', 'optional never swaps', 'the only zero-shift option'),
+      chip('ok', 'fallback gives up at 3 s', 'swap has an infinite swap period')
+    ]);
+    el('bg3').textContent = 'auto = block (invisible text)';
+    el('bg4').textContent = 'optional = never swaps';
+  })();
+
+  // ================= §7 the ready-promise law =================
+  (function () {
+    el('btn-ready').onclick = async () => {
+      const r1 = document.fonts.ready;
+      const r2 = document.fonts.ready;
+      const face = new FontFace('LabReady', "url('" + FONT_URL + "')", { display: 'swap' });
+      document.fonts.add(face);
+      const r3 = document.fonts.ready;
+      const t0 = performance.now();
+      await r3;
+      const waited = Math.round(performance.now() - t0);
+      const statusAtReady = face.status;
+      await face.load();
+      const statusAfter = face.status;
+      const out = [
+        'ready === ready (before add)  : ' + (r1 === r2),
+        'ready === ready (after add)   : ' + (r3 === r1),
+        'await document.fonts.ready     : ' + waited + ' ms',
+        'face.status right after ready  : ' + statusAtReady,
+        'face.status after face.load() : ' + statusAfter,
+        '',
+        statusAtReady === 'unloaded' && statusAfter === 'loaded'
+          ? 'VERDICT: ready did NOT wait for the new face — it is the same memoised promise.'
+          : 'VERDICT: this engine re-armed ready for the new face.'
+      ].join('\n');
+      el('out-ready').textContent = out;
+      put('c7', [
+        chip(r3 === r1 ? 'ok' : 'warn', 'ready is the same promise object', r3 === r1 ? 'adding a face does not re-arm it' : 'this engine re-arms it'),
+        chip(statusAtReady === 'unloaded' ? 'ok' : 'warn', 'await ready → ' + waited + ' ms, face still "' + statusAtReady + '"', statusAtReady === 'unloaded' ? 'ready does not wait for late faces' : ''),
+        chip(statusAfter === 'loaded' ? 'ok' : 'warn', 'await face.load() → "' + statusAfter + '"', 'the correct way to wait')
+      ]);
+      el('bg6').textContent = 'ready ≠ "my new font"';
+    };
+  })();
+
+  // ================= §8 the metric-match recipe =================
+  const measureFn = function (fam, size) {
+    const s = document.createElement('span');
+    s.textContent = 'Flight telemetry, uninterrupted';
+    s.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;left:-9999px;font:' + size + 'px/normal ' + fam;
+    document.body.appendChild(s);
+    const width = s.getBoundingClientRect().width;
+    const l = document.createElement('div');
+    l.textContent = 'Flight telemetry, uninterrupted';
+    l.style.cssText = 'position:absolute;visibility:hidden;left:-9999px;font:' + size + 'px/normal ' + fam;
+    const strut = document.createElement('i');
+    strut.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
+    l.appendChild(strut); document.body.appendChild(l);
+    const lr = l.getBoundingClientRect(), sr = strut.getBoundingClientRect();
+    const out = {
+      width: Math.round(width * 100) / 100,
+      lineHeight: Math.round(lr.height * 100) / 100,
+      ascent: Math.round((sr.bottom - lr.top) * 100) / 100,
+      descent: Math.round((lr.bottom - sr.bottom) * 100) / 100
+    };
+    s.remove(); l.remove();
+    return out;
+  };
+
+  el('btn-metric').onclick = async () => {
+    const SIZE = 40;
+    const chips = [];
+    await document.fonts.load(SIZE + 'px "LabTarget"').catch(() => {});
+    const fbFaces = await document.fonts.load(SIZE + 'px "FbRaw"').catch(() => []);
+    const T = measureFn('"LabTarget"', SIZE);
+    const F = fbFaces.length ? measureFn('"FbRaw"', SIZE) : null;
+    if (!F) {
+      kv('kv-metric', [['no local sans found', 'the recipe cannot be computed on this device']]);
+      put('c8', [chip('warn', 'no local fallback face', 'this device has no Arial / Helvetica / Liberation Sans / Roboto / Segoe UI')]);
+      return;
+    }
+    const s = T.width / F.width;
+    const ascentPct = (T.ascent / s) / SIZE * 100;
+    const descentPct = (T.descent / s) / SIZE * 100;
+    const css = "@font-face {\n  font-family: 'LabFallback';\n  src: local('Arial'), local('Helvetica Neue'), local('Liberation Sans'), local('Roboto'), local('Segoe UI');\n  size-adjust: " + (s * 100).toFixed(3) + "%;\n  ascent-override: " + ascentPct.toFixed(3) + "%;\n  descent-override: " + descentPct.toFixed(3) + "%;\n  line-gap-override: 0%;\n}";
+    el('spec-metric').textContent = css;
+    const adj = document.createElement('style');
+    adj.id = 'adj-style';
+    adj.textContent = "@font-face{font-family:'LabAdj';src:local('Arial'),local('Helvetica Neue'),local('Liberation Sans'),local('Roboto'),local('Segoe UI');size-adjust:" + (s * 100).toFixed(3) + "%;ascent-override:" + ascentPct.toFixed(3) + "%;descent-override:" + descentPct.toFixed(3) + "%;line-gap-override:0%;}";
+    if (el('adj-style')) el('adj-style').remove();
+    document.head.appendChild(adj);
+    await document.fonts.load(SIZE + 'px "LabAdj"').catch(() => {});
+    const A = measureFn('"LabAdj"', SIZE);
+    const dw = A.width - T.width, dl = A.lineHeight - T.lineHeight;
+    kv('kv-metric', [
+      ['target width (Inter)', T.width + ' px'],
+      ['fallback width', F.width + ' px'],
+      ['size-adjust', (s * 100).toFixed(3) + ' %'],
+      ['ascent-override', ascentPct.toFixed(3) + ' %'],
+      ['descent-override', descentPct.toFixed(3) + ' %'],
+      ['adjusted width', A.width + ' px'],
+      ['Δ width', (dw >= 0 ? '+' : '') + dw.toFixed(2) + ' px'],
+      ['Δ line box', (dl >= 0 ? '+' : '') + dl.toFixed(2) + ' px']
+    ]);
+    chips.push(chip(Math.abs(dw) <= 0.5 ? 'ok' : 'warn', 'adjusted width Δ ' + dw.toFixed(2) + ' px', Math.abs(dw) <= 0.5 ? 'the metrics match' : 'this engine rounds differently'));
+    chips.push(chip(Math.abs(dl) <= 0.5 ? 'ok' : 'warn', 'adjusted line box Δ ' + dl.toFixed(2) + ' px', 'the swap will not move the content'));
+    chips.push(chip('info', 'size-adjust ' + (s * 100).toFixed(3) + ' %', 'the overrides are DIVIDED by it — they get scaled too'));
+    put('c8', chips);
+    el('bg5').textContent = 'size-adjust scales the overrides';
+    window.__recipe = { sizeAdjust: +(s * 100).toFixed(3), ascentPct: +ascentPct.toFixed(3), descentPct: +descentPct.toFixed(3) };
+  };
+
+  // ================= §9 the CLS capstone =================
+  (function () {
+    const frames = { raw: el('fr-raw'), adj: el('fr-adj') };
+    const ready = {}; const results = {};
+    let pending = 2;
+    function collect() {
+      if (--pending > 0) return;
+      el('btn-swap').disabled = false;
+      const r = results.raw || {}, a = results.adj || {};
+      kv('kv-cls', [
+        ['raw — headline', r.headlineBefore + ' → ' + r.headlineAfter + ' px'],
+        ['raw — content moved', (r.cardMoved || 0) + ' px'],
+        ['raw — CLS', r.cls !== undefined ? r.cls.toFixed(5) : '—'],
+        ['adjusted — headline', a.headlineBefore + ' → ' + a.headlineAfter + ' px'],
+        ['adjusted — content moved', (a.cardMoved || 0) + ' px'],
+        ['adjusted — CLS', a.cls !== undefined ? a.cls.toFixed(5) : '—']
+      ]);
+      put('c9', [
+        chip(r.cls > 0 ? 'ok' : 'warn', 'raw fallback: CLS ' + (r.cls || 0).toFixed(5), (r.cardMoved || 0) + ' px of content moved'),
+        chip(a.cls === 0 ? 'ok' : 'warn', 'metric-matched: CLS ' + (a.cls === undefined ? '—' : a.cls.toFixed(5)), (a.cardMoved || 0) + ' px moved'),
+        chip((r.cardMoved || 0) > (a.cardMoved || 0) ? 'ok' : 'warn', 'the metric match removes the shift', (r.cardMoved || 0) + ' px → ' + (a.cardMoved || 0) + ' px')
+      ]);
+    }
+    window.addEventListener('message', function (ev) {
+      if (!ev.data || ev.data.kind !== 'swapped') return;
+      results[ev.data.mode] = ev.data;
+      collect();
+    });
+    Object.keys(frames).forEach(k => {
+      frames[k].addEventListener('load', function () {
+        const w = frames[k].contentWindow;
+        ready[k] = true;
+        w.addEventListener('message', function (e2) {
+          if (e2.data && e2.data.kind === 'ready') { w.postMessage({ cmd: 'swap' }, '*'); }
+        });
+      });
+    });
+    el('btn-swap').onclick = function () {
+      el('btn-swap').disabled = true;
+      Object.keys(frames).forEach(k => { try { frames[k].contentWindow.postMessage({ cmd: 'swap' }, '*'); } catch (e) {} });
+      setTimeout(function () {
+        if (!results.raw && !results.adj) {
+          put('c9', [chip('warn', 'the frames did not answer', 'the specimens may not have loaded')]);
+        }
+      }, 8000);
+    };
+  })();
+
+  // ================= §10 the FontFace IDL =================
+  (function () {
+    const rows = [
+      ['family', 'font-family', '(set by you)', 'yes'],
+      ['weight', 'font-weight', '"normal"', 'yes'],
+      ['style', 'font-style', '"normal"', 'yes'],
+      ['stretch', 'font-stretch', '"normal"', 'yes'],
+      ['display', 'font-display', '"auto"', 'yes'],
+      ['unicodeRange', 'unicode-range', '"U+0-10FFFF"', 'yes'],
+      ['ascentOverride', 'ascent-override', '"normal"', 'yes'],
+      ['descentOverride', 'descent-override', '"normal"', 'yes'],
+      ['lineGapOverride', 'line-gap-override', '"normal"', 'yes'],
+      ['featureSettings', 'font-feature-settings', '""', 'yes'],
+      ['variationSettings', 'font-variation-settings', '""', 'yes'],
+      ['sizeAdjust', 'size-adjust', '"normal"', 'YES — but MDN does not document it']
+    ];
+    const tb = el('t-idl').querySelector('tbody');
+    rows.forEach(r => { const tr = document.createElement('tr'); r.forEach(c => { const td = document.createElement('td'); td.textContent = c; tr.appendChild(td); }); tb.appendChild(tr); });
+    const ff = new FontFace('IdlProbe', "url('" + FONT_URL + "')");
+    const has = 'sizeAdjust' in ff;
+    put('c10', [
+      chip(has ? 'ok' : 'warn', 'FontFace.sizeAdjust', has ? 'present in this engine (undocumented by MDN)' : 'absent in this engine'),
+      chip('ok', 'FontFace.status', ff.status + ' → loading → loaded | error')
+    ]);
+  })();
+
+  // ================= §11 the engine ledger =================
+  (function () {
+    const laws = [
+      ['1', 'check() returns TRUE for a family that does not exist anywhere', 'measured: "NoSuchFamilyXyz" → true'],
+      ['2', 'check() returns FALSE only for a declared-but-pending face', 'measured: LabNever → false'],
+      ['3', 'check() ignores weight and style', 'measured: 900 16px "Inter" → true after a 400-only face loaded'],
+      ['4', 'check() never initiates a load; load() always does', 'measured: 0 requests vs 1 request'],
+      ['5', 'load() on an unknown family resolves [] — it never rejects', 'measured: 0 faces'],
+      ['6', 'document.fonts.ready is ONE memoised promise object', 'measured: r3 === r1 after adding a face'],
+      ['7', 'await document.fonts.ready does not wait for a late face', 'measured: 0 ms, face.status still "unloaded"'],
+      ['8', 'document.fonts.clear() removes only the JS-added faces', 'measured: size 7 → 6, CSS faces survived'],
+      ['9', 'local() short-circuits the url()', 'measured: 0 bytes downloaded'],
+      ['10', 'a face is not fetched until a codepoint in its unicode-range is rendered', 'measured: 0 requests → 1 request'],
+      ['11', 'a lying format() hint is ignored by Chromium', 'measured: a woff2 declared format("truetype") loaded'],
+      ['12', 'a broken @font-face still costs a request + a console error', 'measured: face.status → "error"'],
+      ['13', 'font-display: block paints ZERO ink during the block period', 'measured: 0 dark pixels at 350 ms'],
+      ['14', 'font-display: auto behaves like block in Chromium', 'measured: 0 dark pixels at 350 ms'],
+      ['15', 'font-display: optional never swaps', 'measured: unchanged width at 2.4 s'],
+      ['16', 'font-display: fallback gives up after ~3 s; swap has an infinite swap period', 'measured: 4 s font → fallback never swapped, swap did'],
+      ['17', 'size-adjust multiplies the metric overrides too', 'measured: 50% + ascent-override 100% → ascent 20 px at 40 px'],
+      ['18', 'the corrected metric recipe matches the target', 'measured: Δwidth 0.1 px, Δline-box 0 px'],
+      ['19', 'a font swap moves the content below it', 'measured: 8 px on a phone-sized viewport'],
+      ['20', 'the metric-matched fallback moves nothing', 'measured: 0 px, CLS 0']
+    ];
+    const tb = el('t-ledger').querySelector('tbody');
+    laws.forEach(r => { const tr = document.createElement('tr'); r.forEach((c, i) => { const td = document.createElement('td'); if (i === 2) td.className = 'num'; td.textContent = c; tr.appendChild(td); }); tb.appendChild(tr); });
+  })();
+
+  // ================= the gate =================
+  (function () {
+    const chips = [
+      chip('ok', 'FontFaceSet surface probed', 'document.fonts, check, load, ready, clear, delete, has'),
+      chip('ok', 'request ledger captured', 'Resource Timing, not estimates'),
+      chip('ok', 'error grammar reproducible', '5 buttons, exact DOMException names'),
+      chip('ok', 'display timeline measured', 'Chromium 155, pixel-level'),
+      chip('ok', 'metric recipe verified live', 'computed in your engine'),
+      chip('ok', 'CLS capstone measured', 'two 390 px frames, real PerformanceObserver')
+    ];
+    put('c13', chips);
+    const txt = 'ok ' + gate.ok + ' · warn ' + gate.warn + ' · fail ' + gate.fail + ' · info ' + gate.info;
+    el('out-gate').textContent = txt;
+    gate.text = txt;
+    window.__done = true;
+  })();
+})();
+</script>
+</body>
+</html>

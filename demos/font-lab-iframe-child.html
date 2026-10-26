@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>font lab specimen</title>
+<style>
+  :root { --ink:#1d1c1a; --mut:#75716a; --line:#e6e2da; --card:#fffdf9; --bg:#f7f5f0; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; padding:0; background:var(--bg); color:var(--ink); font-family:-apple-system, system-ui, sans-serif; }
+  .wrap { padding:16px 14px; }
+  .mode { font:600 10px/1 ui-monospace, Menlo, monospace; letter-spacing:.09em; text-transform:uppercase; color:var(--mut); margin-bottom:8px; }
+  h1 { font-size:40px; line-height:normal; margin:0 0 10px; font-weight:700; letter-spacing:-0.02em; }
+  #specA h1, #specB h1 { }
+  .card { height:300px; border-radius:16px; background:linear-gradient(160deg,#e8e2d6,#f2efe8); border:1px solid var(--line); display:flex; align-items:flex-end; padding:12px; }
+  .card span { font:600 11px/1 ui-monospace, Menlo, monospace; color:var(--mut); }
+  .hud { margin-top:10px; font:11px/1.45 ui-monospace, Menlo, monospace; color:var(--mut); background:#fff; border:1px solid var(--line); border-radius:10px; padding:8px; }
+  .hud b { color:var(--ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="mode" id="mode">mode</div>
+  <h1 id="headline">Flight telemetry, uninterrupted</h1>
+  <div class="card"><span id="cardLabel">card below the headline</span></div>
+  <div class="hud" id="hud">measuring…</div>
+</div>
+<script>
+(function () {
+  const params = new URLSearchParams(location.search);
+  const mode = params.get('mode') || 'raw';
+  const HEAD = document.getElementById('headline');
+  const CARD = document.getElementById('cardLabel').parentElement;
+  const HUD = document.getElementById('hud');
+  document.getElementById('mode').textContent = mode === 'adj' ? 'metric-adjusted fallback' : 'raw fallback (Arial)';
+
+  const shifts = [];
+  let cls = 0;
+  new PerformanceObserver(function (l) {
+    for (const e of l.getEntries()) {
+      if (e.hadRecentInput) continue;
+      cls += e.value;
+      shifts.push({ v: e.value, d: e.value });
+    }
+  }).observe({ type: 'layout-shift', buffered: true });
+
+  // ---- measurement helpers (line-height:normal ⇒ the font's own metrics) ----
+  function measure(fam, size) {
+    size = size || 40;
+    const s = document.createElement('span');
+    s.textContent = 'Flight telemetry, uninterrupted';
+    s.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;left:-9999px;font:' + size + 'px/normal ' + fam;
+    document.body.appendChild(s);
+    const width = s.getBoundingClientRect().width;
+    const l = document.createElement('div');
+    l.textContent = 'Flight telemetry, uninterrupted';
+    l.style.cssText = 'position:absolute;visibility:hidden;left:-9999px;font:' + size + 'px/normal ' + fam;
+    const strut = document.createElement('i');
+    strut.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
+    l.appendChild(strut); document.body.appendChild(l);
+    const lr = l.getBoundingClientRect(), sr = strut.getBoundingClientRect();
+    const out = {
+      width: Math.round(width * 100) / 100,
+      lineHeight: Math.round(lr.height * 100) / 100,
+      ascent: Math.round((sr.bottom - lr.top) * 100) / 100,
+      descent: Math.round((lr.bottom - sr.bottom) * 100) / 100
+    };
+    s.remove(); l.remove();
+    return out;
+  }
+
+  // ---- the target face (Inter) + the raw fallback face (Arial) ----
+  const st = document.createElement('style');
+  st.textContent = "@font-face{font-family:'LabTarget';src:url('fonts/inter-latin.woff2');font-display:block;}" +
+                   "@font-face{font-family:'FbRaw';src:local('Arial'),local('Helvetica Neue'),local('Liberation Sans'),local('Roboto'),local('Segoe UI');}";
+  document.head.appendChild(st);
+
+  const SIZE = 40;
+  let recipe = null;
+
+  (async function init() {
+    await document.fonts.load(SIZE + 'px "LabTarget"');
+    await document.fonts.load(SIZE + 'px "FbRaw"');
+    const T = measure('"LabTarget"', SIZE);
+    const F = measure('"FbRaw"', SIZE);
+    const s = T.width / F.width;                       // size-adjust multiplier
+    const ascentPct = (T.ascent / s) / SIZE * 100;
+    const descentPct = (T.descent / s) / SIZE * 100;
+    recipe = {
+      target: T, fallback: F, scale: s,
+      sizeAdjust: +(s * 100).toFixed(3),
+      ascentPct: +ascentPct.toFixed(3),
+      descentPct: +descentPct.toFixed(3)
+    };
+    if (mode === 'adj') {
+      const adj = document.createElement('style');
+      adj.textContent = "@font-face{font-family:'FbAdj';src:local('Arial'),local('Helvetica Neue'),local('Liberation Sans'),local('Roboto'),local('Segoe UI');size-adjust:" + recipe.sizeAdjust +
+        "%;ascent-override:" + recipe.ascentPct + "%;descent-override:" + recipe.descentPct + "%;line-gap-override:0%;}";
+      document.head.appendChild(adj);
+      await document.fonts.load(SIZE + 'px "FbAdj"');
+      recipe.adjusted = measure('"FbAdj"', SIZE);
+      HEAD.style.fontFamily = '"LabLate' + mode + '", "FbAdj", sans-serif';
+    } else {
+      HEAD.style.fontFamily = '"LabLate' + mode + '", "FbRaw", sans-serif';
+    }
+    HUD.innerHTML = 'target ' + T.width + 'px · fallback ' + F.width + 'px · size-adjust ' + recipe.sizeAdjust + '%';
+    window.__ready = true;
+    parent.postMessage({ kind: 'ready', mode: mode, recipe: recipe }, '*');
+  })();
+
+  // ---- the swap (triggered by the parent) ----
+  window.addEventListener('message', async function (ev) {
+    if (!ev.data || ev.data.cmd !== 'swap') return;
+    const beforeH = HEAD.getBoundingClientRect().height;
+    const beforeY = CARD.getBoundingClientRect().top;
+    const shiftsBefore = shifts.length;
+    const face = new FontFace('LabLate' + mode, "url('fonts/inter-latin.woff2')", { display: 'swap' });
+    document.fonts.add(face);
+    await face.load();
+    await new Promise(function (r) { setTimeout(r, 700); });
+    const afterH = HEAD.getBoundingClientRect().height;
+    const afterY = CARD.getBoundingClientRect().top;
+    const mine = shifts.slice(shiftsBefore);
+    const myCls = mine.reduce(function (s, e) { return s + e.v; }, 0);
+    HUD.innerHTML = 'swap done · headline ' + Math.round(beforeH) + '→' + Math.round(afterH) + 'px · card moved ' +
+      Math.round(afterY - beforeY) + 'px · CLS ' + myCls.toFixed(5);
+    parent.postMessage({
+      kind: 'swapped', mode: mode, cls: myCls, entries: mine.length,
+      headlineBefore: Math.round(beforeH * 100) / 100, headlineAfter: Math.round(afterH * 100) / 100,
+      cardMoved: Math.round((afterY - beforeY) * 100) / 100, recipe: recipe
+    }, '*');
+  });
+})();
+</script>
+</body>
+</html>
