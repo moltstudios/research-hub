@@ -1,0 +1,106 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>fm samesite helper</title>
+<!--
+  Fetch Metadata — same-site helper.
+  Loaded as a cross-origin iframe by fetch-metadata-tier.html.
+  It runs on echo.ghostsandbox.dev so that, relative to the parent at
+  lab.ghostsandbox.dev, its own requests are SAME-SITE (not cross-site).
+  It measures and posts the result back to the parent via postMessage.
+-->
+<div id="s" style="font:12px/1.5 ui-monospace,monospace;padding:8px">fm samesite helper</div>
+<script>
+(function () {
+  var PARENT_ORIGINS = ['https://lab.ghostsandbox.dev', 'https://molt-research.vercel.app', 'https://echo.ghostsandbox.dev'];
+  var ECHO = location.origin + '/api/fm';
+
+  function post(obj) {
+    obj.__fm = obj.__fm || 1;
+    try { parent.postMessage(obj, '*'); } catch (e) {}
+    if (location !== parent) {
+      for (var i = 0; i < PARENT_ORIGINS.length; i++) {
+        try { parent.postMessage(obj, PARENT_ORIGINS[i]); } catch (e2) {}
+      }
+    }
+  }
+
+  function pick(o, k) {
+    if (!o) return null;
+    var v = o[k];
+    if (v === undefined) {
+      var keys = Object.keys(o);
+      for (var i = 0; i < keys.length; i++) {
+        if (keys[i].toLowerCase() === k.toLowerCase()) return o[keys[i]];
+      }
+      return null;
+    }
+    if (Array.isArray(v)) return v[0];
+    return v;
+  }
+
+  function secOf(payload) {
+    var h = payload.allHeaders || payload.headers || {};
+    return {
+      site: pick(h, 'sec-fetch-site'),
+      mode: pick(h, 'sec-fetch-mode'),
+      dest: pick(h, 'sec-fetch-dest'),
+      user: pick(h, 'sec-fetch-user'),
+      purpose: pick(h, 'sec-purpose'),
+      priority: pick(h, 'priority')
+    };
+  }
+
+  function step(n, fn) {
+    return Promise.resolve().then(fn).then(function (v) {
+      return { name: n, ok: true, value: v };
+    }).catch(function (e) {
+      return { name: n, ok: false, error: (e && e.name) || String(e) };
+    });
+  }
+
+  window.__fmRun = function () {
+    var results = [];
+    var chain = Promise.resolve();
+
+    chain = chain.then(function () { return step('self-origin', function () { return location.origin; }); });
+    chain = chain.then(function () { return step('same-origin-fetch', function () {
+      return fetch(ECHO + '?from=helper-same-origin').then(function (r) { return r.json(); }).then(secOf);
+    }); });
+    chain = chain.then(function () { return step('no-cors-fetch', function () {
+      return fetch(ECHO + '?from=helper-no-cors', { mode: 'no-cors' }).then(function (r) { return { type: r.type }; });
+    }); });
+    chain = chain.then(function () { return step('cross-origin-fetch', function () {
+      return fetch('https://httpbin.org/anything?from=helper').then(function (r) { return r.json(); }).then(function (j) {
+        var h = j.headers || {};
+        return { site: pick(h, 'Sec-Fetch-Site'), mode: pick(h, 'Sec-Fetch-Mode'), dest: pick(h, 'Sec-Fetch-Dest'), priority: pick(h, 'Priority') };
+      });
+    }); });
+    chain = chain.then(function () { return step('image', function () {
+      return new Promise(function (resolve) {
+        var i = new Image();
+        i.onload = function () { resolve('loaded'); };
+        i.onerror = function () { resolve('error'); };
+        i.src = ECHO + '?from=helper-image&t=' + Date.now();
+        setTimeout(function () { resolve('timeout'); }, 4000);
+      });
+    }); });
+
+    chain = chain.then(function (all) {
+      results = all;
+      document.getElementById('s').textContent = 'fm samesite helper: done';
+      post({ type: 'fm-results', results: results, helperOrigin: location.origin, at: Date.now() });
+      return all;
+    });
+    return chain;
+  };
+
+  // Run immediately on load (the parent also may trigger via postMessage).
+  var ran = false;
+  function run() { if (!ran) { ran = true; window.__fmRun(); } }
+  window.addEventListener('message', function (ev) {
+    if (ev.data && ev.data.__fmPing) run();
+  });
+  if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(run, 30);
+  else window.addEventListener('DOMContentLoaded', run);
+})();
+</script>
