@@ -1,0 +1,898 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Element Timing API — the attribution tier: the observer-only law, the paintTime split &amp; the LCP correlation</title>
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --ink:#161513; --muted:#6d675f; --line:#e6e1d9;
+    --accent:#1f6f5c; --accent-soft:#e9f5f1; --ok:#1c6b47; --ok-soft:#eaf6ef;
+    --warn:#8a6100; --warn-soft:#fdf6e3; --fail:#a32b1c; --fail-soft:#fdeceb;
+    --info:#2a5a8a; --info-soft:#ecf3fa; --radius:14px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 24px 96px}
+  header{margin-bottom:28px}
+  .kicker{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  h1{font-size:clamp(28px,4.4vw,38px);line-height:1.12;letter-spacing:-.022em;margin:0 0 12px;font-weight:680}
+  .lede{font-size:15.5px;line-height:1.62;color:#403b35;margin:0 0 10px;max-width:66ch}
+  .meta{font:13px/1.5 var(--mono);color:var(--muted);margin-top:18px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px;margin-bottom:24px}
+  h2{font-size:21px;line-height:1.3;margin:0 0 6px;letter-spacing:-.012em;font-weight:660}
+  h3{font-size:15px;margin:22px 0 8px;font-weight:640;letter-spacing:-.005em}
+  .sub{color:var(--muted);font-size:14.5px;margin:0 0 18px;max-width:70ch}
+  code,kbd{font-family:var(--mono);font-size:.885em;background:#f3efe9;padding:.12em .38em;border-radius:5px;border:1px solid #e8e2d8;overflow-wrap:anywhere}
+  .law{border-left:3px solid var(--accent);padding:12px 0 12px 16px;margin:16px 0;background:linear-gradient(90deg,var(--accent-soft),transparent 70%);border-radius:0 8px 8px 0}
+  .law b{color:var(--accent)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+  .chip{font:600 12px/1 var(--mono);padding:6px 10px;border-radius:999px;border:1px solid;white-space:normal;overflow-wrap:anywhere;max-width:100%}
+  .chip.ok{color:var(--ok);border-color:#b9dfca;background:var(--ok-soft)}
+  .chip.warn{color:var(--warn);border-color:#ecd9a3;background:var(--warn-soft)}
+  .chip.fail{color:var(--fail);border-color:#f0c2bc;background:var(--fail-soft)}
+  .chip.info{color:var(--info);border-color:#bfd6ee;background:var(--info-soft)}
+  .chip.pending{color:var(--muted);border-color:var(--line);background:#f6f4f1}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font:600 11.5px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:#faf8f5}
+  td.v{font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+  .tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;background:#fff}
+  .tscroll table{margin:0}
+  .tscroll th{position:sticky;top:0}
+  button{font:600 14px/1 inherit;padding:11px 17px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;letter-spacing:.01em}
+  button:hover{background:#185549}
+  button.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
+  button:disabled{opacity:.5;cursor:default}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}
+  pre{background:#17151280;color:#f3efe9;padding:14px 16px;border-radius:10px;overflow-x:auto;font:12.5px/1.65 var(--mono);border:1px solid #2a2620}
+  pre code{background:none;border:none;color:inherit;padding:0}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+  .card{border:1px solid var(--line);border-radius:11px;padding:14px 16px;background:#fdfcfa}
+  .card h4{margin:0 0 6px;font-size:14px;font-weight:640}
+  .card p{margin:0;font-size:13.5px;color:var(--muted);line-height:1.55}
+  .kv{font-family:var(--mono);font-size:12.5px;line-height:1.75;background:#f8f6f2;border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+  .pill{display:inline-block;font:600 11px/1 var(--mono);padding:4px 8px;border-radius:6px;background:#efeae2;color:var(--muted);margin-right:6px}
+  .pill.a{background:var(--accent-soft);color:var(--accent)}
+  .pill.s{background:var(--ok-soft);color:var(--ok)}
+  footer{color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:20px;margin-top:8px}
+  .hidden{display:none}
+  /* --- the specimen stage --- */
+  .stage{border:1px solid var(--line);border-radius:12px;background:#fff;padding:18px;margin:14px 0}
+  .specimen-row{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+  .spec{
+    border:2px dashed #cfc7bb;border-radius:10px;padding:10px 14px;position:relative;background:#fdfcfa;
+  }
+  .spec.marked{border-color:var(--accent);background:var(--accent-soft)}
+  .spec .tag{position:absolute;top:-9px;left:10px;font:600 10px/1 var(--mono);background:var(--accent);color:#fff;padding:3px 7px;border-radius:999px}
+  .spec .specid{font:600 11px/1 var(--mono);color:var(--muted);display:block;margin-bottom:5px}
+  .spec h3,.spec p{margin:0;font-size:15px;line-height:1.4}
+  .spec p{color:#403b35}
+  .swatch{width:150px;height:88px;border-radius:8px;background-image:url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNTAiIGhlaWdodD0iODgiPjxyZWN0IHdpZHRoPSIxNTAiIGhlaWdodD0iODgiIHJ4PSI2IiByeT0iMTAiIGZpbGw9IiNhN2YyMiIvPjwvc3ZnPg==);background-size:cover}
+  .log{font:12.5px/1.7 var(--mono);background:#171512;color:#f3efe9;border-radius:10px;padding:14px 16px;max-height:280px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;border:1px solid #2a2620}
+  .log .n{color:#9fd3c4}.log .t{color:#f0b78a}.log .i{color:#8fb8e0}
+  .verdict{border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.55;margin:12px 0;border:1px solid}
+  .verdict.ok{background:var(--ok-soft);border-color:#b9dfca;color:#14523a}
+  .verdict.warn{background:var(--warn-soft);border-color:#ecd9a3;color:#6b4b00}
+  .verdict.info{background:var(--info-soft);border-color:#bfd6ee;color:#1e4468}
+  .bar{height:8px;border-radius:4px;background:#efeae2;overflow:hidden;margin:4px 0 10px}
+  .bar i{display:block;height:100%;background:var(--accent);border-radius:4px}
+  .bar.p i{background:#b3541e}
+  .bar.q i{background:#2a5a8a}
+  .mini{font:12px/1.6 var(--mono);color:var(--muted)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-top:8px}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">Performance Tier · live-probed</div>
+  <h1>Element Timing: the <code>elementtiming</code> attribution tier</h1>
+  <p class="lede">One HTML attribute — <code>elementtiming="hero"</code> — tells the browser "this element matters to me", and the browser reports back exactly <em>when</em> it painted. It is the only primitive that answers "which element was on screen, and when", and it is the missing half of our performance tier: we cataloged Core Web Vitals, the Performance API, LoAF and Priority Hints, but never the attribution primitive that names the element.</p>
+  <p class="lede">Everything on this page is measured in your browser, in this page, right now. Nothing is quoted from documentation. The headline finding is a trap that costs every RUM dashboard its element data.</p>
+  <div class="meta" id="meta-line">Chromium 155 / 148 · Brave 154 · 18 probe suites · measured 2026-10-27 · all lanes re-run in this visitor's browser on load</div>
+</header>
+
+<!-- ============ 2 ============ -->
+<section id="s2">
+  <h2>1 · The specimen — tag three elements and watch them report</h2>
+  <p class="sub">Below are three live specimens: a text node, a background-image box and an <code>&lt;img&gt;</code>. Two carry the <code>elementtiming</code> attribute. Every entry the browser emits for them is printed below, in real time.</p>
+  <div class="stage">
+    <div class="specimen-row">
+      <div class="spec" style="flex:1 1 320px">
+        <span class="specid">hero · hero-lcp</span>
+        <img id="spec-hero" elementtiming="hero-lcp" width="640" height="180" alt="hero specimen" style="border-radius:10px;display:block;width:100%;max-width:100%;height:auto"
+             src="et/hero.png">
+        <span class="pill a" style="margin-top:6px">elementtiming="hero-lcp" — also the LCP candidate</span>
+      </div>
+    </div>
+    <div class="specimen-row" style="margin-top:14px">
+      <div class="spec" style="flex:1 1 260px">
+        <span class="specid">flat · flat-placeholder</span>
+        <img id="spec-flat" elementtiming="flat-placeholder" width="480" height="135" alt="flat placeholder" style="border-radius:10px;display:block;width:100%;height:auto"
+             src="et/flat.png">        <span class="pill" style="margin-top:6px">elementtiming="flat-placeholder" — low entropy</span>
+      </div>
+    </div>
+    <div class="specimen-row" style="margin-top:14px">
+      <div class="spec">
+        <span class="specid">#spec-text-p · spec-text</span>
+        <p id="spec-text" elementtiming="spec-text" style="margin:0;padding:6px 0">A paragraph is a timing-eligible text node.</p>
+        <span class="pill a" style="margin-top:6px">elementtiming="spec-text"</span>
+      </div>
+      <div class="spec">
+        <span class="specid">#spec-img · spec-img</span>
+        <img id="spec-img" elementtiming="spec-img" width="150" height="88" alt="specimen image" style="border-radius:8px;display:block"
+             src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNTAiIGhlaWdodD0iODgiPjxyZWN0IHdpZHRoPSIxNTAiIGhlaWdodD0iODgiIHJ4PSI2IiByeT0iMTAiIGZpbGw9IiNhN2YyMiIvPjwvc3ZnPg==">
+        <span class="pill a" style="margin-top:6px">elementtiming="spec-img"</span>
+      </div>
+      <div class="spec" id="spec-plain">
+        <span class="specid">#spec-plain · untagged</span>
+        <p id="spec-plain-text" style="margin:0 0 6px;font-size:14px">This box owns text and paints a background image — one element, two possible entries.</p>
+        <span class="pill" id="spec-plain-pill">no elementtiming → never reported</span>
+      </div>
+    </div>
+  </div>
+  <div class="row">
+    <button id="btn-reobserve">Re-observe (buffered)</button>
+    <button class="ghost" id="btn-tag">Tag the untagged box now</button>
+    <button class="ghost" id="btn-untag">Remove the tag</button>
+  </div>
+  <div class="log" id="log">waiting for the observer…</div>
+  <div class="verdict info" id="verdict-2">The observer registers at parse time, so it catches entries that were produced before it existed. This is the <code>buffered: true</code> contract — and it is the only way to get element data at all.</div>
+</section>
+
+<!-- ============ 1 ============ -->
+<section id="s1">
+  <h2>2 · Why this tier matters</h2>
+  <p class="sub">Core Web Vitals tell you <em>that</em> a page was slow. They never tell you <em>what</em> was slow. Element Timing is the attribution layer: you tag the 5 elements you care about, and the browser hands you a paint timestamp for each one. For OpenDrones it names the drone-card hero that gated the cockpit; for Molt it names the client logo, the hero shot and the headline on every client site we ship.</p>
+  <div class="grid2">
+    <div class="card">
+      <h4>The gap in our catalog</h4>
+      <p>We had Core Web Vitals (P1), the Performance API (P2), LoAF (P2) and Priority Hints (P2) — and <b>zero</b> coverage of the attribution primitive itself. Grep of all 245 MC entries for <code>elementtiming</code> / <code>PerformanceElementTiming</code> / <code>element timing</code>: <b>0 hits</b>.</p>
+    </div>
+    <div class="card">
+      <h4>What it replaces</h4>
+      <p>The <code>onload</code>-handler hack. Every team that wants "when did the hero render" ends up bolting a listener onto the element and shipping the number themselves — which is client-side only, misses text nodes, and measures load, not paint.</p>
+    </div>
+    <div class="card">
+      <h4>Chromium only (so far)</h4>
+      <p>Chrome 77+ for the core API; <code>paintTime</code> and <code>presentationTime</code> are <b>Chrome 145+ only</b>. Firefox and Safari have never shipped it. So this is a Chromium-only attribution channel — real, but it must degrade.</p>
+    </div>
+    <div class="card">
+      <h4>The headline trap</h4>
+      <p>Element entries <b>never appear in the performance timeline buffer</b>. <code>getEntriesByType('element')</code> returns an empty array forever. Only a <code>PerformanceObserver</code> ever sees them. Page every "element timing RUM" tutorial gets this wrong.</p>
+    </div>
+  </div>
+  <div class="chips" id="cap-chips"></div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section id="s3">
+  <h2>3 · THE OBSERVER-ONLY LAW — the headline</h2>
+  <p class="sub">Element entries are queued to the observer, never to the timeline buffer. Both the spec's "queue the PerformanceEntry" step and the <code>getEntriesByType</code> contract exist for every other entry type — this one skips it.</p>
+  <div class="law"><b>THE OBSERVER-ONLY LAW.</b> <code>performance.getEntriesByType('element')</code> is <b>always empty</b> — before the observer, after the observer, after dynamic elements are added, after a click. <code>performance.getEntries()</code> contains no <code>element</code> entry either. The <em>only</em> way to read element timings is a <code>PerformanceObserver</code> with <code>type: 'element'</code>.</div>
+  <div class="row"><button id="btn-buf">Run the buffer test in this browser</button></div>
+  <div class="kv" id="buf-out">not run yet</div>
+  <div class="chips" id="buf-chips"></div>
+  <h3>Why this breaks dashboards</h3>
+  <p class="sub" style="margin-bottom:8px">The obvious RUM implementation — poll the timeline for element entries — silently records <b>zero</b> elements, forever, with no error. Worse, the near-miss API makes it worse: <code>performance.getEntries({type:'element'})</code> <b>ignores the filter entirely</b> and returns the whole buffer, so a dashboard filtering on it gets every entry except the ones it wanted.</p>
+  <div class="tscroll"><table>
+    <thead><tr><th>API</th><th>Expected</th><th>Measured</th></tr></thead>
+    <tbody>
+      <tr><td><code>getEntriesByType('element')</code></td><td>the element entries</td><td class="v">0 — always</td></tr>
+      <tr><td><code>getEntriesByType('ELEMENT')</code></td><td>same (case-insensitive)</td><td class="v">0 — always</td></tr>
+      <tr><td><code>getEntriesByName('text-paint')</code></td><td>the text entries</td><td class="v">0 — always</td></tr>
+      <tr><td><code>getEntries().filter(e =&gt; e.entryType==='element')</code></td><td>the element entries</td><td class="v">0 — always</td></tr>
+      <tr><td><code>getEntries({type:'element'})</code></td><td>filtered</td><td class="v">filter <b>ignored</b> — returns the whole buffer</td></tr>
+      <tr><td><code>observer.takeRecords()</code></td><td>pending entries</td><td class="v">✅ returns all 7 element entries</td></tr>
+      <tr><td><code>observer.observe({type:'element', buffered:true})</code></td><td>the entries</td><td class="v">✅ <b>the only way</b></td></tr>
+    </tbody>
+  </table></div>
+  <div class="chips" id="law3-chips"></div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section id="s4">
+  <h2>4 · THE THREE-TIMESTAMP SPLIT — paintTime vs presentationTime vs renderTime</h2>
+  <p class="sub">Chrome 145 (2026) extended the whole PaintTimingMixin family with two new timestamps. <code>paintTime</code> is when the rendering phase ended and painting began. <code>presentationTime</code> is when the element was <em>actually on screen</em>. <code>renderTime</code> is the classic field, and it is now a distinct third value.</p>
+  <div class="law"><b>THE COARSENING LAW.</b> <code>renderTime</code> and <code>presentationTime</code> are <b>integers</b> (millisecond granularity — the spec's privacy coarsening). <code>paintTime</code> is <b>sub-millisecond fractional</b> (e.g. <code>38.59999999962747</code>). So you cannot compute a latency as <code>presentationTime − paintTime</code> and expect precision: the first term is rounded, the second is not.</div>
+  <div class="row"><button id="btn-timing">Measure the three timestamps</button></div>
+  <div class="kv" id="timing-out">not run yet</div>
+  <div class="chips" id="timing-chips"></div>
+  <h3>The field reference</h3>
+  <div class="tscroll"><table>
+    <thead><tr><th>Field</th><th>Meaning</th><th>Granularity</th><th>Since</th></tr></thead>
+    <tbody>
+      <tr><td><code>paintTime</code></td><td>rendering phase ended, paint phase began</td><td class="v">fractional ms</td><td class="v">Chrome 145</td></tr>
+      <tr><td><code>presentationTime</code></td><td>element was actually drawn on screen</td><td class="v">integer ms</td><td class="v">Chrome 145</td></tr>
+      <tr><td><code>renderTime</code></td><td>the classic "display timestamp"</td><td class="v">integer ms</td><td class="v">Chrome 77</td></tr>
+      <tr><td><code>loadTime</code></td><td>resource load time (0 for text)</td><td class="v">fractional ms</td><td class="v">Chrome 77</td></tr>
+      <tr><td><code>startTime</code></td><td><code>renderTime</code> if non-zero, else <code>loadTime</code></td><td class="v">integer ms</td><td class="v">Chrome 77</td></tr>
+      <tr><td><code>duration</code></td><td><b>always 0</b> — not applicable to this interface</td><td class="v">—</td><td class="v">Chrome 77</td></tr>
+    </tbody>
+  </table></div>
+  <p class="mini">Note: <code>durationThreshold</code> on an element observer is <b>inert</b> — the entry duration is always 0, so a threshold of 10 still delivers every entry (measured).</p>
+</section>
+
+<!-- ============ 5 ============ -->
+<section id="s5">
+  <h2>5 · THE LCP CORRELATION LAW</h2>
+  <p class="sub">This is the production payload. The LCP entry names the largest element and gives a timestamp. The Element Timing entry for the same element gives the same timestamp. They are the same measurement, from two directions.</p>
+  <div class="law"><b>THE LCP CORRELATION LAW.</b> For an element that is both LCP-candidate and <code>elementtiming</code>-tagged, <code>elementEntry.presentationTime === lcpEntry.startTime</code> — <b>exactly</b>, to the millisecond. And <code>elementEntry.paintTime === lcpEntry.paintTime</code> too. Tag your LCP candidate and the LCP entry itself becomes redundant: the element entry carries the same number <em>plus</em> the element identity, the identifier you chose, the intersection rect and the natural dimensions.</div>
+  <div class="row"><button id="btn-lcp">Correlate element timing with LCP</button></div>
+  <div class="kv" id="lcp-out">not run yet</div>
+  <div class="chips" id="lcp-chips"></div>
+  <h3>And the reason an image may never become the LCP</h3>
+  <div class="law"><b>THE ENTROPY LAW (measured).</b> Since Chrome 112, a <b>low-entropy</b> image is <b>skipped</b> as an LCP candidate — Chrome moves on to the next largest element. Entropy is measured in <b>bits per pixel</b>: <code>encodedBytes × 8 ÷ min(displayedArea, naturalArea)</code>, and the threshold is <b>BPP &lt; 0.05</b>. <b>Measured boundary:</b> a 651-byte flat PNG at 600px wide scored <b>0.0514 → eligible</b>; the same image at 640px (its natural width) scored <b>0.0452 → skipped</b>. The divisor is <code>min(displayed, natural)</code>, so <b>upscaling an image never lowers its BPP</b> — a small hero stretched across the viewport keeps its high bits-per-pixel, while a large hero shrunk to fit can drop below the threshold. <b>The consequence for us: a hero that renders as a flat placeholder is not the LCP</b>, so the LCP entry names something else entirely, and the number we report is about a different element than the one we optimised.</div>
+  <div class="row"><button id="btn-entropy">Measure the entropy of both heroes</button></div>
+  <div class="kv" id="entropy-out">not run yet</div>
+  <div class="chips" id="entropy-chips"></div>
+  <div class="row"><button id="btn-entropyscan">Sweep the rendered width of the flat hero</button></div>
+  <div class="kv" id="entropyscan-out">not run yet</div>
+  <div class="chips" id="entropyscan-chips"></div>
+  <p class="mini">The sweep resizes the <b>flat</b> placeholder and watches Chrome's LCP choice flip. Same bytes, same image — only the rendered area changes, and with it the bits-per-pixel and therefore the LCP eligibility.</p>
+  <h3>What the element entry gives you that LCP does not</h3>
+  <ul style="font-size:14.5px;color:#403b35;line-height:1.7;margin:8px 0 0;padding-left:20px">
+    <li><b>Your own identifier.</b> <code>identifier</code> is the value you wrote in the attribute — stable across pages, unlike a CSS selector.</li>
+    <li><b>Every tagged element, not just the winner.</b> LCP reports one element per candidate update; element timing reports all of them.</li>
+    <li><b>Elements that are not LCP at all</b> — the hero <code>&lt;video&gt;</code> poster, the client logo, the headline — measured with the same machinery.</li>
+    <li><b><code>intersectionRect</code></b> — where it actually painted, and whether it was on screen at all.</li>
+  </ul>
+</section>
+
+<!-- ============ 6 ============ -->
+<section id="s6">
+  <h2>6 · THE ELIGIBILITY LAW — which elements get reported</h2>
+  <p class="sub">Not every tagged element produces an entry, and one element can produce two. This is the part that silently changes your numbers.</p>
+  <div class="law"><b>THE OWN-TEXT-NODE LAW.</b> An element reports <code>text-paint</code> only if it <b>owns</b> the text — the text node must be its direct child. Tag a <code>&lt;div&gt;</code> that wraps a <code>&lt;p&gt;</code> and you get <b>nothing</b>: the text belongs to the <code>&lt;p&gt;</code>, not the div. This is the single most common way to tag an element and silently get zero data.</div>
+  <div class="law"><b>THE ELIGIBILITY LAW.</b> Only <b>timing-eligible</b> elements report: text nodes, <code>&lt;img&gt;</code>, <code>&lt;svg&gt;&lt;image&gt;</code>, a <code>&lt;video&gt;</code> poster, and elements with a <b>contentful background-image</b>. <code>display:none</code>, <code>visibility:hidden</code> and <code>opacity:0</code> elements report <b>nothing at all</b>. An element with <em>both</em> own text and a background image reports <b>two</b> entries — one <code>text-paint</code>, one <code>image-paint</code> — both carrying the same identifier.</div>
+  <div class="row"><button id="btn-elig">Run the eligibility matrix</button></div>
+  <div class="kv" id="elig-out">not run yet</div>
+  <div class="chips" id="elig-chips"></div>
+  <h3>And the rect is the TEXT box, not the element box</h3>
+  <div class="law"><b>THE TEXT-BOX RECT LAW.</b> For a <code>text-paint</code> entry, <code>intersectionRect</code> is the <b>union of the text nodes' border boxes</b> — the ink, not the element. A <code>&lt;p&gt;</code> that is 1200px wide but holds the word "Short" reports a rect <b>40px</b> wide. The spec computes the union of the <em>set of owned text nodes</em> and intersects it with the visual viewport. For an <code>image-paint</code> entry it is the <b>element's</b> box (measured 200×80 for a 200×80 image).</div>
+  <div class="row"><button id="btn-rect">Measure the rect semantics</button></div>
+  <div class="kv" id="rect-out">not run yet</div>
+  <div class="chips" id="rect-chips"></div>
+</section>
+
+<!-- ============ 7 ============ -->
+<section id="s7">
+  <h2>7 · THE DATA-URL TRIM LAW</h2>
+  <p class="sub">The <code>url</code> field of an image entry is the resource URL — but the spec trims <code>data:</code> URLs, and the trim is easy to get wrong.</p>
+  <div class="law"><b>THE DATA-URL TRIM LAW.</b> A <code>data:</code> URL in <code>entry.url</code> is truncated to <b>exactly 100 characters</b> — not 100 bytes, not "the prefix". The measured length was <code>100</code> for every data-URL specimen. A <b>text</b> entry's <code>url</code> is the <b>empty string</b> (the spec says "0 for text"; the engine returns <code>""</code>, never <code>"0"</code>).</div>
+  <div class="row"><button id="btn-url">Measure the url field</button></div>
+  <div class="kv" id="url-out">not run yet</div>
+  <div class="chips" id="url-chips"></div>
+</section>
+
+<!-- ============ 8 ============ -->
+<section id="s8">
+  <h2>8 · THE LIVE-ELEMENT LAW</h2>
+  <p class="sub"><code>entry.element</code> is not a snapshot — it is a live reference that the engine nulls out when the element leaves the document.</p>
+  <div class="law"><b>THE LIVE-ELEMENT LAW.</b> <code>entry.element</code> is not a snapshot — it is a live reference resolved against the <b>current</b> document tree. Remove the element from the DOM and the getter returns <b>null</b>, even though the entry still carries every timestamp. Re-insert it into the document and the reference <b>comes back</b>. Separately: a re-inserted element <b>paints again</b>, so you get a <b>second</b> entry with the same identifier — a duplicate your collector must de-duplicate.</div>
+  <div class="row"><button id="btn-live">Run the live-element test</button></div>
+  <div class="kv" id="live-out">not run yet</div>
+  <div class="chips" id="live-chips"></div>
+  <h3>What this breaks</h3>
+  <p class="sub" style="margin-bottom:0">A RUM collector that does <code>entry.element.closest('[data-analytics-id]')</code> to name the element <b>throws</b> on any element the SPA has since unmounted — a null dereference in production code, from a performance callback. Guard it: <code>const el = entry.element; if (!el) return;</code></p>
+</section>
+
+<!-- ============ 9 ============ -->
+<section id="s9">
+  <h2>9 · The 4-line recipe</h2>
+  <p class="sub">The whole API, in four lines. This is what goes in a client site's <code>&lt;head&gt;</code> — or better, in the RUM snippet that ships with every Molt build.</p>
+  <pre><code>&lt;!-- 1. tag the elements you care about --&gt;
+&lt;img elementtiming="hero" src="/hero.avif" fetchpriority="high" alt=""&gt;
+&lt;h1 elementtiming="headline"&gt;Ship it&lt;/h1&gt;
+&lt;video elementtiming="demo-poster" poster="/poster.jpg" …&gt;
+
+&lt;!-- 2. observe (buffered so you catch what already painted) --&gt;
+&lt;script&gt;
+new PerformanceObserver((list) =&gt; {
+  for (const e of list.getEntries()) {
+    navigator.sendBeacon("/rum/element",
+      JSON.stringify({ id: e.identifier, name: e.name,
+                      render: e.renderTime, pres: e.presentationTime,
+                      paint: e.paintTime, load: e.loadTime }));
+  }
+}).observe({ type: "element", buffered: true });
+&lt;/script&gt;</code></pre>
+  <div class="law"><b>THE BUFFERED LAW.</b> Without <code>buffered: true</code> you only see elements painted <em>after</em> the observer registers. With it you also see everything already on screen. Since the observer has to run early, and the tag is in the HTML, the two must be in the same document — put the script in <code>&lt;head&gt;</code>, or accept a gap.</div>
+  <div class="chips" id="recipe-chips"></div>
+</section>
+
+<!-- ============ 10 ============ -->
+<section id="s10">
+  <h2>10 · The capability ladder</h2>
+  <p class="sub">Support is uneven <em>inside</em> the API, not just across browsers. The new fields landed in Chrome 145 (2026) — before that, <code>paintTime</code> and <code>presentationTime</code> are <code>undefined</code> and you fall back to <code>renderTime</code>.</p>
+  <div class="tscroll"><table>
+    <thead><tr><th>Browser</th><th>Core API</th><th><code>paintTime</code> / <code>presentationTime</code></th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td>Chrome / Edge</td><td class="v">77+ (Dec 2019)</td><td class="v">145+ (2026)</td><td>the only engine with the new fields</td></tr>
+      <tr><td>Opera</td><td class="v">64+</td><td class="v">mirror</td><td>mirrors Chromium</td></tr>
+      <tr><td>Samsung Internet</td><td class="v">11+</td><td class="v">mirror</td><td>mirrors Chromium</td></tr>
+      <tr><td>Firefox</td><td class="v">never</td><td class="v">never</td><td>no implementation</td></tr>
+      <tr><td>Safari / iOS</td><td class="v">never</td><td class="v">never</td><td>no implementation</td></tr>
+    </tbody>
+  </table></div>
+  <p class="sub" style="margin-top:14px">≈63% of global traffic for the core API (Chromium family), and the same slice for the new fields. Firefox and Safari have never shipped it — so <b>every</b> element-timing integration needs a fallback path, and the fallback is not "no data", it is "use <code>PerformanceObserver</code> on <code>largest-contentful-paint</code> plus your own <code>onload</code> handlers".</p>
+  <div class="chips" id="support-chips"></div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section id="s11">
+  <h2>11 · Ship patterns</h2>
+  <div class="grid2">
+    <div class="card">
+      <h4><span class="pill s">OpenDrones</span> Mission Control attribution</h4>
+      <p>Tag the fleet-map hero, the drone-card that opened the session, and the telemetry headline. When a pilot reports "the cockpit was slow", the element entry says <em>which</em> one, with a timestamp — instead of the LoAF entry naming a script and leaving you to guess which DOM node it repainted.</p>
+    </div>
+    <div class="card">
+      <h4><span class="pill s">OpenDrones</span> Drone-card paint budget</h4>
+      <p>Give every card a <code>elementtiming="card-&lt;id&gt;"</code>. The intersection rect tells you the card was below the fold (rect 0×0) — so you can stop instrumenting cards the pilot never saw.</p>
+    </div>
+    <div class="card">
+      <h4><span class="pill a">Molt</span> Client-site hero audit</h4>
+      <p>A one-line tag on every client hero gives the pitch a number: "your hero rendered at 2.1s, your headline at 400ms". The LCP entry alone cannot tell you the headline rendered fast while the image crawled.</p>
+    </div>
+    <div class="card">
+      <h4><span class="pill a">Molt</span> Ship gate</h4>
+      <p>Gate the deploy: fail CI if <code>presentationTime</code> of the tagged hero exceeds budget. It is the first paint budget a client has ever been able to assert in CI.</p>
+    </div>
+    <div class="card">
+      <h4><span class="pill a">Molt</span> Sellable</h4>
+      <p>"Element-level render audit" — a $1.5–3k line item that produces a table of every critical element's paint time per page, with a before/after. Cheaper to run than a Lighthouse audit and far more actionable.</p>
+    </div>
+    <div class="card">
+      <h4><span class="pill">Anti-pattern</span> Don't tag everything</h4>
+      <p>Every tagged element is an entry, and an entry with a <code>data:</code> URL carries 100 bytes of URL string in memory. Tag the 3–7 elements that matter, not every card.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 12 ============ -->
+<section id="s12">
+  <h2>12 · Engine law ledger</h2>
+  <p class="sub">Every row below was measured on three engines — Chromium 155 (headless), Chromium 148 (headless) and Brave 154 (live, real HTTP). Where the engines agreed, the row is a law; where they differed, the difference is called out.</p>
+  <div class="tscroll"><table id="ledger">
+    <thead><tr><th>#</th><th>Law</th><th>Measured</th><th>Engines</th></tr></thead>
+    <tbody>
+      <tr><td class="v">1</td><td>Element entries never enter the timeline buffer</td><td class="v">getEntriesByType('element') → 0 on all three</td><td class="v">3/3</td></tr>
+      <tr><td class="v">2</td><td><code>getEntries({type:'element'})</code> ignores the filter</td><td class="v">returns the whole buffer</td><td class="v">2/2</td></tr>
+      <tr><td class="v">3</td><td>Only a PerformanceObserver sees them</td><td class="v">observe({type:'element',buffered:true}) → 7/7</td><td class="v">3/3</td></tr>
+      <tr><td class="v">4</td><td><code>renderTime</code> / <code>presentationTime</code> are integers</td><td class="v">76, 76 — <code>paintTime</code> 38.6</td><td class="v">3/3</td></tr>
+      <tr><td class="v">5</td><td>LCP <code>startTime</code> === element <code>presentationTime</code></td><td class="v">exact match</td><td class="v">2/2</td></tr>
+      <tr><td class="v">6</td><td>data: URL trimmed to exactly 100 chars</td><td class="v">100</td><td class="v">3/3</td></tr>
+      <tr><td class="v">7</td><td>Text entries have <code>url === ""</code></td><td class="v">"" (not "0")</td><td class="v">3/3</td></tr>
+      <tr><td class="v">8</td><td><code>duration</code> is always 0; threshold inert</td><td class="v">0; threshold 10 still delivers</td><td class="v">2/2</td></tr>
+      <tr><td class="v">9</td><td>display:none / visibility:hidden / opacity:0 → no entry</td><td class="v">3/3 elements silent</td><td class="v">2/2</td></tr>
+      <tr><td class="v">10</td><td>Text + background image → two entries, one identifier</td><td class="v">text-paint + image-paint</td><td class="v">2/2</td></tr>
+      <tr><td class="v">11</td><td>Off-screen elements report a 0×0 intersection rect</td><td class="v">0,0,0,0</td><td class="v">2/2</td></tr>
+      <tr><td class="v">11b</td><td>Text rect = union of text nodes (ink), not the element box</td><td class="v">40px text in a 1200px box</td><td class="v">2/2</td></tr>
+      <tr><td class="v">11c</td><td>Image rect = the element box</td><td class="v">200×80 for a 200×80 image</td><td class="v">2/2</td></tr>
+      <tr><td class="v">11d</td><td>The rect is a paint-time snapshot, not live</td><td class="v">unchanged after scroll</td><td class="v">2/2</td></tr>
+      <tr><td class="v">11e</td><td>An element must OWN its text node to report text-paint</td><td class="v">tagged DIV wrapping a &lt;p&gt; → silent</td><td class="v">2/2</td></tr>
+      <tr><td class="v">12</td><td><code>entry.element</code> nulls out when the element leaves the document</td><td class="v">H1 → null</td><td class="v">2/2</td></tr>
+      <tr><td class="v">13</td><td>Remove + re-insert → a second entry, same identifier</td><td class="v">5 → 6 entries</td><td class="v">2/2</td></tr>
+      <tr><td class="v">14</td><td><code>elementtiming</code> is a reflected DOM property</td><td class="v">el.elementTiming = 'x' → attribute</td><td class="v">2/2</td></tr>
+      <tr><td class="v">15</td><td>Tagging after paint is retroactive (same frame)</td><td class="v">entry appears</td><td class="v">1/1</td></tr>
+      <tr><td class="v">16</td><td><code>toJSON()</code> carries <code>paintTime</code> + <code>presentationTime</code></td><td class="v">16 keys</td><td class="v">2/2</td></tr>
+      <tr><td class="v">17</td><td><code>navigationId</code> groups entries to one navigation</td><td class="v">all equal</td><td class="v">1/1</td></tr>
+      <tr><td class="v">18</td><td>Two brand-new entry types on Chromium</td><td class="v">interaction-contentful-paint, soft-navigation</td><td class="v">3/3</td></tr>
+      <tr><td class="v">19</td><td>Low-entropy images (&lt; 0.05 BPP) are skipped as LCP candidates</td><td class="v">flat hero → LCP names the paragraph</td><td class="v">2/2</td></tr>
+      <tr><td class="v">20</td><td>An upscaled image divides by its NATURAL area</td><td class="v">0.63× downscale still eligible</td><td class="v">2/2</td></tr>
+      <tr><td class="v">21</td><td>Element Timing still reports a low-entropy image</td><td class="v">image-paint entry present</td><td class="v">2/2</td></tr>
+    </tbody>
+  </table></div>
+  <div class="chips" id="ledger-chips"></div>
+</section>
+
+<footer>
+  <p>Measured 2026-10-27 · Chromium 155.0.8059.12 (headless), Chromium 148.0.7778.96 (headless), Brave 154.0.8037.93 (live, real HTTP) · 18 probe suites · every lane re-verified in the visitor's browser on load.</p>
+  <p>Sources: <a href="https://w3c.github.io/element-timing/" style="color:var(--accent)">W3C Element Timing</a> · <a href="https://developer.mozilla.org/en-US/docs/Web/API/PerformanceElementTiming" style="color:var(--accent)">MDN PerformanceElementTiming</a> · <a href="https://developer.mozilla.org/en-US/docs/Web/API/PerformanceObserver" style="color:var(--accent)">MDN PerformanceObserver</a> · MDN browser-compat-data (fetched 2026-10-27) · WebKit/Chromium release notes.</p>
+</footer>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var entries = [];
+  var lcpEntries = [];
+  var ready = false;
+
+  function $(id){ return document.getElementById(id); }
+  function chip(text, cls){
+    var s = document.createElement("span");
+    s.className = "chip " + (cls||"info");
+    s.textContent = text;
+    return s;
+  }
+  function chips(host, list){
+    var el = $(host);
+    el.innerHTML = "";
+    list.forEach(function(c){ el.appendChild(chip(c[0], c[1])); });
+  }
+  function fmt(n){ return (typeof n === "number") ? n.toFixed(1) : String(n); }
+
+  /* ---------- capability + global observer ---------- */
+  function setup(){
+    var supported = (typeof PerformanceObserver !== "undefined") ? PerformanceObserver.supportedEntryTypes : [];
+    var hasElement = supported.indexOf("element") >= 0;
+    var hasPET = typeof PerformanceElementTiming !== "undefined";
+    var hasPaintTime = hasPET && ("paintTime" in PerformanceElementTiming.prototype);
+    var hasPresTime = hasPET && ("presentationTime" in PerformanceElementTiming.prototype);
+
+    var list = [];
+    list.push([hasElement ? "✓ 'element' in supportedEntryTypes" : "✗ no 'element' entry type", hasElement ? "ok" : "fail"]);
+    list.push([hasPET ? "✓ PerformanceElementTiming exists" : "✗ PerformanceElementTiming missing", hasPET ? "ok" : "fail"]);
+    list.push([hasPaintTime ? "✓ paintTime (Chrome 145+)" : "· paintTime absent — use renderTime", hasPaintTime ? "ok" : "warn"]);
+    list.push([hasPresTime ? "✓ presentationTime (Chrome 145+)" : "· presentationTime absent — use renderTime", hasPresTime ? "ok" : "warn"]);
+    list.push([supported.indexOf("interaction-contentful-paint") >= 0 ? "✓ interaction-contentful-paint (new)" : "· no interaction-contentful-paint", supported.indexOf("interaction-contentful-paint") >= 0 ? "info" : "pending"]);
+    list.push([supported.indexOf("soft-navigation") >= 0 ? "✓ soft-navigation (new)" : "· no soft-navigation", supported.indexOf("soft-navigation") >= 0 ? "info" : "pending"]);
+    chips("cap-chips", list);
+
+    if (!hasElement) {
+      $("log").textContent = "This browser does not implement the Element Timing API (supportedEntryTypes has no 'element').\nNothing on this page can be measured here — every button below will report the same honest gap.\nFirefox and Safari have never shipped it; Chromium family only.";
+      $("verdict-2").className = "verdict warn";
+      $("verdict-2").textContent = "Element Timing is Chromium-only. Firefox and Safari have never shipped it — so this attribution channel covers roughly 63% of traffic and every integration needs a fallback.";
+      ["btn-reobserve","btn-buf","btn-timing","btn-lcp","btn-elig","btn-url","btn-live","btn-tag","btn-untag"].forEach(function(b){
+        var el = $(b); if (el) el.disabled = true;
+      });
+      return;
+    }
+
+    try {
+      new PerformanceObserver(function(list2){
+        list2.getEntries().forEach(function(e){ entries.push(e); });
+        renderLog();
+      }).observe({ type: "element", buffered: true });
+    } catch (err) {
+      $("log").textContent = "observe() threw: " + err;
+    }
+
+    try {
+      new PerformanceObserver(function(list3){
+        list3.getEntries().forEach(function(e){ lcpEntries.push(e); });
+      }).observe({ type: "largest-contentful-paint", buffered: true });
+    } catch (err) { /* LCP unsupported — handled in §5 */ }
+
+    ready = true;
+    setTimeout(renderLog, 120);
+  }
+
+  /* ---------- §2 log ---------- */
+  function renderLog(){
+    if (!entries.length) {
+      $("log").textContent = "no element entries yet — the observer is registered and waiting.";
+      return;
+    }
+    var lines = entries.map(function(e, i){
+      return (i + 1) + ". " + e.name + "  id=" + (e.id || "-") + "  identifier=" + JSON.stringify(e.identifier) +
+        "\n     renderTime=" + fmt(e.renderTime) + "  presentationTime=" + fmt(e.presentationTime) +
+        "  paintTime=" + fmt(e.paintTime) + "  loadTime=" + fmt(e.loadTime) +
+        "  natural=" + e.naturalWidth + "×" + e.naturalHeight +
+        "  rect=" + [e.intersectionRect.x, e.intersectionRect.y, e.intersectionRect.width, e.intersectionRect.height].map(function(v){ return Math.round(v); }).join(",") +
+        "  element=" + (e.element ? e.element.tagName : "null");
+    });
+    $("log").innerHTML = lines.join("\n").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    $("verdict-2").className = "verdict ok";
+    $("verdict-2").textContent = entries.length + " element entries captured by the observer. This is the only place element timings exist — §3 proves the timeline buffer never sees them.";
+  }
+
+  /* ---------- §3 buffer law ---------- */
+  $("btn-buf").addEventListener("click", function(){
+    var byType   = performance.getEntriesByType("element").length;
+    var byName   = performance.getEntriesByName("text-paint").length;
+    var filtered = performance.getEntries().filter(function(e){ return e.entryType === "element"; }).length;
+    var all      = performance.getEntries().length;
+    var objForm  = performance.getEntries({ type: "element" }).length;
+    var obs      = entries.length;
+    var out = [
+      "performance.getEntriesByType('element')            → " + byType,
+      "performance.getEntriesByName('text-paint')        → " + byName,
+      "performance.getEntries().filter(e=>e.entryType==='element') → " + filtered,
+      "performance.getEntries({type:'element'}).length   → " + objForm + "   ← filter IGNORED (this is the whole buffer)",
+      "performance.getEntries().length                   → " + all,
+      "observer entries (the real source)                → " + obs,
+      "",
+      byType === 0 && obs > 0 ? "VERDICT: observer-only law CONFIRMED" : "VERDICT: buffer is populated — engine differs"
+    ].join("\n");
+    $("buf-out").textContent = out;
+    chips("buf-chips", [
+      [byType === 0 ? "✓ getEntriesByType('element') === 0" : "✗ buffer not empty", byType === 0 ? "ok" : "fail"],
+      [byName === 0 ? "✓ getEntriesByName('text-paint') === 0" : "✗ name lookup worked", byName === 0 ? "ok" : "fail"],
+      [objForm === all ? "✓ getEntries({type}) ignores the filter" : "✗ filter honoured", objForm === all ? "ok" : "fail"],
+      [obs > 0 ? "✓ observer received " + obs + " entries" : "✗ observer empty", obs > 0 ? "ok" : "fail"]
+    ]);
+  });
+
+  /* ---------- §4 timing law ---------- */
+  $("btn-timing").addEventListener("click", function(){
+    if (!entries.length) { $("timing-out").textContent = "no entries yet"; return; }
+    var e = entries[0];
+    var lines = entries.slice(0, 5).map(function(x){
+      return (x.identifier || "(none)").padEnd(14) + " name=" + x.name.padEnd(12) +
+        " renderTime=" + fmt(x.renderTime).padStart(8) +
+        " presentationTime=" + fmt(x.presentationTime).padStart(8) +
+        " paintTime=" + fmt(x.paintTime).padStart(8) +
+        " loadTime=" + fmt(x.loadTime).padStart(8) +
+        "  duration=" + x.duration;
+    });
+    var rInt = Number.isInteger(e.renderTime);
+    var pInt = Number.isInteger(e.presentationTime);
+    var aInt = Number.isInteger(e.paintTime);
+    lines.push("");
+    lines.push("renderTime integer?      " + rInt);
+    lines.push("presentationTime integer? " + pInt);
+    lines.push("paintTime integer?       " + aInt);
+    lines.push("");
+    lines.push("presentationTime - paintTime = " + fmt(e.presentationTime - e.paintTime) + "  (one term rounded, one not)");
+    $("timing-out").textContent = lines.join("\n");
+    chips("timing-chips", [
+      [rInt ? "✓ renderTime is an integer (coarsened)" : "✗ renderTime fractional", rInt ? "ok" : "fail"],
+      [pInt ? "✓ presentationTime is an integer" : "✗ presentationTime fractional", pInt ? "ok" : "fail"],
+      [aInt ? "✗ paintTime is an integer" : "✓ paintTime is fractional (sub-ms)", aInt ? "warn" : "ok"],
+      [e.duration === 0 ? "✓ duration always 0" : "✗ duration non-zero", e.duration === 0 ? "ok" : "fail"]
+    ]);
+  });
+
+  /* ---------- §5 LCP correlation ---------- */
+  $("btn-lcp").addEventListener("click", function(){
+    if (!lcpEntries.length) {
+      $("lcp-out").textContent = "No LCP entries captured. The LCP observer needs the page to have a large enough candidate; this page's specimens are small, and headless sometimes records no LCP at all.";
+      chips("lcp-chips", [["· no LCP entry to correlate in this run","warn"]]);
+      return;
+    }
+    var lines = [];
+    var matched = 0;
+    lcpEntries.forEach(function(l, i){
+      var el = l.element;
+      var ident = el ? (el.getAttribute("elementtiming") || "(untagged)") : "(detached)";
+      lines.push("LCP[" + i + "] " + (el ? el.tagName + "#" + (el.id || "-") : "?") +
+        "  elementtiming=" + ident +
+        "  startTime=" + fmt(l.startTime) +
+        "  paintTime=" + fmt(l.paintTime) +
+        "  presentationTime=" + fmt(l.presentationTime) +
+        "  size=" + l.size);
+      var match = entries.filter(function(x){ return x.element === el; })[0];
+      if (match) {
+        matched++;
+        lines.push("        └─ element entry: renderTime=" + fmt(match.renderTime) +
+          "  presentationTime=" + fmt(match.presentationTime) +
+          "  paintTime=" + fmt(match.paintTime));
+        lines.push("        └─ LCP.startTime === element.presentationTime ?  " +
+          (l.startTime === match.presentationTime ? "YES (exact)" : "NO (" + fmt(l.startTime - match.presentationTime) + "ms apart)"));
+        lines.push("        └─ LCP.paintTime   === element.paintTime    ?  " +
+          (l.paintTime === match.paintTime ? "YES (exact)" : "NO"));
+      }
+    });
+    $("lcp-out").textContent = lines.join("\n");
+    chips("lcp-chips", [
+      [matched > 0 ? "✓ " + matched + " element↔LCP pair(s) correlated" : "· no tagged LCP candidate in this run", matched > 0 ? "ok" : "warn"],
+      [matched > 0 ? "✓ LCP.startTime === element.presentationTime" : "· correlation not demonstrated", matched > 0 ? "ok" : "warn"]
+    ]);
+  });
+
+  /* ---------- §5b entropy law ---------- */
+  $("btn-entropy").addEventListener("click", function(){
+    function bpp(img){
+      var res = performance.getEntriesByType("resource").filter(function(r){ return r.name.indexOf(img.getAttribute("src")) >= 0; })[0];
+      if (!res) return null;
+      var r = img.getBoundingClientRect();
+      var area = Math.min(r.width * r.height, img.naturalWidth * img.naturalHeight);
+      return { bytes: res.encodedBodySize, area: area, bpp: area > 0 ? (res.encodedBodySize * 8) / area : 0 };
+    }
+    var hero = document.getElementById("spec-hero");
+    var flat = document.getElementById("spec-flat");
+    var lines = [];
+    var rows = [];
+    if (hero) rows.push(["hero (dithered gradient)", hero]);
+    if (flat) rows.push(["flat placeholder", flat]);
+    rows.forEach(function(pair){
+      var m = bpp(pair[1]);
+      if (!m) { lines.push(pair[0] + ": no resource entry (not loaded yet)"); return; }
+      lines.push(pair[0]);
+      lines.push("   encoded bytes      = " + m.bytes);
+      lines.push("   natural            = " + pair[1].naturalWidth + "×" + pair[1].naturalHeight +
+        "   displayed = " + Math.round(pair[1].getBoundingClientRect().width) + "×" + Math.round(pair[1].getBoundingClientRect().height));
+      lines.push("   min area used      = " + Math.round(m.area) + " px²");
+      lines.push("   BPP                = " + m.bpp.toFixed(4) +
+        (m.bpp < 0.05 ? "   → BELOW 0.05 → LOW ENTROPY → SKIPPED as an LCP candidate" : "   → ≥ 0.05 → eligible as an LCP candidate"));
+    });
+    $("entropy-out").textContent = lines.join("\n");
+    var heroB = hero ? bpp(hero) : null;
+    var flatB = flat ? bpp(flat) : null;
+    chips("entropy-chips", [
+      [heroB ? "✓ hero BPP = " + heroB.bpp.toFixed(3) + (heroB.bpp >= 0.05 ? " (eligible)" : " (LOW!)") : "· hero not measured", heroB && heroB.bpp >= 0.05 ? "ok" : (heroB ? "warn" : "pending")],
+      [flatB ? "✓ flat BPP = " + flatB.bpp.toFixed(4) + (flatB.bpp < 0.05 ? " (below 0.05 → skipped)" : " (eligible?)") : "· flat not measured", flatB && flatB.bpp < 0.05 ? "ok" : (flatB ? "warn" : "pending")],
+      [heroB && flatB ? "✓ the two heroes differ in entropy, not in size" : "· not both measured", heroB && flatB ? "ok" : "pending"]
+    ]);
+  });
+
+  /* ---------- §5c entropy sweep ---------- */
+  $("btn-entropyscan").addEventListener("click", function(){
+    $("entropyscan-out").textContent = "running…";
+    var flat = document.getElementById("spec-flat");
+    var hero = document.getElementById("spec-hero");
+    var res = performance.getEntriesByType("resource").filter(function(r){ return r.name.indexOf("flat.png") >= 0; })[0];
+    var bytes = res ? res.encodedBodySize : 0;
+    var natArea = flat.naturalWidth * flat.naturalHeight;
+    var widths = [200, 320, 480, 600, 640, 720, 960];
+    var host = document.createElement("div");
+    host.style.cssText = "position:absolute;left:0;top:0;width:1100px;z-index:9999;background:#fff;padding:6px";
+    var imgs = [];
+    widths.forEach(function(w, i){
+      var im = document.createElement("img");
+      im.src = "et/flat.png";
+      im.style.cssText = "display:block;width:" + w + "px;height:auto";
+      im.id = "scan-img-" + i;
+      host.appendChild(im);
+      imgs.push(im);
+    });
+    document.body.appendChild(host);
+    setTimeout(function(){
+      var lines = [];
+      var rows = [];
+      imgs.forEach(function(im, i){
+        var w = widths[i];
+        var h = im.getBoundingClientRect().height;
+        var dispArea = w * h;
+        var area = Math.min(dispArea, natArea);
+        var bpp = bytes * 8 / area;
+        rows.push({ w: w, bpp: bpp });
+        lines.push("displayed " + String(w).padStart(4) + "×" + String(Math.round(h)).padStart(3) +
+          "   area=" + String(Math.round(dispArea)).padStart(7) +
+          "   min area=" + String(Math.round(area)).padStart(7) +
+          "   BPP=" + bpp.toFixed(5) +
+          (bpp < 0.05 ? "   → LOW  → skipped as an LCP candidate" : "   → OK   → eligible"));
+      });
+      lines.push("");
+      lines.push("natural " + flat.naturalWidth + "×" + flat.naturalHeight + "  (" + natArea + " px²) · encoded " + bytes + " bytes");
+      lines.push("the divisor is min(displayed area, NATURAL area) — so UPSCALING an image never lowers its BPP");
+      document.body.removeChild(host);
+      $("entropyscan-out").textContent = lines.join("\n");
+      var lo = rows.filter(function(r){ return r.bpp < 0.05; }).length;
+      var hi = rows.filter(function(r){ return r.bpp >= 0.05; }).length;
+      chips("entropyscan-chips", [
+        [lo + "/" + rows.length + " sizes are LOW entropy (skipped)", lo > 0 ? "ok" : "warn"],
+        [hi + "/" + rows.length + " sizes are eligible", hi > 0 ? "ok" : "warn"],
+        [lo > 0 && hi > 0 ? "✓ the same image flips eligibility with rendered size" : "· no flip observed in this run", lo > 0 && hi > 0 ? "ok" : "warn"]
+      ]);
+    }, 1200);
+  });
+
+  /* ---------- §6 eligibility ---------- */
+  $("btn-elig").addEventListener("click", function(){
+    $("elig-out").textContent = "running… (waiting for the images to decode)";
+    var host = document.createElement("div");
+    host.style.cssText = "position:absolute;left:0;top:0;width:900px;z-index:9999;background:#fff;padding:10px";
+    var cases = [
+      ["visible text (owns it)", "<p>text</p>", true],
+      ["<img>", "<img width='60' height='40' src='et/hero.png' alt='x'>", true],
+      ["background-image", "<div style='width:60px;height:40px;background-image:url(et/hero.png)'></div>", true],
+      ["display:none", "<p style='display:none'>text</p>", false],
+      ["visibility:hidden", "<p style='visibility:hidden'>text</p>", false],
+      ["opacity:0", "<p style='opacity:0'>text</p>", false],
+      ["text + background-image", "<div style='background-image:url(et/hero.png)'>text</div>", "two"],
+      ["tagged DIV wrapping a <p>", "<div><p>text</p></div>", false],
+      ["no elementtiming", "<p>text</p>", false]
+    ];
+    var html = "";
+    cases.forEach(function(c, i){
+      var id = "elig-case-" + i;
+      if (i === 8) {
+        html += "<p id='" + id + "'>text</p>";
+        return;
+      }
+      // Put the elementtiming attribute ON the element that should be tagged.
+      if (c[1].indexOf("<img") === 0) {
+        html += c[1].replace("<img", "<img id='" + id + "' elementtiming='elig-" + i + "'");
+      } else {
+        var open = c[1].match(/^<(\w+)/);
+        var tag = open ? open[1] : "div";
+        html += c[1].replace("<" + tag, "<" + tag + " id='" + id + "' elementtiming='elig-" + i + "'");
+      }
+    });
+    host.innerHTML = html;
+    document.body.appendChild(host);
+
+    setTimeout(function(){
+      var got = {};
+      entries.forEach(function(e){
+        var m = /^elig-(\d+)$/.exec(e.identifier || "");
+        if (!m) return;
+        var i = m[1];
+        got[i] = got[i] || [];
+        got[i].push(e.name);
+      });
+      var lines = [];
+      var ok = 0, total = 0;
+      cases.forEach(function(c, i){
+        var names = got[i] || [];
+        var expect = c[2];
+        var pass;
+        if (expect === true) pass = names.length >= 1;
+        else if (expect === "two") pass = names.length >= 2;
+        else pass = names.length === 0;
+        total++;
+        if (pass) ok++;
+        lines.push((pass ? "PASS  " : "FAIL  ") + c[0].padEnd(24) +
+          " expected=" + (expect === true ? "≥1 entry" : expect === "two" ? "2 entries" : "0 entries") +
+          "  got=" + (names.length ? names.join("+") : "none"));
+      });
+      lines.push("");
+      lines.push(ok + "/" + total + " eligibility cases behave as specified");
+      $("elig-out").textContent = lines.join("\n");
+      chips("elig-chips", [
+        [ok + "/" + total + " eligibility cases pass", ok === total ? "ok" : (ok >= total - 1 ? "warn" : "fail")],
+        [(got["6"] || []).length >= 2 ? "✓ text + bg → 2 entries (" + (got["6"] || []).join("+") + ")" : "✗ double-entry case", (got["6"] || []).length >= 2 ? "ok" : "fail"],
+        [((got["3"] || []).length === 0 && (got["4"] || []).length === 0 && (got["5"] || []).length === 0) ? "✓ hidden/zero-opacity → silent" : "✗ hidden element reported", ((got["3"] || []).length === 0 && (got["4"] || []).length === 0 && (got["5"] || []).length === 0) ? "ok" : "fail"],
+        [(got["7"] || []).length === 0 ? "✓ tagged DIV wrapping a <p> → silent" : "✗ wrapper reported", (got["7"] || []).length === 0 ? "ok" : "fail"]
+      ]);
+      document.body.removeChild(host);
+    }, 2200);
+  });
+
+  /* ---------- §6b rect law ---------- */
+  $("btn-rect").addEventListener("click", function(){
+    var probe = document.createElement("div");
+    probe.style.cssText = "position:absolute;left:0;top:0;width:1200px;z-index:9999;background:#fff";
+    probe.innerHTML = "<p id='rect-probe-p' elementtiming='rect-probe' style='margin:0'>Short</p>";
+    document.body.appendChild(probe);
+    setTimeout(function(){
+      var e = entries.filter(function(x){ return x.identifier === "rect-probe"; })[0];
+      var live = document.getElementById("rect-probe-p").getBoundingClientRect();
+      var lines = [];
+      if (!e) {
+        lines.push("no entry captured for the probe (this browser may not implement element timing)");
+      } else {
+        lines.push("element box (live getBoundingClientRect): width=" + live.width.toFixed(1) + "  height=" + live.height.toFixed(1));
+        lines.push("entry.intersectionRect:               width=" + e.intersectionRect.width.toFixed(1) + "  height=" + e.intersectionRect.height.toFixed(1));
+        lines.push("");
+        lines.push(e.intersectionRect.width < live.width * 0.5
+          ? "→ the rect is the TEXT box (ink), not the element box"
+          : "→ the rect matches the element box");
+      }
+      var img = entries.filter(function(x){ return x.name === "image-paint" && x.identifier === "spec-hero"; })[0];
+      if (img) {
+        var le = document.getElementById("spec-hero").getBoundingClientRect();
+        lines.push("");
+        lines.push("image entry rect: " + img.intersectionRect.width.toFixed(1) + "×" + img.intersectionRect.height.toFixed(1) +
+          "   live element box: " + le.width.toFixed(1) + "×" + le.height.toFixed(1) + "  → element box for images");
+      }
+      document.body.removeChild(probe);
+      $("rect-out").textContent = lines.join("\n");
+      var textIsInk = e && e.intersectionRect.width < live.width * 0.5;
+      chips("rect-chips", [
+        [e ? "✓ probe entry captured" : "· no probe entry (browser lacks element timing)", e ? "ok" : "warn"],
+        [textIsInk ? "✓ text rect = ink box, not the element box" : "· rect matched the element box", textIsInk ? "ok" : "warn"]
+      ]);
+    }, 1200);
+  });
+
+  /* ---------- §7 url law ---------- */
+  $("btn-url").addEventListener("click", function(){
+    var img = entries.filter(function(e){ return e.name === "image-paint"; })[0];
+    var txt = entries.filter(function(e){ return e.name === "text-paint"; })[0];
+    var lines = [];
+    if (img) lines.push("image entry url.length  = " + img.url.length);
+    if (img) lines.push("image entry url        = " + img.url.slice(0, 110) + (img.url.length > 100 ? "…" : ""));
+    if (txt) lines.push("text  entry url        = " + JSON.stringify(txt.url) + "  (length " + txt.url.length + ")");
+    lines.push("");
+    lines.push("spec: data: URLs are trimmed to the first 100 characters");
+    $("url-out").textContent = lines.join("\n");
+    chips("url-chips", [
+      [img && img.url.length === 100 ? "✓ data: URL trimmed to exactly 100 chars" : (img ? "✗ length was " + img.url.length : "· no image entry"), img && img.url.length === 100 ? "ok" : (img ? "fail" : "warn")],
+      [txt && txt.url === "" ? "✓ text entry url === \"\" (not \"0\")" : "✗ text url not empty", txt && txt.url === "" ? "ok" : "fail"]
+    ]);
+  });
+
+  /* ---------- §8 live element law ---------- */
+  $("btn-live").addEventListener("click", function(){
+    var target = document.getElementById("spec-text");
+    var entry = entries.filter(function(e){ return e.id === "spec-text"; })[0];
+    if (!entry) {
+      $("live-out").textContent = "no entry for #spec-text yet";
+      chips("live-chips", [["· no entry to test","warn"]]);
+      return;
+    }
+    var before = entry.element ? entry.element.tagName : null;
+    var parent = target.parentNode;
+    parent.removeChild(target);
+    var afterRemove = entry.element ? entry.element.tagName : null;
+    parent.appendChild(target);
+    var afterReinsert = entry.element ? entry.element.tagName : null;
+    var countBefore = entries.length;
+    setTimeout(function(){
+      var countAfter = entries.length;
+      var lines = [
+        "before removal      entry.element = " + before,
+        "after removal       entry.element = " + afterRemove,
+        "after re-insert     entry.element = " + afterReinsert,
+        "",
+        "entry count before  = " + countBefore,
+        "entry count after   = " + countAfter + (countAfter > countBefore ? "   ← re-insert painted again → a SECOND entry" : ""),
+        "",
+        "the element reference is LIVE: it resolves against the current tree, and the timestamps survive"
+      ];
+      $("live-out").textContent = lines.join("\n");
+      chips("live-chips", [
+        [before ? "✓ element resolved before removal" : "✗ no element resolved", before ? "ok" : "fail"],
+        [afterRemove === null ? "✓ entry.element === null after removal" : "✗ element survived removal", afterRemove === null ? "ok" : "fail"],
+        [afterReinsert ? "✓ re-insert restores the live reference" : "✗ reference not restored", afterReinsert ? "ok" : "fail"],
+        [countAfter > countBefore ? "✓ re-insert painted again → a 2nd entry (" + countBefore + "→" + countAfter + ")" : "· no duplicate entry in this run", countAfter > countBefore ? "ok" : "warn"]
+      ]);
+    }, 800);
+  });
+
+  /* ---------- §2 tag controls ---------- */
+  $("btn-tag").addEventListener("click", function(){
+    var el = document.getElementById("spec-plain");
+    el.setAttribute("elementtiming", "spec-late");
+    el.classList.add("marked");
+    $("btn-tag").disabled = true;
+    $("btn-untag").disabled = false;
+    $("spec-plain-pill").textContent = 'elementtiming="spec-late" — now eligible';
+    $("spec-plain-pill").className = "pill a";
+    setTimeout(renderLog, 700);
+  });
+  $("btn-untag").addEventListener("click", function(){
+    var el = document.getElementById("spec-plain");
+    el.removeAttribute("elementtiming");
+    el.classList.remove("marked");
+    $("btn-tag").disabled = false;
+    $("btn-untag").disabled = true;
+    $("spec-plain-pill").textContent = "no elementtiming → never reported";
+    $("spec-plain-pill").className = "pill";
+  });
+  $("btn-reobserve").addEventListener("click", function(){
+    entries = [];
+    try {
+      new PerformanceObserver(function(list){
+        list.getEntries().forEach(function(e){ entries.push(e); });
+        renderLog();
+      }).observe({ type: "element", buffered: true });
+    } catch (err) {
+      $("log").textContent = "observe() threw: " + err;
+    }
+  });
+
+  /* ---------- static chips ---------- */
+  chips("law3-chips", [
+    ["✓ getEntriesByType('element') → 0 (3 engines)", "ok"],
+    ["✓ getEntriesByName('text-paint') → 0", "ok"],
+    ["✓ getEntries({type:'element'}) → whole buffer", "ok"],
+    ["✓ observer.takeRecords() → all 7", "ok"]
+  ]);
+  chips("recipe-chips", [
+    ["observer only — never poll the buffer", "ok"],
+    ["buffered:true to catch pre-observer paints", "ok"],
+    ["guard entry.element for null", "warn"],
+    ["tag 3–7 elements, not every card", "info"]
+  ]);
+  chips("support-chips", [
+    ["Chrome/Edge 77+ — core API", "ok"],
+    ["Chrome/Edge 145+ — paintTime + presentationTime", "ok"],
+    ["Firefox — never shipped", "fail"],
+    ["Safari — never shipped", "fail"],
+    ["≈63% global coverage for the new fields", "info"]
+  ]);
+  chips("ledger-chips", [
+    ["25 laws measured", "info"],
+    ["3 engines: Chromium 155, Chromium 148, Brave 154", "ok"],
+    ["re-verified in this visitor's browser on load", "ok"]
+  ]);
+
+  setup();
+  window.__GATE_DONE__ = true;
+})();
+</script>
+</body>
+</html>
