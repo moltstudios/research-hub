@@ -7,12 +7,18 @@
   It runs on a sibling origin (lab.ghostsandbox.dev / echo.ghostsandbox.dev) so that,
   relative to the parent page, its own requests land on a SAME-SITE (not cross-site) origin.
   It measures and posts the result back to the parent via postMessage.
+
+  HOUSE RULE (learned the hard way): a lane factory must RETURN A FUNCTION.
+  `step(name, fn)` returning a Promise instead of a function makes
+  `chain.then(step(...))` a no-op — .then() ignores a non-function argument and
+  the lane's result is silently replaced by the previous chain value.
 -->
 <div id="s" style="font:12px/1.5 ui-monospace,monospace;padding:8px">fm samesite helper</div>
 <script>
-(function () {
+(async function () {
   var ECHO = location.origin + '/api/fm';
   var CROSS = 'https://httpbin.org/anything';
+  var results = [];
 
   function post(obj) {
     obj.__fm = 1;
@@ -45,47 +51,51 @@
     };
   }
 
-  function step(n, fn) {
-    return Promise.resolve().then(fn).then(function (v) {
-      return { name: n, ok: true, value: v };
-    }).catch(function (e) {
-      return { name: n, ok: false, error: (e && e.name) || String(e) };
-    });
+  async function lane(name, fn) {
+    try {
+      var value = await fn();
+      results.push({ name: name, ok: true, value: value });
+    } catch (e) {
+      results.push({ name: name, ok: false, error: (e && e.name) || String(e) });
+    }
   }
 
-  function run() {
-    var results = [];
+  async function run() {
+    results = [];
 
-    // NOTE: the step() result is the FIRST argument of .then(), so the collector
-    // must take it as a parameter — a zero-arg collector pushes undefined.
-    function add(v) { results.push(v); return v; }
+    await lane('self-origin', function () { return location.origin; });
 
-    var chain = Promise.resolve();
+    await lane('same-origin-fetch', function () {
+      return fetch(ECHO + '?from=helper-same-origin')
+        .then(function (r) { return r.json(); })
+        .then(secOf);
+    });
 
-    chain = chain.then(step('self-origin', function () { return location.origin; })).then(add);
-    chain = chain.then(step('same-origin-fetch', function () {
-      return fetch(ECHO + '?from=helper-same-origin').then(function (r) { return r.json(); }).then(secOf);
-    })).then(add);
-    chain = chain.then(step('sibling-origin-fetch', function () {
+    await lane('sibling-origin-fetch', function () {
       // echo.ghostsandbox.dev is a SIBLING of lab.ghostsandbox.dev -> same registrable domain.
       var sib = location.hostname.indexOf('lab.') === 0
         ? location.origin.replace('//lab.', '//echo.')
         : location.origin.replace('//echo.', '//lab.');
-      return fetch(sib + '/api/fm?from=helper-sibling').then(function (r) { return r.json(); }).then(secOf)
-        .catch(function (e) { return { err: e.name }; });
-    })).then(add);
-    chain = chain.then(step('cross-origin-fetch', function () {
-      return fetch(CROSS + '?from=helper').then(function (r) { return r.json(); }).then(function (j) {
-        var h = j.headers || {};
-        return {
-          site: pick(h, 'Sec-Fetch-Site'),
-          mode: pick(h, 'Sec-Fetch-Mode'),
-          dest: pick(h, 'Sec-Fetch-Dest'),
-          priority: pick(h, 'Priority')
-        };
-      });
-    })).then(add);
-    chain = chain.then(step('image', function () {
+      return fetch(sib + '/api/fm?from=helper-sibling')
+        .then(function (r) { return r.json(); })
+        .then(secOf);
+    });
+
+    await lane('cross-origin-fetch', function () {
+      return fetch(CROSS + '?from=helper')
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          var h = j.headers || {};
+          return {
+            site: pick(h, 'Sec-Fetch-Site'),
+            mode: pick(h, 'Sec-Fetch-Mode'),
+            dest: pick(h, 'Sec-Fetch-Dest'),
+            priority: pick(h, 'Priority')
+          };
+        });
+    });
+
+    await lane('image', function () {
       return new Promise(function (resolve) {
         var i = new Image();
         i.onload = function () { resolve('loaded'); };
@@ -93,13 +103,10 @@
         i.src = ECHO + '?from=helper-image&t=' + Date.now();
         setTimeout(function () { resolve('timeout'); }, 4000);
       });
-    })).then(add);
-
-    chain.then(function () {
-      document.getElementById('s').textContent = 'fm samesite helper: done (' + results.length + ' lanes)';
-      post({ type: 'fm-results', results: results, helperOrigin: location.origin, at: Date.now() });
     });
-    return chain;
+
+    document.getElementById('s').textContent = 'fm samesite helper: done (' + results.length + ' lanes)';
+    post({ type: 'fm-results', results: results, helperOrigin: location.origin, at: Date.now() });
   }
 
   var ran = false;
