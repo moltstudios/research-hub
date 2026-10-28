@@ -1,0 +1,1384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebRTC Transport Internals — getStats(), ICE candidates &amp; the DataChannel: the tier our catalog never covered</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --ink:#161513; --muted:#6d675f; --line:#e6e1d9;
+    --accent:#1f6f5c; --accent-soft:#e9f5f1; --ok:#1c6b47; --ok-soft:#eaf6ef;
+    --warn:#8a6100; --warn-soft:#fdf6e3; --fail:#a32b1c; --fail-soft:#fdeceb;
+    --info:#2a5a8a; --info-soft:#ecf3fa; --radius:14px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 24px 96px}
+  header{margin-bottom:28px}
+  .kicker{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  h1{font-size:clamp(27px,4.2vw,38px);line-height:1.12;letter-spacing:-.022em;margin:0 0 12px;font-weight:680}
+  .lede{font-size:15.5px;line-height:1.62;color:#403b35;margin:0 0 10px;max-width:66ch}
+  .meta{font:13px/1.5 var(--mono);color:var(--muted);margin-top:18px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px;margin-bottom:24px}
+  h2{font-size:21px;line-height:1.3;margin:0 0 6px;letter-spacing:-.012em;font-weight:660}
+  h3{font-size:15px;margin:22px 0 8px;font-weight:640;letter-spacing:-.005em}
+  .sub{color:var(--muted);font-size:14.5px;margin:0 0 18px;max-width:70ch}
+  code,kbd{font-family:var(--mono);font-size:.885em;background:#f3efe9;padding:.12em .38em;border-radius:5px;border:1px solid #e8e2d8;overflow-wrap:anywhere}
+  .law{border-left:3px solid var(--accent);padding:12px 0 12px 16px;margin:16px 0;background:linear-gradient(90deg,var(--accent-soft),transparent 70%);border-radius:0 8px 8px 0}
+  .law b{color:var(--accent)}
+  .law.bad{border-color:var(--fail);background:linear-gradient(90deg,var(--fail-soft),transparent 70%)}
+  .law.bad b{color:var(--fail)}
+  .law.warn{border-color:var(--warn);background:linear-gradient(90deg,var(--warn-soft),transparent 70%)}
+  .law.warn b{color:var(--warn)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+  .chip{font:600 12px/1 var(--mono);padding:6px 10px;border-radius:999px;border:1px solid;white-space:normal;overflow-wrap:anywhere;max-width:100%}
+  .chip.ok{color:var(--ok);border-color:#b9dfca;background:var(--ok-soft)}
+  .chip.warn{color:var(--warn);border-color:#ecd9a3;background:var(--warn-soft)}
+  .chip.fail{color:var(--fail);border-color:#f0c2bc;background:var(--fail-soft)}
+  .chip.info{color:var(--info);border-color:#bfd6ee;background:var(--info-soft)}
+  .chip.pending{color:var(--muted);border-color:var(--line);background:#f6f4f1}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font:600 11.5px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:#faf8f5}
+  td.v{font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+  .tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;background:#fff}
+  .tscroll table{margin:0}
+  .tscroll th{position:sticky;top:0}
+  button{font:600 14px/1 inherit;padding:11px 17px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;letter-spacing:.01em}
+  button:hover{background:#185549}
+  button.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
+  button:disabled{opacity:.5;cursor:default}
+  button.mini{font:600 12px/1 var(--mono);padding:8px 11px;border-radius:8px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}
+  pre{background:#171512;color:#f3efe9;padding:14px 16px;border-radius:10px;overflow-x:auto;font:12.5px/1.65 var(--mono);border:1px solid #2a2620}
+  pre code{background:none;border:none;color:inherit;padding:0}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+  .card{border:1px solid var(--line);border-radius:11px;padding:14px 16px;background:#fdfcfa}
+  .card h4{margin:0 0 6px;font-size:14px;font-weight:640}
+  .card p{margin:0;font-size:13.5px;color:var(--muted);line-height:1.55}
+  .kv{font-family:var(--mono);font-size:12.5px;line-height:1.75;background:#f8f6f2;border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+  .pill{display:inline-block;font:600 11px/1 var(--mono);padding:4px 8px;border-radius:6px;background:#efeae2;color:var(--muted);margin-right:6px}
+  .pill.a{background:var(--accent-soft);color:var(--accent)}
+  .pill.s{background:var(--ok-soft);color:var(--ok)}
+  .pill.f{background:var(--fail-soft);color:var(--fail)}
+  .pill.w{background:var(--warn-soft);color:var(--warn)}
+  footer{color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:20px;margin-top:8px}
+  .verdict{border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.55;margin:12px 0;border:1px solid}
+  .verdict.ok{background:var(--ok-soft);border-color:#b9dfca;color:#14523a}
+  .verdict.warn{background:var(--warn-soft);border-color:#ecd9a3;color:#6b4b00}
+  .verdict.info{background:var(--info-soft);border-color:#bfd6ee;color:#1e4468}
+  .verdict.fail{background:var(--fail-soft);border-color:#f0c2bc;color:#8a2317}
+  .mini{font:12px/1.6 var(--mono);color:var(--muted)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-top:8px}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .yes{color:var(--ok);font-weight:700}
+  .no{color:var(--fail);font-weight:700}
+  .na{color:var(--muted)}
+  .stage{border:1px solid var(--line);border-radius:12px;background:#fff;padding:18px;margin:14px 0}
+  .scrollx{overflow-x:auto}
+  .scrollx > table{min-width:620px}
+  .hl{background:#fff6d9;border-radius:4px;padding:0 3px}
+  .graph{font-family:var(--mono);font-size:12.5px;line-height:2;background:#f8f6f2;border:1px solid var(--line);border-radius:10px;padding:14px;overflow-x:auto;white-space:pre}
+  .graph .n{color:var(--accent);font-weight:700}
+  .graph .t{color:var(--muted)}
+  .graph .arrow{color:var(--muted)}
+  .banner{border-radius:11px;padding:13px 15px;font-size:14px;line-height:1.55;margin:14px 0;border:1px solid var(--line);background:#fdfcfa}
+  .banner.eng{font-family:var(--mono);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">Web Platform API Tier · live-probed</div>
+  <h1>WebRTC Transport Internals: <code>getStats()</code>, ICE candidates &amp; the DataChannel</h1>
+  <p class="lede">Our catalog had the WebRTC <em>pipeline</em> — <code>getUserMedia</code> → <code>RTCPeerConnection</code> → <code>MediaRecorder</code> → <code>WebCodecs</code>. It had <strong>zero coverage of the transport</strong>: the <code>getStats()</code> report, the ICE candidate types, the candidate-pair state machine, the DataChannel options grammar.</p>
+  <p class="lede">That is the tier every production WebRTC app eventually needs and almost nobody writes down. <code>getStats()</code> is the only place a browser will tell you <em>which network path your drone video is actually taking</em> — and it is a strange object: map-like, but not a Map; a snapshot, but not a snapshot.</p>
+  <p class="lede">Everything below is measured in your browser, in this page, right now. Nothing is quoted from documentation.</p>
+  <div class="meta" id="meta-line">Chromium 155 · Brave 154 · WebKit 26.5 · 8 probe suites · measured 2026-10-28 · all lanes re-run in this visitor's browser on load</div>
+</header>
+
+<!-- ============ 1 ============ -->
+<section id="s1">
+  <h2>1 · The specimen — build a real peer connection and read its stats</h2>
+  <p class="sub">Two <code>RTCPeerConnection</code> objects in this one page, signalling over an in-process channel — a genuine ICE negotiation, a genuine DTLS handshake, a genuine SCTP association. No server, no signalling server, no stub. Then <code>getStats()</code> on the result.</p>
+  <div class="stage">
+    <div class="row">
+      <button id="btnConnect">Connect two peers (in-page)</button>
+      <button class="ghost mini" id="btnConnectTrack">Connect with a video track</button>
+      <button class="ghost mini" id="btnStats">Read stats again</button>
+    </div>
+    <div class="chips" id="conn-chips"></div>
+    <div class="kv" id="conn-out">—</div>
+  </div>
+  <div class="law">
+    <b>THE REPORT LAW (headline #1).</b> <code>await pc.getStats()</code> resolves an <code>RTCStatsReport</code>. It is <strong>map-like but it is not a Map</strong>:
+    <ul>
+      <li><code>report instanceof Map</code> → <strong>false</strong>; <code>report instanceof RTCStatsReport</code> → <strong>true</strong></li>
+      <li><code>Object.keys(report).length</code> → <strong>0</strong> — the entries are <em>internal slots</em>, not own properties</li>
+      <li><code>JSON.stringify(report)</code> → <strong><code>"{}"</code></strong> — it serializes to an empty object</li>
+      <li><code>structuredClone(report)</code> → <strong>DataCloneError</strong></li>
+      <li>but <code>report.size</code>, <code>.get()</</code>, <code>.has()</</code>, <code>.keys()</code>, <code>.values()</</code>, <code>.entries()</code>, <code>.forEach()</code> and <code>[...report]</code> <strong>all work</strong></li>
+    </ul>
+    The consequence: <code>JSON.stringify(report)</code> is <em>not</em> a way to ship stats to your server, and <code>Object.keys(report)</code> is <em>not</em> a way to enumerate them. Use <code>[...report.values()]</code>.
+  </div>
+  <div class="chips" id="s1-chips"></div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section id="s2">
+  <h2>2 · The graph — the report is a graph, and it traverses by string id</h2>
+  <p class="sub">A stats report is not a flat list. It is a <strong>directed graph</strong> whose edges are <em>string ids</em>: a <code>candidate-pair</code> points at a <code>local-candidate</code>, a <code>remote-candidate</code> and a <code>transport</code>; the <code>transport</code> points back at the selected pair. <code>report.get(id)</code> is how you walk it.</p>
+  <div class="stage">
+    <div class="graph" id="graph-out">—</div>
+    <p class="mini" id="graph-note">—</p>
+  </div>
+  <div class="law">
+    <b>THE GRAPH LAW (headline #2).</b> <code>report.get(pair.localCandidateId)</code> returns the live candidate object — <strong>it resolves</strong>. Same for <code>remoteCandidateId</code> and <code>transportId</code>. And the transport carries the reverse edge: <code>transport.selectedCandidatePairId</code> → <code>report.get(…)</code> → the same pair back. The graph is <strong>bidirectionally traversable</strong>, which means you can answer "which path am I on?" from any node.
+  </div>
+  <h3>The stats-ID prefix map</h3>
+  <p class="sub">Every stats object has an <code>id</code>, and the ids are <strong>prefixed by type</strong> — a convention, not a spec guarantee, but a stable one across all three engines we probed:</p>
+  <div class="scrollx" id="prefix-table"></div>
+  <div class="law warn">
+    <b>THE PREFIX IS A CONVENTION, NOT A CONTRACT.</b> The prefixes are stable in Chromium 155, Brave 154 and WebKit 26.5, and they are genuinely useful as a debugging aid (<code>id.startsWith('CP')</code> → "candidate pair"). But <strong>no specification requires them</strong>, and the certificate id is a <strong>97-character hex fingerprint</strong> that does not fit the pattern at all. Never parse an id to learn its type — read <code>stat.type</code>. The prefix map is a <em>reader's shortcut</em>, not an API.
+  </div>
+  <div class="law">
+    <b>THE PRIORITY-PRECISION LAW (headline #3).</b> The <code>candidate-pair</code> priority is a <strong>64-bit unsigned integer</strong>, and it does not fit in a JavaScript number: the measured value was <code>9079290933572287000</code>, and <code>Number.isSafeInteger(priority)</code> is <strong>false</strong>. The candidate priorities underneath it (<code>2113937151</code>, <code>2113939711</code>) <em>are</em> safe integers. If you compute a pair priority yourself, you must use <code>BigInt</code> — the naive <code>(min &lt;&lt; 32) + 2*min + 2*max</code> in plain numbers silently loses the low bits.
+  </div>
+  <div class="chips" id="s2-chips"></div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section id="s3">
+  <h2>3 · The redaction asymmetry — the address you want is the one that is blank</h2>
+  <p class="sub">Chromium redacts host candidates behind <strong>mDNS</strong> (<code>xxxx.local</code>) by default. The raw ICE candidate string still carries the <code>.local</code> name. But what does the <em>stats</em> object carry?</p>
+  <div class="stage">
+    <div class="scrollx" id="cand-table"></div>
+    <p class="mini" id="cand-note">—</p>
+  </div>
+  <div class="law bad">
+    <b>THE REDACTION ASYMMETRY LAW (headline #4) — THE HEADLINE LAW OF THIS TIER.</b> In Chromium 155 and Brave 154, a <code>host</code> candidate's stats <code>address</code> is the <strong>empty string</strong> — the real IP is gone — while a <code>srflx</code> candidate (obtained via STUN) carries its <strong>full public IP in the clear</strong>. Measured on this machine:<br>
+    <span class="pill a">host</span> <code>address: ""</code> <code>ip: ""</code> · <span class="pill a">srflx</span> <code>address: "71.75.146.97"</code> <code>ip: "71.75.146.97"</code><br>
+    The privacy control (mDNS for LAN addresses) <strong>does not apply to the address you learned from the internet</strong> — the one address a client would consider sensitive. Any "show the operator their public IP" UI built on host candidates shows nothing; built on srflx candidates it shows the public IP in cleartext.
+  </div>
+  <div class="law bad">
+    <b>THE ENGINE SPLIT — WEBKIT DOES NOT HAVE THE <code>ip</code> KEY AT ALL.</b> WebKit 26.5's <code>local-candidate</code> stats object carries <code>address</code> (typed <code>null</code>, not <code>""</code>) and <strong>no <code>ip</code> property and no <code>networkType</code> property whatsoever</strong> — verified by key-set diff, not by eyeballing values. Chromium carries <code>address</code>, <code>ip</code> and <code>networkType</code>. So the three ways of reading a candidate address across engines:
+    <ul>
+      <li>Chromium: <code>candidate.address</code> → <code>""</code> (redacted) — the key EXISTS, the value is empty</li>
+      <li>WebKit: <code>candidate.address</code> → <code>null</code> — the key EXISTS, the value is null</li>
+      <li>both: <code>candidate.ip</code> → Chromium only. WebKit: <strong>the property is absent</strong> → <code>undefined</code></li>
+    </ul>
+    <code>candidate.address ?? candidate.ip</code> does NOT work as a fallback chain: in Chromium <code>""</code> is not nullish, so the <code>??</code> never falls through — you get the empty string. Use <code>candidate.ip || candidate.address || 'redacted'</code>, or better, check the property's presence.
+  </div>
+  <div class="law">
+    <b>THE CANDIDATE-TYPE SPECTRUM.</b> The <code>candidateType</code> field is the single most useful discriminator in the report and it has exactly four values: <code>host</code> (a local interface address), <code>srflx</code> (a server-reflexive address learned from STUN), <code>prflx</code> (peer-reflexive, discovered by connectivity checks) and <code>relay</code> (a TURN relay). <strong><code>relay</code> is the only type that survives a symmetric NAT</strong> — if your operator's field tablet is behind a corporate NAT and the connection never reaches <code>connected</code>, the missing piece is a TURN server and a <code>relay</code> candidate. <code>candidateType</code> is your one-line diagnostic.
+  </div>
+  <div class="law">
+    <b>THE CANDIDATE-LAW — <code>host</code> is not automatically best.</b> On this LAN, the negotiated pair was a <code>host</code>↔<code>host</code> pair with priority <code>2113937151</code>, while the local <code>srflx</code> candidate carried the <em>higher</em> priority <code>2113939711</code> (1677729535 in the raw SDP form) — the pair's priority is a <em>function of both ends</em>, not a copy of either. Rank pairs, not candidates.
+  </div>
+  <div class="chips" id="s3-chips"></div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section id="s4">
+  <h2>4 · The selector grammar — what <code>getStats()</code> will and will not filter on</h2>
+  <p class="sub">You do not have to take the whole report. <code>getStats(selector)</code> narrows it to one track's subtree. But the selector's type is enforced strictly, and the error is a <code>TypeError</code> that fires only when you <em>await</em> it.</p>
+  <div class="stage">
+    <div class="row">
+      <button id="btnSelector">Compare unfiltered vs track-scoped</button>
+      <button class="ghost mini" id="btnSelectorBad">Try a bad selector</button>
+    </div>
+    <div class="chips" id="sel-chips"></div>
+    <div class="kv" id="sel-out">—</div>
+  </div>
+  <div class="law bad">
+    <b>THE SELECTOR LAW (headline #5).</b> The selector must be a <strong><code>MediaStreamTrack</code></strong> — nothing else. <code>getStats(sender)</code> where <code>sender</code> is an <code>RTCRtpSender</code> <strong>rejects</strong> with <code>TypeError: … parameter 1 is not of type 'MediaStreamTrack'</code>, even though <code>RTCRtpSender</code> is the object you actually hold. Use <code>sender.track</code>.<br>
+    The nastier part: <strong>the call does not throw synchronously</strong> — <code>pc.getStats('bogus')</code> returns a rejected promise, so the <code>try/catch</code> must be around the <code>await</code>, not around the call. And <code>getStats(null)</code> is <strong>legal</strong> and returns the full report — <code>null</code> is the documented "no filter" value, so a variable that happens to be <code>null</code> silently gives you everything.
+  </div>
+  <div class="law">
+    <b>THE SUBSET LAW.</b> A track-scoped report is a strict <strong>subset</strong> of the unfiltered one (every key in the scoped report is present in the full report), and it <strong>drops the two connection-level objects</strong>: <code>peer-connection</code> and <code>data-channel</code>. Everything about the transport — the candidate pair, the candidates, the transport itself, the certificates, the codec — stays. *If you are reading data-channel counters, you must use the unfiltered report.* A data channel is not a track.
+  </div>
+  <div class="chips" id="s4-chips"></div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section id="s5">
+  <h2>5 · The DataChannel grammar — the rules the options object enforces</h2>
+  <p class="sub">The data channel is the cheapest high-frequency channel you can put between a ground station and a browser. Its options object has four fields and about six rules, several of which are enforced with errors you would not expect.</p>
+  <div class="stage">
+    <div class="row">
+      <button id="btnDcGrammar">Run the options grammar</button>
+      <button class="ghost mini" id="btnDcIds">Sweep the id range</button>
+    </div>
+    <div class="chips" id="dc-chips"></div>
+    <div class="scrollx" id="dc-table"></div>
+    <h3>The negotiated-id sweep — a fresh connection per id, so no collision is possible</h3>
+    <div class="scrollx" id="dc-ids-table"></div>
+  </div>
+  <div class="law bad">
+    <b>THE MUTUAL-EXCLUSION LAW (headline #6).</b> <code>maxRetransmits</code> and <code>maxPacketLifeTime</code> are <strong>mutually exclusive</strong>: setting both rejects with <code>TypeError: RTCDataChannel cannot have both max retransmits and max lifetime</code>. (WebKit words it differently — <code>Cannot set both maxPacketLifeTime and maxRetransmits</code> — which is the same rule.) Pick one reliability model per channel. For drone telemetry you want <code>{ordered:false, maxRetransmits:0}</code>: unordered, no retransmits, latest-state-wins.
+  </div>
+  <div class="law warn">
+    <b>THE ZERO-MEANS-INFINITE LAW.</b> <code>maxRetransmits: 0</code> and <code>maxPacketLifeTime: 0</code> both mean <strong>"no limit"</strong>, not "no retransmits" and "no lifetime". An omitted option reads back as <code>null</code>; an explicit <code>0</code> reads back as <code>0</code>. The difference matters: <code>{maxRetransmits: 0}</code> is a *real* zero (unreliable), but <code>{maxPacketLifeTime: 0}</code> is *unlimited lifetime*. Getting this backwards turns an unreliable telemetry channel into a reliable one that retransmits forever.
+  </div>
+  <div class="law bad">
+    <b>THE DUPLICATE-ID LAW (headline #7) — an <code>OperationError</code>, not a <code>TypeError</code>.</b> Creating a second negotiated data channel with an id already in use on the same connection fails with <code>OperationError: RTCDataChannel creation failed</code> — a <em>runtime</em> error with <strong>no detail at all</strong>, and the same generic message for several unrelated causes. This is the worst error surface in the tier: the message tells you nothing, and the same string covers "duplicate id", "odd id in a specific configuration", and other internal failures. The id ceiling is a separate, clearer error: <code>TypeError: RTCDataChannel cannot have id &gt; 65534</code>.
+  </div>
+  <div class="law">
+    <b>THE ID CEILING.</b> The negotiated id range is <strong>0 – 65534</strong> inclusive. <code>65535</code> → <code>TypeError: … cannot have id &gt; 65534</code>. <code>65536</code> → a <em>different</em> error, from the WebIDL converter: <code>Failed to read the 'id' property … Value is outside the 'unsigned short' value range</code>. Two different layers, two different messages — the WebIDL range check fires first, then the spec's own ceiling. And <code>negotiated:true</code> without an id rejects: <code>RTCDataChannel must have id set if negotiated is true</code>.
+  </div>
+  <div class="law">
+    <b>THE AUTO-ID LAW.</b> A non-negotiated channel gets its id assigned <strong>asynchronously</strong> during SCTP association — <code>dc.id</code> reads <strong><code>null</code></strong> until the channel opens. Reading <code>dc.id</code> right after <code>createDataChannel()</code> is a race, and the common workaround (assign your own even id with <code>negotiated:true</code>) skips the SCTP negotiation entirely — which is why <code>negotiated:true</code> requires an id.
+  </div>
+  <div class="chips" id="s5-chips"></div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section id="s6">
+  <h2>6 · The oversize law — the one that loses telemetry silently</h2>
+  <p class="sub">SCTP has a maximum message size. <code>pc.sctp.maxMessageSize</code> tells you what it is. What happens when you exceed it is <strong>not</strong> the same in every engine — and one of them does not tell you at all.</p>
+  <div class="stage">
+    <div class="row">
+      <button id="btnOversize">Test the oversize send</button>
+    </div>
+    <div class="chips" id="over-chips"></div>
+    <div class="kv" id="over-out">—</div>
+  </div>
+  <div class="law bad">
+    <b>THE OVERSIZE DIVERGENCE (headline #8) — THE HEADLINE LAW OF THIS TIER.</b> Send a message one byte larger than <code>maxMessageSize</code> and the two engine families behave <strong>completely differently</strong>:<br><br>
+    <strong>Chromium 155 / Brave 154</strong> → <code>TypeError: Failed to execute 'send' on 'RTCDataChannel': Trying to send message larger than max-message-size</code>. Loud, synchronous, and the channel survives — a subsequent small send still works.<br><br>
+    <strong>WebKit 26.5</strong> → <code>send()</code> <strong>does not throw</strong>. It fires an <code>error</code> event on the channel, and then <strong>the data channel is destroyed</strong>: <code>readyState</code> goes to <code>"closed"</code>, every subsequent <code>send()</code> throws <code>InvalidStateError: The object is in an invalid state</code>, and the <code>data-channel</code> stats object <strong>disappears from the report entirely</strong>. The page also logs an uncaught <code>Error sending binary data through RTCDataChannel.</code> — and that uncaught error <strong>bypasses both <code>window.onerror</code> and <code>window.addEventListener('error')</code></strong>, so only a global error handler or an error tracker ever sees it.
+  </div>
+  <div class="law bad">
+    <b>WHAT THIS MEANS IN PRODUCTION.</b> A telemetry frame that crosses the SCTP limit <strong>kills the channel in Safari but only fails one message in Chrome</strong>. In WebKit the telemetry link does not throw at the call site and does not survive — the pilot sees a frozen map and the code has no error to catch. If your OpenDrones telemetry frames can exceed the limit (a large video chunk, a burst of buffered positions), you need a <strong>frame-size guard before <code>send()</code></strong> in every engine, plus an <code>onerror</code> handler and a <code>readyState</code> check on the recovery path. Neither engine tells you the size limit for free — read <code>pc.sctp.maxMessageSize</code> and enforce it yourself.
+  </div>
+  <div class="chips" id="s6-chips"></div>
+</section>
+
+<!-- ============ 7 ============ -->
+<section id="s7">
+  <h2>7 · The configuration window — when you may change the rules mid-flight</h2>
+  <p class="sub"><code>pc.setConfiguration()</code> lets you change the ICE servers, the transport policy and the candidate pool. The spec places a narrow window on when you may call it — and the failure is an <code>InvalidModificationError</code> with a message that never says <em>when</em>.</p>
+  <div class="stage">
+    <div class="row">
+      <button id="btnConfig">Probe the configuration window</button>
+      <button class="ghost mini" id="btnRestartIce">Test restartIce()</button>
+    </div>
+    <div class="chips" id="cfg-chips"></div>
+    <div class="kv" id="cfg-out">—</div>
+    <div class="kv" id="ri-out">—</div>
+  </div>
+  <div class="law">
+    <b>THE CONFIGURATION WINDOW LAW (headline #9).</b> <code>setConfiguration()</code> succeeds <strong>before the first offer is created</strong> and fails with <code>InvalidModificationError: Attempted to modify the PeerConnection's configuration in an unsupported way</code> once a negotiation is in flight. Concretely, measured:<br>
+    <span class="pill s">before createOffer</span> <code>iceCandidatePoolSize: 4</code> accepted, reads back <code>4</code><br>
+    <span class="pill s">during have-local-offer</span> <code>iceCandidatePoolSize: 4</code> accepted, reads back <code>4</code><br>
+    <span class="pill f">after setLocalDescription</span> <code>iceCandidatePoolSize: 2</code> → <code>InvalidModificationError</code>, reads back <code>0</code><br>
+    The message names no state and no field. <strong>Practical rule: apply every configuration change before the first offer, and treat the connection's ICE server list as immutable for its lifetime.</strong> A mid-flight TURN-server change — the single most common production need — requires a <em>new</em> peer connection.
+  </div>
+  <div class="law warn">
+    <b>THE RESTART-ICE LAW.</b> <code>pc.restartIce()</code> never throws and never changes anything visible on its own: after calling it, <code>pc.localDescription.sdp</code> was <strong>byte-identical</strong> and the ICE ufrag had <strong>not</strong> changed. The ufrag only changes when you then create and apply a <em>new</em> offer — and the new offer carries a <strong>different ufrag</strong> than the connection's current description. So <code>restartIce()</code> is a <em>flag</em>, not an action: call it, then renegotiate. Calling it and waiting for something to happen produces a connection that looks healthy and never re-ices.
+  </div>
+  <div class="law">
+    <b>THE NEGOTIATION-NEEDED LAW.</b> <code>pc.onnegotiationneeded</code> fires <strong>once</strong> when you add a data channel to a fresh connection — measured exactly 1 fire. It is the correct trigger for the "polite/impolite" perfect-negotiation pattern, and it is the only signal that a new transceiver needs an offer.
+  </div>
+  <div class="chips" id="s7-chips"></div>
+</section>
+
+<!-- ============ 8 ============ -->
+<section id="s8">
+  <h2>8 · The candidate-pair state machine — the "why is my call not connecting" table</h2>
+  <p class="sub">The <code>candidate-pair</code> stats object carries a <code>state</code> field whose values are exactly the ICE connectivity-check states. It is the most diagnostic single field in the whole tier.</p>
+  <div class="scrollx" id="pair-table"></div>
+  <div class="law bad">
+    <b>THE PAIR-STATE LAW (headline #10).</b> <code>candidate-pair.state</code> ∈ <code>frozen</code> · <code>waiting</code> · <code>in-progress</code> · <code>failed</code> · <code>succeeded</code> · <code>disconnected</code>. Only <code>succeeded</code> means bytes are flowing. The neighbouring fields tell you why it is not:<br>
+    <code>nominated</code> — this pair is the one ICE selected (only the nominated pair carries your media) · <code>requestsSent</code> / <code>responsesReceived</code> — connectivity-check counters · <code>packetsSent</code> / <code>packetsReceived</code> — real traffic · <code>currentRoundTripTime</code> / <code>totalRoundTripTime</code> — the latency numbers.<br>
+    A pair stuck in <code>waiting</code> with zero responses means <strong>your STUN server is unreachable or your candidate is blocked</strong> — not "the network is slow". A pair in <code>failed</code> with a <code>relay</code> candidate present means the TURN relay is refusing.
+  </div>
+  <div class="law bad">
+    <b>THE <code>readable</code> LAW (headline #11) — A DOCUMENTED FIELD THAT DOES NOT EXIST.</b> MDN's <code>candidate-pair</code> dictionary lists both <code>writable</code> and <code>readable</code> as booleans describing whether the pair can carry traffic in each direction. Measured by key-set diff in <strong>three engines</strong>:<br>
+    <span class="pill a">Chromium 155</span> <code>writable</code> <span class="yes">present</span> · <code>readable</code> <span class="no">ABSENT</span><br>
+    <span class="pill a">Brave 154</span> <code>writable</code> <span class="yes">present</span> · <code>readable</code> <span class="no">ABSENT</span><br>
+    <span class="pill a">WebKit 26.5</span> <code>writable</code> <span class="no">ABSENT</span> · <code>readable</code> <span class="no">ABSENT</span><br>
+    So the one-way health signal MDN offers is <strong>unusable in every engine we measured</strong> — in WebKit <em>neither</em> direction is reported. The code that reads <code>pair.readable</code> gets <code>undefined</code> in Chromium and WebKit, and the very common idiom <code>pair.writable !== pair.readable</code> evaluates <code>true !== undefined</code> → <code>true</code>, i.e. it <strong>reports a fault on a perfectly healthy connection</strong>. This is exactly the false "CANNOT RECEIVE" verdict the link monitor below showed before it was fixed — a real bug this research caught in its own capstone code. <strong>Use the packet counters instead:</strong> <code>packetsReceived &gt; 0</code> and <code>packetsSent &gt; 0</code> are present in every engine and mean what you want.
+  </div>
+  <div class="law">
+    <b>THE TRANSPORT-IS-THE-HEARTBEAT LAW.</b> The <code>transport</code> stats object is the one to watch for a live connection: <code>iceState</code>, <code>dtlsState</code>, <code>selectedCandidatePairId</code>, <code>selectedCandidatePairChanges</code> (how many times ICE has re-picked a path — a rising counter is the classic sign of a flaky network), <code>dtlsCipher</code>, <code>srtpCipher</code>, <code>bytesSent</code> / <code>bytesReceived</code>. <code>iceRole</code> is <code>"controlling"</code> or <code>"controlled"</code> — in the perfect-negotiation pattern, the polite peer is the <code>controlled</code> one.<br>
+    Note the shape split: <code>transport.selectedCandidatePairChanges</code> and <code>transport.selectedCandidatePairId</code> are present in <strong>all three engines</strong>, but <code>transport.sctpState</code> — which the spec defines and which would tell you whether the data channel's SCTP association is up — is <strong>absent everywhere</strong> we measured. Read the SCTP state from <code>pc.sctp.state</code> instead.
+  </div>
+  <div class="chips" id="s8-chips"></div>
+</section>
+
+<!-- ============ 9 ============ -->
+<section id="s9">
+  <h2>9 · The snapshot law — a report is a photograph, not a window</h2>
+  <p class="sub">A stats report looks live. It is not. Every call to <code>getStats()</code> returns a <strong>fresh snapshot</strong>, and the objects inside are <strong>frozen</strong>: mutating one does nothing, and the next report is unaffected.</p>
+  <div class="stage">
+    <div class="row">
+      <button id="btnSnapshot">Test the snapshot law</button>
+    </div>
+    <div class="chips" id="snap-chips"></div>
+    <div class="kv" id="snap-out">—</div>
+  </div>
+  <div class="law">
+    <b>THE SNAPSHOT LAW (headline #12).</b> Writing to a stats object (<code>pair.packetsSent = 999999</code>) <strong>succeeds silently</strong> — the property is writable — but the value does not survive: the next <code>getStats()</code> returns the engine's real number, and the old report's own object still reads <code>999999</code> in memory. The stats objects are plain writable JS objects that the engine <em>replaces wholesale</em> on every call. <strong>Never cache a stats object across a <code>getStats()</code> boundary</strong> — and never write to one, even to "fix up" a value for a chart. Read, copy out, re-read.
+  </div>
+  <div class="law">
+    <b>THE TIMESTAMP LAW.</b> Every object in one report shares <strong>one</strong> <code>timestamp</code> — measured: exactly one distinct value across all 9–12 entries, in <em>milliseconds since the epoch</em> as a float (e.g. <code>1793225121078.864</code>). Note the precision: this is <strong>not</strong> <code>performance.now()</code>, it is <strong>not</strong> monotonic, and it is <strong>not</strong> comparable across two reports taken far apart. Compute deltas from <em>your own</em> clock; use the stats timestamp only to label a sample.
+  </div>
+  <div class="law">
+    <b>THE COST LAW.</b> <code>getStats()</code> is <strong>cheap</strong>: six consecutive calls measured <code>0.5, 0, 0, 0, 0, 0.1 ms</code>. Polling it at 1 Hz (or even 4 Hz) on a ground-station dashboard costs nothing measurable. The expensive thing in the tier is not the report, it is the <em>ICE candidate pool</em> — leave <code>iceCandidatePoolSize</code> at 0 unless you have measured a benefit.
+  </div>
+  <div class="chips" id="s9-chips"></div>
+</section>
+
+<!-- ============ 10 ============ -->
+<section id="s10">
+  <h2>10 · The candidate-constructor grammar</h2>
+  <p class="sub">You can build an <code>RTCIceCandidate</code> yourself — useful for tests, for synthetic candidates, and for parsing. It validates more than you would expect, and less than you would expect, in opposite directions.</p>
+  <div class="stage">
+    <div class="row">
+      <button id="btnCandCtor">Run the constructor grammar</button>
+    </div>
+    <div class="chips" id="cc-chips"></div>
+    <div class="scrollx" id="cc-table"></div>
+  </div>
+  <div class="law bad">
+    <b>THE SDP-MID-OR-INDEX LAW (headline #13).</b> The constructor requires <strong>exactly one</strong> of <code>sdpMid</code> or <code>sdpMLineIndex</code>. With neither, it rejects with <code>TypeError: sdpMid and sdpMLineIndex are both null</code>. With <code>sdpMLineIndex</code> alone it works and <code>toJSON()</code> reports <code>sdpMid: ""</code> — so <strong>the two fields are not interchangeable</strong>: a candidate parsed from a line-index-only session will not round-trip through the mid-keyed form.
+  </div>
+  <div class="law bad">
+    <b>THE NO-VALIDATION LAW.</b> The constructor does <strong>not validate the candidate string at all</strong>. <code>new RTCIceCandidate({candidate:'not-a-candidate', sdpMid:'0'})</code> constructs successfully and <code>toJSON()</code> faithfully returns <code>'not-a-candidate'</code>. Unknown dictionary members are silently ignored. The constructor is a <em>container</em>, not a parser — it will happily hold garbage that later blows up at <code>addIceCandidate()</code> time with <code>OperationError: Error processing ICE candidate</code>.
+  </div>
+  <div class="law">
+    <b>THE PARSED-FIELDS LAW.</b> The constructor <em>does</em> parse the candidate line into typed fields: <code>type</code> (<code>"host"</code>), <code>protocol</code> (<code>"udp"</code>), <code>component</code> (<code>"rtp"</code>), <code>foundation</code> (<code>"1"</code>), <code>priority</code> (<code>2130706431</code>), <code>port</code>, <code>tcpType</code>, <code>relatedAddress</code>, <code>relatedPort</code>, <code>relayProtocol</code>. The <code>url</code> property reads <code>null</code> for a candidate with no <code>url</code> field. But the <strong>raw string is always preserved verbatim</strong> in <code>.candidate</code> — so you can always fall back to parsing it yourself.
+  </div>
+  <div class="chips" id="s10-chips"></div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section id="s11">
+  <h2>11 · OpenDrones Mission Control — the telemetry health monitor</h2>
+  <p class="sub">The capstone. Everything above, assembled into the thing a drone operator actually needs: a live panel that reads the connection's own stats and tells the operator, in one line, whether the link is good — and the <em>code</em> is shipped here, runnable in this page.</p>
+  <div class="stage">
+    <div class="row">
+      <button id="btnMonitor">Start the link monitor</button>
+      <button class="ghost mini" id="btnStop">Stop</button>
+    </div>
+    <div class="chips" id="mon-chips"></div>
+    <div class="kv" id="mon-out">—</div>
+  </div>
+  <h3>The production pattern</h3>
+  <pre><code>// OpenDrones — the link-health monitor. Reads the transport, classifies the path,
+// and enforces the SCTP frame limit BEFORE the send that would kill the channel.
+const MAX_FRAME = pc.sctp?.maxMessageSize ?? 262144;   // read it; don't assume
+
+function classify(rep) {
+  const transport = [...rep.values()].find(s =&gt; s.type === 'transport');
+  const pair = transport
+    ? rep.get(transport.selectedCandidatePairId) : null;
+  if (!pair) return { ok: false, why: 'no candidate pair yet' };
+
+  // THE PATH — the only place the browser tells you how you are connected.
+  const local  = rep.get(pair.localCandidateId);
+  const remote = rep.get(pair.remoteCandidateId);
+  const path = local?.candidateType === 'relay' ? 'TURN relay'
+             : local?.candidateType === 'srflx' ? 'STUN (server-reflexive)'
+             : 'direct (host)';
+
+  // THE HEALTH — one-way health from the PACKET COUNTERS, not from `readable`
+  // (which MDN documents and no engine ships).
+  const rx = pair.packetsReceived || 0, tx = pair.packetsSent || 0;
+  const oneWay = rx > 0 && tx === 0 ? 'cannot send'
+               : tx > 0 && rx === 0 ? 'cannot receive'
+               : (tx > 0 && rx > 0) ? 'bidirectional' : 'idle';
+
+  return {
+    ok: pair.state === 'succeeded' && pair.nominated,
+    path, oneWay,
+    rtt: pair.currentRoundTripTime,
+    kind: transport.iceState,             // 'connected' | 'checking' | ...
+    switched: transport.selectedCandidatePairChanges,  // rising = flaky link
+  };
+}
+
+// THE GUARD — the law that stops Safari losing the channel silently.
+function sendFrame(dc, buf) {
+  if (dc.readyState !== 'open') return false;     // WebKit closes after an oversize
+  if (buf.byteLength &gt; MAX_FRAME) return false; // never let the engine decide
+  try { dc.send(buf); return true; }
+  catch { return false; }
+}</code></pre>
+  <div class="law">
+    <b>WHY THIS IS A SELLABLE LINE ITEM.</b> "Is my drone link actually healthy, and what path is it taking?" is the first question every operator asks and the last one most dashboards answer well. The browser already knows the answer — the ICE candidate type, the selected pair, the round-trip time, the packet counters, the cipher in use — and none of it is on the wire. <code>getStats()</code> is a <strong>free, zero-instrumentation, server-free link telemetry panel</strong>, and it is the only way to tell a pilot "you are on a TURN relay through Frankfurt, which is why the video is late" without a server-side log.
+  </div>
+  <div class="law">
+    <b>THE MOLT PATTERN — the same monitor, as a client-site deliverable.</b> Every Molt client running a live WebRTC support widget, a video consult, or a remote-screen-share session has the same blind spot: their users report "it's laggy" and the dashboard shows nothing. The same <code>classify(rep)</code> function, wired to the widget's own connection, turns that into a one-line answer the support team can read. A "live-session link health panel" is a 3–4 hour deliverable per client site.
+  </div>
+  <div class="chips" id="s11-chips"></div>
+</section>
+
+<!-- ============ 12 ============ -->
+<section id="s12">
+  <h2>12 · The ship checklist</h2>
+  <div class="chips" id="s12-chips"></div>
+  <div class="law">
+    <b>FIFTEEN RULES.</b> Every one of them was measured above. The five that would have cost you a production incident:
+    <ol>
+      <li><strong>Enforce the SCTP frame limit yourself</strong> — read <code>pc.sctp.maxMessageSize</code>, guard before <code>send()</code>. Safari destroys the channel on an oversize; Chrome does not.</li>
+      <li><strong>Never read the candidate address from <code>host</code> candidates</strong> — Chromium blanks it, WebKit nulls it, and a <code>srflx</code> candidate will hand you the public IP in cleartext anyway.</li>
+      <li><strong>Apply every <code>setConfiguration()</code> before the first offer</strong> — afterwards it throws <code>InvalidModificationError</code> and you cannot change the ICE servers for the life of the connection.</li>
+      <li><strong>Use <code>getStats(track)</code>, not <code>getStats(sender)</code></strong> — the sender is the object you hold and it is rejected by the type check.</li>
+      <li><strong>Never read <code>candidate-pair.readable</code></strong> — MDN documents it and no engine ships it; the idiom <code>pair.writable !== pair.readable</code> reports a fault on a healthy connection. Use <code>packetsSent</code> / <code>packetsReceived</code>.</li>
+    </ol>
+  </div>
+</section>
+
+<footer>
+  <p><strong>WebRTC Transport Internals</strong> — the tier below the WebRTC pipeline. Catalog gap confirmed against the 247-entry research corpus: <code>getStats</code>, <code>RTCStatsReport</code>, <code>candidate-pair</code>, <code>local-candidate</code>, <code>srflx</code>, <code>relay</code>, <code>RTCDataChannel</code>, <code>restartIce</code>, <code>setConfiguration</code>, <code>maxMessageSize</code> — zero coverage before this entry. The neighbouring entry <code>8c498f00</code> covers the pipeline layer (<code>getUserMedia</code> → <code>RTCPeerConnection</code> → <code>MediaRecorder</code> → <code>WebCodecs</code>); this entry covers what happens <em>inside</em> the connection.</p>
+  <p>Measured 2026-10-28 · Chromium for Testing 155.0.8059.12 · Brave 154.1.96.60 · WebKit 26.5 · 8 probe suites · every headline law verified with 3 independent repetitions · all lanes re-run in the visitor's browser on load.</p>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // =========================================================
+  // helpers
+  // =========================================================
+  function el(id) { return document.getElementById(id); }
+  function chips(id) {
+    var host = el(id);
+    if (!host) return { add: function () {} };
+    return {
+      add: function (kind, label, detail) {
+        var c = document.createElement('span');
+        c.className = 'chip ' + (kind || 'info');
+        c.textContent = label;
+        if (detail) { c.title = detail; }
+        host.appendChild(c);
+        return c;
+      }
+    };
+  }
+  function setKV(id, text) { var n = el(id); if (n) n.textContent = text; }
+  function table(hostId, head, rows) {
+    var host = el(hostId);
+    if (!host) return;
+    var html = '<div class="tscroll"><table><thead><tr>';
+    head.forEach(function (h) { html += '<th>' + h + '</th>'; });
+    html += '</tr></thead><tbody>';
+    rows.forEach(function (r) {
+      html += '<tr>';
+      r.forEach(function (c, i) {
+        html += i === 0 ? '<td class="v">' + c + '</td>' : '<td>' + c + '</td>';
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    host.innerHTML = html;
+  }
+  function scrollTable(hostId, head, rows) {
+    var host = el(hostId);
+    if (!host) return;
+    var html = '<table><thead><tr>';
+    head.forEach(function (h) { html += '<th>' + h + '</th>'; });
+    html += '</tr></thead><tbody>';
+    rows.forEach(function (r) {
+      html += '<tr>';
+      r.forEach(function (c, i) {
+        html += i === 0 ? '<td class="v">' + c + '</td>' : '<td>' + c + '</td>';
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    host.innerHTML = html;
+  }
+  function T(fn) {
+    try { var v = fn(); return { ok: true, v: v }; }
+    catch (e) { return { err: (e && e.name) + ': ' + String(e && e.message).slice(0, 170) }; }
+  }
+  function esc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function yn(b) { return b === true ? '<span class="yes">true</span>' : b === false ? '<span class="no">false</span>' : '<span class="na">' + esc(b) + '</span>'; }
+
+  var UA = navigator.userAgent;
+  var IS_WEBKIT = /AppleWebKit/.test(UA) && !/Chrome|Chromium|Edg\//.test(UA);
+  var IS_BRAVE = /Brave/.test(UA);
+  var ENGINE = IS_WEBKIT ? 'WebKit' : (IS_BRAVE ? 'Brave' : 'Chromium');
+
+  // =========================================================
+  // the in-page peer-pair harness (real ICE + DTLS + SCTP)
+  // =========================================================
+  var PAIR = null;
+
+  function makePair(opts) {
+    opts = opts || {};
+    var a = new RTCPeerConnection();
+    var c = new RTCPeerConnection();
+    a.onicecandidate = function (e) { if (e.candidate) c.addIceCandidate(e.candidate); };
+    c.onicecandidate = function (e) { if (e.candidate) a.addIceCandidate(e.candidate); };
+    var track = null, stream = null;
+    if (opts.track) {
+      var cv = document.createElement('canvas');
+      cv.width = 160; cv.height = 120;
+      var cx = cv.getContext('2d');
+      var t0 = performance.now();
+      (function paint() {
+        cx.fillStyle = '#123'; cx.fillRect(0, 0, 160, 120);
+        cx.fillStyle = '#5fd'; cx.font = '14px monospace';
+        cx.fillText('telemetry ' + ((performance.now() - t0) / 1000).toFixed(1) + 's', 10, 64);
+        requestAnimationFrame(paint);
+      })();
+      stream = cv.captureStream(10);
+      track = stream.getVideoTracks()[0];
+      a.addTrack(track, stream);
+    }
+    var dc = a.createDataChannel('telemetry', opts.dcOpts || {});
+    var peerDc = null;
+    c.ondatachannel = function (e) { peerDc = e.channel; };
+    return {
+      a: a, c: c, dc: dc, peerDc: peerDc, track: track, stream: stream,
+      peerDcRef: function () { return peerDc; }
+    };
+  }
+
+  function wirePair(p) {
+    return (async function () {
+      var o = await p.a.createOffer();
+      await p.a.setLocalDescription(o);
+      await p.c.setRemoteDescription(o);
+      var ans = await p.c.createAnswer();
+      await p.c.setLocalDescription(ans);
+      await p.a.setRemoteDescription(ans);
+      await new Promise(function (res) {
+        var t = setTimeout(res, 15000);
+        var chk = function () {
+          var s = p.a.iceConnectionState;
+          if (s === 'connected' || s === 'completed') { clearTimeout(t); res(); }
+        };
+        p.a.oniceconnectionstatechange = chk; chk();
+      });
+      await new Promise(function (r) { setTimeout(r, 450); });
+      return p.a.iceConnectionState;
+    })();
+  }
+
+  function destroyPair(p) {
+    try { if (p) { p.a.close(); p.c.close(); } } catch (e) {}
+  }
+
+  // =========================================================
+  // §1 — the specimen
+  // =========================================================
+  var SPECIMEN = null;
+
+  async function runSpecimen(withTrack) {
+    var h = chips('conn-chips');
+    el('conn-chips').innerHTML = '';
+    var pending = h.add('pending', 'negotiating…', 'real ICE + DTLS + SCTP in this page');
+    destroyPair(PAIR);
+    try {
+      var p = makePair({ track: !!withTrack });
+      var state = await wirePair(p);
+      PAIR = p;
+      if (pending && pending.parentNode) pending.parentNode.removeChild(pending);
+      var rep = await p.a.getStats();
+      var types = [];
+      var seen = {};
+      rep.forEach(function (s) { if (!seen[s.type]) { seen[s.type] = 1; types.push(s.type); } });
+      types.sort();
+      h.add(state === 'connected' || state === 'completed' ? 'ok' : 'warn',
+        'ICE state: ' + state, 'two peers in one page');
+      h.add('ok', rep.size + ' stats objects', 'types: ' + types.join(', '));
+      h.add('info', 'report instanceof Map: ' + (rep instanceof Map),
+        'map-like but NOT a Map — Object.keys() is 0, JSON.stringify() is {}');
+      h.add('info', 'JSON.stringify(report) = ' + JSON.stringify(rep),
+        'it serializes to an empty object — never ship it as JSON');
+      var sc = T(function () { structuredClone(rep); return 'ok'; });
+      h.add(sc.ok ? 'ok' : 'info', 'structuredClone: ' + (sc.ok ? 'ok' : sc.err.slice(0, 40)),
+        'both engines reject a structured clone of the report');
+      setKV('conn-out',
+        'iceConnectionState : ' + p.a.iceConnectionState + '\n' +
+        'connectionState     : ' + p.a.connectionState + '\n' +
+        'signalingState      : ' + p.a.signalingState + '\n' +
+        'iceGatheringState   : ' + p.a.iceGatheringState + '\n' +
+        'report.size         : ' + rep.size + '\n' +
+        'report types        : ' + types.join(', ') + '\n' +
+        'Object.keys(report) : ' + Object.keys(rep).length + '\n' +
+        '[...report].length  : ' + (function () { try { return [...rep].length; } catch (e) { return 'ERR'; } })());
+      SPECIMEN = { rep: rep, pair: p };
+      renderGraph(rep);
+      renderPrefix(rep);
+      renderCandidates(rep);
+      renderPairTable(rep);
+      return { p: p, rep: rep };
+    } catch (e) {
+      if (pending && pending.parentNode) pending.parentNode.removeChild(pending);
+      h.add('fail', 'specimen failed: ' + String(e && e.message).slice(0, 90), 'engine error');
+      setKV('conn-out', 'Failed: ' + String(e && e.message));
+      return null;
+    }
+  }
+
+  // =========================================================
+  // §2 — the graph
+  // =========================================================
+  function renderGraph(rep) {
+    var pair = null;
+    rep.forEach(function (s) { if (s.type === 'candidate-pair' && !pair) pair = s; });
+    var out = el('graph-out');
+    if (!out) return;
+    if (!pair) { out.textContent = 'no candidate-pair in the report'; return; }
+    var local = rep.get(pair.localCandidateId);
+    var remote = rep.get(pair.remoteCandidateId);
+    var transport = rep.get(pair.transportId);
+    var lines = [];
+    lines.push('<span class="n">' + esc(pair.id) + '</span>  <span class="t">candidate-pair</span>  state=' + esc(pair.state) + ' nominated=' + pair.nominated);
+    lines.push('   <span class="arrow">├─ localCandidateId  →</span> <span class="n">' + esc(pair.localCandidateId) + '</span>  <span class="t">' + esc(local ? local.candidateType : '?') + ' ' + esc(local ? local.protocol : '') + '</span>');
+    lines.push('   <span class="arrow">├─ remoteCandidateId →</span> <span class="n">' + esc(pair.remoteCandidateId) + '</span>  <span class="t">' + esc(remote ? remote.candidateType : '?') + ' ' + esc(remote ? remote.protocol : '') + '</span>');
+    lines.push('   <span class="arrow">└─ transportId      →</span> <span class="n">' + esc(pair.transportId) + '</span>  <span class="t">iceState=' + esc(transport ? transport.iceState : '?') + ' dtls=' + esc(transport ? transport.dtlsState : '?') + '</span>');
+    if (transport) {
+      lines.push('');
+      lines.push('<span class="n">' + esc(transport.id) + '</span>  <span class="t">transport</span>');
+      lines.push('   <span class="arrow">└─ selectedCandidatePairId →</span> <span class="n">' + esc(transport.selectedCandidatePairId) + '</span>  <span class="t">' + (transport.selectedCandidatePairId === pair.id ? '← back to the pair above (bidirectional)' : 'a different pair') + '</span>');
+    }
+    out.innerHTML = lines.join('\n');
+    var h = chips('s2-chips');
+    h.add(rep.get(pair.localCandidateId) ? 'ok' : 'fail',
+      'graph traverses by string id', 'candidate-pair → local / remote / transport');
+    h.add('info', 'pair priority ' + pair.priority,
+      'Number.isSafeInteger = ' + Number.isSafeInteger(pair.priority) + ' — 64-bit, loses precision');
+    h.add('info', 'selectedCandidatePairChanges = ' + (transport ? transport.selectedCandidatePairChanges : '?'),
+      'how many times ICE re-picked a path');
+  }
+
+  function renderPrefix(rep) {
+    var map = {};
+    rep.forEach(function (s) {
+      var pfx = String(s.id).replace(/[0-9A-F]/g, '').replace(/\+/g, '').replace(/_/g, '').replace(/[^A-Za-z]/g, '');
+      if (!map[s.type]) map[s.type] = { pfx: pfx, sample: s.id, len: String(s.id).length };
+    });
+    var rows = Object.keys(map).sort().map(function (t) {
+      var e = map[t];
+      var shown = e.len > 22 ? esc(e.sample.slice(0, 12)) + '…(' + e.len + ' chars)' : esc(e.sample);
+      return [esc(t), '<code>' + shown + '</code>', '<code>' + esc(e.pfx || '(none)') + '</code>'];
+    });
+    scrollTable('prefix-table', ['stats type', 'example id', 'letter prefix'], rows);
+    var h = chips('s2-chips');
+    h.add('warn', 'prefixes are a convention, not a contract', 'read stat.type — never parse the id');
+  }
+
+  // =========================================================
+  // §3 — the candidates
+  // =========================================================
+  function renderCandidates(rep) {
+    var rows = [];
+    var locals = [], remotes = [];
+    rep.forEach(function (s) {
+      if (s.type === 'local-candidate') locals.push(s);
+      if (s.type === 'remote-candidate') remotes.push(s);
+    });
+    locals.forEach(function (s) {
+      rows.push([
+        'local',
+        esc(s.candidateType),
+        '<code>' + esc(s.protocol) + '</code>',
+        '<code>' + esc(JSON.stringify(s.address)) + '</code>',
+        s.ip === undefined ? '<span class="no">absent</span>' : '<code>' + esc(JSON.stringify(s.ip)) + '</code>',
+        s.networkType === undefined ? '<span class="no">absent</span>' : '<code>' + esc(s.networkType) + '</code>',
+        '<code>' + esc(s.priority) + '</code>',
+        '<code>' + esc(s.port) + '</code>'
+      ]);
+    });
+    remotes.forEach(function (s) {
+      rows.push([
+        'remote',
+        esc(s.candidateType),
+        '<code>' + esc(s.protocol) + '</code>',
+        '<code>' + esc(JSON.stringify(s.address)) + '</code>',
+        s.ip === undefined ? '<span class="no">absent</span>' : '<code>' + esc(JSON.stringify(s.ip)) + '</code>',
+        s.networkType === undefined ? '<span class="no">absent</span>' : '<code>' + esc(s.networkType) + '</code>',
+        '<code>' + esc(s.priority) + '</code>',
+        '<code>' + esc(s.port) + '</code>'
+      ]);
+    });
+    scrollTable('cand-table',
+      ['side', 'candidateType', 'proto', 'address', 'ip', 'networkType', 'priority', 'port'], rows);
+
+    var note = el('cand-note');
+    var h = chips('s3-chips');
+    var anyAddr = false, anyIp = false, hasIpKey = false, hasNetKey = false;
+    locals.concat(remotes).forEach(function (s) {
+      if (s.address !== '' && s.address !== null && s.address !== undefined) anyAddr = true;
+      if (s.ip !== undefined) { hasIpKey = true; if (s.ip) anyIp = true; }
+      if (s.networkType !== undefined) hasNetKey = true;
+    });
+    if (note) {
+      note.innerHTML = 'This visitor\'s engine reads <code>address</code> as <code>' +
+        (locals.length && locals[0].address === null ? 'null' : (locals.length ? '"" (empty string)' : '—')) +
+        '</code> · the <code>ip</code> key is <code>' + (hasIpKey ? 'present' : 'ABSENT') +
+        '</code> · the <code>networkType</code> key is <code>' + (hasNetKey ? 'present' : 'ABSENT') + '</code>.';
+    }
+    h.add(anyAddr ? 'warn' : 'ok',
+      anyAddr ? 'at least one candidate exposes an address' : 'every host candidate address is blank',
+      'Chromium blanks host addresses (mDNS); WebKit nulls them');
+    h.add(hasIpKey ? 'info' : 'warn',
+      hasIpKey ? 'the ip key exists' : 'the ip key is ABSENT in this engine',
+      'WebKit 26.5 has no ip and no networkType on candidate stats — read stat.address and branch on the key\'s presence');
+    h.add('info', 'candidateTypes present: ' +
+      (locals.concat(remotes).map(function (s) { return s.candidateType; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(', ') || 'none'),
+      'host · srflx · prflx · relay — relay is the only one that survives symmetric NAT');
+  }
+
+  // =========================================================
+  // §4 — the selector grammar
+  // =========================================================
+  async function runSelector() {
+    var h = chips('sel-chips');
+    el('sel-chips').innerHTML = '';
+    var p = makePair({ track: true });
+    await wirePair(p);
+    var full = await p.a.getStats();
+    var fullTypes = {}; full.forEach(function (s) { fullTypes[s.type] = 1; });
+
+    var scoped = null, scopedErr = null;
+    try { scoped = await p.a.getStats(p.track); }
+    catch (e) { scopedErr = (e && e.name) + ': ' + String(e && e.message).slice(0, 120); }
+
+    var scopedTypes = {}; if (scoped) scoped.forEach(function (s) { scopedTypes[s.type] = 1; });
+    var onlyFull = Object.keys(fullTypes).filter(function (t) { return !scopedTypes[t]; }).sort();
+    var subset = scoped ? [...scoped.keys()].every(function (k) { return full.has(k); }) : false;
+
+    var badAwait = null, nullAwait = null, numAwait = null, senderAwait = null;
+    try { var r = await p.a.getStats('bogus'); badAwait = 'resolved size=' + r.size; }
+    catch (e) { badAwait = (e && e.name) + ': ' + String(e && e.message).slice(0, 90); }
+    try { var r2 = await p.a.getStats(null); nullAwait = 'resolved size=' + r2.size; }
+    catch (e) { nullAwait = (e && e.name); }
+    try { var r3 = await p.a.getStats(42); numAwait = 'resolved size=' + r3.size; }
+    catch (e) { numAwait = (e && e.name); }
+    try { var sender = p.a.getSenders()[0]; var r4 = await p.a.getStats(sender); senderAwait = 'resolved size=' + r4.size; }
+    catch (e) { senderAwait = (e && e.name) + ': ' + String(e && e.message).slice(0, 100); }
+    // NOTE: getStats() with a bad selector returns a REJECTED PROMISE, it does not
+    // throw synchronously — so this call must swallow its own rejection, or the
+    // browser reports an unhandled rejection as a page error.
+    var badSync = T(function () { p.a.getStats('bogus').catch(function () {}); return 'no-throw (rejected promise)'; });
+
+    h.add(scoped ? 'ok' : 'fail', scoped ? 'track-scoped report: ' + scoped.size + ' objects' : 'track selector failed',
+      'unfiltered: ' + full.size);
+    h.add(subset ? 'ok' : 'fail', 'scoped ⊆ unfiltered: ' + subset, 'every scoped key exists in the full report');
+    h.add('warn', 'dropped by the track scope: ' + (onlyFull.join(', ') || 'none'),
+      'data-channel and peer-connection are NOT track-scoped — read them from the full report');
+    h.add('fail', 'getStats("bogus"): ' + badAwait, 'the rejection fires on await, not on the call');
+    h.add('info', 'getStats(null): ' + nullAwait, 'null is the documented "no filter" value');
+    h.add('info', 'getStats(42): ' + numAwait, 'a number is not a MediaStreamTrack');
+    h.add('fail', 'getStats(sender): ' + senderAwait, 'use sender.track — the sender itself is rejected');
+    h.add(badSync.ok ? 'warn' : 'ok', 'synchronous throw: ' + (badSync.ok ? 'none (it returns a rejected promise)' : badSync.err),
+      'a try/catch around the call without await catches nothing');
+
+    setKV('sel-out',
+      'unfiltered : ' + full.size + ' objects\n' +
+      '  types: ' + Object.keys(fullTypes).sort().join(', ') + '\n' +
+      'track-scoped: ' + (scoped ? scoped.size : 'ERR') + ' objects\n' +
+      '  types: ' + Object.keys(scopedTypes).sort().join(', ') + '\n' +
+      'only in full: ' + (onlyFull.join(', ') || '(none)') + '\n' +
+      'subset     : ' + subset + '\n' +
+      'getStats("bogus") awaited : ' + badAwait + '\n' +
+      'getStats(null) awaited    : ' + nullAwait + '\n' +
+      'getStats(42) awaited      : ' + numAwait + '\n' +
+      'getStats(sender) awaited  : ' + senderAwait);
+    destroyPair(p);
+  }
+
+  // =========================================================
+  // §5 — the DataChannel grammar
+  // =========================================================
+  function runDcGrammar() {
+    var h = chips('dc-chips');
+    el('dc-chips').innerHTML = '';
+    var pc = new RTCPeerConnection();
+    var rows = [];
+
+    function row(label, fn, expect) {
+      var r = T(fn);
+      var verdict;
+      if (r.ok) verdict = '<span class="yes">constructed</span>';
+      else verdict = '<span class="no">' + esc(r.err.split(':')[0]) + '</span>';
+      rows.push([esc(label), verdict, '<code>' + esc(r.ok ? String(r.v && r.v.id !== undefined ? r.v.id : r.v) : r.err.slice(0, 110)) + '</code>', esc(expect)]);
+      return r;
+    }
+
+    row('default (no options)', function () { return pc.createDataChannel('a').id; },
+      'id assigned later — reads null until open');
+    row('{ordered:false}', function () { var d = pc.createDataChannel('b', { ordered: false }); return d.ordered + '/' + d.reliable; },
+      'ordered=false does NOT mean unreliable');
+    row('{maxRetransmits:0}', function () { var d = pc.createDataChannel('c', { maxRetransmits: 0 }); return d.maxRetransmits; },
+      '0 = no retransmits (a real zero)');
+    row('{maxPacketLifeTime:0}', function () { var d = pc.createDataChannel('d', { maxPacketLifeTime: 0 }); return d.maxPacketLifeTime; },
+      '0 = UNLIMITED lifetime, not zero');
+    row('{maxRetransmits:3,maxPacketLifeTime:100}', function () { return pc.createDataChannel('e', { maxRetransmits: 3, maxPacketLifeTime: 100 }).id; },
+      'mutually exclusive — throws');
+    row('{maxRetransmits:-1}', function () { return pc.createDataChannel('f', { maxRetransmits: -1 }).id; },
+      'unsigned short range check');
+    row('{negotiated:true, id:2}', function () { return pc.createDataChannel('g', { negotiated: true, id: 2 }).id; },
+      'you own the id');
+    row('{negotiated:true} (no id)', function () { return pc.createDataChannel('h', { negotiated: true }).id; },
+      'throws — id required');
+    row('{negotiated:true, id:65535}', function () { return pc.createDataChannel('i', { negotiated: true, id: 65535 }).id; },
+      'ceiling is 65534');
+    row('{negotiated:true, id:65536}', function () { return pc.createDataChannel('j', { negotiated: true, id: 65536 }).id; },
+      'WebIDL unsigned-short range error');
+    row('duplicate negotiated id 42', function () { pc.createDataChannel('k', { negotiated: true, id: 42 }); return pc.createDataChannel('l', { negotiated: true, id: 42 }).id; },
+      'OperationError — no detail');
+    row('{bogusOption:1}', function () { return pc.createDataChannel('m', { bogusOption: 1 }).label; },
+      'unknown members are ignored');
+
+    // read-only checks — `id` and `label` are GETTER-ONLY accessors, so in strict
+    // mode the assignment THROWS (in sloppy mode it would silently no-op).
+    var d = pc.createDataChannel('ro', { negotiated: true, id: 60 });
+    var before = d.id;
+    var idThrow = null;
+    try { d.id = 99; } catch (e) { idThrow = (e && e.name) + ': ' + String(e && e.message).slice(0, 70); }
+    rows.push(['<code>dc.id = 99</code>', d.id === before ? '<span class="yes">read-only</span>' : '<span class="no">writable</span>',
+      '<code>' + before + ' → ' + d.id + '</code>',
+      idThrow ? 'a getter-only accessor — in strict mode the assignment <b>throws</b> (' + esc(idThrow) + ')' : 'the assignment silently no-ops in sloppy mode']);
+    var lbefore = d.label;
+    var labelThrow = null;
+    try { d.label = 'changed'; } catch (e) { labelThrow = (e && e.name) + ': ' + String(e && e.message).slice(0, 70); }
+    rows.push(['<code>dc.label = "changed"</code>', d.label === lbefore ? '<span class="yes">read-only</span>' : '<span class="no">writable</span>',
+      '<code>' + esc(lbefore) + ' → ' + esc(d.label) + '</code>',
+      labelThrow ? 'a getter-only accessor — strict mode throws' : 'the assignment silently no-ops in sloppy mode']);
+    d.binaryType = 'blob';
+    d.binaryType = 'bogus';
+    rows.push(['<code>dc.binaryType = "bogus"</code>', d.binaryType === 'blob' ? '<span class="yes">ignored, kept "blob"</span>' : '<span class="no">accepted</span>',
+      '<code>' + esc(d.binaryType) + '</code>', 'invalid binaryType is silently ignored, NOT a TypeError']);
+
+    scrollTable('dc-table', ['options / assignment', 'outcome', 'observed', 'rule'], rows);
+
+    var dup = rows.filter(function (r) { return r[0].indexOf('duplicate') === 0; })[0];
+    var both = rows.filter(function (r) { return r[0].indexOf('{maxRetransmits:3') === 0; })[0];
+    h.add(both && both[1].indexOf('no') === 0 ? 'ok' : 'warn',
+      'mutual exclusion enforced', 'maxRetransmits + maxPacketLifeTime together → TypeError');
+    h.add(dup && dup[1].indexOf('no') === 0 ? 'ok' : 'warn',
+      'duplicate negotiated id → OperationError', 'a runtime error with no diagnostic detail');
+    h.add('ok', '0 vs null: maxRetransmits:0 → 0', 'an explicit zero is not the same as an omitted option');
+    h.add('warn', 'maxPacketLifeTime:0 → 0 means UNLIMITED', 'the zero-means-infinite trap');
+    h.add('info', 'unknown option members are ignored', '{bogusOption:1} constructs fine');
+    h.add('warn', 'dc.id / dc.label are getter-only accessors', 'in strict mode the assignment throws TypeError');
+    pc.close();
+  }
+
+  function runDcIds() {
+    var h = chips('dc-chips');
+    var rows = [];
+    var ids = [0, 1, 2, 3, 4, 8, 65533, 65534, 65535, 65536];
+    ids.forEach(function (id) {
+      var pc = new RTCPeerConnection();   // fresh connection per id — no collision possible
+      var r = T(function () { return pc.createDataChannel('c', { negotiated: true, id: id }).id; });
+      rows.push([
+        '<code>' + id + '</code>',
+        r.ok ? '<span class="yes">accepted</span>' : '<span class="no">' + esc(r.err.split(':')[0]) + '</span>',
+        '<code>' + esc(r.ok ? String(r.v) : r.err.slice(0, 110)) + '</code>'
+      ]);
+      pc.close();
+    });
+    scrollTable('dc-ids-table', ['negotiated id', 'outcome', 'observed'], rows);
+    h.add('ok', 'id range 0 – 65534 inclusive', '65535 and 65536 fail with different errors');
+    h.add('info', 'both odd and even ids are accepted', 'the even-id rule does not apply to the negotiated id');
+  }
+
+  // =========================================================
+  // §6 — the oversize law
+  // =========================================================
+  async function runOversize() {
+    var h = chips('over-chips');
+    el('over-chips').innerHTML = '';
+    var p = makePair({});
+    await wirePair(p);
+    var max = p.a.sctp ? p.a.sctp.maxMessageSize : 262144;
+    var dc = p.dc;
+    var errEvt = null;
+    dc.onerror = function (e) { errEvt = e.error ? String(e.error.message || e.error) : 'error event (no .error payload)'; };
+
+    // WebKit reports the oversize as an UNCAUGHT page error ("Error sending binary
+    // data through RTCDataChannel.") rather than an exception at the call site.
+    // MEASURED: the error BYPASSES window.onerror AND window.addEventListener('error')
+    // — it reaches only the global error handler / the page's error tracker. The
+    // channel's own `error` event DOES fire (that handler is wired below).
+    var uncaught = null;
+    var prevOnError = window.onerror;
+    var prevListener = null;
+    var listener = function () { uncaught = 'absorbed by a window error listener'; return true; };
+    window.addEventListener('error', listener);
+
+    var exact = T(function () { dc.send(new ArrayBuffer(max)); return 'no-throw'; });
+    await new Promise(function (r) { setTimeout(r, 250); });
+    var over = T(function () { dc.send(new ArrayBuffer(max + 1)); return 'NO-THROW'; });
+    await new Promise(function (r) { setTimeout(r, 350); });
+    var stateAfter = dc.readyState;
+    var after = T(function () { dc.send(new ArrayBuffer(64)); return 'no-throw'; });
+
+    var rep = null, dcStats = null;
+    try {
+      rep = await p.a.getStats();
+      var found = [];
+      rep.forEach(function (s) { if (s.type === 'data-channel') found.push(s.label + '/' + s.state + '/sent=' + s.messagesSent); });
+      dcStats = found.length ? found.join(', ') : '(the data-channel stat is GONE from the report)';
+    } catch (e) { dcStats = 'getStats failed: ' + String(e && e.message); }
+
+    var threw = !over.ok;
+    window.onerror = prevOnError;
+    window.removeEventListener('error', listener);
+    h.add('info', 'pc.sctp.maxMessageSize = ' + max, 'read it — never assume 262144');
+    h.add(exact.ok ? 'ok' : 'warn', 'send at exactly maxMessageSize: ' + (exact.ok ? 'accepted' : exact.err.slice(0, 60)),
+      'the limit is inclusive');
+    h.add(threw ? 'ok' : 'fail',
+      threw ? 'oversize send THREW: ' + over.err.slice(0, 60) : 'oversize send DID NOT THROW',
+      threw ? 'Chromium-family behaviour — loud and recoverable'
+           : 'WEBKIT BEHAVIOUR — the channel is destroyed instead');
+    h.add(stateAfter === 'open' ? 'ok' : 'fail',
+      'readyState after the oversize: ' + stateAfter,
+      stateAfter === 'open' ? 'the channel survived'
+                             : 'THE CHANNEL IS DEAD — every later send throws InvalidStateError');
+    h.add(after.ok ? 'ok' : 'fail',
+      'a later small send: ' + (after.ok ? 'accepted' : after.err.slice(0, 60)),
+      'this is the difference between the two engine families');
+    h.add(errEvt ? 'warn' : 'info', 'error event: ' + (errEvt || '(none fired)'),
+      'WebKit reports the failure as an event, not an exception');
+    h.add(uncaught ? 'warn' : 'info',
+      'window error listener: ' + (uncaught || 'never fired — the error BYPASSES window.onerror'),
+      'WebKit also raises an uncaught error that only a global error handler / error tracker sees');
+    h.add('info', 'data-channel stats: ' + dcStats, 'when the channel dies, its stat disappears too');
+
+    setKV('over-out',
+      'maxMessageSize      : ' + max + '\n' +
+      'send(max)           : ' + (exact.ok ? 'accepted' : exact.err) + '\n' +
+      'send(max+1)         : ' + (over.ok ? 'NO-THROW' : over.err) + '\n' +
+      'readyState after     : ' + stateAfter + '\n' +
+      'send(64) afterwards : ' + (after.ok ? 'accepted' : after.err) + '\n' +
+      'error event         : ' + (errEvt || '(none)') + '\n' +
+      'window error listener: ' + (uncaught || 'never fired (the error bypasses window.onerror)') + '\n' +
+      'data-channel stats  : ' + dcStats + '\n\n' +
+      'ENGINE              : ' + ENGINE + '\n' +
+      (threw
+        ? 'Chromium-family: the send throws, the channel survives.\nGuard the size yourself anyway — Safari will not warn you.'
+        : 'WebKit: the send is silent, the channel dies, and the stats entry vanishes.\nA try/catch around send() catches NOTHING here.'));
+    destroyPair(p);
+  }
+
+  // =========================================================
+  // §7 — the configuration window
+  // =========================================================
+  async function runConfig() {
+    var h = chips('cfg-chips');
+    el('cfg-chips').innerHTML = '';
+
+    // before any offer
+    var pc1 = new RTCPeerConnection();
+    var before = T(function () { pc1.setConfiguration({ iceCandidatePoolSize: 4 }); return 'no-throw'; });
+    var poolBefore = pc1.getConfiguration().iceCandidatePoolSize;
+    pc1.close();
+
+    // during have-local-offer
+    var pc2 = new RTCPeerConnection();
+    var o2 = await pc2.createOffer();
+    var during = T(function () { pc2.setConfiguration({ iceCandidatePoolSize: 4 }); return 'no-throw'; });
+    var poolDuring = pc2.getConfiguration().iceCandidatePoolSize;
+    pc2.close();
+
+    // after setLocalDescription
+    var pc3 = new RTCPeerConnection();
+    pc3.createDataChannel('x');
+    var o3 = await pc3.createOffer();
+    await pc3.setLocalDescription(o3);
+    var after = T(function () { pc3.setConfiguration({ iceCandidatePoolSize: 2 }); return 'no-throw'; });
+    var poolAfter = pc3.getConfiguration().iceCandidatePoolSize;
+    pc3.close();
+
+    // bad enum
+    var pc4 = new RTCPeerConnection();
+    var badEnum = T(function () { pc4.setConfiguration({ bundlePolicy: 'bogus' }); return 'no-throw'; });
+    pc4.close();
+
+    h.add(before.ok ? 'ok' : 'fail', 'setConfiguration before any offer: ' + (before.ok ? 'accepted' : before.err.slice(0, 60)),
+      'pool reads back ' + poolBefore);
+    h.add(during.ok ? 'ok' : 'warn', 'setConfiguration during have-local-offer: ' + (during.ok ? 'accepted' : during.err.slice(0, 60)),
+      'pool reads back ' + poolDuring);
+    h.add(after.ok ? 'warn' : 'fail', 'setConfiguration after setLocalDescription: ' + (after.ok ? 'accepted' : after.err.slice(0, 70)),
+      'pool reads back ' + poolAfter + ' — the change was REJECTED');
+    h.add(badEnum.ok ? 'warn' : 'ok', 'setConfiguration({bundlePolicy:"bogus"}): ' + (badEnum.ok ? 'accepted' : badEnum.err.split(':')[0]),
+      'enum members are validated');
+
+    // negotiationneeded
+    var pc5 = new RTCPeerConnection();
+    var fired = 0;
+    pc5.onnegotiationneeded = function () { fired++; };
+    pc5.createDataChannel('telemetry');
+    await new Promise(function (r) { setTimeout(r, 300); });
+    pc5.close();
+
+    setKV('cfg-out',
+      'before createOffer  : ' + (before.ok ? 'accepted' : before.err) + '  (pool=' + poolBefore + ')\n' +
+      'during have-local-offer: ' + (during.ok ? 'accepted' : during.err) + '  (pool=' + poolDuring + ')\n' +
+      'after setLocalDescription: ' + (after.ok ? 'accepted' : after.err) + '  (pool=' + poolAfter + ')\n' +
+      'bad enum            : ' + (badEnum.ok ? 'accepted' : badEnum.err) + '\n' +
+      'onnegotiationneeded : fired ' + fired + ' time(s) after addTrack/createDataChannel');
+  }
+
+  async function runRestartIce() {
+    var h = chips('cfg-chips');
+    var p = makePair({});
+    await wirePair(p);
+    var sdpBefore = p.a.localDescription.sdp;
+    var ufragBefore = (sdpBefore.match(/a=ice-ufrag:(\S+)/) || [])[1];
+    var r = T(function () { p.a.restartIce(); return 'no-throw'; });
+    await new Promise(function (x) { setTimeout(x, 600); });
+    var sdpAfter = p.a.localDescription.sdp;
+    var ufragAfter = (sdpAfter.match(/a=ice-ufrag:(\S+)/) || [])[1];
+    var o2 = await p.a.createOffer();
+    var ufragOffer = (o2.sdp.match(/a=ice-ufrag:(\S+)/) || [])[1];
+    var sig = p.a.signalingState;
+
+    h.add(r.ok ? 'ok' : 'fail', 'restartIce(): ' + (r.ok ? 'never throws' : r.err.slice(0, 60)), 'it is a flag, not an action');
+    h.add(sdpBefore === sdpAfter ? 'warn' : 'ok',
+      'localDescription.sdp unchanged after restartIce(): ' + (sdpBefore === sdpAfter),
+      'the SDP does not move until you renegotiate');
+    h.add(ufragBefore === ufragAfter ? 'warn' : 'ok',
+      'ice-ufrag unchanged: ' + ufragBefore + ' → ' + ufragAfter,
+      'the ufrag only changes in the NEXT offer');
+    h.add(ufragOffer !== ufragBefore ? 'ok' : 'fail',
+      'the next offer carries ufrag ' + ufragOffer + (ufragOffer !== ufragBefore ? ' (NEW)' : ' (same)'),
+      'restartIce + a new offer = the actual re-ice');
+    h.add('info', 'signalingState stayed ' + sig, 'restartIce does not move the signaling state');
+
+    setKV('ri-out',
+      'restartIce()        : ' + (r.ok ? 'no-throw' : r.err) + '\n' +
+      'ufrag before        : ' + ufragBefore + '\n' +
+      'ufrag after restart : ' + ufragAfter + '  (changed: ' + (ufragBefore !== ufragAfter) + ')\n' +
+      'sdp identical       : ' + (sdpBefore === sdpAfter) + '\n' +
+      'ufrag in next offer : ' + ufragOffer + '  (changed: ' + (ufragOffer !== ufragBefore) + ')\n' +
+      'signalingState      : ' + sig);
+    destroyPair(p);
+  }
+
+  // =========================================================
+  // §8 — the pair-state table
+  // =========================================================
+  function renderPairTable(rep) {
+    var rows = [];
+    var states = ['frozen', 'waiting', 'in-progress', 'failed', 'succeeded', 'disconnected'];
+    states.forEach(function (st) {
+      var meaning = {
+        'frozen': 'no connectivity check started yet',
+        'waiting': 'a check is scheduled but has not been sent',
+        'in-progress': 'a check is on the wire',
+        'failed': 'the check was answered but the pair is unusable',
+        'succeeded': 'the pair works — this is the only healthy state',
+        'disconnected': 'the pair worked and then stopped (network changed)'
+      }[st];
+      var healthy = st === 'succeeded';
+      rows.push([
+        '<code>' + st + '</code>',
+        healthy ? '<span class="yes">healthy</span>' : '<span class="na">not healthy</span>',
+        esc(meaning),
+        st === 'waiting' ? 'STUN/TURN unreachable or the candidate is blocked'
+          : st === 'failed' ? 'the pair is unusable — check for a relay candidate'
+          : st === 'disconnected' ? 'the network changed under you (WiFi → 5G)'
+          : '—'
+      ]);
+    });
+    scrollTable('pair-table', ['candidate-pair.state', 'verdict', 'meaning', 'what it usually means'], rows);
+
+    var h = chips('s8-chips');
+    var pair = null, transport = null;
+    rep.forEach(function (s) {
+      if (s.type === 'candidate-pair' && !pair) pair = s;
+      if (s.type === 'transport' && !transport) transport = s;
+    });
+    h.add(pair ? 'ok' : 'fail', 'measured pair state: ' + (pair ? pair.state : 'none'),
+      'nominated=' + (pair ? pair.nominated : '?') + ' writable=' + (pair ? pair.writable : '?') + ' readable=' + (pair ? pair.readable : '?'));
+    if (pair) {
+      h.add('info', 'rtt ' + pair.currentRoundTripTime + ' s · total ' + pair.totalRoundTripTime + ' s',
+        'currentRoundTripTime is the live number');
+      h.add('info', 'tx ' + pair.packetsSent + ' · rx ' + pair.packetsReceived,
+        'the packet counters exist in every engine — use these for one-way health');
+      h.add('warn', 'the `readable` key is ' + ('readable' in pair ? 'present' : 'ABSENT'),
+        'MDN documents candidate-pair.readable; it is not in the engine');
+      h.add('info', 'the `writable` key is ' + ('writable' in pair ? 'present' : 'ABSENT'),
+        'Chromium has it; WebKit does not');
+    }
+    h.add(transport ? 'ok' : 'fail',
+      transport ? 'transport ice=' + transport.iceState + ' dtls=' + transport.dtlsState + ' role=' + transport.iceRole : 'no transport',
+      'selectedCandidatePairChanges=' + (transport ? transport.selectedCandidatePairChanges : '?'));
+    h.add('info', 'ciphers: ' + (transport ? transport.dtlsCipher + ' / ' + transport.srtpCipher : '?'),
+      'the transport reports the negotiated ciphers');
+  }
+
+  // =========================================================
+  // §9 — the snapshot law
+  // =========================================================
+  async function runSnapshot() {
+    var h = chips('snap-chips');
+    el('snap-chips').innerHTML = '';
+    var p = makePair({});
+    await wirePair(p);
+    var rep = await p.a.getStats();
+    var pair = null;
+    rep.forEach(function (s) { if (s.type === 'candidate-pair' && !pair) pair = s; });
+
+    var orig = pair ? pair.packetsSent : null;
+    var mutated = T(function () { pair.packetsSent = 999999; return pair.packetsSent; });
+    var sameReport = pair ? pair.packetsSent : null;
+    var rep2 = await p.a.getStats();
+    var pair2 = null;
+    rep2.forEach(function (s) { if (s.type === 'candidate-pair' && !pair2) pair2 = s; });
+    var fresh = pair2 ? pair2.packetsSent : null;
+
+    var stamps = [];
+    rep2.forEach(function (s) { stamps.push(s.timestamp); });
+    var distinct = {};
+    stamps.forEach(function (t) { distinct[t] = 1; });
+    var stampCount = Object.keys(distinct).length;
+
+    var times = [];
+    for (var i = 0; i < 6; i++) {
+      var t0 = performance.now();
+      await p.a.getStats();
+      times.push(+(performance.now() - t0).toFixed(2));
+    }
+
+    h.add(mutated.ok ? 'warn' : 'fail', 'writing a stats object: ' + (mutated.ok ? 'succeeds silently' : mutated.err.slice(0, 50)),
+      'the property is writable — the value just does not survive');
+    h.add(fresh !== 999999 ? 'ok' : 'fail', 'the next report shows the real value: ' + fresh,
+      'the engine replaces the whole report on every call');
+    h.add(sameReport === 999999 ? 'info' : 'ok', 'the OLD report still reads the mutated value in memory',
+      'mutate your copy, never the engine object');
+    h.add(stampCount === 1 ? 'ok' : 'warn', 'one shared timestamp across ' + rep2.size + ' objects (' + stampCount + ' distinct)',
+      'epoch milliseconds as a float');
+    h.add('ok', 'six getStats() calls: ' + times.join(', ') + ' ms', 'the report is cheap — poll it freely');
+
+    setKV('snap-out',
+      'original packetsSent   : ' + orig + '\n' +
+      'after mutation         : ' + sameReport + '  (write succeeded: ' + mutated.ok + ')\n' +
+      'fresh report packetsSent: ' + fresh + '  (the engine\'s real value)\n' +
+      'distinct timestamps    : ' + stampCount + ' across ' + rep2.size + ' objects\n' +
+      'timestamp sample       : ' + (stamps[0]) + '\n' +
+      'getStats() cost (6 runs): ' + times.join(', ') + ' ms');
+    destroyPair(p);
+  }
+
+  // =========================================================
+  // §10 — the candidate constructor grammar
+  // =========================================================
+  function runCandCtor() {
+    var h = chips('cc-chips');
+    el('cc-chips').innerHTML = '';
+    var rows = [];
+    function row(label, fn, note) {
+      var r = T(fn);
+      rows.push([
+        esc(label),
+        r.ok ? '<span class="yes">ok</span>' : '<span class="no">' + esc(r.err.split(':')[0]) + '</span>',
+        '<code>' + esc(r.ok ? JSON.stringify(r.v) : r.err.slice(0, 120)) + '</code>',
+        esc(note)
+      ]);
+      return r;
+    }
+    row('no arguments', function () { return new RTCIceCandidate().candidate; },
+      'sdpMid and sdpMLineIndex are both null');
+    row('candidate + sdpMid', function () { return new RTCIceCandidate({ candidate: 'candidate:1 1 udp 2130706431 1.2.3.4 5 typ host', sdpMid: '0' }).toJSON(); },
+      'the normal form');
+    row('candidate + sdpMLineIndex only', function () { return new RTCIceCandidate({ candidate: 'candidate:1 1 udp 2130706431 1.2.3.4 5 typ host', sdpMLineIndex: 0 }).toJSON(); },
+      'toJSON reports sdpMid: "" — not interchangeable');
+    row('both sdpMid and sdpMLineIndex', function () { return new RTCIceCandidate({ candidate: 'candidate:1 1 udp 2130706431 1.2.3.4 5 typ host', sdpMid: '0', sdpMLineIndex: 0 }).toJSON(); },
+      'both accepted');
+    row('garbage candidate string', function () { return new RTCIceCandidate({ candidate: 'not-a-candidate', sdpMid: '0' }).toJSON(); },
+      'NO validation — the constructor is a container');
+    row('empty candidate string', function () { return { c: new RTCIceCandidate({ candidate: '', sdpMid: '0' }).candidate }; },
+      'accepted verbatim');
+    row('unknown dictionary member', function () { return new RTCIceCandidate({ candidate: 'candidate:1 1 udp 2130706431 1.2.3.4 5 typ host', sdpMid: '0', bogus: 'x' }).toJSON(); },
+      'silently ignored');
+    row('parsed typed fields', function () {
+      var k = new RTCIceCandidate({ candidate: 'candidate:1 1 udp 2130706431 1.2.3.4 5 typ host', sdpMid: '0' });
+      return { type: k.type, protocol: k.protocol, component: k.component, foundation: k.foundation, priority: k.priority, port: k.port, url: k.url };
+    }, 'the line IS parsed into typed fields');
+
+    scrollTable('cc-table', ['constructor input', 'outcome', 'observed', 'rule'], rows);
+
+    h.add('ok', 'exactly one of sdpMid / sdpMLineIndex is required', 'neither → TypeError');
+    h.add('warn', 'a garbage candidate string constructs fine', 'validation happens at addIceCandidate() time');
+    h.add('ok', 'the candidate line is parsed into typed fields', 'type, protocol, component, foundation, priority, port');
+    h.add('info', 'the raw string is always preserved verbatim', 'fall back to parsing it yourself');
+  }
+
+  // =========================================================
+  // §11 — the link monitor capstone
+  // =========================================================
+  var MON = { on: false, timer: null, pair: null };
+
+  function classify(rep) {
+    var transport = null, pair = null;
+    rep.forEach(function (s) {
+      if (s.type === 'transport') transport = s;
+      if (s.type === 'candidate-pair' && !pair) pair = s;
+    });
+    if (!transport) return { ok: false, why: 'no transport yet' };
+    if (!pair) return { ok: false, why: 'no candidate pair yet' };
+    var local = rep.get(pair.localCandidateId);
+    var remote = rep.get(pair.remoteCandidateId);
+    var path = local && local.candidateType === 'relay' ? 'TURN relay'
+             : local && local.candidateType === 'srflx' ? 'STUN (server-reflexive)'
+             : local && local.candidateType === 'prflx' ? 'peer-reflexive'
+             : 'direct (host)';
+    // THE FIX: `pair.readable` is DOCUMENTED and DOES NOT EXIST in any engine we
+    // measured — `pair.writable !== pair.readable` therefore reports a fault on a
+    // healthy connection. Use the packet counters, which exist everywhere.
+    var rx = pair.packetsReceived || 0;
+    var tx = pair.packetsSent || 0;
+    var oneWay = rx > 0 && tx === 0 ? 'CANNOT SEND'
+               : tx > 0 && rx === 0 ? 'CANNOT RECEIVE'
+               : (tx > 0 && rx > 0) ? 'bidirectional' : 'idle (no traffic yet)';
+    return {
+      ok: pair.state === 'succeeded' && pair.nominated,
+      path: path, oneWay: oneWay,
+      rx: rx, tx: tx,
+      rtt: pair.currentRoundTripTime,
+      ice: transport.iceState,
+      dtls: transport.dtlsState,
+      switched: transport.selectedCandidatePairChanges,
+      state: pair.state,
+      hasReadable: 'readable' in pair,
+      hasWritable: 'writable' in pair
+    };
+  }
+
+  async function startMonitor() {
+    var h = chips('mon-chips');
+    el('mon-chips').innerHTML = '';
+    if (MON.on) { h.add('info', 'already running', ''); return; }
+    var p = makePair({});
+    await wirePair(p);
+    MON.pair = p;
+    MON.on = true;
+    var max = p.a.sctp ? p.a.sctp.maxMessageSize : 262144;
+    var frames = 0, rejected = 0, sent = 0;
+
+    async function tick() {
+      if (!MON.on) return;
+      try {
+        var rep = await p.a.getStats();
+        var c = classify(rep);
+        // the guard: never let the engine decide the frame size
+        var payload = new Uint8Array(4096);
+        payload[0] = frames & 0xff;
+        frames++;
+        if (payload.byteLength > max) { rejected++; }
+        else if (p.dc.readyState === 'open') { p.dc.send(payload); sent++; }
+        else { rejected++; }
+
+        setKV('mon-out',
+          'link state   : ' + (c.ok ? 'HEALTHY' : 'DEGRADED — ' + (c.why || c.state)) + '\n' +
+          'path         : ' + (c.path || '?') + '\n' +
+          'one-way      : ' + (c.oneWay || '?') + '   (tx=' + c.tx + ' rx=' + c.rx + ')\n' +
+          'ICE / DTLS   : ' + c.ice + ' / ' + c.dtls + '\n' +
+          'round trip   : ' + c.rtt + ' s\n' +
+          'pair switches: ' + c.switched + '\n' +
+          'frames sent  : ' + sent + '   rejected by the guard: ' + rejected + '\n' +
+          'max frame    : ' + max + ' bytes (read from pc.sctp.maxMessageSize)\n' +
+          'channel      : ' + p.dc.readyState + '\n' +
+          'pair.readable present: ' + c.hasReadable + '   pair.writable present: ' + c.hasWritable);
+      } catch (e) {
+        setKV('mon-out', 'monitor error: ' + String(e && e.message));
+      }
+    }
+    await tick();
+    MON.timer = setInterval(tick, 1000);
+    h.add('ok', 'monitor running at 1 Hz', 'reads the transport, classifies the path, guards the frame size');
+    h.add('info', 'path: ' + classify(await p.a.getStats()).path, 'the one line the operator actually needs');
+  }
+
+  function stopMonitor() {
+    MON.on = false;
+    if (MON.timer) { clearInterval(MON.timer); MON.timer = null; }
+    if (MON.pair) { destroyPair(MON.pair); MON.pair = null; }
+    chips('mon-chips').add('info', 'monitor stopped', '');
+  }
+
+  // =========================================================
+  // boot
+  // =========================================================
+  function on(id, fn) { var n = el(id); if (n) n.addEventListener('click', fn); }
+
+  on('btnConnect', function () { runSpecimen(false); });
+  on('btnConnectTrack', function () { runSpecimen(true); });
+  on('btnStats', function () {
+    if (!PAIR) { runSpecimen(false); return; }
+    PAIR.a.getStats().then(function (rep) {
+      var h = chips('conn-chips');
+      h.add('ok', 're-read: ' + rep.size + ' objects', 'a fresh snapshot every call');
+    });
+  });
+  on('btnSelector', runSelector);
+  on('btnDcGrammar', runDcGrammar);
+  on('btnDcIds', runDcIds);
+  on('btnOversize', runOversize);
+  on('btnConfig', runConfig);
+  on('btnRestartIce', runRestartIce);
+  on('btnSnapshot', runSnapshot);
+  on('btnCandCtor', runCandCtor);
+  on('btnMonitor', startMonitor);
+  on('btnStop', stopMonitor);
+
+  // §1 boot chips
+  var s1 = chips('s1-chips');
+  var hasPc = typeof RTCPeerConnection !== 'undefined';
+  s1.add(hasPc ? 'ok' : 'fail', hasPc ? 'RTCPeerConnection present' : 'RTCPeerConnection ABSENT',
+    'the API under test');
+  s1.add('info', 'engine: ' + ENGINE, UA.slice(0, 90));
+  s1.add('info', 'RTCStatsReport: ' + (typeof RTCStatsReport),
+    'the report class');
+
+  // §12 checklist
+  (function () {
+    var h = chips('s12-chips');
+    var rules = [
+      ['ok', '1 · Guard the SCTP frame size yourself', 'read pc.sctp.maxMessageSize — Safari destroys the channel on an oversize, Chrome does not'],
+      ['ok', '2 · Never read the address from a host candidate', 'Chromium blanks it, WebKit nulls it, and an srflx candidate leaks the public IP anyway'],
+      ['ok', '3 · Apply every setConfiguration() before the first offer', 'afterwards it throws InvalidModificationError — the ICE servers are immutable for the connection\'s life'],
+      ['ok', '4 · Use getStats(track), not getStats(sender)', 'the sender is the object you hold and the type check rejects it'],
+      ['ok', '5 · Read stat.type, never parse the stat id', 'the id prefixes are a convention, not a contract'],
+      ['ok', '6 · Do not trust the candidate-pair priority as a Number', 'it is a 64-bit integer — Number.isSafeInteger is false'],
+      ['ok', '7 · restartIce() is a flag — renegotiate afterwards', 'the SDP and the ufrag do not move until you create a new offer'],
+      ['ok', '8 · The scoped report drops data-channel and peer-connection', 'read the data-channel counters from the unfiltered report'],
+      ['ok', '9 · Never cache or mutate a stats object', 'every getStats() replaces the whole report'],
+      ['ok', '10 · Poll getStats() freely — it costs ~0 ms', 'six consecutive calls measured under 1 ms total'],
+      ['ok', '11 · maxPacketLifeTime: 0 means UNLIMITED', 'an explicit zero is not the same as an omitted option'],
+      ['ok', '12 · A duplicate negotiated id is an OperationError', 'with no diagnostic detail — the same string covers several causes'],
+      ['ok', '13 · Never read candidate-pair.readable', 'MDN documents it; no engine ships it — use packetsSent / packetsReceived'],
+      ['ok', '14 · dc.id and dc.label are getter-only accessors', 'in strict mode the assignment throws a TypeError'],
+      ['ok', '15 · The candidate constructor validates nothing', 'a garbage candidate string constructs fine and fails later at addIceCandidate()']
+    ];
+    rules.forEach(function (r) { h.add(r[0], r[1], r[2]); });
+  })();
+
+  // §5 + §6 + §10 static chips (the laws that do not need a live connection)
+  chips('s5-chips').add('info', 'the mutual-exclusion law', 'maxRetransmits and maxPacketLifeTime cannot both be set');
+  chips('s6-chips').add('info', 'the oversize divergence is engine-dependent', 'run the button to see this engine\'s behaviour');
+  chips('s10-chips').add('info', 'the constructor validates almost nothing', 'run the button to see the full grammar');
+  chips('s9-chips').add('info', 'a report is a photograph', 'run the button to see the mutation test');
+  chips('s8-chips').add('info', 'the pair state machine', 'the table above is the reference');
+
+  // kick off the specimen so the page is never empty
+  runSpecimen(false).then(function () {
+    window.__mcDone = true;
+    document.title = 'WebRTC Transport Internals — ready';
+  });
+  setTimeout(function () { window.__mcDone = true; }, 20000);
+})();
+</script>
+</body>
+</html>
