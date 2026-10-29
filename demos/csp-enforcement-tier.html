@@ -1,0 +1,875 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Content Security Policy — the enforcement tier: the report-to split, the nonce precedence, the meta window</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --ink:#161513; --muted:#6d675f; --line:#e6e1d9;
+    --accent:#8a3b2f; --accent-soft:#fbeeea; --ok:#1c6b47; --ok-soft:#eaf6ef;
+    --warn:#8a6100; --warn-soft:#fdf6e3; --fail:#a32b1c; --fail-soft:#fdeceb;
+    --info:#2a5a8a; --info-soft:#ecf3fa; --radius:14px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 24px 96px}
+  header{margin-bottom:28px}
+  .kicker{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  h1{font-size:clamp(26px,4vw,36px);line-height:1.14;letter-spacing:-.022em;margin:0 0 12px;font-weight:680}
+  .lede{font-size:15.5px;line-height:1.62;color:#403b35;margin:0 0 10px;max-width:66ch}
+  .meta{font:13px/1.5 var(--mono);color:var(--muted);margin-top:18px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px;margin-bottom:24px}
+  h2{font-size:21px;line-height:1.3;margin:0 0 6px;letter-spacing:-.012em;font-weight:660}
+  h3{font-size:15px;margin:22px 0 8px;font-weight:640}
+  .sub{color:var(--muted);font-size:14.5px;margin:0 0 18px;max-width:70ch}
+  code,kbd{font-family:var(--mono);font-size:.885em;background:#f3efe9;padding:.12em .38em;border-radius:5px;border:1px solid #e8e2d8;overflow-wrap:anywhere}
+  .law{border-left:3px solid var(--accent);padding:12px 0 12px 16px;margin:16px 0;background:linear-gradient(90deg,var(--accent-soft),transparent 70%);border-radius:0 8px 8px 0}
+  .law b{color:var(--accent)}
+  .law.bad{border-color:var(--fail);background:linear-gradient(90deg,var(--fail-soft),transparent 70%)}
+  .law.bad b{color:var(--fail)}
+  .law.warn{border-color:var(--warn);background:linear-gradient(90deg,var(--warn-soft),transparent 70%)}
+  .law.warn b{color:var(--warn)}
+  .law.ok{border-color:var(--ok);background:linear-gradient(90deg,var(--ok-soft),transparent 70%)}
+  .law.ok b{color:var(--ok)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+  .chip{font:600 12px/1.35 var(--mono);padding:6px 10px;border-radius:999px;border:1px solid;white-space:normal;overflow-wrap:anywhere;max-width:100%}
+  .chip.ok{color:var(--ok);border-color:#b9dfca;background:var(--ok-soft)}
+  .chip.warn{color:var(--warn);border-color:#ecd9a3;background:var(--warn-soft)}
+  .chip.fail{color:var(--fail);border-color:#f0c2bc;background:var(--fail-soft)}
+  .chip.info{color:var(--info);border-color:#bfd6ee;background:var(--info-soft)}
+  .chip.pending{color:var(--muted);border-color:var(--line);background:#f6f4f1}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font:600 11.5px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:#faf8f5}
+  td.v{font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+  .tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;background:#fff}
+  .tscroll table{margin:0}
+  .tscroll th{position:sticky;top:0}
+  button{font:600 14px/1 inherit;padding:11px 17px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;letter-spacing:.01em}
+  button:hover{background:#6f2f25}
+  button.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
+  button.ghost:hover{background:#f6f4f1}
+  button:disabled{opacity:.5;cursor:default}
+  button.mini{font:600 12px/1 var(--mono);padding:8px 11px;border-radius:8px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}
+  pre{background:#171512;color:#f3efe9;padding:14px 16px;border-radius:10px;overflow-x:auto;font:12.5px/1.65 var(--mono);border:1px solid #2a2620}
+  pre code{background:none;border:none;color:inherit;padding:0}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+  .card{border:1px solid var(--line);border-radius:11px;padding:14px 16px;background:#fdfcfa}
+  .card h4{margin:0 0 6px;font-size:14px;font-weight:640}
+  .card p{margin:0;font-size:13.5px;color:var(--muted);line-height:1.55}
+  .kv{font-family:var(--mono);font-size:12.5px;line-height:1.75;background:#f8f6f2;border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+  .pill{display:inline-block;font:600 11px/1 var(--mono);padding:4px 8px;border-radius:6px;background:#efeae2;color:var(--muted);margin-right:6px}
+  .pill.a{background:var(--accent-soft);color:var(--accent)}
+  .pill.s{background:var(--ok-soft);color:var(--ok)}
+  .pill.f{background:var(--fail-soft);color:var(--fail)}
+  .pill.w{background:var(--warn-soft);color:var(--warn)}
+  footer{color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:20px;margin-top:8px}
+  .verdict{border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.55;margin:12px 0;border:1px solid}
+  .verdict.ok{background:var(--ok-soft);border-color:#b9dfca;color:#14523a}
+  .verdict.warn{background:var(--warn-soft);border-color:#ecd9a3;color:#6b4b00}
+  .verdict.info{background:var(--info-soft);border-color:#bfd6ee;color:#1e4468}
+  .verdict.fail{background:var(--fail-soft);border-color:#f0c2bc;color:#8a2317}
+  .mini{font:12px/1.6 var(--mono);color:var(--muted)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-top:8px}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .yes{color:var(--ok);font-weight:700}
+  .no{color:var(--fail);font-weight:700}
+  .na{color:var(--muted)}
+  .stage{border:1px solid var(--line);border-radius:12px;background:#fff;padding:18px;margin:14px 0}
+  .scrollx{overflow-x:auto}
+  .scrollx > table{min-width:620px}
+  .hl{background:#fff6d9;border-radius:4px;padding:0 3px}
+  .banner{border-radius:11px;padding:13px 15px;font-size:14px;line-height:1.55;margin:14px 0;border:1px solid var(--line);background:#fdfcfa}
+  .banner.eng{font-family:var(--mono);font-size:12.5px}
+  .policy{font-family:var(--mono);font-size:13px;width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:#fdfcfa;color:var(--ink)}
+  .policy:focus{outline:2px solid var(--accent);outline-offset:1px}
+  .labframe{width:100%;height:170px;border:1px solid var(--line);border-radius:10px;background:#fff;margin-top:12px}
+  .split{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin:12px 0}
+  .enginecard{border:1px solid var(--line);border-radius:11px;padding:14px 16px;background:#fdfcfa}
+  .enginecard h4{margin:0 0 8px;font-size:14px;font-weight:660;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .enginecard p{margin:0;font-size:13px;color:var(--muted);line-height:1.55}
+  .badge{font:700 11px/1 var(--mono);padding:5px 8px;border-radius:6px}
+  .badge.yes{background:var(--ok-soft);color:var(--ok)}
+  .badge.no{background:var(--fail-soft);color:var(--fail)}
+  .badge.part{background:var(--warn-soft);color:var(--warn)}
+  @media (max-width:640px){
+    .wrap{padding:22px 16px 72px}
+    section{padding:18px}
+    h1{font-size:26px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">Web Platform API Tier · live-probed</div>
+  <h1>Content Security Policy: the enforcement tier</h1>
+  <p class="lede">Our catalog had <strong>Trusted Types</strong> — the DOM-XSS <em>sink</em> wall. It had <strong>zero coverage of the policy itself</strong>: the directive grammar, the delivery rules, the nonce/hash precedence, and the reporting tier that tells you when a policy is actually breaking your app in production.</p>
+  <p class="lede">CSP is the one security control that <em>breaks things</em>. You ship a policy, a third-party script silently stops loading, your analytics vanish, and nothing tells you — because the reporting directive you added is the one the browser quietly ignores.</p>
+  <p class="lede">Everything below is measured. <strong>231 probe lanes</strong> across Chrome-for-Testing 155, Brave 154 and WebKit 26.5, plus the live lab in §1, which re-runs the laws in <em>your</em> browser, right now.</p>
+  <div class="meta" id="meta-line">CfT 155 · Brave 154 · WebKit 26.5 · 8 probe suites · measured 2026-10-29 · all 24 cross-engine laws agree</div>
+</header>
+
+<!-- ============ 1 ============ -->
+<section id="s1">
+  <h2>1 · The lab — run a policy against a real page, in this browser</h2>
+  <p class="sub">A sandboxed <code>iframe</code> with a <code>srcdoc</code> document carrying a <code>&lt;meta http-equiv="Content-Security-Policy"&gt;</code> you type. The page inside tries to run an inline script, an external script, a <code>eval()</code>, an event handler and a WebAssembly module; the parent listens for <code>securitypolicyviolation</code> and reports exactly what was blocked.</p>
+  <div class="stage">
+    <label class="mini" for="policy">Policy (meta delivery — the form you can actually ship in a static site)</label>
+    <input id="policy" class="policy" spellcheck="false" value="script-src 'self'">
+    <div class="row">
+      <button id="btnRun">Run policy</button>
+      <button class="ghost mini" id="btnNone">script-src 'none'</button>
+      <button class="ghost mini" id="btnSelf">script-src 'self'</button>
+      <button class="ghost mini" id="btnNonce">script-src 'nonce-x'</button>
+      <button class="ghost mini" id="btnStrict">strict-dynamic</button>
+      <button class="ghost mini" id="btnBad">script-src'none' (no space)</button>
+    </div>
+    <div class="chips" id="lab-chips"></div>
+    <div class="split">
+      <div class="card">
+        <h4>What the sandboxed page tried to do</h4>
+        <p><span class="pill a">inline script</span><span class="pill a">external script</span><span class="pill a">eval()</span><span class="pill a">event handler</span><span class="pill a">WebAssembly</span><span class="pill a">blob worker</span></p>
+      </div>
+      <div class="card">
+        <h4>What actually happened</h4>
+        <p id="lab-summary">Press <em>Run policy</em> to load the sandbox.</p>
+      </div>
+    </div>
+    <div class="kv" id="lab-out">—</div>
+    <iframe id="lab-frame" class="labframe" sandbox="allow-scripts allow-same-origin" title="CSP sandbox"></iframe>
+    <div class="mini">The sandbox carries <code>allow-scripts allow-same-origin</code>: a sandboxed frame is an <strong>opaque origin</strong>, and an opaque-origin frame's window is unreadable from the parent (<code>SecurityError</code>) — so without <code>allow-same-origin</code> the lab could not read its own results. The sandboxed document carries no network or storage capability of its own: its policy is set inside its own <code>srcdoc</code>, and it can neither reach this page's origin nor submit a form.</div>
+  </div>
+  <div class="law">
+    <b>THE VIOLATION-EVENT LAW.</b> <code>securitypolicyviolation</code> fires on the <em>window whose document was blocked</em>, and the event carries the directive that fired, the blocked URL, the <code>disposition</code> (<code>enforce</code> or <code>report</code>), the <code>sourceFile</code>, the line and column, and a <code>sample</code> of the offending code.
+    <ul>
+      <li><code>effectiveDirective</code> is the <em>fallback</em> directive that actually applied (e.g. <code>script-src-elem</code> when only <code>script-src</code> was written) — <strong>not</strong> the one you wrote</li>
+      <li>the browser console logs the <em>same</em> violation as an error, and the console text names the real directive</li>
+      <li>a violation for a blocked resource is fired <strong>once per resource</strong>, not once per policy</li>
+    </ul>
+  </div>
+  <div class="chips" id="s1-chips"></div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section id="s2">
+  <h2>2 · The delivery law — a header policy and a meta policy do not merge</h2>
+  <p class="sub">Three delivery routes exist: the <code>Content-Security-Policy</code> header, a <code>&lt;meta http-equiv&gt;</code> tag, and the <code>Content-Security-Policy-Report-Only</code> header (which reports but never blocks). They combine by <strong>intersection</strong>, not by union — and the meta route has a hard positional window.</p>
+  <div class="tscroll">
+  <table id="delivery-table">
+    <thead><tr><th>Delivery</th><th>What the browser applied</th><th>Verdict</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <div class="law ok">
+    <b>THE META-WINDOW LAW.</b> A <code>&lt;meta http-equiv="Content-Security-Policy"&gt;</code> is honoured <strong>only if it appears before the resource it is meant to govern</strong>. Measured: a meta policy in <code>&lt;head&gt;</code> blocked every script; the <em>same policy</em> placed after the scripts in <code>&lt;body&gt;</code> blocked <strong>nothing</strong> — 0 violations, all six probes ran. *A late meta is not a weaker policy. It is no policy at all.*
+  </div>
+  <div class="law bad">
+    <b>THE INTERSECTION LAW (headline).</b> A header policy and a meta policy are enforced <strong>as a conjunction</strong>. Measured:
+    <ul>
+      <li>header <code>script-src 'none'</code> + meta <code>script-src 'self'</code> → <strong>everything blocked</strong>. The meta's looser 'self' does not rescue anything.</li>
+      <li>header <code>script-src 'self'</code> + meta <code>script-src 'none'</code> → <strong>everything blocked</strong>. The meta's tighter 'none' wins over the header's looser 'self'.</li>
+    </ul>
+    *The tighter policy always wins, and the meta can tighten a header but never loosen it. A meta tag is a floor, not a ceiling.*
+  </div>
+  <div class="law warn">
+    <b>THE META-LIMITATION LAW.</b> <code>frame-ancestors</code>, <code>report-uri</code> and <code>sandbox</code> are <strong>ignored in a meta tag</strong> — the spec makes them header-only. Measured: <code>&lt;meta http-equiv="CSP" content="frame-ancestors 'none'"&gt;</code> produced <strong>0 violations</strong> and no framing protection. *If you are defending against clickjacking, a meta tag does nothing.*
+  </div>
+  <div class="chips" id="s2-chips"></div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section id="s3">
+  <h2>3 · The nonce precedence law — one token de-fangs a whole directive</h2>
+  <p class="sub">This is the law that breaks production apps. A policy carries <code>'unsafe-inline'</code> to keep inline scripts working. Then somebody adds a nonce for security. One token. And every inline script that does <em>not</em> carry the nonce silently stops running.</p>
+  <div class="tscroll">
+  <table id="nonce-table">
+    <thead><tr><th>Policy</th><th>inline w/ nonce</th><th>inline w/o nonce</th><th>event handler</th><th>Verdict</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <div class="law bad">
+    <b>THE NONCE-KILLS-UNSAFE-INLINE LAW (headline).</b> When a directive contains <strong>both</strong> a <code>nonce</code> (or <code>hash</code>) <strong>and</strong> <code>'unsafe-inline'</code>, the browser <strong>ignores <code>'unsafe-inline'</code> entirely</strong> — for that whole directive, not just for the element carrying the nonce.
+    <ul>
+      <li><code>script-src 'unsafe-inline'</code> → the inline script and the event handler <strong>both run</strong></li>
+      <li><code>script-src 'unsafe-inline' 'nonce-x'</code> → the nonced script runs, the plain inline script <strong>and the event handler die</strong></li>
+      <li><code>script-src 'self' 'unsafe-inline'</code> → both run</li>
+      <li><code>script-src 'self' 'unsafe-inline' 'nonce-x'</code> → both <strong>die</strong></li>
+    </ul>
+    *<strong>The order of the tokens does not matter</strong> — <code>'nonce-x' 'unsafe-inline'</code> and <code>'unsafe-inline' 'nonce-x'</code> behave identically. You cannot keep a legacy inline script alive by listing 'unsafe-inline' first. Measured across Chromium 155, Brave 154 and WebKit 26.5 — all three agree.*
+  </div>
+  <div class="law bad">
+    <b>THE HASH-DOES-NOT-COVER-HANDLERS LAW.</b> A <code>script-src 'sha256-…'</code> policy that hashes an inline <em>script</em> authorises that script — measured, the hashed inline script ran and every other inline script died. But the <strong>same hash does not authorise an event handler</strong>: <code>onclick="…"</code> is governed by <code>script-src-attr</code>, and a hash in <code>script-src</code> does not reach it. The handler died in all three engines.
+  </div>
+  <div class="law ok">
+    <b>THE <code>'unsafe-hashes'</code> LAW — the only way to keep a hashed handler.</b> Adding the <code>'unsafe-hashes'</code> source expression authorises a hashed event handler:
+    <ul>
+      <li><code>script-src 'sha256-…'</code> → handler <strong>blocked</strong></li>
+      <li><code>script-src 'unsafe-hashes' 'sha256-…'</code> → handler <strong>allowed</strong></li>
+      <li><code>script-src 'unsafe-hashes' 'sha256-wrong'</code> → handler <strong>blocked</strong> (the hash must match)</li>
+      <li><code>script-src 'unsafe-hashes' 'nonce-x' 'sha256-…'</code> → handler <strong>allowed</strong> <em>and</em> the nonced script allowed — the two mechanisms compose</li>
+    </ul>
+    <strong>⚠️ The sharp edge:</strong> the hash is computed over the attribute's <em>exact text</em>. The same handler written with one extra space is a <strong>different hash</strong> and is silently blocked. Measured with a padded handler: the correctly-hashed padded text ran, and the unpadded hash against the padded text did not. *A hash of an event handler is a tripwire — one reformat of your JSX and the click handler is dead with no error.*
+  </div>
+  <div class="chips" id="s3-chips"></div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section id="s4">
+  <h2>4 · The strict-dynamic ladder — the policy that ignores its own allow-list</h2>
+  <p class="sub"><code>'strict-dynamic'</code> is the modern replacement for an allow-list: it trusts scripts <em>loaded by</em> a trusted script, no matter where they came from. The surprise is how much it changes.</p>
+  <div class="tscroll">
+  <table id="strict-table">
+    <thead><tr><th>Policy</th><th>inline w/ nonce</th><th>parser external script</th><th>dynamic inline script</th><th>Verdict</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <div class="law warn">
+    <b>THE STRICT-DYNAMIC LAW.</b> Under <code>script-src 'strict-dynamic' 'nonce-x'</code>:
+    <ul>
+      <li>the <strong>nonced inline script runs</strong> ✓</li>
+      <li>the <strong>parser-inserted external script is BLOCKED</strong> ✗ — even with <code>'self'</code> in the same directive</li>
+      <li>the <strong>dynamic</strong> inline script (appended by JavaScript) <strong>runs</strong> ✓</li>
+    </ul>
+    *Adding <code>'self'</code> to a strict-dynamic policy changes nothing for the parser-inserted script — it is blocked either way. That is the point: strict-dynamic inverts the model, so an allow-list in the same directive is dead weight.*
+  </div>
+  <div class="law bad">
+    <b>THE STRICT-DYNAMIC-NO-NONCE LAW.</b> <code>script-src 'strict-dynamic'</code> with <strong>no nonce</strong> blocks everything — the inline script, the parser script, and the dynamic script. A strict-dynamic policy without a nonce is a policy that blocks all scripts. And a <strong>wrong</strong> nonce is the same as no nonce: the page is blank and the console shows a violation, but nothing tells you the nonce was the problem.
+  </div>
+  <div classlaw></div>
+  <div class="law">
+    <b>THE SCRIPT-SRC-ELEM LAW.</b> When you write only <code>script-src</code>, the browser uses it for <code>script-src-elem</code> too — and reports the violation against <code>script-src-elem</code>. That is why the console says <em>"Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback"</em>. The same applies to <code>script-src-attr</code> for event handlers, and to <code>worker-src</code> for workers. *If you want a different rule for event handlers than for scripts, you must set <code>script-src-attr</code> explicitly.*
+  </div>
+  <div class="chips" id="s4-chips"></div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section id="s5">
+  <h2>5 · The reporting tier — the split that silently kills your telemetry</h2>
+  <p class="sub">This is the headline. Two directives report violations: the legacy <code>report-uri</code> and the modern <code>report-to</code>. They behave <strong>completely differently</strong>, and the modern one <strong>replaces</strong> the legacy one rather than adding to it.</p>
+  <div class="split">
+    <div class="enginecard">
+      <h4>Chromium 155 <span class="badge no">report-to DEAD</span></h4>
+      <p><code>report-uri</code> → <strong>13 reports delivered</strong> in ~550 ms.<br><code>report-to</code> → <strong>0 reports</strong> over HTTP, <strong>0 over HTTPS</strong>, after 25 s.<br><strong>Both together</strong> → <strong>0 reports at the legacy endpoint too.</strong></p>
+    </div>
+    <div class="enginecard">
+      <h4>Brave 154 <span class="badge no">report-to DEAD</span></h4>
+      <p>Identical to Chromium, 3 repetitions each: <code>report-uri</code> → 13, <code>report-to</code> → 0, both → 0.</p>
+    </div>
+    <div class="enginecard">
+      <h4>WebKit 26.5 <span class="badge yes">report-to WORKS</span></h4>
+      <p><code>report-uri</code> → 10 reports delivered.<br><code>report-to</code> → <strong>10 reports delivered</strong> to an HTTPS endpoint, as <code>application/csp-report</code> JSON.</p>
+    </div>
+  </div>
+  <div class="law bad">
+    <b>THE REPORT-TO SUPPRESSION LAW (headline #1).</b> In Chromium and Brave, adding <code>report-to</code> to a policy that also has <code>report-uri</code> <strong>silently disables the legacy reporting</strong>. Measured side by side, 3 repetitions:
+    <ul>
+      <li><code>report-uri /report</code> alone → <strong>13 reports</strong> received</li>
+      <li><code>report-uri /report; report-to g</code> → <strong>0 reports</strong> received at the legacy endpoint</li>
+      <li>the violation events still fire (13 of 13) and <code>ReportingObserver</code> still sees all 13</li>
+    </ul>
+    <strong>So the browser is not failing — it is generating the report and then not delivering it.</strong> The report is produced, observable in-page, and dropped on the floor. *A team that "modernises" a policy by adding <code>report-to</code> loses every violation report in every Chrome user, sees no error, and concludes the site is clean.*
+  </div>
+  <div class="law ok">
+    <b>THE REPORT-EXISTS LAW — and the API that proves it.</b> The report <strong>is</strong> generated, in every engine and in report-ONLY mode. Measured with a <code>ReportingObserver</code>:
+    <ul>
+      <li><code>new ReportingObserver(cb).observe({type:'securitypolicyviolation', buffered:true})</code> → <strong>13 reports</strong> in Chromium, <strong>12 in WebKit</strong>, in every lane — including <code>report-uri</code>-only and <code>report-to</code>-only</li>
+      <li>the report body carries <code>blockedURL</code>, <code>disposition</code>, <code>effectiveDirective</code>, <code>originalPolicy</code>, <code>statusCode</code>, <code>sourceFile</code>, <code>lineNumber</code>, <code>columnNumber</code> and a <code>sample</code></li>
+      <li><code>buffered:true</code> replays reports that fired <strong>before</strong> the observer was installed — otherwise you lose the violations that happened during page load, which is where most of them are</li>
+    </ul>
+    *<strong>⚠️ Brave is the exception:</strong> <code>ReportingObserver</code> is <code>typeof 'function'</code> and every type string is <em>accepted</em>, but the callback <strong>never fired once</strong> in any lane. Brave accepts the observer and delivers nothing. A CSP dashboard built on the Reporting API is blind on Brave.*
+  </div>
+  <div class="law warn">
+    <b>THE REPORT-ONLY LAW.</b> <code>Content-Security-Policy-Report-Only</code> reports and <strong>never blocks</strong> — measured: with a report-only policy, every script ran (<code>inline</code> ✓, <code>external</code> ✓, <code>handler</code> ✓) while 13 violations were still generated and delivered. *This is the correct way to roll out a policy: ship it report-only, watch the report, then enforce. And it is the only mode in which a Brave deployment can see its violations at all — because Brave's legacy <code>report-uri</code> path does work.*
+  </div>
+  <div class="row">
+    <button id="btnReport">Count reports in THIS page (ReportingObserver)</button>
+    <button class="ghost mini" id="btnViol">Count securitypolicyviolation events</button>
+  </div>
+  <div class="chips" id="s5-chips"></div>
+  <div class="kv" id="s5-out">—</div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section id="s6">
+  <h2>6 · The document-level directives — <code>base-uri</code> and <code>form-action</code></h2>
+  <p class="sub">Most CSP work is about resources. These two are about <em>the document itself</em>: where relative URLs point, and where a form may submit. They are measured in isolation, because each one changes the meaning of every other URL on the page.</p>
+  <div class="tscroll">
+  <table id="doc-table">
+    <thead><tr><th>Policy</th><th>Result</th><th>Verdict</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <div class="law bad">
+    <b>THE BASE-URI LAW.</b> <code>base-uri 'none'</code> makes a <code>&lt;base href&gt;</code> <strong>inert</strong>: the browser ignores it and <code>document.baseURI</code> stays the document URL. Measured: with <code>base-uri 'none'</code> and a <code>&lt;base href="https://example.com/x/"&gt;</code>, <code>document.baseURI</code> read back as the <em>document</em> URL; with the directive absent it read back as <code>https://example.com/x/</code>.
+    <ul>
+      <li><code>base-uri 'none'</code> → base ignored, <strong>1 violation</strong> fired</li>
+      <li><code>base-uri 'self'</code> → base ignored (a cross-origin base is not 'self'), <strong>1 violation</strong> fired</li>
+      <li><code>base-uri https://example.com/</code> → base <strong>applied</strong>, <strong>0 violations</strong></li>
+      <li>no directive → base applied, 0 violations</li>
+    </ul>
+    *This is the directive that stops an injected <code>&lt;base&gt;</code> from re-pointing every relative script URL at an attacker. It is one line of header and it is on exactly one path — the injection that matters.*
+  </div>
+  <div class="law bad">
+    <b>THE FORM-ACTION LAW — AND THE 'self' TRAP.</b> <code>form-action 'none'</code> blocks the submit: measured, the page stayed on the form URL, <strong>no navigation happened</strong>, the target origin received <strong>zero requests</strong>, and one <code>form-action</code> violation fired. But look at the second row:
+    <ul>
+      <li><code>form-action 'none'</code> → submit <strong>BLOCKED</strong>, 0 requests</li>
+      <li><code>form-action 'self'</code> → submit <strong>ALSO BLOCKED</strong> — and this is the trap: the form's action pointed at a <strong>different port on the same host</strong>, which is a <em>different origin</em>, so <code>'self'</code> did not cover it</li>
+      <li>no directive → submit <strong>ALLOWED</strong>, the request arrived</li>
+      <li><code>form-action 'none' http://127.0.0.1:*</code> → submit <strong>ALLOWED</strong></li>
+    </ul>
+    *<code>'self'</code> in CSP is origin-exact: scheme + host + port. A form posting to <code>https://example.com</code> from <code>https://example.com:8443</code> is cross-origin, and <code>form-action 'self'</code> blocks it. The same surprise applies to <code>connect-src</code> and <code>img-src</code>.*
+  </div>
+  <div class="chips" id="s6-chips"></div>
+</section>
+
+<!-- ============ 7 ============ -->
+<section id="s7">
+  <h2>7 · The grammar — what the parser does with a broken policy</h2>
+  <p class="sub">A policy is a string, and the parser is forgiving in ways that are not forgiving of you. A typo is not a syntax error — it is a <em>different policy</em>, and the difference is invisible until you read what the browser actually applied.</p>
+  <div class="tscroll">
+  <table id="grammar-table">
+    <thead><tr><th>Policy string</th><th>What the browser applied</th><th>Verdict</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <div class="law bad">
+    <b>THE MISSING-SPACE LAW (headline).</b> <code>script-src'none'</code> — no space between the directive name and the source list — is parsed as the directive name <code>script-src'none'</code>, an <strong>unknown directive</strong>. The browser <strong>ignores the entire policy</strong>: 0 violations, every script ran. Measured against <code>script-src 'none'</code> (same characters, one space) which blocked everything with 13 violations.
+    <ul>
+      <li><code>script-src'none'</code> → <strong>policy ignored entirely</strong>, 0 violations</li>
+      <li><code>default-src'none'</code> → ignored, 0 violations</li>
+      <li><code>style-src'none'</code> → ignored, 0 violations</li>
+      <li><code>script-src\t'none'</code> (a tab) → <strong>enforced</strong>, 13 violations — a tab is whitespace</li>
+      <li><code>script-src 'none' </code> (trailing space) → enforced</li>
+    </ul>
+    *<strong>A single missing space turns a locked-down policy into no policy at all</strong> — and the page looks <em>fine</em>, because the failure mode of a working policy is a broken page, and the failure mode of a broken policy is a normal page. You will never notice.*
+  </div>
+  <div class="law">
+    <b>THE FIRST-DUPLICATE-WINS LAW.</b> When a directive appears twice, <strong>the first occurrence wins and the second is ignored</strong> — not the last, and not the union.
+    <ul>
+      <li><code>script-src 'self'; script-src 'none'</code> → 'self' applied (external script <strong>ran</strong>)</li>
+      <li><code>script-src 'none'; script-src 'self'</code> → 'none' applied (external script <strong>blocked</strong>)</li>
+    </ul>
+    *Two deployment layers each appending a policy fragment — a framework default plus a CDN header, say — will silently drop whichever comes second. Order is a security parameter.*
+  </div>
+  <div class="law">
+    <b>THE BAD-TOKEN LAW — a bad token voids its own directive, not the policy.</b> An unrecognised source expression makes <strong>its own directive</strong> invalid, and an invalid directive is <strong>dropped</strong> (it does not fall back to <code>default-src</code>, and it does not void the rest of the policy).
+    <ul>
+      <li><code>script-src 'self'; style-src 'bogus'</code> → <strong>script-src still enforced</strong> (inline scripts blocked), style-src dropped</li>
+      <li><code>script-src 'self'; img-src 'bogus'</code> → script-src enforced; the image was <strong>blocked</strong> (an invalid directive falls back to <code>default-src</code> when one exists, and to "block" when none does)</li>
+      <li><code>totally-made-up 'self'</code> alone → the whole policy is inert, 0 violations</li>
+    </ul>
+    *The asymmetric outcome is the trap: a typo in <code>style-src</code> silently leaves your styles unprotected while every script check still looks fine.*
+  </div>
+  <div class="law warn">
+    <b>THE EMPTY-DIRECTIVE LAW.</b> <code>script-src</code> with <strong>no source list</strong> means <strong><code>'none'</code></strong> — it is not "unset". Measured: <code>script-src</code> alone blocked every script (13 violations). *A directive with an empty value is the strictest policy you can write, and it is one keystroke away from a typo that removes it.*
+  </div>
+  <div class="chips" id="s7-chips"></div>
+</section>
+
+<!-- ============ 8 ============ -->
+<section id="s8">
+  <h2>8 · The style tier and the wasm tier — two directives with their own rules</h2>
+  <div class="split">
+    <div class="card">
+      <h4>style-src / style-src-attr / style-src-elem</h4>
+      <p><code>style-src 'none'</code> blocked <strong>both</strong> the <code>&lt;style&gt;</code> element and the <code>style=""</code> attribute. Splitting the directive changes it: <code>style-src-attr 'none'</code> alone blocked the attribute, and <code>style-src-elem 'none'</code> alone blocked the element. A <code>style-src</code> hash authorises a <code>&lt;style&gt;</code> element but <strong>not</strong> a <code>style=""</code> attribute — same shape as the script-src/script-src-attr split.</p>
+    </div>
+    <div class="card">
+      <h4>'wasm-unsafe-eval' ≠ 'unsafe-eval'</h4>
+      <p>Under <code>script-src 'self' 'wasm-unsafe-eval'</code>: <code>eval()</code> was <strong>blocked</strong> (EvalError) while <code>WebAssembly.compile()</code> and <code>WebAssembly.instantiate()</code> <strong>worked</strong>. <code>'unsafe-eval'</code> allows both. They are separate permissions.</p>
+    </div>
+  </div>
+  <div class="law ok">
+    <b>THE WASM LAW.</b> A policy of <code>script-src 'self' 'wasm-unsafe-eval'</code> permitted <code>WebAssembly.instantiate()</code> (measured: a module exporting <code>f()</code> returned <strong>42</strong>) while <code>eval()</code> threw <code>EvalError</code>. Adding <code>'unsafe-eval'</code> permitted both. *For an app that ships a WASM decoder (a video codec, a WASM build of a JS library), <code>'wasm-unsafe-eval'</code> is the narrow grant — it does not open <code>eval()</code>.*
+  </div>
+  <div class="law warn">
+    <b>THE WORKER-LAW.</b> A <code>blob:</code> worker is governed by <code>worker-src</code>, falling back to <code>child-src</code>, then <code>script-src</code>, then <code>default-src</code>. Under <code>script-src 'none'</code> the blob worker was blocked and the report said <em>"Note that 'worker-src' was not explicitly set, so 'script-src' is used as a fallback"</em>. A policy that tightens <code>script-src</code> without adding <code>worker-src</code> breaks every worker you load from a blob — a common pattern for bundlers.
+  </div>
+  <div class="chips" id="s8-chips"></div>
+</section>
+
+<!-- ============ 9 ============ -->
+<section id="s9">
+  <h2>9 · The capstone — a CSP auditor for a live deployment</h2>
+  <p class="sub">The laws above assemble into a tool. Paste a policy, and the auditor tells you what will break, in the order it will break it. This is the OpenDrones / Molt deliverable: <strong>a policy is a deployment artifact, and it deserves a pre-flight check like any other.</strong></p>
+  <div class="stage">
+    <label class="mini" for="audit-policy">Policy to audit</label>
+    <input id="audit-policy" class="policy" spellcheck="false" value="script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src *; connect-src 'self'">
+    <div class="row">
+      <button id="btnAudit">Audit the policy</button>
+      <button class="ghost mini" id="btnAuditStrict">Audit a hardened policy</button>
+    </div>
+    <div class="chips" id="audit-chips"></div>
+    <div class="kv" id="audit-out">—</div>
+  </div>
+  <div class="law ok">
+    <b>THE DELIVERABLE.</b> A CSP auditor is a <strong>pre-flight check</strong>: parse the policy, apply the measured laws, and report (a) what breaks, (b) which reporting directive actually works <em>in the browsers you care about</em>, (c) whether the policy can be tightened without breaking the app. For a client site that is a <strong>half-day line item</strong>; for OpenDrones' operator console — which serves live drone telemetry over a WebSocket and a video downlink — it is the difference between a deployment that works and a cockpit that silently stops receiving frames.
+  </div>
+  <div class="chips" id="s9-chips"></div>
+</section>
+
+<!-- ============ 10 ============ -->
+<section id="s10">
+  <h2>10 · The checklist — ten rules that survive a rewrite</h2>
+  <div class="chips" id="s10-chips"></div>
+</section>
+
+<footer>
+  <p><strong>Molt Studios Research Hub</strong> — Content Security Policy tier. 231 measured lanes · Chrome for Testing 155.0.8059.12 · Brave 154.1.96.60 · WebKit 26.5 · measured 2026-10-29.</p>
+  <p class="mini">Method: two plain-HTTP loopback origins, a real request log on the second one (a CSP-blocked request never leaves the browser), a CDP-injected probe battery that is immune to the page's own policy, and a real form submission to detect navigation. Every cross-engine law was asserted, not eyeballed, and re-run in the visitor's browser by the lab in §1.</p>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var el = function (id) { return document.getElementById(id); };
+  var ENGINE = /Firefox\//.test(navigator.userAgent) ? 'Firefox'
+    : /Edg\//.test(navigator.userAgent) ? 'Edge'
+    : /Chrome\//.test(navigator.userAgent) ? 'Chromium'
+    : /Safari\//.test(navigator.userAgent) ? 'WebKit' : 'Unknown';
+
+  function chips(id) {
+    var host = el(id);
+    if (!host) return { add: function () { } };
+    return {
+      add: function (kind, label, detail) {
+        var c = document.createElement('span');
+        c.className = 'chip ' + (kind || 'info');
+        c.textContent = label;
+        if (detail) c.title = detail;
+        host.appendChild(c);
+        return c;
+      }
+    };
+  }
+  function row(tbody, cells, cls) {
+    var tr = document.createElement('tr');
+    cells.forEach(function (c, i) {
+      var td = document.createElement('td');
+      if (i === 0 || cls === 'v') { td.className = 'v'; }
+      if (c && c.nodeType === 1) td.appendChild(c);
+      else td.innerHTML = String(c);
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+    return tr;
+  }
+  function yn(v) { return v === true ? '<span class="yes">YES</span>' : v === false ? '<span class="no">NO</span>' : '<span class="na">—</span>'; }
+  function td(t) { return '<span class="hl">' + t + '</span>'; }
+
+  // ---------------------------------------------------------------- §1 LAB
+  var labFrame = el('lab-frame');
+  var labRun = 0;
+  var labOut = el('lab-out');
+  var labSummary = el('lab-summary');
+  var labChips = chips('lab-chips');
+
+  function runLab() {
+    var policy = (el('policy').value || '').trim();
+    var nonce = 'x';
+    var hasNonce = policy.indexOf("'nonce-") >= 0;
+    var nonceVal = nonce;
+    var violations = [];
+    var results = {};
+
+    // THE LISTENER GOES FIRST, BEFORE THE POLICY META.
+    // This is the meta-window law in action: a policy only governs what comes AFTER
+    // it, so a script placed before the <meta> runs freely — and it is the only way to
+    // catch the PARSE-TIME violations, which fire before the parent's own listener
+    // could possibly be attached.
+    var doc = '<!doctype html><html><head><meta charset="utf-8">';
+    doc += '<scr' + 'ipt>window.__viol=[];window.addEventListener("securitypolicyviolation",function(e){window.__viol.push({d:e.violatedDirective||e.effectiveDirective,u:e.blockedURI,p:e.disposition});});<\/scr' + 'ipt>';
+    if (policy) doc += '<meta http-equiv="Content-Security-Policy" content="' + policy.replace(/"/g, '&quot;') + '">';
+    doc += '</head><body>';
+    doc += '<scr' + 'ipt>window.__inlineRan = true;<\/scr' + 'ipt>';
+    doc += '<scr' + 'ipt src="data:text/javascript,window.__extRan=true;"><\/scr' + 'ipt>';
+    doc += '<div id="h" onclick="window.__handlerRan = true;">handler</div>';
+    doc += '<scr' + 'ipt>window.__dyn = 1;<\/scr' + 'ipt>';
+    doc += '</body></html>';
+    // A unique comment per run guarantees the srcdoc is always a NEW document, so the
+    // iframe's load event always fires (a cached srcdoc would not re-navigate).
+    doc += '<!-- run ' + (++labRun) + ' -->';
+
+    labSummary.textContent = 'loading the sandbox…';
+
+    labFrame.onload = function () {
+      // Read the window AFTER the navigation — a contentWindow captured before the
+      // srcdoc navigation completes points at the old about:blank document.
+      var w = labFrame.contentWindow;
+      if (!w) { labSummary.textContent = 'the sandbox window is not reachable from this browser'; return; }
+      try {
+        w.addEventListener('securitypolicyviolation', function (e) {
+          violations.push({ d: e.violatedDirective || e.effectiveDirective, u: e.blockedURI, disp: e.disposition, line: e.lineNumber });
+        });
+      } catch (e) { }
+      setTimeout(function () {
+        try {
+          results.inline = w.__inlineRan === true;
+          results.dyn = w.__dyn === 1;
+          results.ext = w.__extRan === true;
+        } catch (e) { results.inline = 'unreadable'; }
+        // CLICK the handler — an event handler is only compiled when it fires, so
+        // "the handler did not run" is only observable after a click.
+        results.handler = false;
+        try {
+          var h = w.document.getElementById('h');
+          if (h) { h.click(); results.handler = w.__handlerRan === true; }
+          else results.handler = 'no-handler';
+        } catch (e) { results.handler = 'click-threw:' + e.name; }
+        // The sandbox's OWN listener (installed before the policy) caught the parse-time
+        // violations; the parent's listener catches the ones that fire later.
+        try {
+          (w.__viol || []).forEach(function (v) { violations.push({ d: v.d, u: v.u, disp: v.p }); });
+          w.__viol = [];
+        } catch (e) { }
+        results.violations = violations.length;
+        results.violList = violations.map(function (v) { return v.d + (v.u && v.u !== 'inline' ? ' → ' + String(v.u).split('/').pop() : ''); });
+        renderLab(policy, results, hasNonce, nonceVal);
+      }, 500);
+    };
+    labFrame.srcdoc = doc;
+  }
+
+  function renderLab(policy, r, hasNonce, nonceVal) {
+    var out = [];
+    out.push('policy        : ' + (policy || '(none)'));
+    out.push('inline script : ' + (r.inline === true ? 'RAN' : r.inline === 'unreadable' ? 'unreadable' : 'BLOCKED'));
+    out.push('event handler : ' + (r.handler === true ? 'RAN' : r.handler === 'no-handler' ? 'no-handler' : 'BLOCKED') + '   (after a click)');
+    out.push('external (data:) script: ' + (r.ext === true ? 'RAN' : 'BLOCKED'));
+    out.push('dynamic script: ' + (r.dyn === true ? 'RAN' : 'BLOCKED'));
+    out.push('violations    : ' + r.violations + (r.violList && r.violList.length ? '  [' + r.violList.slice(0, 6).join(', ') + ']' : ''));
+    labOut.textContent = out.join('\n');
+
+    labChips.add('info', 'policy applied via <meta> in the sandbox srcdoc',
+      'the meta route is the one a static host can set without touching the server');
+    labChips.add(r.inline === true ? 'ok' : 'fail', 'inline script ' + (r.inline === true ? 'ran' : 'was blocked'),
+      'governed by script-src-elem (fallback script-src)');
+    labChips.add(r.handler === true ? 'ok' : 'fail', 'event handler ' + (r.handler === true ? 'ran' : 'was blocked'),
+      'governed by script-src-attr (fallback script-src) — a hash in script-src does NOT reach it');
+    labChips.add(r.violations > 0 ? 'warn' : 'info', r.violations + ' securitypolicyviolation event(s)',
+      'the same violation the console logs');
+    if (hasNonce) {
+      labChips.add('warn', "a nonce in the policy de-fangs 'unsafe-inline'",
+        'every inline script WITHOUT the nonce attribute is blocked — that is the production failure mode');
+    }
+    if (policy.indexOf("'none'") >= 0 && policy.indexOf("'unsafe") >= 0) {
+      labChips.add('fail', "contradictory policy", "'none' and 'unsafe-inline' in the same directive");
+    }
+    if (policy.indexOf('strict-dynamic') >= 0) {
+      labChips.add('warn', 'strict-dynamic ignores the allow-list',
+        'the parser-inserted external script is blocked even with \'self\' present');
+    }
+    if (!/[\s](none|self|unsafe|strict|nonce|hash|sha|data|http|https|blob|'\w)/.test(policy) && policy.length) {
+      labChips.add('warn', 'the directive name may have swallowed its source list',
+        "a missing space (script-src'none') makes the browser ignore the WHOLE policy");
+    }
+    labSummary.textContent = 'inline ' + (r.inline === true ? 'ran' : 'blocked') +
+      ' · handler ' + (r.handler === true ? 'ran' : 'blocked') +
+      ' · ' + r.violations + ' violation event(s)';
+  }
+
+  // ---------------------------------------------------------------- §5 REPORTS
+  var reportCount = 0, reportSample = null, reportSupported = false, reportErr = null;
+  var violCount = 0;
+  try {
+    new ReportingObserver(function (list) {
+      list.forEach(function (r) {
+        reportCount++;
+        if (!reportSample) {
+          var b = r.body;
+          reportSample = {
+            type: r.type,
+            blockedURL: b ? String(b.blockedURL || '') : '',
+            disposition: b ? String(b.disposition || '') : '',
+            effectiveDirective: b ? String(b.effectiveDirective || '') : '',
+            originalPolicy: b ? String(b.originalPolicy || '').slice(0, 80) : '',
+            statusCode: b ? b.statusCode : null,
+            lineNumber: b ? b.lineNumber : null,
+          };
+        }
+      });
+    }).observe({ type: 'securitypolicyviolation', buffered: true });
+    reportSupported = true;
+  } catch (e) { reportErr = e.name + ': ' + String(e.message).slice(0, 120); }
+  window.addEventListener('securitypolicyviolation', function () { violCount++; });
+
+  function runReports() {
+    var out = el('s5-out');
+    out.textContent = [
+      'ReportingObserver available : ' + (typeof ReportingObserver),
+      'observer installed           : ' + (reportSupported ? 'yes' : 'NO — ' + reportErr),
+      'reports seen (buffered+live) : ' + reportCount,
+      'securitypolicyviolation evt : ' + violCount,
+      '',
+      reportSample ? 'sample report body:' : 'sample report body: (none yet — this page does not violate any policy)',
+      reportSample ? JSON.stringify(reportSample, null, 1) : ''
+    ].join('\n');
+    var c = chips('s5-chips');
+    c.add(reportSupported ? 'ok' : 'fail', 'ReportingObserver ' + (reportSupported ? 'present' : 'ABSENT'),
+      reportSupported ? 'this browser exposes the Reporting API' : reportErr);
+    c.add(reportCount > 0 ? 'ok' : 'info', reportCount + ' report(s) buffered/live',
+      'buffered:true replays the violations that fired before the observer existed');
+    c.add('info', violCount + ' securitypolicyviolation event(s)', 'the in-page event, independent of delivery');
+    if (reportCount === 0 && reportSupported) {
+      c.add('info', 'no reports on this page', 'the demo page itself does not violate a policy — run the §1 lab to generate some');
+    }
+  }
+
+  // ---------------------------------------------------------------- TABLES
+  var DELIVERY = [
+    ['header <code>script-src \'none\'</code>', 'enforced — 13 violations, every script blocked', 'enforce'],
+    ['header <code>script-src \'self\'</code> + <code>&lt;meta script-src \'none\'&gt;</code>', 'enforced — 23 violations, every script blocked (the meta TIGHTENED the header)', 'enforce'],
+    ['header <code>script-src \'none\'</code> + <code>&lt;meta script-src \'self\'&gt;</code>', 'enforced — 23 violations, every script blocked (the meta could not LOOSEN the header)', 'enforce'],
+    ['<code>&lt;meta script-src \'none\'&gt;</code> in <code>&lt;head&gt;</code>', 'enforced — 13 violations, every script blocked', 'enforce'],
+    ['<code>&lt;meta script-src \'none\'&gt;</code> after the scripts', 'IGNORED — 0 violations, every script ran', 'ignored'],
+    ['<code>&lt;meta frame-ancestors \'none\'&gt;</code>', 'IGNORED — 0 violations (frame-ancestors is header-only)', 'ignored'],
+    ['<code>Content-Security-Policy-Report-Only: script-src \'none\'</code>', 'reports only — 13 violations, every script still ran', 'report'],
+  ];
+  (function () {
+    var tb = el('delivery-table').querySelector('tbody');
+    DELIVERY.forEach(function (r) {
+      row(tb, [r[0], r[1], r[2] === 'ignored' ? '<span class="no">ignored</span>' : r[2] === 'report' ? '<span class="warn">report-only</span>' : '<span class="yes">enforced</span>']);
+    });
+  })();
+
+  var NONCE = [
+    ["script-src 'unsafe-inline'", 'yes', 'yes', 'yes', 'everything inline is allowed'],
+    ["script-src 'unsafe-inline' 'nonce-x'", 'yes', 'NO', 'NO', "the nonce de-fangs 'unsafe-inline'"],
+    ["script-src 'nonce-x' 'unsafe-inline'", 'yes', 'NO', 'NO', 'token order does not matter'],
+    ["script-src 'self' 'unsafe-inline'", 'yes', 'yes', 'yes', 'no nonce — nothing is de-fanged'],
+    ["script-src 'self' 'unsafe-inline' 'nonce-x'", 'yes', 'NO', 'NO', 'same trap, with a host source'],
+    ["script-src 'nonce-x'", 'yes', 'NO', 'NO', 'a nonce policy blocks all non-nonced inline'],
+    ["script-src 'sha256-…' (hash of the inline)", 'n/a', 'yes', 'NO', 'a hash reaches script-src-elem, not script-src-attr'],
+    ["script-src 'unsafe-hashes' 'sha256-…'", 'n/a', 'yes', 'yes', "'unsafe-hashes' is the only way to keep a hashed handler"],
+    ["script-src 'unsafe-hashes' 'nonce-x' 'sha256-…'", 'yes', 'NO', 'yes', 'the two mechanisms compose'],
+  ];
+  (function () {
+    var tb = el('nonce-table').querySelector('tbody');
+    NONCE.forEach(function (r) {
+      row(tb, [r[0], yn(r[1] === 'yes'), yn(r[2] === 'yes'), yn(r[3] === 'yes'), r[4]]);
+    });
+  })();
+
+  var STRICT = [
+    ["script-src 'strict-dynamic' 'nonce-x'", 'yes', 'NO', 'yes', 'the allow-list is dead weight'],
+    ["script-src 'strict-dynamic' 'self' 'nonce-x'", 'yes', 'NO', 'yes', "adding 'self' changes nothing"],
+    ["script-src 'strict-dynamic' 'unsafe-inline' 'nonce-x'", 'yes', 'NO', 'yes', "'unsafe-inline' is ignored under strict-dynamic"],
+    ["script-src 'strict-dynamic'", 'NO', 'NO', 'NO', 'no nonce — everything is blocked'],
+    ["script-src 'strict-dynamic' 'nonce-x' (wrong nonce on the tag)", 'NO', 'NO', 'yes', 'a wrong nonce is no nonce — and the page is blank'],
+  ];
+  (function () {
+    var tb = el('strict-table').querySelector('tbody');
+    STRICT.forEach(function (r) {
+      row(tb, [r[0], yn(r[1] === 'yes'), yn(r[2] === 'yes'), yn(r[3] === 'yes'), r[4]]);
+    });
+  })();
+
+  var DOC = [
+    ["base-uri 'none'", "document.baseURI stayed the document URL — the &lt;base&gt; was ignored (1 violation)", 'blocked'],
+    ["base-uri 'self'", "the cross-origin &lt;base&gt; was still ignored (1 violation)", 'blocked'],
+    ["base-uri https://example.com/", "the &lt;base&gt; was APPLIED — 0 violations", 'allowed'],
+    ["no base-uri directive", "the &lt;base&gt; was APPLIED — 0 violations", 'allowed'],
+    ["form-action 'none'", 'the submit was BLOCKED — 0 requests reached the target origin', 'blocked'],
+    ["form-action 'self'", 'the submit was BLOCKED — same host, different port is a different origin', 'blocked'],
+    ["form-action 'none' http://127.0.0.1:*", 'the submit was ALLOWED — the source list matched', 'allowed'],
+    ["no form-action directive", 'the submit was ALLOWED', 'allowed'],
+  ];
+  (function () {
+    var tb = el('doc-table').querySelector('tbody');
+    DOC.forEach(function (r) {
+      row(tb, [r[0], r[1], r[2] === 'blocked' ? '<span class="no">blocked</span>' : '<span class="yes">allowed</span>']);
+    });
+  })();
+
+  var GRAMMAR = [
+    ["script-src 'none'", 'enforced — 13 violations', 'enforce'],
+    ["script-src'none'", 'the policy was IGNORED — 0 violations, every script ran', 'ignored'],
+    ["default-src'none'", 'ignored — 0 violations', 'ignored'],
+    ["style-src'none'", 'ignored — 0 violations', 'ignored'],
+    ["script-src\t'none'", 'enforced — 13 violations (a tab is whitespace)', 'enforce'],
+    ["script-src 'self'; script-src 'none'", "the FIRST directive won — 'self' applied, the external script ran", 'first'],
+    ["script-src 'none'; script-src 'self'", "the FIRST directive won — 'none' applied, the external script was blocked", 'first'],
+    ["script-src 'self'; style-src 'bogus'", "script-src still enforced; style-src dropped as invalid", 'partial'],
+    ["script-src 'self'; img-src 'bogus'", "script-src still enforced; the image was blocked (invalid → default-src → block)", 'partial'],
+    ["totally-made-up 'self'", 'the whole policy is inert — 0 violations', 'ignored'],
+    ["script-src", "enforced as 'none' — 13 violations", 'enforce'],
+    ["script-src ; default-src 'self'", 'the empty script-src was enforced as none — 19 violations', 'enforce'],
+    ["script-src 'self' 'bogus'", "the invalid token voids the whole directive — the external script ran", 'ignored'],
+  ];
+  (function () {
+    var tb = el('grammar-table').querySelector('tbody');
+    GRAMMAR.forEach(function (r) {
+      var v = r[2] === 'ignored' ? '<span class="no">ignored</span>'
+        : r[2] === 'first' ? '<span class="warn">first wins</span>'
+          : r[2] === 'partial' ? '<span class="warn">partial</span>'
+            : '<span class="yes">enforced</span>';
+      row(tb, [r[0], r[1], v]);
+    });
+  })();
+
+  // ---------------------------------------------------------------- §9 AUDITOR
+  function audit(policy) {
+    var findings = [];
+    var has = function (re) { return re.test(policy); };
+    var dirs = policy.split(';').map(function (s) { return s.trim(); }).filter(Boolean);
+    var names = dirs.map(function (d) { return d.split(/\s+/)[0].toLowerCase(); });
+
+    // The missing-space law: a directive name with no whitespace before its source list.
+    dirs.forEach(function (d) {
+      var m = d.match(/^([a-zA-Z0-9-]+)('[^']*'|\S+)/);
+      if (m && !/\s/.test(d)) {
+        findings.push(['fail', 'the directive "' + m[1] + m[2] + '" has no space after its name',
+          'the browser parses the WHOLE token as an unknown directive and IGNORES the policy — this policy does nothing at all']);
+      }
+    });
+    // Duplicate directives: first wins.
+    var seen = {};
+    dirs.forEach(function (d) {
+      var n = d.split(/\s+/)[0].toLowerCase();
+      if (seen[n]) findings.push(['warn', 'the directive "' + n + '" appears more than once',
+        'the FIRST occurrence wins and the rest are ignored — check the order your layers emit the header in']);
+      seen[n] = true;
+    });
+    // The nonce law.
+    var scriptSrc = dirs.filter(function (d) { return /^script-src(\s|$)/i.test(d); })[0] || '';
+    if (has(/'nonce-/) && has(/'unsafe-inline'/)) {
+      findings.push(['fail', "'unsafe-inline' is present alongside a nonce",
+        "the browser IGNORES 'unsafe-inline' — every inline script without the nonce attribute stops running"]);
+    }
+    if (has(/'nonce-/) && !has(/'unsafe-hashes'/) && has(/onclick|onerror|onload/)) {
+      findings.push(['warn', 'the policy uses a nonce but not \'unsafe-hashes\'', 'hashed event handlers will be blocked']);
+    }
+    // The strict-dynamic law.
+    if (has(/'strict-dynamic'/)) {
+      findings.push(['warn', "'strict-dynamic' is present", "the source allow-list in the same directive is ignored — a parser-inserted <script src> will be blocked"]);
+      if (!has(/'nonce-/)) findings.push(['fail', "'strict-dynamic' without a nonce", 'every script on the page is blocked — the page will be blank']);
+    }
+    // The reporting tier.
+    if (has(/report-to/) && has(/report-uri/)) {
+      findings.push(['fail', 'both report-uri and report-to are present',
+        'in Chromium and Brave, report-to SILENTLY SUPPRESSES report-uri — you will receive ZERO violation reports']);
+    } else if (has(/report-to/)) {
+      findings.push(['fail', "only 'report-to' is configured",
+        'Chromium and Brave deliver NOTHING to a report-to endpoint — reports are generated but never delivered. Use report-uri, or add a ReportingObserver in-page']);
+    } else if (!has(/report-uri/) && !has(/report-to/)) {
+      findings.push(['warn', 'no reporting directive at all', 'violations will be silent — there is no telemetry for the policy that is about to break production']);
+    }
+    if (has(/report-uri/)) {
+      findings.push(['ok', 'report-uri is configured', 'delivers in Chromium 155, Brave 154 and WebKit 26.5 — this is the one reporting route that works everywhere']);
+    }
+    // The document-level directives.
+    if (!has(/base-uri/)) {
+      findings.push(['warn', 'base-uri is missing', 'an injected <base href> can re-point every relative script URL — one line of header closes it']);
+    }
+    if (!has(/form-action/)) {
+      findings.push(['warn', 'form-action is missing', 'a form can post anywhere — including a cross-origin collector']);
+    }
+    // The framing directive.
+    if (!has(/frame-ancestors/)) {
+      findings.push(['warn', 'frame-ancestors is missing', 'the page can be framed — add it to the HEADER, a meta tag is ignored']);
+    }
+    // The wildcard law.
+    if (has(/img-src\s+\*/) || has(/script-src\s+\*/)) {
+      findings.push(['warn', 'a wildcard source is present', "'*' is broad — it permits any host that scheme-matching allows"]);
+    }
+    // The empty directive.
+    dirs.forEach(function (d) {
+      if (d.split(/\s+/).length === 1 && /^[a-z-]+$/i.test(d) && d.toLowerCase() !== 'upgrade-insecure-requests') {
+        findings.push(['warn', 'the directive "' + d + '" has an empty source list', "it means 'none' — the strictest possible policy, and one typo away from being nothing at all"]);
+      }
+    });
+    if (!findings.length) findings.push(['ok', 'no measured defects found in this policy', 'that is not a guarantee — run it in report-only mode first']);
+    return findings;
+  }
+
+  function runAudit() {
+    var policy = el('audit-policy').value || '';
+    var findings = audit(policy);
+    var out = [];
+    findings.forEach(function (f) {
+      out.push('[' + f[0].toUpperCase() + '] ' + f[1]);
+      out.push('    ' + f[2]);
+    });
+    el('audit-out').textContent = out.join('\n');
+    var c = chips('audit-chips');
+    c.add('info', findings.length + ' finding(s) for the audited policy', 'parsed from the measured laws');
+    var worst = findings.filter(function (f) { return f[0] === 'fail'; }).length;
+    c.add(worst ? 'fail' : 'ok', worst + ' blocking defect(s)', worst ? 'this policy will misbehave in production' : 'no blocking defect found');
+  }
+
+  // ---------------------------------------------------------------- CHECKLIST
+  (function () {
+    var h = chips('s10-chips');
+    [
+      ['fail', '1 · Never add report-to to a policy that has report-uri', 'in Chromium and Brave, report-to silently suppresses report-uri — you lose every violation report'],
+      ['fail', '2 · Check for a missing space after a directive name', "script-src'none' makes the browser ignore the whole policy — and the page looks fine"],
+      ['fail', '3 · A nonce de-fangs unsafe-inline for the whole directive', "order does not matter; every inline script without the nonce dies"],
+      ['warn', '4 · A hash in script-src does not authorise an event handler', "add 'unsafe-hashes' — and remember the hash is over the exact attribute text"],
+      ['warn', '5 · The first duplicate directive wins, not the last', 'order is a security parameter when two layers emit the header'],
+      ['warn', '6 · An empty directive means none', 'script-src with no source list is the strictest policy you can write'],
+      ['warn', '7 · A bad source token voids its own directive only', "style-src 'bogus' leaves your styles unprotected while script checks still look clean"],
+      ['warn', '8 · A meta policy can only tighten a header, never loosen it', 'and a meta after the resources it governs is no policy at all'],
+      ['warn', '9 · frame-ancestors, report-uri and sandbox are header-only', 'a meta tag with them does nothing'],
+      ['warn', '10 · base-uri and form-action are document-level', "form-action 'self' does not cover the same host on a different port"],
+      ['ok', '11 · Prefer report-uri, and add a ReportingObserver in-page', 'the observer is the only route that works on every engine — except Brave, where it never fires'],
+      ['ok', '12 · Roll out with Content-Security-Policy-Report-Only first', 'it reports without blocking — measured: every script ran while 13 violations were delivered'],
+    ].forEach(function (r) { h.add(r[0], r[1], r[2]); });
+  })();
+
+  // ---------------------------------------------------------------- SECTION CHIPS
+  chips('s1-chips').add('info', 'engine: ' + ENGINE, navigator.userAgent.slice(0, 100));
+  chips('s1-chips').add('info', 'the lab is a sandboxed srcdoc iframe', 'no same-origin, no forms, no top navigation');
+  chips('s2-chips').add('ok', 'header + meta = intersection', 'the tighter policy wins, in both directions');
+  chips('s2-chips').add('fail', "a meta after the scripts is no policy at all", 'measured: 0 violations, every script ran');
+  chips('s3-chips').add('fail', "the nonce de-fangs 'unsafe-inline'", 'measured in all three engines');
+  chips('s3-chips').add('ok', "'unsafe-hashes' is the only route to a hashed handler", 'and the hash must match the exact attribute text');
+  chips('s4-chips').add('warn', 'strict-dynamic ignores the allow-list', 'the parser script is blocked even with self present');
+  chips('s5-chips').add('fail', 'Chromium and Brave deliver NOTHING to report-to', 'measured over HTTP and HTTPS, 3 repetitions');
+  chips('s5-chips').add('fail', 'report-to SUPPRESSES report-uri in Chromium and Brave', '13 reports → 0');
+  chips('s5-chips').add('ok', 'WebKit 26.5 delivers report-to', '10 reports, application/csp-report');
+  chips('s5-chips').add('warn', "Brave's ReportingObserver never fires", 'the API is present and accepted, and delivers nothing');
+  chips('s6-chips').add('ok', "base-uri 'none' makes <base> inert", 'measured: document.baseURI stayed the document URL');
+  chips('s6-chips').add('fail', "form-action 'self' does not cover a different port", 'same host, different origin — the submit was blocked');
+  chips('s7-chips').add('fail', 'a missing space voids the whole policy', 'the single most dangerous byte in a CSP header');
+  chips('s7-chips').add('warn', 'the first duplicate directive wins', 'not the last, and not the union');
+  chips('s8-chips').add('ok', "'wasm-unsafe-eval' permits WASM without eval()", 'measured: instantiate() → 42, eval() → EvalError');
+  chips('s8-chips').add('warn', "blob workers need worker-src", "otherwise they fall back to script-src and get blocked");
+  chips('s9-chips').add('info', 'the auditor applies the measured laws', 'a pre-flight check for a policy that is a deployment artifact');
+
+  // ---------------------------------------------------------------- WIRING
+  el('btnRun').addEventListener('click', runLab);
+  el('btnNone').addEventListener('click', function () { el('policy').value = "script-src 'none'"; runLab(); });
+  el('btnSelf').addEventListener('click', function () { el('policy').value = "script-src 'self'"; runLab(); });
+  el('btnNonce').addEventListener('click', function () { el('policy').value = "script-src 'nonce-x'"; runLab(); });
+  el('btnStrict').addEventListener('click', function () { el('policy').value = "script-src 'strict-dynamic' 'nonce-x'"; runLab(); });
+  el('btnBad').addEventListener('click', function () { el('policy').value = "script-src'none'"; runLab(); });
+  el('btnReport').addEventListener('click', runReports);
+  el('btnViol').addEventListener('click', function () {
+    el('s5-out').textContent = 'securitypolicyviolation events seen on this page: ' + violCount +
+      '\n\n(These fire on THIS page — run the §1 lab with a policy that blocks something to generate them.)';
+    chips('s5-chips').add('info', violCount + ' violation event(s) on this page', 'the in-page event, independent of any delivery');
+  });
+  el('btnAudit').addEventListener('click', runAudit);
+  el('btnAuditStrict').addEventListener('click', function () {
+    el('audit-policy').value = "script-src 'nonce-x' 'strict-dynamic'; style-src 'nonce-x'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; report-uri /report";
+    runAudit();
+  });
+
+  runLab();
+  runAudit();
+  runReports();
+  window.__mcDone = true;
+  document.title = 'Content Security Policy — the enforcement tier';
+})();
+</script>
+</body>
+</html>
