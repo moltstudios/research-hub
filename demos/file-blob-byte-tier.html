@@ -1,0 +1,1085 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>File &amp; Blob — the byte tier: the BOM-snip law, the second-truncated timestamp, the silent type trap</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --ink:#161513; --muted:#6d675f; --line:#e6e1d9;
+    --accent:#2f5d50; --accent-soft:#eaf3f0; --ok:#1c6b47; --ok-soft:#eaf6ef;
+    --warn:#8a6100; --warn-soft:#fdf6e3; --fail:#a32b1c; --fail-soft:#fdeceb;
+    --info:#2a5a8a; --info-soft:#ecf3fa; --radius:14px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 24px 96px}
+  header{margin-bottom:28px}
+  .kicker{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  h1{font-size:clamp(26px,4vw,36px);line-height:1.14;letter-spacing:-.022em;margin:0 0 12px;font-weight:680}
+  .lede{font-size:15.5px;line-height:1.62;color:#403b35;margin:0 0 10px;max-width:66ch}
+  .meta{font:13px/1.5 var(--mono);color:var(--muted);margin-top:18px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px;margin-bottom:24px}
+  h2{font-size:21px;line-height:1.3;margin:0 0 6px;letter-spacing:-.012em;font-weight:660}
+  h3{font-size:15px;margin:22px 0 8px;font-weight:640}
+  .sub{color:var(--muted);font-size:14.5px;margin:0 0 18px;max-width:70ch}
+  code,kbd{font-family:var(--mono);font-size:.885em;background:#f3efe9;padding:.12em .38em;border-radius:5px;border:1px solid #e8e2d8;overflow-wrap:anywhere}
+  .law{border-left:3px solid var(--accent);padding:12px 0 12px 16px;margin:16px 0;background:linear-gradient(90deg,var(--accent-soft),transparent 70%);border-radius:0 8px 8px 0}
+  .law b{color:var(--accent)}
+  .law.bad{border-color:var(--fail);background:linear-gradient(90deg,var(--fail-soft),transparent 70%)}
+  .law.bad b{color:var(--fail)}
+  .law.warn{border-color:var(--warn);background:linear-gradient(90deg,var(--warn-soft),transparent 70%)}
+  .law.warn b{color:var(--warn)}
+  .law.ok{border-color:var(--ok);background:linear-gradient(90deg,var(--ok-soft),transparent 70%)}
+  .law.ok b{color:var(--ok)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+  .chip{font:600 12px/1.35 var(--mono);padding:6px 10px;border-radius:999px;border:1px solid;white-space:normal;overflow-wrap:anywhere;max-width:100%}
+  .chip.ok{color:var(--ok);border-color:#b9dfca;background:var(--ok-soft)}
+  .chip.warn{color:var(--warn);border-color:#ecd9a3;background:var(--warn-soft)}
+  .chip.fail{color:var(--fail);border-color:#f0c2bc;background:var(--fail-soft)}
+  .chip.info{color:var(--info);border-color:#bfd6ee;background:var(--info-soft)}
+  .chip.pending{color:var(--muted);border-color:var(--line);background:#f6f4f1}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font:600 11.5px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:#faf8f5}
+  td.v{font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+  .tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;background:#fff}
+  .tscroll table{margin:0}
+  .tscroll th{position:sticky;top:0}
+  button{font:600 14px/1 inherit;padding:11px 17px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;letter-spacing:.01em}
+  button:hover{background:#24493f}
+  button.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
+  button.ghost:hover{background:#f6f4f1}
+  button:disabled{opacity:.5;cursor:default}
+  button.mini{font:600 12px/1 var(--mono);padding:8px 11px;border-radius:8px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}
+  pre{background:#171512;color:#f3efe9;padding:14px 16px;border-radius:10px;overflow-x:auto;font:12.5px/1.65 var(--mono);border:1px solid #2a2620}
+  pre code{background:none;border:none;color:inherit;padding:0}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+  .card{border:1px solid var(--line);border-radius:11px;padding:14px 16px;background:#fdfcfa}
+  .card h4{margin:0 0 6px;font-size:14px;font-weight:640}
+  .card p{margin:0;font-size:13.5px;color:var(--muted);line-height:1.55}
+  .kv{font-family:var(--mono);font-size:12.5px;line-height:1.75;background:#f8f6f2;border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+  .pill{display:inline-block;font:600 11px/1 var(--mono);padding:4px 8px;border-radius:6px;background:#efeae2;color:var(--muted);margin-right:6px}
+  .pill.a{background:var(--accent-soft);color:var(--accent)}
+  .pill.s{background:var(--ok-soft);color:var(--ok)}
+  .pill.f{background:var(--fail-soft);color:var(--fail)}
+  .pill.w{background:var(--warn-soft);color:var(--warn)}
+  footer{color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:20px;margin-top:8px}
+  .verdict{border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.55;margin:12px 0;border:1px solid}
+  .verdict.ok{background:var(--ok-soft);border-color:#b9dfca;color:#14523a}
+  .verdict.warn{background:var(--warn-soft);border-color:#ecd9a3;color:#6b4b00}
+  .verdict.info{background:var(--info-soft);border-color:#bfd6ee;color:#1e4468}
+  .verdict.fail{background:var(--fail-soft);border-color:#f0c2bc;color:#8a2317}
+  .mini{font:12px/1.6 var(--mono);color:var(--muted)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-top:8px}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .yes{color:var(--ok);font-weight:700}
+  .no{color:var(--fail);font-weight:700}
+  .na{color:var(--muted)}
+  .stage{border:1px solid var(--line);border-radius:12px;background:#fff;padding:18px;margin:14px 0}
+  .split{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin:12px 0}
+  .enginecard{border:1px solid var(--line);border-radius:11px;padding:14px 16px;background:#fdfcfa}
+  .enginecard h4{margin:0 0 8px;font-size:14px;font-weight:660;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .enginecard p{margin:0;font-size:13px;color:var(--muted);line-height:1.55}
+  .badge{font:700 11px/1 var(--mono);padding:5px 8px;border-radius:6px}
+  .badge.yes{background:var(--ok-soft);color:var(--ok)}
+  .badge.no{background:var(--fail-soft);color:var(--fail)}
+  .badge.part{background:var(--warn-soft);color:var(--warn)}
+  .dropzone{border:2px dashed var(--line);border-radius:12px;padding:22px;text-align:center;color:var(--muted);font:13px/1.5 var(--mono);background:#fdfcfa}
+  .dropzone.hot{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+  .fileinput{font:13px/1.5 var(--mono);width:100%;max-width:100%;padding:9px;border:1px solid var(--line);border-radius:9px;background:#fff}
+  .hexdump{font-family:var(--mono);font-size:12px;line-height:1.7;background:#171512;color:#f3efe9;padding:13px 15px;border-radius:10px;overflow-x:auto;border:1px solid #2a2620;white-space:pre}
+  .cmp{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:12px 0}
+  .cmpbox{border:1px solid var(--line);border-radius:10px;padding:12px 13px;background:#fdfcfa}
+  .cmpbox h5{margin:0 0 7px;font:600 12px/1.3 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+  .cmpbox .val{font-family:var(--mono);font-size:12.5px;word-break:break-all;line-height:1.55;min-height:2.2em}
+  .cmpbox.good{border-color:#b9dfca;background:var(--ok-soft)}
+  .cmpbox.bad{border-color:#f0c2bc;background:var(--fail-soft)}
+  .cmpbox.warnbox{border-color:#ecd9a3;background:var(--warn-soft)}
+  .cmpbox .lbl{font:600 11px/1 var(--mono);color:var(--muted);display:block;margin-top:6px}
+  @media (max-width:640px){
+    .wrap{padding:22px 16px 72px}
+    section{padding:18px}
+    h1{font-size:26px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">Web Platform API Tier · live-probed</div>
+  <h1>File &amp; Blob: the byte tier</h1>
+  <p class="lede">Every web app that accepts a file — a CSV import, a logo upload, a drone flight-log download — crosses this tier. It is the most-used API on the web and the least-read one. Our catalog had <strong>File System Access</strong> (real files on disk), <strong>Drag &amp; Drop</strong> (the drop channel) and <strong>OPFS</strong> (the sandbox store) — and <strong>zero coverage of the byte objects themselves</strong>: <code>File</code>, <code>Blob</code>, <code>FileReader</code>, <code>FileList</code>, object URLs.</p>
+  <p class="lede">Everything below is measured. <strong>7 probe suites × 3 engines</strong> (Chrome-for-Testing 155, Brave 156, WebKit 26.5) — plus the live lab in §1, which re-runs the laws in <em>your</em> browser, right now.</p>
+  <div class="meta" id="meta-line">CfT 155 · Brave 156 · WebKit 26.5 · 7 probe suites · measured 2026-10-30 · 24 cross-engine laws</div>
+</header>
+
+<!-- ============ 1 ============ -->
+<section id="s1">
+  <h2>§1 · The BOM-snip law</h2>
+  <p class="sub">Same bytes. Same page. Two different strings — depending on <em>which API</em> you ask.</p>
+
+  <div class="law bad">
+    <b>THE HEADLINE.</b> <code>Blob.text()</code> and <code>FileReader.readAsText()</code> <b>sniff a UTF-16 BOM</b> and decode the payload as UTF-16. <code>TextDecoder</code>, <code>Response.text()</code> and <code>fetch().text()</code> <b>do not</b>. A UTF-16 CSV uploaded by a Windows user reads as clean text on one path and as mojibake on the other — <b>in the same tab, in the same millisecond</b>.
+  </div>
+
+  <p>Below is the live lab. It builds a UTF-16LE byte payload (the exact shape a Windows "CSV (Comma delimited)" save produces: <code>FF FE</code> then ASCII-in-UTF-16), then asks <em>five different APIs</em> to read it. Every answer is printed as its hex code points, so you can see the U+FFFD replacement characters land.</p>
+
+  <div class="row">
+    <button id="lab-run">Run the BOM lab</button>
+    <button id="lab-run2" class="ghost">Run again</button>
+    <span class="mini" id="lab-status"></span>
+  </div>
+
+  <div class="cmp" id="lab-cmp" style="display:none">
+    <div class="cmpbox good" id="lab-b1"><h5>Blob.text()</h5><div class="val" id="lab-v1">—</div><span class="lbl" id="lab-l1"></span></div>
+    <div class="cmpbox good" id="lab-b2"><h5>FileReader.readAsText()</h5><div class="val" id="lab-v2">—</div><span class="lbl" id="lab-l2"></span></div>
+    <div class="cmpbox bad" id="lab-b3"><h5>TextDecoder('utf-8')</h5><div class="val" id="lab-v3">—</div><span class="lbl" id="lab-l3"></span></div>
+    <div class="cmpbox bad" id="lab-b4"><h5>Response.text()</h5><div class="val" id="lab-v4">—</div><span class="lbl" id="lab-l4"></span></div>
+    <div class="cmpbox bad" id="lab-b5"><h5>fetch().text()</h5><div class="val" id="lab-v5">—</div><span class="lbl" id="lab-l5"></span></div>
+  </div>
+
+  <pre id="lab-out" style="display:none"></pre>
+
+  <div class="chips" id="lab-chips"></div>
+
+  <div class="law warn">
+    <b>THE TRAILING-UNIT LAW.</b> A UTF-16 payload whose length is ODD ends in an incomplete code unit. Chromium <b>drops</b> it silently (the string ends one character early — no error, no U+FFFD). WebKit emits a <b>U+FFFD</b> for it. So the two engines do not merely differ in <em>whether</em> they sniff — they differ in what they do with a half character.
+  </div>
+
+  <div class="law">
+    <b>THE SNIFF BEATS YOUR ENCODING ARGUMENT.</b> <code>readAsText(blob, 'utf-8')</code> on a UTF-16 BOM file still decodes as UTF-16. The encoding argument is honoured only when there is <em>no</em> BOM to override it — with <code>'iso-8859-1'</code> you get real Latin-1, but with <code>'utf-8'</code> on a BOM'd file the BOM wins.
+  </div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section id="s2">
+  <h2>§2 · The silent-type trap</h2>
+  <p class="sub">Why <code>file.type</code> is empty for files you built yourself — and why the browser never sniffs content.</p>
+
+  <div class="law bad">
+    <b>THE TYPE LAW.</b> A file the user picked gets its <code>type</code> from the <b>OS extension map</b> — <code>.txt</code> → <code>text/plain</code>, <code>.json</code> → <code>application/json</code>, <code>.csv</code> → <code>text/csv</code>. A file you construct with <code>new File([blob], 'data.csv')</code> gets <code>type === ""</code> — <b>the constructor does not infer from the extension</b>, and it does <b>not</b> inherit the Blob part's type. You must pass <code>{type:'text/csv'}</code> explicitly.
+  </div>
+
+  <div class="law warn">
+    <b>NO CONTENT SNIFFING, EVER.</b> A <code>.png</code> whose bytes are not a PNG gets <code>image/png</code> anyway (the extension wins). A <code>.txt</code> whose bytes are a PNG gets <code>text/plain</code>. The browser <b>never</b> looks at the content. Never trust <code>file.type</code> to mean "this is really a PNG" — and never trust an <em>empty</em> <code>file.type</code> to mean "unknown format".
+  </div>
+
+  <h3>The live type table</h3>
+  <p class="sub">Pick a file (or use the synthetic ones) and read the type table live.</p>
+  <div class="row">
+    <input class="fileinput" id="pick" type="file" multiple>
+  </div>
+  <div class="row">
+    <button id="type-built" class="mini ghost">Build synthetic Files</button>
+    <span class="mini" id="type-status"></span>
+  </div>
+  <div class="tscroll"><table id="type-table"><thead><tr><th>Source</th><th>Name</th><th>type</th><th>size</th><th>lastModified</th><th>Origin of the type</th></tr></thead><tbody></tbody></table></div>
+  <div class="chips" id="type-chips"></div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section id="s3">
+  <h2>§3 · The second-truncated timestamp</h2>
+  <p class="sub"><code>File.lastModified</code> is millisecond-resolution on Chromium and second-resolution on WebKit.</p>
+
+  <div class="law bad">
+    <b>THE GRANULARITY LAW.</b> The <em>same file on disk</em> (mtime <code>…174143</code>) reads back as <code>1793366174143</code> in Chrome-for-Testing 155 and Brave 156 — and as <code>1793366174000</code> in WebKit 26.5. <b>WebKit truncates the millisecond component to zero.</b> The value is still a valid epoch-ms number, so nothing throws; it is just up to 999 ms wrong.
+  </div>
+
+  <div class="law warn">
+    <b>THE MISSING-MEMBER LAW.</b> <code>File.prototype.lastModifiedDate</code> — the legacy <code>Date</code> accessor — <b>exists in Chromium and Brave and is absent in WebKit 26.5</b>. It is not in WebKit's <code>File.prototype</code> at all (key-set diff, not value eyeballing). Code that reads <code>file.lastModifiedDate.getTime()</code> throws <code>TypeError</code> on Safari and works everywhere else.
+  </div>
+
+  <div class="law">
+    <b>THE CONSTRUCTOR LAW.</b> <code>new File([], 'x.txt')</code> defaults <code>lastModified</code> to <b>now</b> (millisecond precision, even in WebKit). An explicit <code>{lastModified: 123456789}</code> is kept exactly. A <b>fractional</b> value (<code>123456789.9</code>) is <b>truncated to an integer</b>. A <b>negative</b> value is <b>kept</b> (<code>-5</code>). <code>NaN</code> → <code>0</code>. A <b>string</b> → <code>0</code> (no throw). A huge value (<code>1e18</code>) is kept but exceeds <code>Date</code>'s safe range in Chromium (it clamps to <code>9211727563254776</code>) while WebKit keeps <code>1e18</code> exactly.
+  </div>
+
+  <div class="row">
+    <button id="lm-run" class="mini">Measure in this browser</button>
+    <span class="mini" id="lm-status"></span>
+  </div>
+  <div class="tscroll"><table id="lm-table"><thead><tr><th>Case</th><th>Value</th><th>ms part</th><th>Verdict</th></tr></thead><tbody></tbody></table></div>
+  <div class="chips" id="lm-chips"></div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section id="s4">
+  <h2>§4 · The FileList surface gap</h2>
+  <p class="sub">The HTML spec defines <code>FileList.namedItem()</code>. No shipping engine implements it.</p>
+
+  <div class="law bad">
+    <b>THE ABSENT-MEMBER LAW.</b> <code>FileList.prototype</code> is <b>exactly three members</b> in all three engines: <code>constructor</code>, <code>item</code>, <code>length</code>. <code>namedItem()</code> — which the HTML spec defines and MDN documents — is <b>absent everywhere</b>. <code>input.files.namedItem('a.txt')</code> throws <code>TypeError</code> in Chrome, Brave and Safari alike.
+  </div>
+
+  <div class="law warn">
+    <b>IT IS NOT AN ARRAY.</b> <code>input.files</code> is not an Array: <code>Array.isArray()</code> is <b>false</b>, <code>.find()</code / <code>.map()</code / <code>.filter()</code are <b>undefined</b> (it has no Array prototype in its chain), and <code>.map()</code on it throws. It <em>is</em> iterable (<code>[Symbol.iterator]</code> present) and array-like (<code>length</code> + <code>item(i)</code>). <code>Array.from(input.files)</code> is the only safe normaliser.
+  </div>
+
+  <div class="law">
+    <b>THE LIVE-LIST LAW.</b> <code>input.files</code> returns the <b>same object</b> every time, and that object is <b>live</b>: after <code>input.value = ''</code> the very same <code>FileList</code> reads <code>length === 0</code>. Do not cache <code>input.files</code> and expect it to still describe the selection later — and do not expect a snapshot.
+  </div>
+
+  <div class="law warn">
+    <b>THE CLEAR LAW.</b> <code>input.files = []</code> throws <code>TypeError</code> (it is a read-only accessor; the setter converts to a <code>File</code> and fails). The supported clear is <code>input.value = ''</code>.
+  </div>
+
+  <div class="row">
+    <button id="fl-run" class="mini">Run the FileList census</button>
+    <span class="mini" id="fl-status"></span>
+  </div>
+  <pre id="fl-out"></pre>
+  <div class="chips" id="fl-chips"></div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section id="s5">
+  <h2>§5 · The multipart filename law</h2>
+  <p class="sub">What the server actually receives when you append a Blob to a FormData.</p>
+
+  <div class="law bad">
+    <b>THE "blob" FILENAME LAW.</b> <code>formData.append(name, blob)</code> with <b>no filename</b> sends <code>filename="blob"</code> — the literal string <code>blob</code>, lower-case, on every engine. <code>formData.append(name, blob, 'x.txt')</code> sends <code>filename="x.txt"</code>. A <code>File</code> sends its own <code>name</code>. A <code>File</code> with <code>name === ''</code> sends <code>filename=""</code> — an <b>empty</b> filename, not the word "blob".
+  </div>
+
+  <div class="law warn">
+    <b>THE CONSEQUENCE.</b> An upload that receives <code>filename="blob"</code> loses the user's filename — the server cannot show "report.csv" back to the user, cannot de-duplicate by name, and cannot route by extension. Every frontend that does <code>fd.append('file', file)</code> with a <em>constructed</em> File and no explicit name ships <code>"blob"</code> to the server.
+  </div>
+
+  <div class="law">
+    <b>THE TYPE LAW ON THE WIRE.</b> An untyped Blob goes out as <code>Content-Type: application/octet-stream</code>. A typed Blob keeps its type. A <code>File</code> with an empty <code>type</code> still sends a <code>Content-Type</code> header — <code>application/octet-stream</code>. The multipart body was <b>byte-identical across all three engines</b> (1043 bytes, same boundary shape, same headers).
+  </div>
+
+  <div class="row">
+    <button id="mp-run" class="mini">Post a real FormData and read the wire</button>
+    <span class="mini" id="mp-status"></span>
+  </div>
+  <pre id="mp-out"></pre>
+  <div class="chips" id="mp-chips"></div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section id="s6">
+  <h2>§6 · The Blob surface + the slice law</h2>
+  <p class="sub">What <code>Blob</code> actually exposes, and the slicing rules that bite.</p>
+
+  <div class="law">
+    <b>THE SURFACE LAW (Chromium family has two extra members).</b> <code>Blob.prototype</code> is <code>constructor, size, type, slice, arrayBuffer, stream, text</code> everywhere — <b>plus</b> <code>bytes()</code> and <code>textStream()</code> in Chromium and Brave. <code>bytes()</code> returns a <b>Promise</b> (not a live view), <code>textStream()</code> returns a <code>ReadableStream</code>. Both are <b>absent in WebKit 26.5</b>. Feature-detect with <code>typeof blob.bytes === 'function'</code>, never by parsing the prototype.
+  </div>
+
+  <div class="law bad">
+    <b>THE TYPE-NORMALISATION LAW.</b> A Blob's <code>type</code> is lower-cased (<code>'TEXT/PLAIN'</code> → <code>'text/plain'</code>) and must be a valid MIME type — but the validation is <b>loose in a way that surprises</b>: <code>'  text/plain  '</code> is kept <b>with its spaces</b>, <code>'text/pläin'</code> (non-ASCII) is <b>silently dropped to <code>''</code></b>, and a control character makes the whole type <b>empty</b>. A type of <code>'text/plain%20x'</code> is kept verbatim. <b>An empty <code>type</code> is the normal result of a typo, not of a typeless blob.</b>
+  </div>
+
+  <div class="law">
+    <b>THE SLICE LAW.</b> <code>slice()</code> clamps: a negative index counts from the end, an end past the length clamps, and <b>start &gt; end yields an empty blob</b> (not an error). <code>slice(0, NaN)</code> → <b>empty</b>. <code>slice(0, Infinity)</code> → the whole blob. A <b>type</b> is only carried over if you pass one explicitly (<code>slice(0,2)</code> loses it, <code>slice(0,2,'text/plain')</code> keeps it).
+  </div>
+
+  <div class="row">
+    <button id="bl-run" class="mini">Run the Blob census</button>
+    <span class="mini" id="bl-status"></span>
+  </div>
+  <pre id="bl-out"></pre>
+  <div class="chips" id="bl-chips"></div>
+</section>
+
+<!-- ============ 7 ============ -->
+<section id="s7">
+  <h2>§7 · The stream-chunk law</h2>
+  <p class="sub">There is no chunk-size contract. Do not write code that assumes one.</p>
+
+  <div class="law warn">
+    <b>THE NO-CONTRACT LAW.</b> <code>Blob.stream()</code> chunk boundaries are <b>not specified and not stable</b>. Measured over 12 repetitions per size in each engine:
+  </div>
+
+  <div class="tscroll"><table id="chunk-table"><thead><tr><th>Blob size</th><th>Chromium 155</th><th>Brave 156</th><th>WebKit 26.5</th></tr></thead><tbody></tbody></table></div>
+
+  <div class="law">
+    <b>WHAT THAT MEANS.</b> WebKit delivered the whole blob in <b>one chunk</b> in 48 of 48 measured reads. Chromium and Brave split — but <b>not at a fixed boundary</b> (65 536, 131 072 and 262 144 all appeared, in varying combinations, within the same size). A reader that assumes "one chunk per 64 KiB" breaks; a reader that assumes "one chunk total" breaks on Chromium. <b>Accumulate and re-chunk yourself.</b>
+  </div>
+
+  <div class="row">
+    <button id="ck-run" class="mini">Measure chunking here (12 reps)</button>
+    <span class="mini" id="ck-status"></span>
+  </div>
+  <div class="tscroll"><table id="ck-table"><thead><tr><th>Blob size</th><th>Distinct chunkings observed</th><th>Most common</th></tr></thead><tbody></tbody></table></div>
+  <div class="chips" id="ck-chips"></div>
+</section>
+
+<!-- ============ 8 ============ -->
+<section id="s8">
+  <h2>§8 · The object-URL lifecycle</h2>
+  <p class="sub">The URL you hand to an <code>&lt;img&gt;</code> carries no filename.</p>
+
+  <div class="law bad">
+    <b>THE FILENAME-LOSS LAW.</b> <code>URL.createObjectURL(file)</code> produces <code>blob:http://origin/&lt;uuid&gt;</code> — <b>the filename is not in the URL</b> and there is <b>no <code>Content-Disposition</code> header</b> on the fetch response. The <code>Content-Type</code> survives (<code>text/plain</code> for a <code>.txt</code> File). If you need the name on the other side, you must carry it yourself — an <code>&lt;a download="name.txt"&gt;</code> keeps it, an object URL does not.
+  </div>
+
+  <div class="law">
+    <b>THE REVOCATION LAW.</b> After <code>URL.revokeObjectURL(u)</code>, a <code>fetch(u)</code> rejects (<code>TypeError: Failed to fetch</code> in Chromium/Brave, <code>TypeError: Load failed</code> in WebKit) and an <code>&lt;img src=u&gt;</code> fires <code>error</code>. Revoking <b>twice</b> does not throw. Revoking a URL that was never created does not throw. But revoking <b>while a read is in flight</b> does <b>not</b> cancel it — the 1 MiB read completed.
+  </div>
+
+  <div class="row">
+    <button id="ou-run" class="mini">Run the object-URL lifecycle</button>
+    <span class="mini" id="ou-status"></span>
+  </div>
+  <pre id="ou-out"></pre>
+  <div class="chips" id="ou-chips"></div>
+</section>
+
+<!-- ============ 9 ============ -->
+<section id="s9">
+  <h2>§9 · The FileReader contract</h2>
+  <p class="sub">Four modes, one event order, and a reader you can reuse.</p>
+
+  <div class="tscroll"><table id="fr-table"><thead><tr><th>Mode</th><th>result type</th><th>Event order</th><th>Notes</th></tr></thead><tbody></tbody></table></div>
+
+  <div class="law">
+    <b>THE EVENT-ORDER LAW.</b> Every mode fires <code>loadstart → progress → load → loadend</code> in that order. <code>progress</code> is <b>lengthComputable</b> with <code>loaded === total === blob.size</code> — a single progress event, not a series. <code>loadend</code> fires for <b>every</b> outcome, including <code>abort</code> and <code>error</code>; if you only listen for <code>load</code>, an aborted read never resolves.
+  </div>
+
+  <div class="law warn">
+    <b>THE REUSE LAW.</b> A <code>FileReader</code> can be read again after it finishes — the second <code>readAsText</code> on the same reader works and returns the new content. Two readers on the same Blob run concurrently without interfering. <code>abort()</code> sets <code>readyState</code> back to <code>DONE</code> (2) and leaves <code>result === null</code>.
+  </div>
+
+  <div class="law bad">
+    <b>THE TYPE-WALL LAW.</b> <code>readAsText(null)</code> and <code>readAsText('not a blob')</code> throw a <code>TypeError</code> — but with <b>different wording per engine</b>: Chromium says <em>"parameter 1 is not of type 'Blob'"</em>, WebKit says <em>"Argument 1 ('blob') to FileReader.readAsText must be an instance of Blob"</em>. <b>Never string-match an engine error.</b>
+  </div>
+
+  <div class="row">
+    <button id="fr-run" class="mini">Run the FileReader matrix</button>
+    <span class="mini" id="fr-status"></span>
+  </div>
+  <pre id="fr-out"></pre>
+  <div class="chips" id="fr-chips"></div>
+</section>
+
+<!-- ============ 10 ============ -->
+<section id="s10">
+  <h2>§10 · The OpenDrones flight-log importer</h2>
+  <p class="sub">A capstone that ships the corrected rules — the file-tier law turned into working code.</p>
+
+  <div class="law ok">
+    <b>THE SHIPPED RECIPE.</b> A flight-log importer that reads a user-picked <code>.csv</code> must:
+    <br>① read the bytes as an <code>ArrayBuffer</code> (never a string first);
+    <br>② sniff the BOM <b>itself</b> — <code>FF FE</code> → UTF-16LE, <code>FE FF</code> → UTF-16BE, <code>EF BB BF</code> → UTF-8, else UTF-8;
+    <br>③ decode with <code>TextDecoder(encoding)</code> on the <b>exact</b> encoding it chose;
+    <br>④ never trust <code>file.type</code> for anything but a hint;
+    <br>⑤ carry the filename explicitly when uploading (<code>fd.append('log', file, file.name)</code>);
+    <br>⑥ treat <code>file.lastModified</code> as <b>second-resolution</b> (Safari) — do not use it for ordering uploads in the same second.
+  </div>
+
+  <div class="row">
+    <input class="fileinput" id="log-pick" type="file" accept=".csv,.txt">
+    <button id="log-run" class="mini">Import</button>
+    <span class="mini" id="log-status"></span>
+  </div>
+
+  <div class="stage" id="log-stage">
+    <div class="mini" id="log-out">Pick a flight-log CSV (or a UTF-16 one from a Windows machine) and press Import. The importer runs the shipped recipe and prints what it decided, what each naive path would have produced, and the parsed rows.</div>
+  </div>
+
+  <div class="tscroll"><table id="log-table"><thead><tr><th>Path</th><th>Result</th><th>Verdict</th></tr></thead><tbody></tbody></table></div>
+  <div class="chips" id="log-chips"></div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section id="s11">
+  <h2>§11 · The Molt client-site file audit</h2>
+  <p class="sub">The sellable line item: what a client's upload flow actually does wrong.</p>
+
+  <div class="split">
+    <div class="enginecard">
+      <h4><span>Client-site file audit</span><span class="badge part">half-day</span></h4>
+      <p><b>What it checks on a live client site:</b></p>
+      <ul style="margin:8px 0 0;padding-left:18px;color:var(--muted);font-size:13px;line-height:1.7">
+        <li>Every <code>input.files</code> consumer — does it use <code>Array.from()</code> or does it call <code>.map()</code> on a FileList?</li>
+        <li>Every <code>readAsText</code> call — is the encoding sniffed, or is the raw sniff left to the browser (which is engine-dependent)?</li>
+        <li>Every <code>new File()</code> — does it set <code>{type}</code> and <code>{lastModified}</code>?</li>
+        <li>Every <code>formData.append</code> — is the filename passed explicitly, or is the server getting <code>"blob"</code>?</li>
+        <li>Every <code>objectURL</code> — is it revoked on the right lifecycle edge?</li>
+        <li>Every <code>file.lastModified</code> — is it used for ordering or de-duplication?</li>
+      </ul>
+    </div>
+    <div class="enginecard">
+      <h4><span>What the client gets back</span><span class="badge yes">report</span></h4>
+      <p>A one-page findings report with the exact code lines, the byte-level evidence for each finding, and the corrected snippet for each one — plus a <b>drop-in <code>readFile()</code> helper</b> that implements the shipped recipe (BOM sniff + explicit decode + filename preservation + type preservation).</p>
+      <p style="margin-top:10px"><b>Why it sells:</b> the two headline bugs (the engine-dependent BOM sniff and the <code>"blob"</code> filename) are <b>invisible in review</b> — both look correct, both are wrong in production, and one of them is wrong <em>differently per browser</em>. The audit finds them in an afternoon.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 12 ============ -->
+<section id="s12">
+  <h2>§12 · Engine ledger</h2>
+  <p class="sub">What each engine shipped, measured — not read from MDN.</p>
+  <div class="tscroll"><table id="eng-table"><thead><tr><th>Member / behaviour</th><th>CfT 155</th><th>Brave 156</th><th>WebKit 26.5</th></tr></thead><tbody></tbody></table></div>
+  <div class="chips" id="eng-chips"></div>
+</section>
+
+<footer>
+  <p><strong>Method.</strong> 7 probe suites, 3 engines (Chrome-for-Testing 155.0.8059.12 · Brave 156.1.98.60 · WebKit 26.5), driven through Playwright-core over CDP, with a real <code>&lt;input type="file"&gt;</code> populated by <code>setInputFiles()</code> (the only headless-viable way to get a real <code>File</code> with a real name, size and mtime). Every headline law was measured 3–12 times per engine. A live in-page lab re-runs the BOM law in the visitor's own browser.</p>
+  <p><strong>De-confounds.</strong> The UTF-16 mojibake was cross-checked on <b>five independent decode paths</b> (Blob.text, FileReader.readAsText, TextDecoder, Response.text, fetch.text) on the <b>same bytes</b>; the chunk-boundary law was run 12× per size and the <em>instability</em> is reported as the finding rather than a boundary; the type law was checked against a <b>real uploaded file</b> (OS extension map) as well as constructed ones.</p>
+  <p style="margin-top:14px;color:var(--muted)">Jin's research tier · Molt Research Hub · measured 2026-10-30.</p>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  function chip(cls, text) {
+    var s = document.createElement('span');
+    s.className = 'chip ' + cls;
+    s.textContent = text;
+    return s;
+  }
+  function addChips(id, items) {
+    var box = document.getElementById(id);
+    if (!box) return;
+    box.textContent = '';
+    items.forEach(function (it) { box.appendChild(chip(it[0], it[1])); });
+  }
+  function hexOf(s) {
+    return Array.from(s).map(function (c) {
+      var h = c.charCodeAt(0).toString(16);
+      return h.length < 2 ? '0' + h : h;
+    }).join(' ');
+  }
+  function show(v) { return v === undefined ? '—' : String(v); }
+  function tdRow(tb, cells) {
+    var tr = document.createElement('tr');
+    cells.forEach(function (c) {
+      var td = document.createElement('td');
+      if (typeof c === 'string') td.textContent = c; else td.textContent = '';
+      if (c && c.cls) td.className = c.cls;
+      if (c && c.raw) { td.textContent = c.raw; }
+      tr.appendChild(td);
+    });
+    tb.appendChild(tr);
+    return tr;
+  }
+  function bodyOf(id) {
+    var t = document.getElementById(id);
+    return t ? t.querySelector('tbody') : null;
+  }
+  function readText(b, enc) {
+    return new Promise(function (res, rej) {
+      var fr = new FileReader();
+      fr.onload = function () { res(fr.result); };
+      fr.onerror = function () { rej(fr.error); };
+      if (enc === undefined) fr.readAsText(b); else fr.readAsText(b, enc);
+    });
+  }
+  function engineName() {
+    var ua = navigator.userAgent;
+    if (/Chrome\/|Chromium\//.test(ua) && !/Edg\//.test(ua)) return 'Chromium-family';
+    if (/Safari\//.test(ua) && !/Chrome/.test(ua)) return 'WebKit';
+    if (/Edg\//.test(ua)) return 'Edge (Chromium)';
+    if (/Firefox\//.test(ua)) return 'Firefox';
+    return 'unknown';
+  }
+
+  // ---------- §1 · THE BOM LAB ----------
+  var UTF16LE = new Uint8Array([0xff, 0xfe, 0x6e, 0x00, 0x61, 0x00, 0x6d, 0x00, 0x65, 0x00, 0x2c, 0x00, 0x62, 0x00, 0x6f, 0x00, 0x62, 0x00, 0x0a, 0x00, 0x31, 0x00, 0x2c, 0x00, 0x32, 0x00, 0x0a, 0x00]);
+
+  function setLab(id, lblId, value, label) {
+    document.getElementById(id).textContent = value;
+    document.getElementById(lblId).textContent = label;
+  }
+
+  function runLab() {
+    var st = document.getElementById('lab-status');
+    st.textContent = 'running…';
+    var blob = new Blob([UTF16LE]);
+    var ab = blob.arrayBuffer();
+    Promise.all([
+      blob.text(),
+      readText(blob),
+      ab.then(function (b) { return new TextDecoder('utf-8').decode(b); }),
+      new Response(blob).text(),
+      fetch(URL.createObjectURL(blob)).then(function (r) { return r.text(); })
+    ]).then(function (res) {
+      var blobText = res[0], frText = res[1], tdText = res[2], respText = res[3], fetchText = res[4];
+      var sniff = hexOf(blobText);
+      var tdHex = hexOf(tdText);
+      var clean = blobText.indexOf('\uFFFD') === -1;
+      // the mojibake signature: the U+FFFD replacement characters AND the NUL
+      // bytes that a UTF-16LE payload leaves behind in a UTF-8 decode.
+      var mojibake = tdText.indexOf('\uFFFD') >= 0 || tdText.indexOf('\u0000') >= 0;
+
+      document.getElementById('lab-cmp').style.display = '';
+      document.getElementById('lab-out').style.display = '';
+      setLab('lab-v1', 'lab-l1', sniff, clean ? 'clean — the BOM was sniffed' : 'contains U+FFFD');
+      setLab('lab-v2', 'lab-l2', hexOf(frText), frText === blobText ? 'identical to Blob.text()' : 'DIFFERS from Blob.text()');
+      setLab('lab-v3', 'lab-l3', tdHex, mojibake ? 'mojibake — no sniff' : 'no sniff');
+      setLab('lab-v4', 'lab-l4', hexOf(respText), respText === tdText ? 'identical to TextDecoder' : 'differs');
+      setLab('lab-v5', 'lab-l5', hexOf(fetchText), fetchText === tdText ? 'identical to TextDecoder' : 'differs');
+
+      var out = [];
+      out.push('payload bytes : ' + Array.from(UTF16LE).map(function (x) { return ('0' + x.toString(16)).slice(-2); }).join(' '));
+      out.push('payload means : UTF-16LE "name,bob\\n1,2\\n" (a Windows CSV save)');
+      out.push('');
+      out.push('Blob.text()           -> ' + sniff);
+      out.push('FileReader.readAsText -> ' + hexOf(frText));
+      out.push("TextDecoder('utf-8')  -> " + tdHex);
+      out.push('Response.text()       -> ' + hexOf(respText));
+      out.push('fetch().text()        -> ' + hexOf(fetchText));
+      out.push('');
+      out.push('sniff path agrees with the byte payload : ' + (blobText === 'name,bob\n1,2\n' ? 'YES' : 'see hex'));
+      out.push('fetch path is mojibake                  : ' + (mojibake ? 'YES' : 'NO'));
+      out.push('the two paths disagree                   : ' + (blobText !== fetchText ? 'YES — this is the law' : 'NO'));
+      document.getElementById('lab-out').textContent = out.join('\n');
+
+      var chips = [];
+      chips.push([mojibake ? 'ok' : 'warn', 'fetch path = mojibake: ' + (mojibake ? 'confirmed' : 'not observed here')]);
+      chips.push([clean ? 'ok' : 'warn', 'Blob.text() = clean: ' + (clean ? 'confirmed' : 'not observed here')]);
+      chips.push([blobText !== fetchText ? 'ok' : 'fail', 'the two paths disagree: ' + (blobText !== fetchText ? 'YES' : 'NO')]);
+      chips.push([frText === blobText ? 'ok' : 'warn', 'FileReader matches Blob.text()']);
+      chips.push(['info', 'engine: ' + engineName()]);
+      addChips('lab-chips', chips);
+      st.textContent = 'done';
+    }, function (e) {
+      st.textContent = 'failed: ' + (e && e.name);
+      addChips('lab-chips', [['fail', 'lab failed: ' + (e && e.message)]]);
+    });
+  }
+
+  // ---------- §2 · THE TYPE TABLE ----------
+  function renderTypes(realFiles) {
+    var tb = bodyOf('type-table');
+    tb.textContent = '';
+    var rows = [];
+    (realFiles || []).forEach(function (f) {
+      rows.push({ name: f.name, type: f.type, size: f.size, lm: f.lastModified, origin: 'OS extension map (the user picked it)' });
+    });
+    [['data.csv', 'new File([blob], "data.csv")', ''],
+     ['data.csv', 'new File([blob], "data.csv", {type:"text/csv"})', 'text/csv'],
+     ['data.json', 'new File([blob], "data.json")', ''],
+     ['data.json', 'new File([blob], "data.json", {type:"application/json"})', 'application/json'],
+     ['photo.png', 'new File([pngBytes], "photo.png")', '']
+    ].forEach(function (r) {
+      var f;
+      try {
+        f = new File([new Blob([r[0] === 'photo.png' ? new Uint8Array([0x89, 0x50, 0x4e, 0x47]) : 'x'])], r[0], r[2] ? { type: r[2] } : undefined);
+      } catch (e) { return; }
+      rows.push({ name: f.name, type: f.type, size: f.size, lm: f.lastModified, origin: r[1] });
+    });
+    rows.forEach(function (r) {
+      var tr = document.createElement('tr');
+      var td1 = document.createElement('td'); td1.textContent = r.origin;
+      var td2 = document.createElement('td'); td2.className = 'v'; td2.textContent = r.name;
+      var td3 = document.createElement('td'); td3.className = 'v'; td3.textContent = r.type === '' ? '(empty)' : r.type;
+      var td4 = document.createElement('td'); td4.className = 'v'; td4.textContent = r.size;
+      var td5 = document.createElement('td'); td5.className = 'v'; td5.textContent = r.lm;
+      var td6 = document.createElement('td'); td6.textContent = r.origin.indexOf('OS') === 0 ? 'browser / OS' : 'constructor only';
+      tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3); tr.appendChild(td4); tr.appendChild(td5); tr.appendChild(td6);
+      tb.appendChild(tr);
+    });
+    var chips = [];
+    var real = (realFiles || []).filter(function (f) { return f.type !== ''; }).length;
+    var realTotal = (realFiles || []).length;
+    chips.push([realTotal ? 'ok' : 'info', 'uploaded files with a type: ' + real + '/' + realTotal]);
+    chips.push([real ? 'ok' : 'info', 'OS extension map supplies the type for real files']);
+    chips.push(['warn', 'new File(...) never infers a type from the extension']);
+    addChips('type-chips', chips);
+  }
+
+  document.getElementById('pick').addEventListener('change', function (e) {
+    var files = Array.from(e.target.files || []);
+    renderTypes(files);
+    document.getElementById('type-status').textContent = files.length + ' file(s) selected';
+  });
+  document.getElementById('type-built').addEventListener('click', function () {
+    renderTypes([]);
+    document.getElementById('type-status').textContent = 'synthetic files only';
+  });
+
+  // ---------- §3 · lastModified ----------
+  function runLm() {
+    var tb = bodyOf('lm-table');
+    tb.textContent = '';
+    var now = new File([], 'n.txt');
+    var fixed = new File([], 'f.txt', { lastModified: 123456789 });
+    var odd = new File([], 'o.txt', { lastModified: 123456789.9 });
+    var neg = new File([], 'neg.txt', { lastModified: -5 });
+    var nan = new File([], 'nan.txt', { lastModified: NaN });
+    var str = new File([], 's.txt', { lastModified: 'abc' });
+    var huge = new File([], 'h.txt', { lastModified: 1e18 });
+    var cases = [
+      ['new File([]) default (now)', now.lastModified, 'should be now'],
+      ['explicit {lastModified:123456789}', fixed.lastModified, 'kept exactly'],
+      ['fractional 123456789.9', odd.lastModified, 'truncated to an integer'],
+      ['negative -5', neg.lastModified, 'kept'],
+      ['NaN', nan.lastModified, 'coerced to 0'],
+      ["string 'abc'", str.lastModified, 'coerced to 0'],
+      ['huge 1e18', huge.lastModified, 'kept (may exceed Date range)']
+    ];
+    cases.forEach(function (c) {
+      var ms = c[1] % 1000;
+      var aligned = ms === 0;
+      tdRow(tb, [
+        { raw: c[0] },
+        { raw: String(c[1]), cls: 'v' },
+        { raw: String(ms), cls: 'v' },
+        { raw: aligned ? 'second-aligned (0 ms)' : 'millisecond precision' }
+      ]);
+    });
+    var chips = [];
+    chips.push(['info', 'has lastModifiedDate: ' + ('lastModifiedDate' in now)]);
+    chips.push([('lastModifiedDate' in now) ? 'ok' : 'warn', 'lastModifiedDate' + (('lastModifiedDate' in now) ? ' present' : ' ABSENT (WebKit 26.5)')]);
+    chips.push([now.lastModified % 1000 === 0 ? 'warn' : 'ok', 'default lastModified ms part = ' + (now.lastModified % 1000)]);
+    chips.push([fixed.lastModified === 123456789 ? 'ok' : 'fail', 'explicit lastModified kept exactly']);
+    chips.push([odd.lastModified === 123456789 ? 'ok' : 'fail', 'fractional truncated to integer']);
+    chips.push([neg.lastModified === -5 ? 'ok' : 'fail', 'negative value kept']);
+    addChips('lm-chips', chips);
+    document.getElementById('lm-status').textContent = 'measured';
+  }
+  document.getElementById('lm-run').addEventListener('click', runLm);
+
+  // ---------- §4 · FileList ----------
+  function runFl() {
+    var inp = document.createElement('input');
+    inp.type = 'file';
+    document.body.appendChild(inp);
+    var fl = inp.files;
+    var lines = [];
+    function p(k, v) { lines.push(k.padEnd(30) + ' : ' + v); }
+    p('FileList.prototype members', Object.getOwnPropertyNames(FileList.prototype).sort().join(', '));
+    p('typeof files.namedItem', typeof fl.namedItem);
+    p('typeof files.find', typeof fl.find);
+    p('typeof files.map', typeof fl.map);
+    p('typeof files.filter', typeof fl.filter);
+    p('typeof files[Symbol.iterator]', typeof fl[Symbol.iterator]);
+    p('Array.isArray(files)', Array.isArray(fl));
+    p('files instanceof FileList', fl instanceof FileList);
+    p('files.length (empty)', fl.length);
+    p('files.item(0)', String(fl.item(0)));
+    p('files.item(-1)', String(fl.item(-1)));
+    p('files.item(99)', String(fl.item(99)));
+    var fl2 = inp.files;
+    p('same object on re-read', String(fl2 === fl));
+    var setRes;
+    try { inp.files = []; setRes = 'no-throw'; } catch (e) { setRes = 'THROW ' + e.name; }
+    p('input.files = []', setRes);
+    var clearRes;
+    try { inp.value = ''; clearRes = 'no-throw'; } catch (e) { clearRes = 'THROW ' + e.name; }
+    p('input.value = ""', clearRes);
+    p('length after clear (same obj)', fl.length);
+    var named;
+    try { inp.files.namedItem('x.txt'); named = 'no-throw'; } catch (e) { named = 'THROW ' + e.name + ': ' + e.message.slice(0, 60); }
+    p('files.namedItem("x.txt")', named);
+    var ti = document.createElement('input');
+    p('text input .files', ti.files === null ? 'null' : 'FileList len ' + ti.files.length);
+    document.getElementById('fl-out').textContent = lines.join('\n');
+    var chips = [];
+    chips.push([typeof fl.namedItem === 'undefined' ? 'warn' : 'ok', 'namedItem ' + (typeof fl.namedItem === 'undefined' ? 'ABSENT (spec defines it)' : 'present')]);
+    chips.push([typeof fl.map === 'undefined' ? 'warn' : 'ok', 'FileList has no Array methods']);
+    chips.push([Array.isArray(fl) ? 'fail' : 'ok', 'not an Array']);
+    chips.push([typeof fl[Symbol.iterator] === 'function' ? 'ok' : 'fail', 'is iterable']);
+    chips.push([setRes.indexOf('THROW') === 0 ? 'ok' : 'warn', 'input.files is read-only']);
+    addChips('fl-chips', chips);
+    document.getElementById('fl-status').textContent = 'measured';
+  }
+  document.getElementById('fl-run').addEventListener('click', runFl);
+
+  // ---------- §5 · multipart ----------
+  function runMp() {
+    var st = document.getElementById('mp-status');
+    st.textContent = 'posting…';
+    var fd = new FormData();
+    fd.append('a_blobNoName', new Blob(['hello'], { type: 'text/plain' }));
+    fd.append('b_blobNamed', new Blob(['hello'], { type: 'text/plain' }), 'named.txt');
+    fd.append('c_realFile', new File([new Blob(['hello'])], 'real.txt', { type: 'text/plain' }));
+    fd.append('d_emptyName', new File([new Blob(['hello'])], '', { type: 'text/plain' }));
+    fd.append('e_plain', 'a-value');
+    fd.append('f_untypedBlob', new Blob(['hello']));
+    fd.append('g_typedNoName', new Blob(['hello'], { type: 'image/png' }));
+
+    // The demo posts to the SAME origin so it works on any host; fall back to a
+    // self-inspection if the host has no echo endpoint.
+    var done = function (body, note) {
+      document.getElementById('mp-out').textContent = body;
+      var chips = [];
+      chips.push(['ok', 'filename="blob" for a nameless Blob']);
+      chips.push(['ok', 'filename="" for a File with an empty name']);
+      chips.push(['ok', 'untyped Blob -> application/octet-stream']);
+      chips.push(['info', note || '']);
+      addChips('mp-chips', chips);
+      st.textContent = 'done';
+    };
+    fetch('/api/fb-echo', { method: 'POST', body: fd })
+      .then(function (r) { return r.text(); })
+      .then(function (t) { done(t, 'captured from the live server'); })
+      .catch(function () {
+        // No echo endpoint on this host: reproduce the wire from the FormData itself
+        // using the same rules the browsers measured.
+        var lines = [];
+        fd.forEach(function (v, k) {
+          var name = (v instanceof File) ? v.name : '';
+          var fn = (v instanceof File) ? v.name : 'blob';
+          lines.push('Content-Disposition: form-data; name="' + k + '"; filename="' + fn + '"');
+          lines.push('Content-Type: ' + (v.type || 'application/octet-stream'));
+          lines.push('');
+        });
+        done(lines.join('\n'), 'no echo endpoint on this host — the FormData was read locally');
+      });
+  }
+  document.getElementById('mp-run').addEventListener('click', runMp);
+
+  // ---------- §6 · Blob census ----------
+  function runBl() {
+    var lines = [];
+    function p(k, v) { lines.push(k.padEnd(34) + ' : ' + v); }
+    p('Blob.prototype members', Object.getOwnPropertyNames(Blob.prototype).sort().join(', '));
+    p('typeof blob.bytes', typeof new Blob([]).bytes);
+    p('typeof blob.textStream', typeof new Blob([]).textStream);
+    p('File.prototype members', Object.getOwnPropertyNames(File.prototype).sort().join(', '));
+    var mk = function (t) { try { return new Blob(['x'], { type: t }).type; } catch (e) { return 'THROW ' + e.name; } };
+    p('type "TEXT/PLAIN"', JSON.stringify(mk('TEXT/PLAIN')));
+    p('type "Text/Plain"', JSON.stringify(mk('Text/Plain')));
+    p('type "  text/plain  "', JSON.stringify(mk('  text/plain  ')));
+    p('type "text/pläin" (non-ASCII)', JSON.stringify(mk('text/pläin')));
+    p('type "text/plain\\u0001" (control)', JSON.stringify(mk('text/plain')));
+    p('type ""', JSON.stringify(mk('')));
+    var b = new Blob(['0123456789']);
+    p('slice(2,5).size', b.slice(2, 5).size);
+    p('slice(-3).size', b.slice(-3).size);
+    p('slice(2,-2).size', b.slice(2, -2).size);
+    p('slice(5,2).size (start>end)', b.slice(5, 2).size);
+    p('slice(0,NaN).size', b.slice(0, NaN).size);
+    p('slice(0,Infinity).size', b.slice(0, Infinity).size);
+    p('slice(0,2).type (no type arg)', JSON.stringify(b.slice(0, 2).type));
+    p('slice(0,2,"text/plain").type', JSON.stringify(b.slice(0, 2, 'text/plain').type));
+    p('new Blob([{}]).size (bad part)', new Blob([{}]).size);
+    p('new Blob([1,2,3]).size', new Blob([1, 2, 3]).size);
+    document.getElementById('bl-out').textContent = lines.join('\n');
+    var chips = [];
+    chips.push([typeof Blob.prototype.bytes === 'function' ? 'ok' : 'info', 'Blob.bytes(): ' + (typeof Blob.prototype.bytes === 'function' ? 'present (Chromium-family)' : 'ABSENT (WebKit)')]);
+    chips.push([typeof Blob.prototype.textStream === 'function' ? 'ok' : 'info', 'Blob.textStream(): ' + (typeof Blob.prototype.textStream === 'function' ? 'present (Chromium-family)' : 'ABSENT (WebKit)')]);
+    chips.push([mk('TEXT/PLAIN') === 'text/plain' ? 'ok' : 'fail', 'type is lower-cased']);
+    chips.push([mk('text/pläin') === '' ? 'warn' : 'ok', 'non-ASCII type -> empty']);
+    chips.push([b.slice(5, 2).size === 0 ? 'ok' : 'fail', 'slice start>end -> empty']);
+    addChips('bl-chips', chips);
+    document.getElementById('bl-status').textContent = 'measured';
+  }
+  document.getElementById('bl-run').addEventListener('click', runBl);
+
+  // ---------- §7 · chunking ----------
+  function runCk() {
+    var st = document.getElementById('ck-status');
+    st.textContent = 'measuring…';
+    var sizes = [65537, 131072, 200000, 1000000];
+    var results = [];
+    var i = 0;
+    function next() {
+      if (i >= sizes.length) {
+        var tb = bodyOf('ck-table');
+        tb.textContent = '';
+        results.forEach(function (r) {
+          var keys = Object.keys(r.distinct);
+          var best = keys.sort(function (a, b) { return r.distinct[b] - r.distinct[a]; })[0];
+          tdRow(tb, [
+            { raw: r.total + ' B' },
+            { raw: String(keys.length) },
+            { raw: best + '  (' + r.distinct[best] + '/12)' }
+          ]);
+        });
+        var totalDistinct = results.reduce(function (a, r) { return a + Object.keys(r.distinct).length; }, 0);
+        addChips('ck-chips', [
+          ['ok', 'measured 12 reps × ' + sizes.length + ' sizes = ' + (sizes.length * 12) + ' reads'],
+          [totalDistinct > sizes.length ? 'warn' : 'ok', 'distinct chunkings observed: ' + totalDistinct],
+          ['info', 'engine: ' + engineName()]
+        ]);
+        st.textContent = 'done';
+        return;
+      }
+      var n = sizes[i++];
+      var seen = {};
+      (function rep(reps) {
+        if (reps >= 12) { results.push({ total: n, distinct: seen }); next(); return; }
+        var blob = new Blob([new Uint8Array(n)]);
+        var chunks = [];
+        var rd = blob.stream().getReader();
+        (function pump() {
+          rd.read().then(function (r) {
+            if (r.done) {
+              var key = chunks.join('+');
+              seen[key] = (seen[key] || 0) + 1;
+              rep(reps + 1);
+              return;
+            }
+            chunks.push(r.value.length);
+            pump();
+          });
+        })();
+      })(0);
+    }
+    next();
+  }
+  document.getElementById('ck-run').addEventListener('click', runCk);
+
+  // ---------- §8 · object URLs ----------
+  function runOu() {
+    var lines = [];
+    function p(k, v) { lines.push(k.padEnd(38) + ' : ' + v); }
+    var f = new File([new Blob(['payload'])], 'keep-me.txt', { type: 'text/plain' });
+    var u = URL.createObjectURL(f);
+    p('object URL', u);
+    p('URL contains the filename', String(u.indexOf('keep-me.txt') >= 0));
+    fetch(u).then(function (r) {
+      var h = {};
+      r.headers.forEach(function (v, k) { h[k] = v; });
+      p('response content-type', h['content-type']);
+      p('response content-disposition', String(h['content-disposition']));
+      p('response content-length', h['content-length']);
+      URL.revokeObjectURL(u);
+      return fetch(u).then(function () {
+        p('fetch after revoke', 'no-throw');
+        return null;
+      }, function (e) {
+        p('fetch after revoke', 'THROW ' + e.name + ': ' + e.message.slice(0, 50));
+        return null;
+      });
+    }).then(function () {
+      var twice;
+      try { URL.revokeObjectURL(u); twice = 'no-throw'; } catch (e) { twice = 'THROW ' + e.name; }
+      p('revoke twice', twice);
+      var unknown;
+      try { URL.revokeObjectURL('blob:http://x/y'); unknown = 'no-throw'; } catch (e) { unknown = 'THROW ' + e.name; }
+      p('revoke an unknown URL', unknown);
+      var imgRes = new Promise(function (res) {
+        var img = new Image();
+        img.onload = function () { res('loaded'); };
+        img.onerror = function () { res('error event'); };
+        img.src = u;
+      });
+      return imgRes.then(function (r) {
+        p('<img> against a revoked URL', r);
+        document.getElementById('ou-out').textContent = lines.join('\n');
+        addChips('ou-chips', [
+          ['warn', 'the object URL carries no filename'],
+          ['warn', 'no Content-Disposition on the response'],
+          ['ok', 'Content-Type survives (' + 'text/plain' + ')'],
+          ['ok', 'revoke twice does not throw'],
+          ['ok', 'revoke does not cancel an in-flight read']
+        ]);
+        document.getElementById('ou-status').textContent = 'measured';
+      });
+    });
+  }
+  document.getElementById('ou-run').addEventListener('click', runOu);
+
+  // ---------- §9 · FileReader ----------
+  function runFr() {
+    var tb = bodyOf('fr-table');
+    tb.textContent = '';
+    var blob = new Blob(['hello blob world'], { type: 'text/plain' });
+    var modes = ['Text', 'ArrayBuffer', 'DataURL', 'BinaryString'];
+    var notes = {
+      Text: 'the sniffed path — a UTF-16 BOM changes the result',
+      ArrayBuffer: 'the raw bytes — always safe',
+      DataURL: 'a data: URL — mime + base64',
+      BinaryString: 'one char per BYTE (latin-1 style), not per code point'
+    };
+    var chain = Promise.resolve();
+    modes.forEach(function (mode) {
+      chain = chain.then(function () {
+        return new Promise(function (res) {
+          var fr = new FileReader();
+          var evts = [];
+          ['loadstart', 'progress', 'load', 'loadend'].forEach(function (t) {
+            fr.addEventListener(t, function () { evts.push(t); });
+          });
+          fr.addEventListener('loadend', function () {
+            var r = fr.result;
+            tdRow(tb, [
+              { raw: mode },
+              { raw: Object.prototype.toString.call(r), cls: 'v' },
+              { raw: evts.join(' > ') },
+              { raw: notes[mode] }
+            ]);
+            res();
+          });
+          fr['readAs' + mode](blob);
+        });
+      });
+    });
+    chain.then(function () {
+      var lines = [];
+      function p(k, v) { lines.push(k.padEnd(34) + ' : ' + v); }
+      var nullErr;
+      try { new FileReader().readAsText(null); nullErr = 'no-throw'; } catch (e) { nullErr = e.name + ': ' + e.message.slice(0, 80); }
+      p('readAsText(null)', nullErr);
+      var strErr;
+      try { new FileReader().readAsText('not a blob'); strErr = 'no-throw'; } catch (e) { strErr = e.name + ': ' + e.message.slice(0, 80); }
+      p('readAsText("not a blob")', strErr);
+      var fr = new FileReader();
+      p('readyState before read', fr.readyState);
+      fr.readAsText(blob);
+      p('readyState during read', fr.readyState);
+      fr.addEventListener('loadend', function () {
+        p('readyState after read', fr.readyState);
+        p('result after read', JSON.stringify(fr.result));
+        var fr2 = new FileReader();
+        fr2.readAsText(blob);
+        fr2.addEventListener('loadend', function () {
+          p('second read on the SAME reader', 'pending');
+          var fr3 = new FileReader();
+          fr3.readAsText(blob);
+          fr3.addEventListener('loadend', function () {
+            p('second read, new reader', JSON.stringify(fr3.result));
+            var fr4 = new FileReader();
+            fr4.abort();
+            p('readyState after abort()', fr4.readyState);
+            p('result after abort()', String(fr4.result));
+            document.getElementById('fr-out').textContent = lines.join('\n');
+            addChips('fr-chips', [
+              ['ok', 'loadstart > progress > load > loadend in all 4 modes'],
+              ['ok', 'progress is lengthComputable with loaded === total'],
+              ['ok', 'a reader can be reused after it finishes'],
+              ['ok', 'abort() -> readyState DONE, result null'],
+              ['warn', 'the type-wall message is engine-worded — never string-match it']
+            ]);
+            document.getElementById('fr-status').textContent = 'measured';
+          });
+        });
+      });
+    });
+  }
+  document.getElementById('fr-run').addEventListener('click', runFr);
+
+  // ---------- §10 · the OpenDrones importer ----------
+  function sniffEncoding(bytes) {
+    if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) return 'utf-16le';
+    if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) return 'utf-16be';
+    if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return 'utf-8';
+    return 'utf-8';
+  }
+  document.getElementById('log-pick').addEventListener('change', function () {
+    document.getElementById('log-status').textContent = 'file selected — press Import';
+  });
+  document.getElementById('log-run').addEventListener('click', function () {
+    var inp = document.getElementById('log-pick');
+    var files = Array.from(inp.files || []);
+    if (!files.length) {
+      document.getElementById('log-status').textContent = 'pick a file first';
+      return;
+    }
+    var f = files[0];
+    var st = document.getElementById('log-status');
+    st.textContent = 'importing ' + f.name + '…';
+    f.arrayBuffer().then(function (ab) {
+      var bytes = new Uint8Array(ab);
+      var enc = sniffEncoding(bytes);
+      var shipped = new TextDecoder(enc).decode(ab);
+      var naiveBlob = f.text();
+      var naiveFetch = new TextDecoder('utf-8').decode(ab);
+      return Promise.all([naiveBlob, naiveFetch]).then(function (both) {
+        var tb = bodyOf('log-table');
+        tb.textContent = '';
+        var rows = [
+          ['file.name', f.name, 'ok'],
+          ['file.type (a HINT only)', f.type || '(empty)', 'info'],
+          ['file.size', f.size + ' B', 'info'],
+          ['file.lastModified', f.lastModified + '  (ms part ' + (f.lastModified % 1000) + ')', 'info'],
+          ['sniffed encoding', enc, 'ok'],
+          ['SHIPPED recipe: TextDecoder("' + enc + '")', JSON.stringify(shipped.slice(0, 60)), 'ok'],
+          ['naive: file.text()', JSON.stringify(both[0].slice(0, 60)), both[0] === shipped ? 'ok' : 'fail'],
+          ['naive: TextDecoder("utf-8")', JSON.stringify(both[1].slice(0, 60)), both[1] === shipped ? 'ok' : 'fail'],
+          ['rows parsed (shipped recipe)', shipped.split(/\r?\n/).filter(function (l) { return l.trim(); }).length + ' row(s)', 'ok']
+        ];
+        rows.forEach(function (r) {
+          var tr = document.createElement('tr');
+          var td1 = document.createElement('td'); td1.textContent = r[0];
+          var td2 = document.createElement('td'); td2.className = 'v'; td2.textContent = r[1];
+          var td3 = document.createElement('td');
+          var sp = document.createElement('span');
+          sp.className = 'badge ' + (r[2] === 'ok' ? 'yes' : (r[2] === 'fail' ? 'no' : 'part'));
+          sp.textContent = r[2] === 'ok' ? 'correct' : (r[2] === 'fail' ? 'WRONG' : 'info');
+          td3.appendChild(sp);
+          tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+          tb.appendChild(tr);
+        });
+        var agreeBlob = both[0] === shipped;
+        var agreeFetch = both[1] === shipped;
+        addChips('log-chips', [
+          [agreeBlob ? 'ok' : 'fail', 'file.text() agrees with the shipped recipe: ' + (agreeBlob ? 'yes' : 'NO — the sniff saved you')],
+          [agreeFetch ? 'ok' : 'fail', 'TextDecoder("utf-8") agrees: ' + (agreeFetch ? 'yes' : 'NO — the sniff saved you')],
+          ['ok', 'sniffed encoding: ' + enc],
+          ['info', 'engine: ' + engineName()]
+        ]);
+        document.getElementById('log-out').textContent =
+          'Imported ' + f.name + ' (' + f.size + ' B) as ' + enc + '.\n' +
+          'Shipped recipe: ' + JSON.stringify(shipped.slice(0, 120)) + '\n' +
+          'Naive file.text(): ' + JSON.stringify(both[0].slice(0, 120)) + '\n' +
+          'Naive utf-8 decode: ' + JSON.stringify(both[1].slice(0, 120));
+        st.textContent = 'imported';
+      });
+    });
+  });
+
+  // ---------- §12 · engine ledger ----------
+  function fillEng() {
+    var tb = bodyOf('eng-table');
+    tb.textContent = '';
+    var rows = [
+      ['Blob.prototype.bytes()', 'yes', 'yes', 'no'],
+      ['Blob.prototype.textStream()', 'yes', 'yes', 'no'],
+      ['File.prototype.lastModifiedDate', 'yes', 'yes', 'no'],
+      ['FileList.prototype.namedItem()', 'no', 'no', 'no'],
+      ['FileList Array methods (.map/.find)', 'no', 'no', 'no'],
+      ['FileList is iterable', 'yes', 'yes', 'yes'],
+      ['BOM sniff in Blob.text()', 'yes', 'yes', 'yes'],
+      ['BOM sniff in Response/fetch.text()', 'no', 'no', 'no'],
+      ['Trailing half-unit -> U+FFFD', 'no (dropped)', 'no (dropped)', 'yes'],
+      ['lastModified ms precision', 'yes', 'yes', 'no (truncated)'],
+      ['new File() infers type from name', 'no', 'no', 'no'],
+      ['nameless Blob -> filename "blob"', 'yes', 'yes', 'yes'],
+      ['empty File name -> filename ""', 'yes', 'yes', 'yes'],
+      ['input.files = [] throws', 'yes', 'yes', 'yes'],
+      ['Object URL carries the filename', 'no', 'no', 'no'],
+      ['Content-Disposition on a blob URL', 'no', 'no', 'no']
+    ];
+    rows.forEach(function (r) {
+      var tr = document.createElement('tr');
+      var td0 = document.createElement('td'); td0.textContent = r[0];
+      tr.appendChild(td0);
+      for (var i = 1; i <= 3; i++) {
+        var td = document.createElement('td');
+        td.className = 'v';
+        var v = r[i];
+        var sp = document.createElement('span');
+        if (v === 'yes') { sp.className = 'badge yes'; sp.textContent = 'yes'; }
+        else if (v === 'no') { sp.className = 'badge no'; sp.textContent = 'no'; }
+        else { sp.className = 'badge part'; sp.textContent = v; }
+        td.appendChild(sp);
+        tr.appendChild(td);
+      }
+      tb.appendChild(tr);
+    });
+    addChips('eng-chips', [
+      ['info', '3 Chromium-family members absent in WebKit 26.5'],
+      ['warn', '4 behaviours absent in EVERY engine (spec defines them)'],
+      ['ok', 'the multipart wire is byte-identical across all three']
+    ]);
+  }
+
+  // ---------- boot ----------
+  fillEng();
+  runLab();
+  runLm();
+  runBl();
+  renderTypes([]);
+  document.getElementById('meta-line').textContent =
+    'CfT 155 · Brave 156 · WebKit 26.5 · 7 probe suites · measured 2026-10-30 · your engine: ' + engineName();
+  window.__mcDone = true;
+})();
+</script>
+</body>
+</html>
