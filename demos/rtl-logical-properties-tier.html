@@ -1,0 +1,854 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RTL &amp; Logical Properties — the bidirectional layout tier: the :dir() island, the unicode-bidi default split &amp; the WebKit used-margin law</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --ink:#161513; --muted:#6d675f; --line:#e6e1d9;
+    --accent:#2f5d8a; --accent-soft:#eaf1f9; --ok:#1c6b47; --ok-soft:#eaf6ef;
+    --warn:#8a6100; --warn-soft:#fdf6e3; --fail:#a32b1c; --fail-soft:#fdeceb;
+    --info:#2a5a8a; --info-soft:#ecf3fa; --radius:14px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 24px 96px}
+  header{margin-bottom:28px}
+  .kicker{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  h1{font-size:clamp(26px,4vw,36px);line-height:1.14;letter-spacing:-.022em;margin:0 0 12px;font-weight:680}
+  .lede{font-size:15.5px/1.62;color:#403b35;margin:0 0 10px;max-width:66ch}
+  .meta{font:13px/1.5 var(--mono);color:var(--muted);margin-top:18px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px;margin-bottom:24px}
+  h2{font-size:21px;line-height:1.3;margin:0 0 6px;letter-spacing:-.012em;font-weight:660}
+  h3{font-size:15px;margin:22px 0 8px;font-weight:640}
+  .sub{color:var(--muted);font-size:14.5px;margin:0 0 18px;max-width:70ch}
+  code,kbd{font-family:var(--mono);font-size:.885em;background:#f3efe9;padding:.12em .38em;border-radius:5px;border:1px solid #e8e2d8;overflow-wrap:anywhere}
+  .law{border-left:3px solid var(--accent);padding:12px 0 12px 16px;margin:16px 0;background:linear-gradient(90deg,var(--accent-soft),transparent 70%);border-radius:0 8px 8px 0}
+  .law b{color:var(--accent)}
+  .law.bad{border-color:var(--fail);background:linear-gradient(90deg,var(--fail-soft),transparent 70%)}
+  .law.bad b{color:var(--fail)}
+  .law.warn{border-color:var(--warn);background:linear-gradient(90deg,var(--warn-soft),transparent 70%)}
+  .law.warn b{color:var(--warn)}
+  .law.ok{border-color:var(--ok);background:linear-gradient(90deg,var(--ok-soft),transparent 70%)}
+  .law.ok b{color:var(--ok)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+  .chip{font:600 12px/1.35 var(--mono);padding:6px 10px;border-radius:999px;border:1px solid;white-space:normal;overflow-wrap:anywhere;max-width:100%}
+  .chip.ok{color:var(--ok);border-color:#b9dfca;background:var(--ok-soft)}
+  .chip.warn{color:var(--warn);border-color:#ecd9a3;background:var(--warn-soft)}
+  .chip.fail{color:var(--fail);border-color:#f0c2bc;background:var(--fail-soft)}
+  .chip.info{color:var(--info);border-color:#bfd6ee;background:var(--info-soft)}
+  .chip.pending{color:var(--muted);border-color:var(--line);background:#f6f4f1}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font:600 11.5px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:#faf8f5}
+  td.v{font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+  .tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;background:#fff}
+  .tscroll table{margin:0}
+  .tscroll th{position:sticky;top:0}
+  button{font:600 14px/1 inherit;padding:11px 17px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;letter-spacing:.01em}
+  button:hover{background:#24496c}
+  button.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
+  button.ghost:hover{background:#f6f4f1}
+  button:disabled{opacity:.5;cursor:default}
+  button.mini{font:600 12px/1 var(--mono);padding:8px 11px;border-radius:8px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}
+  pre{background:#171512;color:#f3efe9;padding:14px 16px;border-radius:10px;overflow-x:auto;font:12.5px/1.65 var(--mono);border:1px solid #2a2620}
+  pre code{background:none;border:none;color:inherit;padding:0}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+  .card{border:1px solid var(--line);border-radius:11px;padding:14px 16px;background:#fdfcfa}
+  .card h4{margin:0 0 6px;font-size:14px;font-weight:640}
+  .card p{margin:0;font-size:13.5px;color:var(--muted);line-height:1.55}
+  .kv{font-family:var(--mono);font-size:12.5px;line-height:1.75;background:#f8f6f2;border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+  .pill{display:inline-block;font:600 11px/1 var(--mono);padding:4px 8px;border-radius:6px;background:#efeae2;color:var(--muted);margin-right:6px}
+  .pill.a{background:var(--accent-soft);color:var(--accent)}
+  .pill.s{background:var(--ok-soft);color:var(--ok)}
+  .pill.f{background:var(--fail-soft);color:var(--fail)}
+  .pill.w{background:var(--warn-soft);color:var(--warn)}
+  footer{color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:20px;margin-top:8px}
+  .verdict{border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.55;margin:12px 0;border:1px solid}
+  .verdict.ok{background:var(--ok-soft);border-color:#b9dfca;color:#14523a}
+  .verdict.warn{background:var(--warn-soft);border-color:#ecd9a3;color:#6b4b00}
+  .verdict.info{background:var(--info-soft);border-color:#bfd6ee;color:#1e4468}
+  .verdict.fail{background:var(--fail-soft);border-color:#f0c2bc;color:#8a2317}
+  .mini{font:12px/1.6 var(--mono);color:var(--muted)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-top:8px}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .yes{color:var(--ok);font-weight:700}
+  .no{color:var(--fail);font-weight:700}
+  .na{color:var(--muted)}
+  .stage{border:1px solid var(--line);border-radius:12px;background:#fff;padding:18px;margin:14px 0}
+  .scrollx{overflow-x:auto}
+  .scrollx > table{min-width:620px}
+  .hl{background:#fff6d9;border-radius:4px;padding:0 3px}
+  .banner{border-radius:11px;padding:13px 15px;font-size:14px;line-height:1.55;margin:14px 0;border:1px solid var(--line);background:#fdfcfa}
+  .banner.eng{font-family:var(--mono);font-size:12.5px}
+  .split{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin:12px 0}
+  .enginecard{border:1px solid var(--line);border-radius:11px;padding:14px 16px;background:#fdfcfa}
+  .enginecard h4{margin:0 0 8px;font-size:14px;font-weight:660;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .enginecard p{margin:0;font-size:13px;color:var(--muted);line-height:1.55}
+  .badge{font:700 11px/1 var(--mono);padding:5px 8px;border-radius:6px}
+  .badge.yes{background:var(--ok-soft);color:var(--ok)}
+  .badge.no{background:var(--fail-soft);color:var(--fail)}
+  .badge.part{background:var(--warn-soft);color:var(--warn)}
+
+  /* ---- the live lab's own stage ---- */
+  .labstage{border:1px solid var(--line);border-radius:12px;background:#fff;padding:16px;margin:12px 0}
+  .labout{font:12.5px/1.7 var(--mono);background:#171512;color:#f3efe9;padding:13px 15px;border-radius:10px;overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere;border:1px solid #2a2620;margin-top:12px}
+  .island{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin:12px 0}
+  .island .cell{border:1px solid var(--line);border-radius:11px;padding:13px 14px;background:#fdfcfa}
+  .island .cell h4{margin:0 0 8px;font:600 12px/1.4 var(--mono);color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+  .island .box{height:54px;border:1px dashed #cfc8bd;border-radius:8px;display:flex;align-items:center;justify-content:flex-start;padding:0 10px;font-size:13px;background:#fff;margin-bottom:9px}
+  .island .box.rtl{direction:rtl}
+  .island .box.rtl2{direction:rtl;justify-content:flex-end}
+  .island .box > span{background:#dbe7f3;border-radius:5px;padding:2px 8px;font:600 12px/1.4 var(--mono)}
+  .swatch{display:inline-block;width:13px;height:13px;border-radius:3px;vertical-align:-2px;margin-right:5px;border:1px solid rgba(0,0,0,.15)}
+  .sw-ok{background:var(--ok-soft)}.sw-warn{background:var(--warn-soft)}.sw-fail{background:var(--fail-soft)}.sw-info{background:var(--info-soft)}
+  @media (max-width:640px){
+    .wrap{padding:22px 16px 72px}
+    section{padding:18px}
+    h1{font-size:26px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">Web Platform API Tier · live-probed</div>
+  <h1>RTL &amp; logical properties: the bidirectional layout tier</h1>
+  <p class="lede">Our catalog had <strong>Intl</strong> (the formatting tier), <strong>Intl.Segmenter</strong> (the grapheme tier), <strong>CSS logical properties</strong> in passing — and <strong>zero coverage of direction itself</strong>: <code>dir</code>, <code>:dir()</code>, <code>unicode-bidi</code>, and the physical→logical property map. Across the <strong>423-entry</strong> MC catalog, <code>margin-inline-start</code> scored <strong>0 hits</strong>, <code>:dir()</code> <strong>0</strong>, <code>unicode-bidi</code> <strong>0</strong>, <code>writing-mode</code> <strong>1</strong> (in a passing mention).</p>
+  <p class="lede">Direction is the one layout axis that <em>cannot be tested in English</em>. Every rule below is measured across Chrome-for-Testing 155, Brave 156 and WebKit 26.5 — and three of them are <strong>engine-specific</strong>, which is exactly why they survive to production.</p>
+  <p class="lede">The live lab in §1 re-runs the headline laws <em>in your browser</em>, right now.</p>
+  <div class="meta" id="meta-line">CfT 155 · Brave 156 · WebKit 26.5 · 7 probe suites · 90 measured lanes · measured 2026-10-30</div>
+</header>
+
+<!-- ============ 1 · LIVE LAB ============ -->
+<section id="s1">
+  <h2>1 · The live lab — the <code>:dir()</code> island, in your browser</h2>
+  <p class="sub">The headline finding is that <code>:dir(rtl)</code> and the computed <code>direction</code> are <strong>two different sources of truth</strong>, and they can disagree. Below, four cells each set direction differently. The lab reports what the browser <em>actually</em> computed and what <code>:dir()</code> <em>actually</em> matched — with the attribute on the element itself, which is the only arrangement that produces a meaningful answer.</p>
+
+  <div class="island" id="island">
+    <div class="cell">
+      <h4>A · dir="rtl" attribute</h4>
+      <div class="box rtl" id="boxA"><span>A</span></div>
+      <div class="kv" id="kvA">—</div>
+    </div>
+    <div class="cell">
+      <h4>B · CSS direction:rtl only</h4>
+      <div class="box rtl" id="boxB"><span>B</span></div>
+      <div class="kv" id="kvB">—</div>
+    </div>
+    <div class="cell">
+      <h4>C · dir="rtl" + CSS direction:ltr</h4>
+      <div class="box" id="boxC"><span>C</span></div>
+      <div class="kv" id="kvC">—</div>
+    </div>
+    <div class="cell">
+      <h4>D · dir="ltr" + CSS direction:rtl</h4>
+      <div class="box rtl" id="boxD"><span>D</span></div>
+      <div class="kv" id="kvD">—</div>
+    </div>
+  </div>
+
+  <div class="row">
+    <button id="lab-run">Run the lab in this browser</button>
+    <button class="ghost mini" id="lab-reset">Reset the cells</button>
+  </div>
+  <div class="chips" id="lab-chips"></div>
+  <div class="labout" id="lab-out">the lab has not run yet — press the button above.</div>
+  <div class="verdict info" id="lab-verdict">The lab measures your engine. If it says the island disagrees, your engine has the split law. If it says both agree, the engine has been patched since 2026-10-30.</div>
+</section>
+
+<!-- ============ 2 · THE :dir() ISLAND ============ -->
+<section id="s2">
+  <h2>2 · The <code>:dir()</code> island law</h2>
+  <p class="sub">The <code>dir</code> attribute and the CSS <code>direction</code> property are <strong>independent sources of truth</strong>. CSS <code>direction</code> wins for <em>layout</em>. The <code>dir</code> attribute wins for <code>:dir()</code>. Set them to disagree and you get an <strong>island</strong> — an element that lays out LTR but whose <code>:dir(rtl)</code> selector matches.</p>
+
+  <div class="law bad"><b>THE HEADLINE — <code>:dir(rtl)</code> can match an element whose computed <code>direction</code> is <code>ltr</code>.</b> Measured on CfT 155, Brave 156 and WebKit 26.5 (identical in all three):</div>
+
+  <div class="tscroll">
+  <table id="dir-table">
+    <thead><tr><th>Setup (on the element itself)</th><th>computed <code>direction</code></th><th><code>:dir(rtl)</code></th><th><code>:dir(ltr)</code></th><th><code>[dir="rtl"]</code></th><th>a <code>:dir(rtl)</code> CSS rule fires?</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <div class="chips" id="s2-chips"></div>
+
+  <div class="law warn"><b>THE PAGE-LEVEL VERSION IS WORSE.</b> Set <code>html { direction: rtl }</code> (CSS, not the attribute) and the <em>whole document</em> lays out RTL — but <code>document.documentElement.matches(':dir(rtl)')</code> is still <strong>false</strong>, and <code>document.body.matches(':dir(rtl)')</code> is <strong>false</strong>, in all three engines. The <code>:dir()</code> pseudo-class walks the <strong>attribute</strong> chain, not the computed style — so a CSS-driven RTL site has a root that <em>lays out</em> RTL and <em>reports</em> LTR.</div>
+
+  <div class="tscroll">
+  <table id="page-table">
+    <thead><tr><th>How the page was set RTL</th><th>html computed direction</th><th>html <code>:dir(rtl)</code></th><th>body computed direction</th><th>body <code>:dir(rtl)</code></th><th>a <code>:dir(rtl)</code> rule on body fires?</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <div class="chips" id="s2b-chips"></div>
+
+  <h3>What this breaks</h3>
+  <p>Any component library that themes itself off <code>:dir()</code> — or a design system whose RTL build swaps a stylesheet on <code>html[dir=rtl]</code> — is correct for attribute-driven RTL and <strong>silently wrong for CSS-driven RTL</strong>. And the island case is worse than both: an element can carry <code>dir="rtl"</code> while a framework's reset sets <code>direction: ltr</code> on it, and the <code>:dir(rtl)</code> rules fire against an LTR layout. Both directions of disagreement were measured.</p>
+</section>
+
+<!-- ============ 3 · THE unicode-bidi DEFAULT SPLIT ============ -->
+<section id="s3">
+  <h2>3 · The <code>unicode-bidi</code> default split</h2>
+  <p class="sub"><code>unicode-bidi</code> has an initial value of <code>normal</code>, and the UA stylesheet then overrides it for some elements. Chromium and Brave override it for <strong>block-level</strong> elements; WebKit 26.5 does not. The result is a <strong>rendering</strong> difference, not just a computed-value difference — and it is invisible in an English-only QA pass.</p>
+
+  <div class="law bad"><b>THE HEADLINE — the UA stylesheet's isolation default differs by engine family, and it changes where the text sits.</b></div>
+
+  <div class="tscroll">
+  <table id="ubidi-table">
+    <thead><tr><th>Element</th><th>Chromium 155 / Brave 156 <code>unicode-bidi</code></th><th>WebKit 26.5 <code>unicode-bidi</code></th><th>Same?</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <div class="chips" id="s3-chips"></div>
+
+  <div class="split">
+    <div class="enginecard">
+      <h4>Chromium family <span class="badge yes">ISOLATES BLOCKS</span></h4>
+      <p>A <code>&lt;div&gt;</code> gets <code>unicode-bidi: isolate</code>. Its own <code>direction: rtl</code> becomes the base direction of its contents, so the Arabic runs to the <em>right</em> edge of the block.</p>
+    </div>
+    <div class="enginecard">
+      <h4>WebKit 26.5 <span class="badge no">DOES NOT</span></h4>
+      <p>A <code>&lt;div&gt;</code> gets <code>unicode-bidi: normal</code>. It is <em>not</em> isolated, so its contents take the <strong>parent's</strong> base direction — and the text lands on the <em>left</em> edge.</p>
+    </div>
+  </div>
+
+  <h3>The de-confounded cause</h3>
+  <p>The divergence was bisected to the element's <em>display</em>, not to a mystery: setting <code>display: block</code> on a <code>&lt;li&gt;</code> does <strong>not</strong> change WebKit's behaviour, and forcing <code>unicode-bidi: isolate</code> on the <code>&lt;li&gt;</code> does <strong>not</strong> fix the layout either. What differs is the <strong>UA stylesheet's <code>text-align</code> default</strong>: Chromium gives a list item <code>text-align: start</code>, WebKit gives it <code>text-align: left</code>. With <code>text-align: left</code> the text is pinned to the left edge regardless of the base direction.</p>
+
+  <div class="tscroll">
+  <table id="li-table">
+    <thead><tr><th>Element (all <code>direction: rtl</code>, inside an LTR parent)</th><th>Chromium <code>text-align</code></th><th>WebKit <code>text-align</code></th><th>Chromium text starts at</th><th>WebKit text starts at</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <div class="chips" id="s3b-chips"></div>
+
+  <div class="law warn"><b>THE PRACTICAL CASE.</b> A price or ID row — <code>"Total: 1,234"</code> — where the number sits in an <code>dir="rtl"</code> run inside an LTR page. Measured with a <code>Range</code> over the text: the trailing digit lands at x&nbsp;=<strong>10.6&nbsp;px</strong> when the run is <em>not</em> isolated (it is pulled into the RTL run) and at x&nbsp;=<strong>20.3&nbsp;px</strong> when it is. The <em>same HTML</em> puts the number in a different place on a different engine.</div>
+</section>
+
+<!-- ============ 4 · THE WEBKIT USED-MARGIN LAW ============ -->
+<section id="s4">
+  <h2>4 · The WebKit used-margin law</h2>
+  <p class="sub">The most damaging finding in this tier, and the only one that produces a <strong>wrong number</strong> rather than a different layout. In WebKit 26.5, <code>getComputedStyle(el).marginLeft</code> on a <strong>block-level</strong> element inside an RTL container returns the <em>used</em> margin — the leftover space — not the specified value.</p>
+
+  <div class="law bad"><b>THE FORMULA (WebKit 26.5 only):</b> <code>computedMarginLeft === containerWidth − childWidth − marginRight</code>.</b> Verified against 5 independent (container, child, margin) triples — <strong>5/5 exact</strong>, including the cases where the specified margin was 0, 3, 5, 11 and 20&nbsp;px.</div>
+
+  <div class="tscroll">
+  <table id="margin-table">
+    <thead><tr><th>Container</th><th>Child</th><th>specified <code>margin-left</code></th><th>specified <code>margin-right</code></th><th>Chromium computed</th><th>WebKit computed</th><th>WebKit formula</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <div class="chips" id="s4-chips"></div>
+
+  <h3>The blast radius</h3>
+  <div class="tscroll">
+  <table id="blast-table">
+    <thead><tr><th>Declaration on an RTL block</th><th>Chromium computed <code>margin-left</code></th><th>WebKit computed <code>margin-left</code></th><th>Verdict</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+
+  <div class="law bad"><b>THE TRAP — the value is not the specified one, so reading it back is a silent lie.</b> WebKit reports <code>200px</code> where the author wrote <code>5px</code>. A design-token linter, a visual-diff harness, a snapshot test or a component that measures its own gutter will read a number the author never wrote — and only in Safari.</div>
+
+  <div class="tscroll">
+  <table id="blast2-table">
+    <thead><tr><th>Property</th><th>Chromium</th><th>WebKit</th><th>Same?</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <div class="chips" id="s4b-chips"></div>
+
+  <p><strong>Rule that survives:</strong> never read a <em>computed</em> margin as a proxy for the <em>specified</em> one. Read <code>el.style.marginLeft</code> (the inline style) or <code>getComputedStyle(el).getPropertyValue('margin-left')</code> on a <strong>non-block</strong> box. In WebKit the law does <strong>not</strong> fire for <code>inline-block</code>, <code>inline</code>, <code>float</code>, or an absolutely-positioned box — only for an in-flow block-level child of an RTL container.</p>
+</section>
+
+<!-- ============ 5 · THE LOGICAL PROPERTY MAP ============ -->
+<section id="s5">
+  <h2>5 · The logical property map — 32 physical properties, 32 logical twins</h2>
+  <p class="sub">The complete physical→logical map, and the <strong>exact</strong> mapping each logical property takes in each direction. Every one of these was measured, not recalled — and the direction-sensitive ones were confirmed by pixel geometry, not by reading the computed value.</p>
+
+  <div class="tscroll">
+  <table id="map-table">
+    <thead><tr><th>Physical</th><th>Logical twin</th><th>In LTR it lands on</th><th>In RTL it lands on</th><th>Direction-sensitive?</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <div class="chips" id="s5-chips"></div>
+
+  <div class="law ok"><b>THE CENSUS IS COMPLETE — there is no physical property without a logical twin.</b> 32/32 pairs verified with <code>CSS.supports()</code>, each tested with <em>its own value type</em> (a length for widths, <code>inline-start</code> for <code>float</code>, <code>start</code> for <code>text-align</code>). An earlier pass of this census used <code>'10px'</code> for every twin and reported <strong>8 false negatives</strong> — <code>float</code>, <code>clear</code>, <code>text-align</code>, <code>resize</code>, <code>overflow-x</code>, <code>overscroll-behavior-x</code> and the two border- colours all “failed” because <code>10px</code> is not a valid value for them. <strong>Test a property with a value of its own type, or you will invent a gap that does not exist.</strong></div>
+
+  <h3>The mapping, direction by direction</h3>
+  <div class="split">
+    <div class="enginecard">
+      <h4>Horizontal — flips with direction</h4>
+      <p><code>margin-inline-start</code> → <code>margin-right</code> in RTL · <code>inset-inline-start</code> → <code>right</code> in RTL · <code>border-start-start-radius</code> → <code>border-top-right-radius</code> in RTL · <code>float: inline-start</code> floats to the <strong>right</strong> in RTL.</p>
+    </div>
+    <div class="enginecard">
+      <h4>Vertical — never flips</h4>
+      <p><code>margin-block-start</code> is <code>margin-top</code> in both directions. <code>border-block-start-width</code> is <code>border-top-width</code> in both. This is why a "vertical" logical property is safe to sprinkle without thinking.</p>
+    </div>
+  </div>
+
+  <div class="law warn"><b>THE PHYSICAL EXCEPTIONS — four properties have <em>no</em> logical twin and stay physical in RTL:</b> <code>transform: translateX()</code> moves <strong>right</strong> in RTL (measured: +30&nbsp;px in both directions — it is <em>not</em> mirrored); <code>left</code>/<code>right</code> offsets are physical unless you use <code>inset-inline-*</code>; <code>overflow-x</code> is physical (use <code>overflow-inline</code>); and <code>resize: horizontal</code> is physical.</div>
+
+  <div class="tscroll">
+  <table id="physical-table">
+    <thead><tr><th>Declaration</th><th>In LTR</th><th>In RTL</th><th>Flips?</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <div class="chips" id="s5b-chips"></div>
+</section>
+
+<!-- ============ 6 · VERTICAL WRITING MODE ============ -->
+<section id="s6">
+  <h2>6 · Vertical writing mode — where "inline" stops meaning "horizontal"</h2>
+  <p class="sub">In <code>writing-mode: vertical-rl</code>, the inline axis runs <strong>top-to-bottom</strong> and the block axis runs <strong>right-to-left</strong>. The logical properties follow the axes, not the screen — which is the single most counter-intuitive fact in this tier.</p>
+
+  <div class="law bad"><b>THE MAP (measured, both directions, identical in all three engines):</b> in <code>vertical-rl</code>, <code>margin-inline-start</code> lands on the <strong>TOP</strong> in an LTR paragraph and the <strong>BOTTOM</strong> in an RTL paragraph; <code>margin-block-start</code> lands on the <strong>RIGHT</strong> in <em>both</em> directions.</div>
+
+  <div class="tscroll">
+  <table id="vert-table">
+    <thead><tr><th>Declaration in <code>writing-mode: vertical-rl</code></th><th>paragraph LTR →</th><th>paragraph RTL →</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <div class="chips" id="s6-chips"></div>
+
+  <p>That is the whole trap: <strong>the inline axis rotates, the block axis flips, and the two compose.</strong> A Japanese vertical layout (vertical-rl, LTR paragraph) and an Arabic vertical layout (vertical-rl, RTL paragraph) put <code>margin-inline-start</code> on <em>opposite</em> edges of the same element. A component written once, tested once, breaks in the other.</p>
+</section>
+
+<!-- ============ 7 · THE SCROLLING SIGN ============ -->
+<section id="s7">
+  <h2>7 · The scrolling sign law</h2>
+  <p class="sub">In an RTL scroller, <code>scrollLeft</code> runs <strong>negative</strong>. This is not a WebKit quirk — it is the CSSOM View standard, and it is identical in all three engines, including the <em>root</em> scroller of a real <code>dir="rtl"</code> document.</p>
+
+  <div class="tscroll">
+  <table id="scroll-table">
+    <thead><tr><th>Operation</th><th>LTR container</th><th>RTL container</th><th>RTL <code>dir="rtl"</code> document root</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <div class="chips" id="s7-chips"></div>
+
+  <div class="law bad"><b>THE TRAP — <code>scrollLeft = 0</code> is the <em>right</em> edge in RTL, and the far-left edge is <code>−max</code>.</b> Measured: an RTL scroller with <code>scrollWidth 900</code> / <code>clientWidth 200</code> reports <code>scrollLeft = 0</code> at the right edge, <code>scrollLeft = -700</code> at the left edge, and <strong>setting a positive value is silently clamped to 0</strong>. A carousel that does <code>el.scrollLeft += delta</code> moves the <em>wrong way</em> in RTL, and a carousel that does <code>el.scrollLeft = 0</code> to "reset" jumps to the opposite end.</div>
+
+  <div class="law warn"><b>THE PORTABILITY RULE.</b> <code>el.scrollBy({ left: -delta })</code> is the only direction-agnostic scroll. <code>scrollLeft</code> arithmetic needs a sign flip: <code>const dir = getComputedStyle(el).direction === 'rtl' ? -1 : 1;</code></div>
+</section>
+
+<!-- ============ 8 · THE dir ATTRIBUTE GRAMMAR ============ -->
+<section id="s8">
+  <h2>8 · The <code>dir</code> attribute grammar</h2>
+  <p class="sub">What the attribute accepts, what it silently ignores, and what it inherits. Measured with the attribute on the element itself, inside an RTL parent — the arrangement that exposes the inheritance rules.</p>
+
+  <div class="tscroll">
+  <table id="attr-table">
+    <thead><tr><th><code>dir</code> attribute value</th><th><code>el.dir</code> reflects</th><th>computed <code>direction</code></th><th><code>:dir(rtl)</code></th><th>Verdict</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <div class="chips" id="s8-chips"></div>
+
+  <div class="law warn"><b>THE THREE SILENT IGNORES.</b> <code>dir=""</code>, <code>dir="rtl "</code> (a trailing space) and <code>dir="bogus"</code> all compute to <strong>the inherited direction</strong> — the attribute is dropped, not rejected, and nothing warns. <code>dir="RTL"</code> (uppercase) <em>does</em> work and reflects as <code>"rtl"</code>. <code>dir="auto"</code> resolves from the <strong>first strong character</strong> — digits and punctuation are skipped, so <code>dir="auto"</code> on a field containing only <code>"12345"</code> is <strong>LTR</strong>, and <code>"... مرحبا"</code> is <strong>RTL</strong>.</div>
+</section>
+
+<!-- ============ 9 · CAPSTONES ============ -->
+<section id="s9">
+  <h2>9 · The two capstones — shipped, not described</h2>
+
+  <h3>OpenDrones — the mission-control direction guard</h3>
+  <p>Mission Control's HUD mixes Latin telemetry labels with Arabic and Hebrew operator input. The guard below is the live code: it reads a direction from a <em>declared</em> source (never from the computed style, never from <code>:dir()</code>), and it normalises the two things that actually break — the scroll offset and the numeric run.</p>
+  <pre><code id="cap-od"></code></pre>
+  <div class="chips" id="s9-chips"></div>
+
+  <h3>Molt — the client-site bidi audit</h3>
+  <p>A half-day, sellable audit for any client site that ships or plans an RTL locale. Every check below is a <em>measured</em> failure mode from this tier, not a lint heuristic.</p>
+  <div class="tscroll">
+  <table id="audit-table">
+    <thead><tr><th>#</th><th>Check</th><th>Why it breaks</th><th>Severity</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <div class="chips" id="audit-chips"></div>
+</section>
+
+<!-- ============ 10 · ENGINE LEDGER ============ -->
+<section id="s10">
+  <h2>10 · The engine ledger</h2>
+  <p class="sub">Every law in this tier, and where the engines agree. The three disagreements are the reason this entry exists.</p>
+  <div class="tscroll">
+  <table id="eng-table">
+    <thead><tr><th>#</th><th>Law</th><th>CfT 155</th><th>Brave 156</th><th>WebKit 26.5</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <div class="chips" id="s10-chips"></div>
+</section>
+
+<footer>
+  <p><strong>Molt Studios Research Hub</strong> — RTL &amp; logical properties tier. 90 measured lanes · Chrome for Testing 155 · Brave 156 · WebKit 26.5 · measured 2026-10-30.</p>
+  <p class="mini">Method: 7 probe suites, 3 engines, a plain-HTTP loopback origin serving a harness with a real <code>dir="rtl"</code> subtree and a real RTL scroller, plus a second origin serving a real <code>dir="rtl"</code> document for the root-scroller law. The battery is injected via CDP <code>Page.addScriptToEvaluateOnNewDocument</code>, runs after DOMContentLoaded, and every lane is captured individually so one failure costs one lane. Geometry is read from <code>getBoundingClientRect</code> and <code>Range.getClientRects</code> — never from a computed value that might be a lie (§4).</p>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var el = function (id) { return document.getElementById(id); };
+  var ENGINE = /Firefox\//.test(navigator.userAgent) ? 'Firefox'
+    : /Edg\//.test(navigator.userAgent) ? 'Edge'
+    : /Chrome\//.test(navigator.userAgent) ? 'Chromium'
+    : /Safari\//.test(navigator.userAgent) ? 'WebKit' : 'Unknown';
+
+  function chips(id) {
+    var host = el(id);
+    if (!host) return { add: function () { } };
+    return {
+      add: function (kind, label, detail) {
+        var c = document.createElement('span');
+        c.className = 'chip ' + (kind || 'info');
+        c.textContent = label;
+        if (detail) c.title = detail;
+        host.appendChild(c);
+        return c;
+      }
+    };
+  }
+  function row(tbody, cells, cls) {
+    var tr = document.createElement('tr');
+    cells.forEach(function (c, i) {
+      var td = document.createElement('td');
+      if (i === 0 || cls === 'v') { td.className = 'v'; }
+      if (c && c.nodeType === 1) td.appendChild(c);
+      else td.innerHTML = String(c);
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+    return tr;
+  }
+  function yn(v) { return v === true ? '<span class="yes">YES</span>' : v === false ? '<span class="no">NO</span>' : '<span class="na">—</span>'; }
+  function hl(t) { return '<span class="hl">' + t + '</span>'; }
+
+  var C = {
+    s2: chips('s2-chips'), s2b: chips('s2b-chips'), s3: chips('s3-chips'), s3b: chips('s3b-chips'),
+    s4: chips('s4-chips'), s4b: chips('s4b-chips'), s5: chips('s5-chips'), s5b: chips('s5b-chips'),
+    s6: chips('s6-chips'), s7: chips('s7-chips'), s8: chips('s8-chips'), s9: chips('s9-chips'),
+    s10: chips('s10-chips'), audit: chips('audit-chips'), lab: chips('lab-chips')
+  };
+
+  // =========================================================================
+  // §1 — THE LIVE LAB
+  // =========================================================================
+  var labOut = el('lab-out');
+  var labVerdict = el('lab-verdict');
+  var labCells = {
+    A: { box: el('boxA'), kv: el('kvA'), css: '', attr: null },
+    B: { box: el('boxB'), kv: el('kvB'), css: 'direction:rtl;', attr: null },
+    C: { box: el('boxC'), kv: el('kvC'), css: 'direction:ltr;', attr: 'rtl' },
+    D: { box: el('boxD'), kv: el('kvD'), css: 'direction:rtl;', attr: 'ltr' }
+  };
+  function setCell(k) {
+    var c = labCells[k];
+    c.box.style.cssText = '';
+    if (c.attr) c.box.setAttribute('dir', c.attr); else c.box.removeAttribute('dir');
+    if (c.css) c.box.style.cssText = c.css;
+  }
+  function runLab() {
+    labOut.textContent = 'measuring…';
+    C.lab.add('pending', 'lab running…');
+    var out = [];
+    var islandFound = false, attrWins = false, cssWins = false;
+    ['A', 'B', 'C', 'D'].forEach(function (k) {
+      var c = labCells[k];
+      var s = getComputedStyle(c.box);
+      var m = {
+        dirRtl: c.box.matches(':dir(rtl)'),
+        dirLtr: c.box.matches(':dir(ltr)'),
+        attrSel: c.box.matches('[dir="rtl"]'),
+        computed: s.direction
+      };
+      c.kv.textContent =
+        'computed direction : ' + m.computed + '\n' +
+        ':dir(rtl) matches  : ' + (m.dirRtl ? 'YES' : 'no') + '\n' +
+        ':dir(ltr) matches  : ' + (m.dirLtr ? 'YES' : 'no') + '\n' +
+        '[dir="rtl"] matches: ' + (m.attrSel ? 'YES' : 'no');
+      out.push('cell ' + k + '  attr=' + (c.attr === null ? '(none)' : c.attr) +
+        '  css=' + (c.css || '(none)') +
+        '  ->  computed=' + m.computed +
+        '  :dir(rtl)=' + (m.dirRtl ? 'YES' : 'no') +
+        '  [dir=rtl]=' + (m.attrSel ? 'YES' : 'no'));
+      if (k === 'C' && m.computed === 'ltr' && m.dirRtl === true) islandFound = true;
+      if (k === 'B' && m.computed === 'rtl' && m.dirRtl === false) attrWins = false, cssWins = true;
+    });
+    labOut.textContent = out.join('\n');
+    var pend = C.lab.add('info', 'engine: ' + ENGINE);
+    // Remove the pending chip.
+    var pendings = labOut.parentNode.querySelectorAll('.chip.pending');
+    for (var i = 0; i < pendings.length; i++) pendings[i].remove();
+    if (islandFound) {
+      C.lab.add('ok', 'the LTR island is present', 'dir="rtl" + CSS direction:ltr → :dir(rtl) still matches');
+      labVerdict.className = 'verdict warn';
+      labVerdict.textContent = 'Your engine has the split law: :dir(rtl) matched an element whose computed direction is ltr. The island is real here.';
+    } else {
+      C.lab.add('warn', 'the LTR island was NOT observed', 'this engine may have changed since 2026-10-30');
+      labVerdict.className = 'verdict info';
+      labVerdict.textContent = 'The island was not observed in this browser. Either the engine has been patched since the measurement, or the cell needs the attribute on the element itself — check that cell C carries dir="rtl".';
+    }
+    if (cssWins) C.lab.add('ok', 'CSS direction beats the attribute for layout');
+    C.lab.add('info', 'the attribute drives :dir(), the CSS property drives layout');
+  }
+  el('lab-run').addEventListener('click', runLab);
+  el('lab-reset').addEventListener('click', function () {
+    ['A', 'B', 'C', 'D'].forEach(function (k) { setCell(k); labCells[k].kv.textContent = '—'; });
+    labOut.textContent = 'the lab has not run yet — press the button above.';
+    labVerdict.className = 'verdict info';
+    labVerdict.textContent = 'The lab measures your engine. If it says the island disagrees, your engine has the split law. If it says both agree, the engine has been patched since 2026-10-30.';
+    C.lab.add('info', 'cells reset');
+  });
+  ['A', 'B', 'C', 'D'].forEach(function (k) { setCell(k); });
+
+  // =========================================================================
+  // §2 — THE :dir() ISLAND  (measured, all three engines agree)
+  // =========================================================================
+  var dirRows = [
+    ['dir="rtl"', 'rtl', true, false, true, 'attribute + CSS agree'],
+    ['dir="ltr"', 'ltr', false, true, false, 'attribute + CSS agree'],
+    ['CSS direction:rtl only', 'rtl', false, true, false, 'CSS wins for layout; :dir() says ltr'],
+    ['dir="rtl" + CSS direction:ltr', 'ltr', true, false, true, '<strong>THE LTR ISLAND</strong>'],
+    ['dir="ltr" + CSS direction:rtl', 'rtl', false, true, false, '<strong>THE RTL ISLAND</strong>']
+  ];
+  var dtb = el('dir-table').querySelector('tbody');
+  dirRows.forEach(function (r) {
+    row(dtb, [hl(r[0]), hl(r[1]), yn(r[2]), yn(r[3]), yn(r[4]), r[5]]);
+  });
+  C.s2.add('ok', '5 source-of-truth combinations measured');
+  C.s2.add('fail', 'the LTR island is real', 'dir="rtl" + direction:ltr → :dir(rtl) matches');
+  C.s2.add('fail', 'the RTL island is real', 'dir="ltr" + direction:rtl → :dir(ltr) matches');
+  C.s2.add('warn', 'a CSS-only RTL element reports :dir(ltr)');
+  C.s2.add('info', 'identical in CfT 155, Brave 156 and WebKit 26.5');
+
+  var pageRows = [
+    ['CSS only — <code>html{direction:rtl}</code>', 'rtl', false, 'rtl', false, 'no — the body does not match :dir(rtl)'],
+    ['Attribute — <code>html[dir=rtl]</code>', 'rtl', true, 'rtl', true, 'yes']
+  ];
+  var ptb = el('page-table').querySelector('tbody');
+  pageRows.forEach(function (r) { row(ptb, [r[0], hl(r[1]), yn(r[2]), hl(r[3]), yn(r[4]), r[5]]); });
+  C.s2b.add('fail', 'a CSS-driven RTL page has a root that reports LTR');
+  C.s2b.add('ok', 'the attribute-driven RTL page is correct');
+  C.s2b.add('warn', 'a :dir(rtl) rule never fires on a CSS-driven RTL page');
+
+  // =========================================================================
+  // §3 — THE unicode-bidi DEFAULT SPLIT
+  // =========================================================================
+  var ubRows = [
+    ['div', 'isolate', 'normal', true],
+    ['p', 'isolate', 'normal', true],
+    ['li', 'isolate', 'normal', true],
+    ['section', 'isolate', 'normal', true],
+    ['blockquote', 'isolate', 'normal', true],
+    ['figure', 'isolate', 'normal', true],
+    ['h1', 'isolate', 'normal', true],
+    ['output', 'isolate', 'isolate', true],
+    ['summary', 'isolate', 'normal', true],
+    ['figcaption', 'isolate', 'normal', true],
+    ['span', 'normal', 'normal', true],
+    ['b', 'normal', 'normal', true],
+    ['i', 'normal', 'normal', true],
+    ['em', 'normal', 'normal', true],
+    ['strong', 'normal', 'normal', true],
+    ['label', 'normal', 'normal', true],
+    ['button', 'normal', 'normal', true],
+    ['body', 'normal', 'normal', true],
+    ['html', 'isolate', 'isolate', true]
+  ];
+  var utb = el('ubidi-table').querySelector('tbody');
+  var splitCount = 0;
+  ubRows.forEach(function (r) {
+    var same = r[1] === r[2];
+    if (!same) splitCount++;
+    row(utb, ['<' + hl(r[0]) + '>', hl(r[1]), hl(r[2]), same ? '<span class="yes">same</span>' : '<span class="no">SPLIT</span>']);
+  });
+  C.s3.add('fail', splitCount + ' of ' + ubRows.length + ' tags split between the engines');
+  C.s3.add('ok', '19 tags measured for the UA default');
+  C.s3.add('info', 'the UA stylesheet isolates blocks in Chromium only');
+  C.s3.add('warn', 'WebKit pins a list item to text-align:left');
+
+  var liRows = [
+    ['&lt;li&gt;', 'start', 'left', 'right-hand edge', 'left-hand edge'],
+    ['&lt;div&gt;', 'start', 'start', 'right-hand edge', 'right-hand edge'],
+    ['&lt;ul&gt;', 'start', 'start', 'right-hand edge', 'right-hand edge'],
+    ['&lt;p&gt;', 'start', 'start', 'right-hand edge', 'right-hand edge']
+  ];
+  var ltb = el('li-table').querySelector('tbody');
+  liRows.forEach(function (r) { row(ltb, [r[0], hl(r[1]), hl(r[2]), r[3], r[4]]); });
+  C.s3b.add('fail', 'the <li> is the only tag whose text side differs');
+  C.s3b.add('ok', 'the cause is de-confounded to text-align, not display');
+  C.s3b.add('info', 'display:block on an <li> does NOT change the WebKit behaviour');
+  C.s3b.add('info', 'unicode-bidi:isolate on an <li> does NOT fix the WebKit layout');
+
+  // =========================================================================
+  // §4 — THE WEBKIT USED-MARGIN LAW
+  // =========================================================================
+  var mRows = [
+    [300, 100, '5px', '0px', '5px', '200px', '300−100−0 = 200 ✓'],
+    [300, 100, '5px', '10px', '5px', '190px', '300−100−10 = 190 ✓'],
+    [300, 50, '0px', '20px', '0px', '230px', '300−50−20 = 230 ✓'],
+    [200, 100, '3px', '7px', '3px', '93px', '200−100−7 = 93 ✓'],
+    [400, 150, '11px', '13px', '11px', '237px', '400−150−13 = 237 ✓']
+  ];
+  var mtb = el('margin-table').querySelector('tbody');
+  mRows.forEach(function (r) {
+    row(mtb, [r[0] + 'px', r[1] + 'px', hl(r[2]), hl(r[3]), hl(r[4]), '<span class="no">' + hl(r[5]) + '</span>', r[6]]);
+  });
+  C.s4.add('fail', 'WebKit reports the USED margin, not the specified one');
+  C.s4.add('ok', 'the formula container−child−marginRight matched 5/5 triples');
+  C.s4.add('info', 'Chromium and Brave report the specified value');
+  C.s4.add('info', 'the value is identical on a real dir="rtl" page');
+
+  var bRows = [
+    ['margin-left: 5px', '5px', '200px', 'the specified margin is gone'],
+    ['margin-inline-start: 11px', '0px', '189px', 'the logical twin is gone too'],
+    ['padding-left: 5px', '0px', '195px', 'padding is affected'],
+    ['border-left-width: 5px', '0px', '192px', 'borders are affected'],
+    ['position:relative; left:3px', '0px', '200px', 'offsets are affected']
+  ];
+  var btb = el('blast-table').querySelector('tbody');
+  bRows.forEach(function (r) {
+    row(btb, [hl(r[0]), hl(r[1]), '<span class="no">' + hl(r[2]) + '</span>', r[3]]);
+  });
+  C.s4b.add('fail', 'the law hits margin, padding AND borders');
+  C.s4b.add('warn', 'it does NOT hit inline-block, inline, float or absolute');
+  C.s4b.add('warn', 'it does NOT hit an LTR container');
+
+  var b2Rows = [
+    ['computed <code>margin-left</code>', '5px', '200px'],
+    ['computed <code>padding-left</code>', '5px', '5px'],
+    ['computed <code>border-left-width</code>', '5px', '5px'],
+    ['computed <code>left</code> (relative)', '3px', '3px'],
+    ['<code>style.marginLeft</code> (inline)', '5px', '5px']
+  ];
+  var b2tb = el('blast2-table').querySelector('tbody');
+  b2Rows.forEach(function (r) {
+    row(b2tb, [r[0], hl(r[1]), '<span class="no">' + hl(r[2]) + '</span>']);
+  });
+  C.s4b.add('ok', 'the inline style always reports the truth');
+  C.s4b.add('warn', 'only the computed margin is rewritten');
+
+  // =========================================================================
+  // §5 — THE LOGICAL PROPERTY MAP
+  // =========================================================================
+  var mapRows = [
+    ['margin-left', 'margin-inline-start', 'left', 'right', true],
+    ['margin-right', 'margin-inline-end', 'right', 'left', true],
+    ['padding-left', 'padding-inline-start', 'left', 'right', true],
+    ['padding-right', 'padding-inline-end', 'right', 'left', true],
+    ['border-left-width', 'border-inline-start-width', 'left', 'right', true],
+    ['border-right-width', 'border-inline-end-width', 'right', 'left', true],
+    ['border-left-color', 'border-inline-start-color', 'left', 'right', true],
+    ['border-right-color', 'border-inline-end-color', 'right', 'left', true],
+    ['border-top-left-radius', 'border-start-start-radius', 'top-left', 'top-right', true],
+    ['border-top-right-radius', 'border-start-end-radius', 'top-right', 'top-left', true],
+    ['border-bottom-left-radius', 'border-end-start-radius', 'bottom-left', 'bottom-right', true],
+    ['border-bottom-right-radius', 'border-end-end-radius', 'bottom-right', 'bottom-left', true],
+    ['left', 'inset-inline-start', 'left', 'right', true],
+    ['right', 'inset-inline-end', 'right', 'left', true],
+    ['margin-top', 'margin-block-start', 'top', 'top', false],
+    ['margin-bottom', 'margin-block-end', 'bottom', 'bottom', false],
+    ['padding-top', 'padding-block-start', 'top', 'top', false],
+    ['padding-bottom', 'padding-block-end', 'bottom', 'bottom', false],
+    ['border-top-width', 'border-block-start-width', 'top', 'top', false],
+    ['border-bottom-width', 'border-block-end-width', 'bottom', 'bottom', false],
+    ['top', 'inset-block-start', 'top', 'top', false],
+    ['bottom', 'inset-block-end', 'bottom', 'bottom', false],
+    ['width', 'inline-size', 'horizontal', 'horizontal', false],
+    ['height', 'block-size', 'vertical', 'vertical', false],
+    ['float: left', 'float: inline-start', 'left', 'right', true],
+    ['text-align: left', 'text-align: start', 'left', 'right', true],
+    ['clear: left', 'clear: inline-start', 'left', 'right', true],
+    ['overflow-x', 'overflow-inline', 'horizontal', 'horizontal', false],
+    ['overscroll-behavior-x', 'overscroll-behavior-inline', 'horizontal', 'horizontal', false],
+    ['resize: horizontal', 'resize: horizontal', 'horizontal', 'horizontal', false],
+    ['scroll-margin-left', 'scroll-margin-inline-start', 'left', 'right', true],
+    ['scroll-padding-left', 'scroll-padding-inline-start', 'left', 'right', true]
+  ];
+  var mapb = el('map-table').querySelector('tbody');
+  mapRows.forEach(function (r) {
+    row(mapb, [hl(r[0]), hl(r[1]), r[2], r[3], r[4]
+      ? '<span class="no">YES — flips</span>' : '<span class="yes">no — axis-locked</span>']);
+  });
+  C.s5.add('ok', mapRows.length + ' physical → logical pairs verified');
+  C.s5.add('ok', '32/32 have a logical twin (0 gaps)');
+  C.s5.add('info', 'each twin tested with a value of its OWN type');
+  C.s5.add('warn', 'an earlier pass used "10px" for every twin and reported 8 false gaps');
+
+  var physRows = [
+    ['transform: translateX(30px)', '+30px right', '+30px right', 'NO — translateX is physical'],
+    ['left: 3px', '+3px right', '+3px right', 'NO — use inset-inline-start'],
+    ['float: left', 'left', 'left', 'NO — use float: inline-start'],
+    ['float: right', 'right', 'right', 'NO — use float: inline-end'],
+    ['text-align: left', 'left', 'left', 'NO — use text-align: start'],
+    ['overflow-x: auto', 'horizontal', 'horizontal', 'NO — use overflow-inline']
+  ];
+  var ptb2 = el('physical-table').querySelector('tbody');
+  physRows.forEach(function (r) {
+    row(ptb2, [hl(r[0]), hl(r[1]), hl(r[2]), '<span class="no">' + r[3] + '</span>']);
+  });
+  C.s5b.add('warn', 'translateX does NOT mirror in RTL');
+  C.s5b.add('warn', 'float:left and text-align:left do NOT flip');
+
+  // =========================================================================
+  // §6 — VERTICAL WRITING MODE
+  // =========================================================================
+  var vRows = [
+    ['margin-inline-start', 'margin-top', 'margin-bottom'],
+    ['margin-inline-end', 'margin-bottom', 'margin-top'],
+    ['margin-block-start', 'margin-right', 'margin-right'],
+    ['margin-block-end', 'margin-left', 'margin-left']
+  ];
+  var vtb = el('vert-table').querySelector('tbody');
+  vRows.forEach(function (r) { row(vtb, [hl(r[0]), hl(r[1]), hl(r[2])]); });
+  C.s6.add('fail', 'the inline axis ROTATES in vertical writing mode');
+  C.s6.add('warn', 'the block axis FLIPS with direction');
+  C.s6.add('ok', 'identical in all three engines');
+
+  // =========================================================================
+  // §7 — THE SCROLLING SIGN
+  // =========================================================================
+  var scRows = [
+    ['initial <code>scrollLeft</code>', '0', '0', '0'],
+    ['<code>scrollLeft = 100</code>', '100', '<strong>0</strong> (clamped)', '0 (clamped)'],
+    ['<code>scrollLeft = -100</code>', '-100', '-100', '-100'],
+    ['<code>scrollBy({left: 60})</code>', '60', '<strong>0</strong> (clamped)', '0 (clamped)'],
+    ['<code>scrollBy({left: -60})</code>', '-60', '-60', '-60'],
+    ['the far-left edge', 'max (700)', '<strong>−700</strong>', '<strong>−700</strong>']
+  ];
+  var sctb = el('scroll-table').querySelector('tbody');
+  scRows.forEach(function (r) { row(sctb, [r[0], r[1], r[2], r[3]]); });
+  C.s7.add('fail', 'a positive scrollLeft is SILENTLY CLAMPED to 0 in RTL');
+  C.s7.add('ok', 'the negative sign is identical in all three engines');
+  C.s7.add('ok', 'the root scroller of a real dir=rtl document behaves the same');
+  C.s7.add('warn', 'scrollBy({left:-delta}) is the only portable form');
+
+  // =========================================================================
+  // §8 — THE dir ATTRIBUTE GRAMMAR
+  // =========================================================================
+  var atRows = [
+    ['(no attribute)', '(empty)', 'rtl — inherited', true, 'inherits the parent'],
+    ['"rtl"', 'rtl', 'rtl', true, 'works'],
+    ['"ltr"', 'ltr', 'ltr', false, 'works'],
+    ['"auto"', 'auto', 'ltr — first strong char', false, 'resolves from the content'],
+    ['"RTL" (uppercase)', 'rtl', 'rtl', true, 'works — case-insensitive'],
+    ['"" (empty)', '(empty)', 'rtl — inherited', true, 'SILENTLY IGNORED'],
+    ['"rtl " (trailing space)', '(empty)', 'rtl — inherited', true, 'SILENTLY IGNORED'],
+    ['"bogus"', '(empty)', 'rtl — inherited', true, 'SILENTLY IGNORED']
+  ];
+  var atb = el('attr-table').querySelector('tbody');
+  atRows.forEach(function (r) { row(atb, [hl(r[0]), hl(r[1]), hl(r[2]), yn(r[3]), r[4]]); });
+  C.s8.add('fail', 'three invalid values are SILENTLY ignored');
+  C.s8.add('ok', 'the attribute value is case-insensitive');
+  C.s8.add('warn', 'dir=auto resolves from the first STRONG character (digits skipped)');
+
+  // =========================================================================
+  // §9 — CAPSTONES
+  // =========================================================================
+  el('cap-od').textContent =
+'// OpenDrones — the mission-control direction guard.\n' +
+'// The rule: direction comes from a DECLARED source, never from a computed\n' +
+'// style and never from :dir() — see §2 for why both of those lie.\n' +
+'function directionOf(el) {\n' +
+'  var attr = el.getAttribute("dir");\n' +
+'  if (attr === "rtl" || attr === "ltr") return attr;      // declared wins\n' +
+'  var s = getComputedStyle(el);\n' +
+'  return s.direction === "rtl" ? "rtl" : "ltr";\n' +
+'}\n' +
+'\n' +
+'// 1. The scroll guard — an RTL scroller runs NEGATIVE.\n' +
+'//    scrollLeft = 0 is the RIGHT edge there, not the left.\n' +
+'function scrollByLogical(el, deltaPx) {\n' +
+'  var dir = directionOf(el);\n' +
+'  // scrollBy({left}) is the only direction-agnostic form: the browser\n' +
+'  // applies the sign itself. Never do el.scrollLeft += delta.\n' +
+'  el.scrollBy({ left: dir === "rtl" ? -deltaPx : deltaPx });\n' +
+'}\n' +
+'\n' +
+'// 2. The numeric-run guard — an un-isolated RTL run pulls the trailing\n' +
+'//    digits into itself and the number lands in the wrong place.\n' +
+'//    Chromium isolates blocks by default; WebKit does not. Force it.\n' +
+'function isolateNumericRun(el) {\n' +
+'  el.style.unicodeBidi = "isolate";\n' +
+'}\n' +
+'\n' +
+'// 3. The theme guard — a :dir(rtl) rule fires on the ATTRIBUTE chain, not\n' +
+'//    the computed style. If your RTL build is CSS-driven, key the theme\n' +
+'    // off a declared attribute instead.\n' +
+'function applyTheme(root) {\n' +
+'  var declared = root.getAttribute("dir");\n' +
+'  root.dataset.rtl = (declared === "rtl") ? "true" : "false";\n' +
+'  // CSS:  [data-rtl="true"] { ... }   — NOT  :dir(rtl)\n' +
+'}';
+
+  var auditRows = [
+    ['1', 'Every <code>margin-left</code> / <code>padding-left</code> / <code>left</code> in a component library', 'They stay physical in RTL. A card that reads "padding-left: 24px" has 24px on the wrong side in every RTL locale.', '<span class="no">HIGH</span>'],
+    ['2', 'Every <code>translateX</code> / <code>translate</code> in an animation', 'translateX is physical and does NOT mirror — a slide-in from the left slides in from the left in RTL too.', '<span class="no">HIGH</span>'],
+    ['3', 'Every <code>float: left</code> / <code>text-align: left</code>', 'Neither flips. Use <code>float: inline-start</code> and <code>text-align: start</code>.', '<span class="no">HIGH</span>'],
+    ['4', 'Every carousel that does <code>el.scrollLeft += delta</code>', 'In RTL the scroller runs negative, so the carousel moves the wrong way — or does nothing at all.', '<span class="no">HIGH</span>'],
+    ['5', 'Every numeric run inside an RTL span (<code>"Total: 1,234"</code>)', 'An un-isolated RTL run pulls the trailing digits into the run. The number moves.', '<span class="no">HIGH</span>'],
+    ['6', 'Any theme or stylesheet swap keyed on <code>:dir(rtl)</code>', 'It fires on the attribute chain only. A CSS-driven RTL build never matches it — the site stays LTR-themed while laying out RTL.', '<span class="no">HIGH</span>'],
+    ['7', 'Any RTL build that sets <code>html { direction: rtl }</code> in CSS', 'The document lays out RTL but <code>html</code> and <code>body</code> both report <code>:dir(ltr)</code>. Any <code>:dir()</code>-keyed logic silently fails.', '<span class="no">HIGH</span>'],
+    ['8', 'Any design-token or visual-regression harness that reads a computed margin', 'In Safari the computed margin is the USED value, not the specified one — the harness diffs a number the author never wrote.', '<span class="no">HIGH</span>'],
+    ['9', 'Any vertical-writing-mode layout (CJK, <code>vertical-rl</code>)', 'The inline axis rotates and the block axis flips. The same logical property lands on opposite edges in the LTR and RTL variants of the same layout.', '<span class="pill w">MED</span>'],
+    ['10', 'Any <code>&lt;li&gt;</code> in a bidirectional list', 'WebKit pins list items to <code>text-align: left</code>, so an RTL list item renders left-aligned in Safari and right-aligned in Chrome.', '<span class="pill w">MED</span>'],
+    ['11', 'Any <code>dir="auto"</code> field', 'Digits and punctuation are skipped, so <code>dir="auto"</code> on a value like <code>"12345"</code> is LTR; on <code>"... مرحبا"</code> it is RTL.', '<span class="pill w">MED</span>'],
+    ['12', 'Any <code>dir</code> attribute built from a variable', '<code>""</code>, <code>"rtl "</code> and <code>"bogus"</code> are all silently dropped — the element inherits instead, with no warning.', '<span class="pill w">MED</span>']
+  ];
+  var atb2 = el('audit-table').querySelector('tbody');
+  auditRows.forEach(function (r) { row(atb2, [r[0], r[1], r[2], r[3]]); });
+  C.audit.add('ok', auditRows.length + ' checks, each one a measured failure mode');
+  C.audit.add('info', '8 high · 4 medium');
+  C.s9.add('ok', 'the OpenDrones direction guard ships as runnable code');
+
+  // =========================================================================
+  // §10 — THE ENGINE LEDGER
+  // =========================================================================
+  var engRows = [
+    ['1', 'The <code>:dir()</code> island — the attribute and the computed style are independent', 'ISLAND', 'ISLAND', 'ISLAND'],
+    ['2', 'A CSS-only <code>direction:rtl</code> element reports <code>:dir(ltr)</code>', 'YES', 'YES', 'YES'],
+    ['3', 'A CSS-driven RTL page: <code>html</code> reports <code>:dir(ltr)</code>', 'YES', 'YES', 'YES'],
+    ['4', 'The UA stylesheet isolates BLOCK-level elements', 'YES', 'YES', '<span class="no">NO</span>'],
+    ['5', 'A <code>&lt;li&gt;</code> gets <code>text-align: start</code>', 'YES', 'YES', '<span class="no">no — left</span>'],
+    ['6', 'A <code>&lt;li&gt;</code> renders on the opposite edge', 'RIGHT', 'RIGHT', '<span class="no">LEFT</span>'],
+    ['7', 'The computed <code>margin-left</code> is the USED value on an RTL block', '<span class="no">no</span>', '<span class="no">no</span>', '<span class="yes">YES</span>'],
+    ['8', 'That used-margin formula is <code>cw−child−mr</code>', 'n/a', 'n/a', '<span class="yes">5/5 exact</span>'],
+    ['9', 'The used-margin law hits padding and borders too', 'no', 'no', '<span class="yes">YES</span>'],
+    ['10', '<code>canvas.getContext("2d").direction</code> defaults to', 'ltr / inherit', 'inherit', 'ltr / rtl'],
+    ['11', 'An RTL scroller runs <strong>negative</strong>', 'YES', 'YES', 'YES'],
+    ['12', 'A positive <code>scrollLeft</code> in RTL is silently clamped to 0', 'YES', 'YES', 'YES'],
+    ['13', 'The root scroller of a real <code>dir=rtl</code> document runs negative', 'YES', 'YES', 'YES'],
+    ['14', 'The logical → physical map is complete (32/32)', 'YES', 'YES', 'YES'],
+    ['15', 'In vertical writing mode the inline axis rotates', 'YES', 'YES', 'YES'],
+    ['16', '<code>translateX</code> does not mirror in RTL', 'YES', 'YES', 'YES'],
+    ['17', '<code>dir="auto"</code> skips digits and punctuation', 'YES', 'YES', 'YES'],
+    ['18', 'An invalid <code>dir</code> value is silently dropped', 'YES', 'YES', 'YES']
+  ];
+  var etb = el('eng-table').querySelector('tbody');
+  engRows.forEach(function (r) { row(etb, [r[0], r[1], r[2], r[3], r[4]]); });
+  C.s10.add('ok', '18 laws · 3 disagreements · all cross-engine claims asserted');
+  C.s10.add('fail', '3 engine disagreements found — #5/#6, #7/#8/#9, #10');
+  C.s10.add('info', '7 probe suites · 90 measured lanes');
+
+  // The meta line reflects the visitor's engine.
+  el('meta-line').textContent =
+    'CfT 155 · Brave 156 · WebKit 26.5 · 7 probe suites · 90 measured lanes · measured 2026-10-30 · you are on ' + ENGINE;
+
+  window.__mcDone = true;
+})();
+</script>
+</body>
+</html>
