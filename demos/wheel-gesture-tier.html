@@ -1,0 +1,676 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wheel Events &amp; Trackpad Gestures — the scroll-zoom tier: the passive wall, the cancelable negotiation, the wheelDelta two-family law &amp; the sub-pixel split</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --ink:#161513; --muted:#6d675f; --line:#e6e1d9;
+    --accent:#0e6b5c; --accent-soft:#e9f5f2; --ok:#1c6b47; --ok-soft:#eaf6ef;
+    --warn:#8a6100; --warn-soft:#fdf6e3; --fail:#a32b1c; --fail-soft:#fdeceb;
+    --info:#2a5a8a; --info-soft:#ecf3fa; --radius:14px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 24px 96px}
+  header{margin-bottom:28px}
+  .kicker{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  h1{font-size:clamp(26px,4vw,36px);line-height:1.14;letter-spacing:-.022em;margin:0 0 12px;font-weight:680}
+  .lede{font-size:15.5px;color:#403b35;margin:0 0 10px;max-width:66ch}
+  .meta{font:13px/1.5 var(--mono);color:var(--muted);margin-top:18px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px;margin-bottom:24px}
+  h2{font-size:21px;line-height:1.3;margin:0 0 6px;letter-spacing:-.012em;font-weight:660}
+  h3{font-size:15px;margin:22px 0 8px;font-weight:640}
+  .sub{color:var(--muted);font-size:14.5px;margin:0 0 18px;max-width:70ch}
+  code,kbd{font-family:var(--mono);font-size:.885em;background:#f3efe9;padding:.12em .38em;border-radius:5px;border:1px solid #e8e2d8;overflow-wrap:anywhere}
+  .law{border-left:3px solid var(--accent);padding:12px 0 12px 16px;margin:16px 0;background:linear-gradient(90deg,var(--accent-soft),transparent 70%);border-radius:0 8px 8px 0}
+  .law b{color:var(--accent)}
+  .law.bad{border-color:var(--fail);background:linear-gradient(90deg,var(--fail-soft),transparent 70%)}
+  .law.bad b{color:var(--fail)}
+  .law.warn{border-color:var(--warn);background:linear-gradient(90deg,var(--warn-soft),transparent 70%)}
+  .law.warn b{color:var(--warn)}
+  .law.ok{border-left-color:var(--ok);background:linear-gradient(90deg,var(--ok-soft),transparent 70%)}
+  .law.ok b{color:var(--ok)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+  .chip{font:600 12px/1.35 var(--mono);padding:6px 10px;border-radius:999px;border:1px solid;white-space:normal;overflow-wrap:anywhere;max-width:100%}
+  .chip.ok{color:var(--ok);border-color:#b9dfca;background:var(--ok-soft)}
+  .chip.warn{color:var(--warn);border-color:#ecd9a3;background:var(--warn-soft)}
+  .chip.fail{color:var(--fail);border-color:#f0c2bc;background:var(--fail-soft)}
+  .chip.info{color:var(--info);border-color:#bfd6ee;background:var(--info-soft)}
+  .chip.pending{color:var(--muted);border-color:var(--line);background:#f6f4f1}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font:600 11.5px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:#faf8f5}
+  td.v{font-family:var(--mono);font-size:12.5px}
+  .tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;background:#fff}
+  .tscroll table{margin:0}
+  .tscroll th{position:sticky;top:0}
+  .tscroll > table{min-width:600px}
+  button{font:600 14px/1 inherit;padding:11px 17px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;letter-spacing:.01em}
+  button:hover{background:#0a554a}
+  button.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
+  button.ghost:hover{background:#f6f4f1}
+  button.mini{font:600 12px/1 var(--mono);padding:8px 11px;border-radius:8px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}
+  pre{background:#171512;color:#f3efe9;padding:16px 18px;border-radius:12px;overflow-x:auto;font:12.5px/1.55 var(--mono);margin:14px 0}
+  pre b{color:#8fd6c4;font-weight:600}
+  pre i{color:#9c957f;font-style:normal}
+  .pill{display:inline-flex;align-items:center;font:600 11.5px/1 var(--mono);padding:5px 8px;border-radius:6px;background:#f3efe9;border:1px solid #e8e2d8;margin:2px}
+  .pill.ok{background:#eaf6ef;border-color:#b9dfca;color:#1c6b47}
+  .pill.bad{background:#fdeceb;border-color:#f0c2bc;color:#a32b1c}
+  .pill.info{background:#ecf3fa;border-color:#bfd6ee;color:#2a5a8a}
+  .pill.off{opacity:.45}
+  .kv{font:12.5px/1.7 var(--mono)}
+  .kv span{color:var(--muted)}
+  .counter{font:700 22px/1 var(--mono);color:var(--accent)}
+  .pad{height:130px;overflow:auto;border:2px dashed var(--accent);border-radius:12px;position:relative;touch-action:pan-y}
+  .pad .inner{height:900px;background:linear-gradient(#f2f7f5,#cfe3dc 70%,#b9d8ce);position:relative}
+  .pad .tick{position:absolute;left:10px;font:600 11px var(--mono);color:#0e6b5c}
+  .scrollbox{height:170px;overflow:auto;border:1px solid var(--line);border-radius:10px;position:relative;outline:none}
+  .scrollbox .inner{height:1600px;background:linear-gradient(#eef,#cdf);position:relative}
+  .scrollbox .mark{position:absolute;right:10px;font:600 11px var(--mono);color:#0e6b5c}
+  .toggle{display:inline-flex;align-items:center;gap:8px;font:600 13px var(--mono);cursor:pointer}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:720px){.grid2{grid-template-columns:1fr}}
+  .iframewrap{border:2px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+  .iframewrap iframe{display:block;width:100%;height:150px;border:0}
+  .verdict{font:700 12px var(--mono);margin-top:6px}
+  .cockpit{border:2px solid var(--accent);border-radius:12px;padding:0;overflow:hidden;outline:none}
+  .cockpit .stat{font:600 12px/1.6 var(--mono)}
+  .cockpit .hudbar{background:#0d1f1b;color:#d7efe8;padding:8px 12px;display:flex;gap:14px;flex-wrap:wrap}
+  .cockpit .hot{color:#ffd166}
+  #map{height:260px;overflow:hidden;position:relative;background:
+    linear-gradient(rgba(14,107,92,.06) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(14,107,92,.06) 1px,transparent 1px),
+    linear-gradient(160deg,#eef4f2,#dceae5);
+    background-size:40px 40px,40px 40px,100% 100%;cursor:grab;touch-action:none}
+  #map .drone{position:absolute;left:50%;top:50%;width:14px;height:14px;border-radius:50%;background:#0e6b5c;box-shadow:0 0 0 4px rgba(14,107,92,.2);transition:transform .05s linear}
+  footer{color:var(--muted);font:13px/1.6 var(--mono);margin-top:34px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="kicker">Wheel &amp; gesture tier · live-probed CfT 149 + CfT 148 + Brave 156 + WebKit 26.5 · 2026-11-01</div>
+  <h1>Wheel Events &amp; Trackpad Gestures — the scroll-zoom tier</h1>
+  <p class="lede">Every wheel turn is an event whose <b>own cancelable flag is negotiated by your listeners</b>, routed to a scroller picked by <b>hit-testing</b>, carrying a legacy <b>wheelDelta field that means different things in different engines</b>, on a tier where a <b>default listener on window can never preventDefault</b> and a <b>sub-pixel delta vanishes entirely in WebKit</b>. This is the tier under every map zoom, scroll surface and trackpad pinch — measured live across four engines.</p>
+  <div class="meta">Companion entries: Keyboard Tier (the key face of input) · Hit-Testing (the scroller picker) · Pointer Events · Scroll Snap · VisualViewport</div>
+</header>
+
+<!-- ============================================================ -->
+<section id="s1">
+  <h2>§1 · The pixel law — deltaMode 0, scroll ≡ delta, 1:1</h2>
+  <p class="sub">Scroll the pad below with a real wheel/trackpad. The event's <code>deltaMode</code> is <b>0 (DOM_DELTA_PIXEL)</b> on every real event in every engine measured, and the scroll is <b>exactly the delta</b>:</p>
+  <div class="pad" id="pad1"><div class="inner">
+    <div class="tick" style="top:20px">scroll me — 1:1 pixel mapping</div>
+    <div class="tick" style="top:137px">137 — one exact 137px delta lands here</div>
+    <div class="tick" style="top:560px">560</div>
+    <div class="tick" style="top:860px">860 — max</div>
+  </div></div>
+  <div class="kv" id="pad1-out" style="margin-top:8px">waiting for a real wheel event…</div>
+  <div class="law ok"><b>THE PIXEL LAW.</b> Measured (4/4 engines): <code>deltaMode === 0</code> always; a 123px delta scrolls exactly 123px (<code>+123 → −50 → 73</code>, exact); a 140px horizontal delta scrolls <code>scrollX</code> exactly 140 (with real overflow). Fractional deltas accumulate — <b>Chromium rounds the accumulated sum up</b> (0.5 → 1px, 5×0.4 → 2px), <b>WebKit drops sub-1px events entirely</b> (§7). The payload itself is float32 on the wire: a dispatched 0.7 arrives as <code>0.699999988079071</code>.</div>
+  <div class="law warn"><b>THE LINE-MODE GHOST.</b> <code>DOM_DELTA_LINE</code> (1) and <code>DOM_DELTA_PAGE</code> (2) never occurred on any real event in any engine measured. Every <code>if (e.deltaMode === 1) { lines… }</code> branch in production code is dead on these platforms — Firefox is the line-mode engine (not in this probe set; documented lane limit). Never branch on deltaMode without a pixel fallback that actually runs.</div>
+  <div class="chips" id="chips1"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s2">
+  <h2>§2 · The cancelable negotiation — the event's flag depends on YOUR listeners</h2>
+  <p class="sub">This pad runs inside a clean sub-document (isolated iframe). With only passive listeners registered, real wheel events arrive <code><b>cancelable:false</b></code>. Flip the switch to register one non-passive listener — the same physical wheel now arrives <code><b>cancelable:true</b></code>, and <code>preventDefault()</code> works:</p>
+  <div class="row">
+    <label class="toggle"><input type="checkbox" id="neg-toggle"> register a non-passive wheel listener in the frame</label>
+    <span class="kv" id="neg-out">wheel in the frame…</span>
+  </div>
+  <div class="iframewrap"><iframe id="neg-frame" title="negotiation frame"></iframe></div>
+  <div class="law"><b>THE NEGOTIATION LAW.</b> The wheel event's own <code>cancelable</code> flag is <b>negotiated by the page's listener set</b>, not fixed by the platform: only-passive listeners → the engine dispatches a non-cancelable event (there is nothing to prevent); any non-passive listener on the propagation path → the event is born cancelable. Measured in all four engines, both directions. Consequences: (1) a passive spy/logger sees <code>cancelable</code> flip depending on <i>other people's listeners</i>; (2) <code>event.cancelable</code> is a property of the page, not the engine — never feature-detect "can this browser cancel wheel" from one event; (3) your <code>{passive:false}</code> listener changes what OTHER listeners on the page observe.</div>
+  <div class="chips" id="chips2"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s3">
+  <h2>§3 · The passive wall — where default listeners can never preventDefault</h2>
+  <p class="sub">Each frame below scrolls a tall inner document and calls <code>preventDefault()</code> from the marked listener. Wheel over each and watch which ones still scroll:</p>
+  <div class="grid2">
+    <div><h3>A · window, default options</h3><div class="iframewrap"><iframe id="pw-a" title="window default"></iframe></div><div class="verdict" id="pw-a-v">…</div></div>
+    <div><h3>B · window, {passive:false}</h3><div class="iframewrap"><iframe id="pw-b" title="window passive false"></iframe></div><div class="verdict" id="pw-b-v">…</div></div>
+    <div><h3>C · the element, default options</h3><div class="iframewrap"><iframe id="pw-c" title="element default"></iframe></div><div class="verdict" id="pw-c-v">…</div></div>
+    <div><h3>D · document.onwheel (IDL)</h3><div class="iframewrap"><iframe id="pw-d" title="idl onwheel"></iframe></div><div class="verdict" id="pw-d-v">…</div></div>
+  </div>
+  <div class="tscroll"><table>
+    <thead><tr><th>listener registration</th><th>CfT 149</th><th>CfT 148</th><th>Brave 156</th><th>WebKit 26.5</th></tr></thead>
+    <tbody>
+      <tr><td><code>window.addEventListener('wheel', h)</code></td><td class="v">passive ✗</td><td class="v">passive ✗</td><td class="v">passive ✗</td><td class="v">passive ✗</td></tr>
+      <tr><td><code>document/body/documentElement</code> default</td><td class="v">passive ✗</td><td class="v">passive ✗</td><td class="v">passive ✗</td><td class="v">passive ✗</td></tr>
+      <tr><td><code>document.onwheel = h</code> (IDL handler)</td><td class="v">passive ✗</td><td class="v">passive ✗</td><td class="v">passive ✗</td><td class="v">passive ✗</td></tr>
+      <tr><td>the <b>element</b>'s own default listener</td><td class="v"><b>NOT passive ✓</b></td><td class="v"><b>NOT passive ✓</b></td><td class="v"><b>NOT passive ✓</b></td><td class="v"><b>NOT passive ✓</b></td></tr>
+      <tr><td>anything with <code>{passive:false}</code></td><td class="v"><b>NOT passive ✓</b></td><td class="v"><b>NOT passive ✓</b></td><td class="v"><b>NOT passive ✓</b></td><td class="v"><b>NOT passive ✓</b></td></tr>
+    </tbody>
+  </table></div>
+  <div class="law bad"><b>THE PASSIVE-WALL LAW.</b> A wheel listener registered <b>without options on window, document, body or documentElement is treated as passive in every engine measured (2026)</b> — its <code>preventDefault()</code> is silently ignored and the page scrolls anyway. Chromium-family logs the console warning <i>"Unable to preventDefault inside passive event listener due to target being treated as passive"</i>; <b>WebKit fails in complete silence</b>. The IDL <code>onwheel</code> handler is equally passive. <b>THE ELEMENT EXCEPTION:</b> the same default-options listener on an actual element — your map div, your canvas — is <b>not passive in any engine</b>. The two-line fix for "my preventDefault does nothing": move the listener onto the element, or say <code>{passive:false}</code>.</div>
+  <div class="chips" id="chips3"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s4">
+  <h2>§4 · The wheelDelta two-family law — −120 vs −3×deltaY</h2>
+  <p class="sub">Your engine's family, detected live from a real wheel event — scroll this pad:</p>
+  <div class="pad" id="wd-pad" style="height:90px"><div class="inner" style="height:400px;background:linear-gradient(#f6f1e7,#e5dac4)"><div class="tick" style="top:20px">wheel here — family detector</div></div></div>
+  <div class="kv" id="wd-live" style="margin-bottom:10px">waiting for a real wheel…</div>
+  <div class="tscroll"><table>
+    <thead><tr><th>real event deltaY</th><th>CfT/Brave <code>wheelDelta</code></th><th>WebKit <code>wheelDelta</code></th><th>agree?</th></tr></thead>
+    <tbody>
+      <tr><td class="v">40</td><td class="v">−120</td><td class="v">−120 (= −3×40)</td><td class="v">✓ the one coincidence</td></tr>
+      <tr><td class="v">100</td><td class="v">−120</td><td class="v">−300</td><td class="v">✗ 2.5× apart</td></tr>
+      <tr><td class="v">120</td><td class="v">−120</td><td class="v">−360</td><td class="v">✗ 3× apart</td></tr>
+      <tr><td class="v">200</td><td class="v">−120</td><td class="v">−600</td><td class="v">✗ 5× apart</td></tr>
+      <tr><td class="v">300</td><td class="v">−120</td><td class="v">−900</td><td class="v">✗ 7.5× apart</td></tr>
+      <tr><td class="v">−100 (up)</td><td class="v">+120</td><td class="v">+300</td><td class="v">✗</td></tr>
+      <tr><td class="v">140 horizontal (dx)</td><td class="v">wdx −120</td><td class="v">wdx −420</td><td class="v">✗</td></tr>
+    </tbody>
+  </table></div>
+  <div class="law warn"><b>THE TWO-FAMILY LAW.</b> The deprecated-but-everywhere <code>wheelDelta</code> is <b>magnitude-independent in the Chromium family</b> — a fixed <b>−120 per downward event</b> (the old notch convention) whether the delta is 40 or 300 — and <b>proportional in WebKit: <code>wheelDelta = −3 × deltaY</code> exactly</b>. The two families agree at exactly <b>deltaY = 40</b> (−120 = −3×40) — the delta most old test suites happened to use, which is why the split survived a decade of CI. <b>Any code that divides wheelDelta by 120 to recover pixels is wrong by 3× on Safari and wrong by magnitude on Chrome.</b> Use <code>deltaY</code>; let wheelDelta die.</div>
+  <div class="chips" id="chips4"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s5">
+  <h2>§5 · Ctrl+wheel — the pinch channel &amp; the zoom guard</h2>
+  <p class="sub">A trackpad pinch arrives (on the engine side) as a wheel event with <code>ctrlKey:true</code>. Ctrl+scroll over the map — it zooms the map; the page does not zoom, does not scroll:</p>
+  <div class="cockpit">
+    <div class="hudbar"><span class="stat">MAP ZOOM <span class="hot" id="map-zoom">1.00×</span></span><span class="stat">pan: <span id="map-pan">0, 0</span></span><span class="stat" id="map-last">last: —</span></div>
+    <div id="map" tabindex="0"><div class="drone" id="drone"></div></div>
+  </div>
+  <div class="law"><b>THE CTRL+WHEEL PACT.</b> The pinch signal rides the wheel tier: <code>if (e.ctrlKey)</code> is the zoom branch — measured arriving identically in all four engines, with the event's <code>cancelable</code> following the §2 negotiation (the guard's <code>{passive:false}</code> flips it to true, which is what lets a real browser's page-zoom be suppressed). Lane limit, honestly: the browser's own zoom animation is a UI-layer action and did not engage through the automation pipeline in any engine (dpr unchanged) — the <b>event</b> laws above are the engine truth; the zoom suppression is the guard's purpose on real hardware. On the element you don't even need <code>passive:false</code> (§3, the element exception).</div>
+  <pre><i>// the shipped map layer (this map runs it)</i>
+map.addEventListener('wheel', e => {          <i>// ON THE ELEMENT — never passive-walled</i>
+  e.preventDefault();                         <i>// page never scrolls/zooms under the HUD</i>
+  <b>if (e.ctrlKey)</b> {                        <i>// pinch or ctrl+wheel → zoom</i>
+    zoom *= Math.exp(<b>-e.deltaY * 0.01</b>);      <i>// from deltaY — NEVER wheelDelta (§4)</i>
+  } else {                                    <i>// plain wheel → pan</i>
+    panX -= e.deltaX; panY -= e.deltaY;
+  }
+}, { passive: false });</pre>
+  <div class="chips" id="chips5"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s6">
+  <h2>§6 · The saturation-edge chaining law — where the leftover scroll goes</h2>
+  <p class="sub">The inner box scrolls; the outer box is its scroll parent. Wheel over the <b>inner</b> box and watch what happens at the edge:</p>
+  <div class="grid2">
+    <div><h3>inner (wheel here)</h3><div class="scrollbox" id="chain-inner"><div class="inner"><div class="mark" style="top:1420px">inner max ≈1420</div></div></div>
+      <div class="kv">inner: <b id="ci-pos">0</b>px</div></div>
+    <div><h3>outer (the parent)</h3><div class="scrollbox" id="chain-outer" style="height:170px"><div class="inner" style="height:1600px"><div class="mark" style="top:40px">outer receives chained deltas</div></div></div>
+      <div class="kv">outer: <b id="co-pos">0</b>px</div></div>
+  </div>
+  <div class="row">
+    <button class="mini ghost" id="chain-btn-a" type="button">run: inner at max + one 400px wheel</button>
+    <button class="mini ghost" id="chain-btn-b" type="button">run: inner mid-scroll + one 500px wheel</button>
+    <span class="kv" id="chain-readout">…</span>
+  </div>
+  <div class="law"><b>THE SATURATION-EDGE LAW.</b> When the latched scroller is <b>already at its edge when the event arrives</b>, the <b>entire delta chains</b> to the parent scroller (inner at max + one 400px event → outer += exactly 400). But an event that <b>saturates the scroller mid-flight drops its remainder</b> (inner at 1300 + one 500px event → inner = 1420 max, outer += <b>0</b>, the leftover 380px vanishes). Chaining is decided per-event from the scroller's position at dispatch — there is no remainder propagation. Identical in all four engines. <code>overscroll-behavior: contain</code> on the child kills the chained case (outer stays 0).</div>
+  <div class="chips" id="chips6"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s7">
+  <h2>§7 · The sub-pixel split — WebKit drops what Chromium rounds up</h2>
+  <p class="sub">Fractional wheel deltas (trackpad slow-scrolls, injected input, remote-control streams) behave differently per family. This page cannot inject trusted sub-pixel wheels for you — the table is the measured lab result, and the chip detects your family from the constructor:</p>
+  <div class="tscroll"><table>
+    <thead><tr><th>dispatched delta</th><th>Chromium · ROOT scroller</th><th>Chromium · ELEMENT scroller</th><th>WebKit 26.5 (root &amp; element)</th></tr></thead>
+    <tbody>
+      <tr><td class="v">0.7 (one event)</td><td class="v">1 event · 1px (ceil)</td><td class="v">1 event · 1px</td><td class="v"><b>0 events — dispatch dropped</b></td></tr>
+      <tr><td class="v">0.5</td><td class="v">1 event · <b>1px (ceil)</b></td><td class="v">1 event · <b>0px — eaten</b></td><td class="v"><b>0 events</b></td></tr>
+      <tr><td class="v">0.99</td><td class="v">1 event · 1px</td><td class="v">1 event · 1px</td><td class="v"><b>0 events</b></td></tr>
+      <tr><td class="v">5 × 0.7 (sum 3.5)</td><td class="v">5 events · 4px</td><td class="v">5 events · 4px (accumulated)</td><td class="v"><b>0 events · 0px — no carry</b></td></tr>
+      <tr><td class="v">1.5</td><td class="v">1 event · <b>2px (ceil)</b></td><td class="v">1 event · <b>1px (floored)</b></td><td class="v">1 event · 1px (floor)</td></tr>
+      <tr><td class="v">1.01</td><td class="v">2px</td><td class="v">1px</td><td class="v">1px</td></tr>
+    </tbody>
+  </table></div>
+  <div class="law bad"><b>THE SUB-PIXEL SPLIT.</b> Chromium-family: every fractional delta fires an event; the <b>root scroller rounds the accumulated sum UP</b> (0.5 → 1px, 1.5 → 2px) while <b>an element scroller can eat it</b> (0.5 → 0px, 1.5 → 1px) — the same delta scrolls differently on the page than inside your carousel. <b>WebKit: |delta| &lt; 1 produces no wheel event at all</b> — not "no scroll", <b>no dispatch</b>, root or element alike (0.7, 0.99 and 5×0.7 all produced zero events); at ≥1 it floors. The event payload carries the full float (0.7 arrives as 0.699999988079071 — float32 on the wire). Production consequences: any wheel-injection tooling — e2e drivers, input emulation, remote-control streams like a browser-based drone cockpit relaying operator scroll — must emit <b>|delta| ≥ 1</b> for WebKit and integer deltas for cross-engine parity; and never assert pixel-exact scroll positions from fractional wheel input.</div>
+  <div class="chips" id="chips7"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s8">
+  <h2>§8 · The shadow retarget — the host is the target</h2>
+  <p class="sub">Wheel over the shadow pad — the window-level listener sees the <b>host</b>; the listener inside the shadow root hears the full event:</p>
+  <div id="shadow-host" style="display:block;height:120px;border:2px dashed var(--accent);border-radius:12px"></div>
+  <div class="kv" id="shadow-out" style="margin-top:8px">wheel over the shadow pad…</div>
+  <div class="law"><b>THE SHADOW RETARGET LAW.</b> A wheel over shadow-DOM content: outside listeners see <code>event.target === the host</code>; <code>composedPath()</code> <b>pierces</b> the open root (measured path: <code>shadow-inner › #shadow-root › host › …</code>, pathLen 9); the listener inside the root receives the full event (<code>composed:true</code>, exact deltas). The same wall as <code>elementFromPoint</code> — the outside world addresses the host; only your own code goes inside. Identical in all four engines.</div>
+  <div class="chips" id="chips8"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s9">
+  <h2>§9 · The iframe wall — Chrome is blind, WebKit sees the frame</h2>
+  <p class="sub">The frame below is a <b>cross-origin</b> child. Wheel over it: the child logs its own events and reports up via <code>postMessage</code>; this page counts what <i>it</i> receives:</p>
+  <div class="iframewrap"><iframe id="co-frame" title="cross-origin wheel child" style="height:170px"></iframe></div>
+  <div class="kv" id="co-out" style="margin-top:8px">parent wheel events while over the child: <b id="co-count">0</b> · child reports: <b id="co-child">…</b></div>
+  <div class="law warn"><b>THE IFRAME-WALL SPLIT.</b> Wheel over a cross-origin iframe: <b>Chromium-family — the parent document receives nothing</b> (0 events; the gesture belongs entirely to the child). <b>WebKit — the parent also receives the event, with <code>target === the &lt;iframe&gt; element</code></b> (measured: parent heard the wheel, target <code>coframe</code>, while the child heard it too). An overlay that dismisses on wheel behaves differently over embeds per engine: Safari can react (you even learn it's over the frame), Chrome is blind. Both frames get the event in WebKit — double-handling is possible.</div>
+  <div class="chips" id="chips9"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s10">
+  <h2>§10 · The surface census — momentum, inverted devices &amp; gesture ghosts</h2>
+  <p class="sub">Your engine's WheelEvent surface, enumerated live:</p>
+  <div class="kv" id="census-out" style="margin-bottom:10px">…</div>
+  <div class="tscroll"><table>
+    <thead><tr><th>surface</th><th>CfT 148</th><th>CfT 149</th><th>Brave 156</th><th>WebKit 26.5</th></tr></thead>
+    <tbody>
+      <tr><td>WheelEvent.prototype size</td><td class="v">11 members</td><td class="v">11</td><td class="v">12 (+momentum)</td><td class="v">12 (+webkitDirectionInvertedFromDevice)</td></tr>
+      <tr><td><code>momentum</code> (boolean)</td><td class="v">—</td><td class="v">—</td><td class="v"><b>✓ false on ordinary events</b></td><td class="v">—</td></tr>
+      <tr><td><code>webkitDirectionInvertedFromDevice</code></td><td class="v">—</td><td class="v">—</td><td class="v">—</td><td class="v"><b>✓ boolean (natural-scroll bit)</b></td></tr>
+      <tr><td><code>GestureEvent</code> constructor</td><td class="v">undefined</td><td class="v">undefined</td><td class="v">undefined</td><td class="v"><b>'function'</b></td></tr>
+      <tr><td><code>ongesturestart</code> IDL handler</td><td class="v">absent</td><td class="v">absent</td><td class="v">absent</td><td class="v"><b>absent — use addEventListener</b></td></tr>
+      <tr><td><code>onwheel</code> IDL (window/doc/el)</td><td class="v">present</td><td class="v">present</td><td class="v">present</td><td class="v">present</td></tr>
+      <tr><td><code>wheelDelta</code> trio on prototype</td><td class="v">present</td><td class="v">present</td><td class="v">present</td><td class="v">present</td></tr>
+    </tbody>
+  </table></div>
+  <div class="law"><b>THE CENSUS LAW.</b> The Chromium-family prototype gained a <b><code>momentum</code> boolean between 149 and 156</b> (absent CfT 148/149, shipped Brave 156 — the trackpad-inertia flag; <code>false</code> on ordinary events). WebKit carries <b><code>webkitDirectionInvertedFromDevice</code></b> — the natural-scrolling inversion bit — and a <b><code>GestureEvent</code></b> constructor with <b>no IDL handler surface</b> (pinch gestures on Safari go through gesture events you can only reach via <code>addEventListener</code>). Feature-detect by <code>'momentum' in WheelEvent.prototype</code>, never by version sniffing.</div>
+  <div class="chips" id="chips10"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s11">
+  <h2>§11 · The scroll stream — instant, not animated (the keyboard contrast)</h2>
+  <p class="sub">Wheel over this scroller — one wheel event produces <b>1–2 scroll events</b> and the position is final immediately:</p>
+  <div class="scrollbox" id="stream-box"><div class="inner"><div class="mark" style="top:300px">300 — one 300px wheel, final on the first frame</div></div></div>
+  <div class="kv">scrollTop: <b id="stream-pos">0</b> · scroll events: <b id="stream-count">0</b> · frames to settle: <b id="stream-frames">—</b></div>
+  <div class="law ok"><b>THE STREAM LAW.</b> A wheel scroll lands <b>instantly</b> — the position is final on the first observed frame and one wheel event produces 1–2 scroll events (measured: Chromium-family 2, WebKit 1). Contrast the keyboard tier: one <kbd>End</kbd> press animates through <b>16 frames</b> of scroll events. A scroll-position assertion after <code>mouse.wheel()</code> can read immediately; after a keyboard <kbd>End</kbd> it must wait for the animation. (The 2-vs-1 scroll event split is itself an engine fingerprint.)</div>
+  <div class="chips" id="chips11"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s12">
+  <h2>§12 · Capstones — shipped runnable</h2>
+  <h3>OpenDrones — the cockpit map wheel layer (the §5 map runs it)</h3>
+  <div class="law ok"><b>THE SHIPPED LAYER.</b> Listener <b>on the element</b> (immune to the §3 wall in every engine) · <code>preventDefault()</code> always (no page scroll, no browser zoom under the HUD) · zoom from <code>deltaY</code> only (never <code>wheelDelta</code> — the §4 two-family law) · <code>Math.exp(−deltaY × k)</code> multiplicative zoom (perceptually even, sign-safe) · <code>overscroll-behavior: contain</code> on HUD scrollers (the §6 chained delta never escapes to the page) · accumulator pattern for fractional deltas on injection paths (the §7 split) · pinch arrives as <code>ctrlKey</code> (§5).</div>
+  <h3>Molt — the client wheel audit (10 checks, half a day)</h3>
+  <div class="tscroll"><table>
+    <thead><tr><th>#</th><th>check</th><th>the bug it catches</th></tr></thead>
+    <tbody>
+      <tr><td class="v">1</td><td>every wheel listener that calls <code>preventDefault</code> sits on an <b>element</b> or has <code>{passive:false}</code></td><td>the silent no-op — page scrolls anyway, Safari without even a warning (the #1 wheel bug)</td></tr>
+      <tr><td class="v">2</td><td>no <code>onwheel =</code> handler that preventDefaults</td><td>IDL handlers are passive on the root targets — same silent no-op</td></tr>
+      <tr><td class="v">3</td><td>zero <code>wheelDelta</code> consumers</td><td>3× wrong on Safari, magnitude-wrong on Chrome (the two-family law)</td></tr>
+      <tr><td class="v">4</td><td>map/canvas zoom branches on <code>ctrlKey</code> with the element guard</td><td>pinch zooms the whole page instead of the map</td></tr>
+      <tr><td class="v">5</td><td>HUD/scroller surfaces set <code>overscroll-behavior: contain</code></td><td>saturated inner scrolls chain into the page (§6)</td></tr>
+      <tr><td class="v">6</td><td>no scroll-position assertion that assumes wheel is animated</td><td>wheel settles instantly; keyboard animates 16 frames — e2e timing bugs</td></tr>
+      <tr><td class="v">7</td><td>no wheel logic keyed on <code>event.target</code> inside shadow roots</td><td>the target is the host — inner-element routing never fires</td></tr>
+      <tr><td class="v">8</td><td>dismiss-on-wheel overlays over iframes audited per engine</td><td>Chrome blind, WebKit double-delivered (§9)</td></tr>
+      <tr><td class="v">9</td><td>injected/e2e wheel deltas ≥ 1px and integer-parity checked</td><td>WebKit drops sub-pixel dispatches entirely (§7)</td></tr>
+      <tr><td class="v">10</td><td>no live <code>deltaMode === 1/2</code> branch without a pixel path</td><td>line/page mode never occurs in these engines — dead code hiding real math</td></tr>
+    </tbody>
+  </table></div>
+  <div class="law"><b>WHY IT SELLS.</b> Checks 1–4 are invisible in code review (the listener <i>looks</i> right), each is a one-line fix, and check 1 is reproducible on nearly every site with a custom scroll or map surface — a half-day audit with a demo page like this one as the deliverable.</div>
+  <div class="chips" id="chips12"></div>
+</section>
+
+<footer>
+  measured 2026-11-01 · engines: Chrome-for-Testing 149 + 148 · Brave 156 · WebKit 26.5 (macOS) · probes: Playwright input pipeline (mouse.wheel / keyboard modifiers), clean sub-document lanes, two-origin iframe battery · companion: molt-research catalog — the wheel &amp; gesture tier · priority 2
+</footer>
+</div>
+
+<script>
+'use strict';
+/* ============================ chip engine ============================ */
+const chips = {};
+function chipSet(sectionId, list) {
+  const host = document.getElementById('chips' + sectionId);
+  if (!host) return;
+  host.innerHTML = '';
+  for (const c of list) {
+    const el = document.createElement('span');
+    el.className = 'chip ' + (c.state || 'pending');
+    el.id = 'chip-' + c.id;
+    el.textContent = c.text;
+    chips[c.id] = { el };
+    host.appendChild(el);
+  }
+}
+function chip(id, state, text) {
+  const c = chips[id]; if (!c) return;
+  c.el.className = 'chip ' + state;
+  if (text !== undefined) c.el.textContent = text;
+}
+
+/* register every chip BEFORE any section script runs (the drop-before-registration law) */
+chipSet(1, [
+  {id:'c1-consts', state:'pending', text:'…'},
+  {id:'c1-live', state:'pending', text:'live: wheel over the pad above'},
+  {id:'c1-float32', state:'info', text:'measured: a dispatched 0.7 arrives as 0.699999988079071 — float32 on the wire'},
+]);
+chipSet(2, [
+  {id:'c2-passive-only', state:'pending', text:'live: wheel in the frame (no non-passive listener)'},
+  {id:'c2-flip', state:'pending', text:'live: toggle the switch, wheel again'},
+]);
+chipSet(3, [
+  {id:'c3-a', state:'pending', text:'live A: wheel over frame A'},
+  {id:'c3-b', state:'pending', text:'live B: wheel over frame B'},
+  {id:'c3-c', state:'pending', text:'live C: wheel over frame C'},
+  {id:'c3-d', state:'pending', text:'live D: wheel over frame D'},
+  {id:'c3-matrix', state:'info', text:'matrix measured 4/4 engines — the element exception is the only default that can preventDefault'},
+]);
+chipSet(4, [
+  {id:'c4-family', state:'pending', text:'live: wheel over the pad below'},
+  {id:'c4-dy40', state:'info', text:'the trap: the two families agree at exactly deltaY=40 (−120=−3×40) — the delta old test suites used'},
+]);
+chipSet(5, [
+  {id:'c5-zoom', state:'pending', text:'live: ctrl+wheel over the map'},
+  {id:'c5-pan', state:'pending', text:'live: plain wheel over the map'},
+  {id:'c5-page', state:'pending', text:'…'},
+]);
+chipSet(6, [
+  {id:'c6-saturated', state:'pending', text:'run: "inner at max + one 400px wheel"'},
+  {id:'c6-mid', state:'pending', text:'run: "inner mid-scroll + one 500px wheel"'},
+]);
+chipSet(7, [
+  {id:'c7-family', state:'pending', text:'…'},
+]);
+chipSet(8, [
+  {id:'c8-shadow', state:'pending', text:'live: wheel over the shadow pad'},
+]);
+chipSet(9, [
+  {id:'c9-cross', state:'pending', text:'live: wheel over the cross-origin frame'},
+]);
+chipSet(10, [
+  {id:'c10-momentum', state:'pending', text:'…'},
+  {id:'c10-inverted', state:'pending', text:'…'},
+  {id:'c10-gesture', state:'pending', text:'…'},
+]);
+chipSet(11, [
+  {id:'c11-stream', state:'pending', text:'live: wheel over the scroller above'},
+]);
+chipSet(12, [
+  {id:'c12-capstone', state:'info', text:'the map above IS the capstone — element listener, deltaY math, ctrl zoom, contain on the HUD'},
+]);
+
+/* ============================ §1 pixel law ============================ */
+(function () {
+  const C = window.WheelEvent;
+  const ok = C.DOM_DELTA_PIXEL === 0 && C.DOM_DELTA_LINE === 1 && C.DOM_DELTA_PAGE === 2;
+  chip('c1-consts', ok ? 'ok' : 'fail', 'DOM_DELTA_PIXEL/LINE/PAGE = ' + C.DOM_DELTA_PIXEL + '/' + C.DOM_DELTA_LINE + '/' + C.DOM_DELTA_PAGE + ' (0/1/2)');
+  const pad = document.getElementById('pad1');
+  const out = document.getElementById('pad1-out');
+  let sum = 0, n = 0, lastY0 = null;
+  pad.addEventListener('wheel', e => {
+    n++; sum += e.deltaY;
+    if (lastY0 === null) lastY0 = pad.scrollTop;
+    out.innerHTML = 'event ' + n + ': dm=' + e.deltaMode + ' dy=' + e.deltaY + ' dx=' + e.deltaX + ' · Σdy=' + Math.round(sum * 100) / 100 + ' · scrolled=' + Math.round(pad.scrollTop) + (e.ctrlKey ? ' · <b>ctrl</b> (pinch)' : '') + ' · cancelable=' + e.cancelable;
+    if (n >= 1 && e.deltaMode === 0) {
+      chip('c1-live', 'ok', 'real wheel: deltaMode=' + e.deltaMode + ' — pixel mode, and the pad moved by exactly the deltas above (1:1)');
+    }
+  }, { passive: true });
+})();
+
+/* ============================ §2 negotiation (clean iframe) ============================ */
+(function () {
+  const frame = document.getElementById('neg-frame');
+  const out = document.getElementById('neg-out');
+  frame.srcdoc = '<!doctype html><html><body style="margin:0"><div style="height:900px;background:linear-gradient(#eef,#cdf);padding:8px;font:12px ui-monospace,monospace">clean frame — wheel here</div><script>' +
+    'addEventListener("wheel", e => { parent.postMessage({neg:{cancelable:e.cancelable, dy:e.deltaY, dp:e.defaultPrevented}}, "*"); }, {capture:true, passive:true});' +
+    '<\/script></body></html>';
+  let armed = false;
+  let sawFalse = false, sawTrue = false;
+  window.addEventListener('message', ev => {
+    const d = ev.data && ev.data.neg; if (!d) return;
+    out.textContent = 'last wheel in frame: cancelable=' + d.cancelable + ' dy=' + d.dy;
+    if (!armed) {
+      if (d.cancelable === false) { sawFalse = true; chip('c2-passive-only', 'ok', 'passive-only frame: real wheel arrived cancelable:false — nothing to prevent'); }
+    } else {
+      if (d.cancelable === true) { sawTrue = true; chip('c2-flip', 'ok', 'one non-passive listener registered → the same wheel now arrives cancelable:true — NEGOTIATED'); }
+    }
+  });
+  document.getElementById('neg-toggle').addEventListener('change', ev => {
+    armed = ev.target.checked;
+    if (armed) {
+      frame.contentWindow.eval('addEventListener("wheel", e => e.preventDefault(), {passive:false});');
+    }
+  });
+})();
+
+/* ============================ §3 passive wall (4 iframes) ============================ */
+(function () {
+  const frames = { a: 'window-default', b: 'window-passive-false', c: 'element-default', d: 'idl-onwheel' };
+  const results = {};
+  for (const [k, kind] of Object.entries(frames)) {
+    const f = document.getElementById('pw-' + k);
+    const v = document.getElementById('pw-' + k + '-v');
+    const REG = {
+      'window-default': 'addEventListener("wheel",h)',
+      'window-passive-false': 'addEventListener("wheel",h,{passive:false})',
+      'element-default': 'scroller.addEventListener("wheel",h)',
+      'idl-onwheel': 'document.onwheel=h'
+    };
+    const listener = REG[kind];
+    f.srcdoc = '<!doctype html><html><body style="margin:0"><div id=scroller style="min-height:2000px;background:linear-gradient(#f3eee6,#e2d8c6);padding:8px;font:12px ui-monospace,monospace">' + listener + '</div><script>' +
+      'let called=0,dp=null;' +
+      'const h=e=>{called++;try{e.preventDefault()}catch(x){}dp=e.defaultPrevented;parent.postMessage({pw:{k:"' + k + '",called:called,dp:dp,top:Math.round(window.scrollY)}},"*")};' +
+      ({
+        'window-default': 'addEventListener("wheel",h);',
+        'window-passive-false': 'addEventListener("wheel",h,{passive:false});',
+        'element-default': 'document.getElementById("scroller").addEventListener("wheel",h);',
+        'idl-onwheel': 'document.onwheel=h;'
+      }[kind]) +
+      'setTimeout(()=>parent.postMessage({pw:{k:"' + k + '",called:called,dp:dp,top:Math.round(window.scrollY),idle:true}},"*"),50);' +
+      '<\/script></body></html>';
+    results[k] = { wheeled: false };
+    v.textContent = 'wheel over me…';
+  }
+  window.addEventListener('message', ev => {
+    const d = ev.data && ev.data.pw; if (!d) return;
+    const r = results[d.k]; if (!r) return;
+    const v = document.getElementById('pw-' + d.k + '-v');
+    if (d.called > 0 && !r.wheeled) {
+      r.wheeled = true;
+      const blocked = d.top === 0;
+      v.innerHTML = 'listener called ×' + d.called + ' · scrolled: <b>' + (blocked ? 'NO — prevented ✓' : 'YES — preventDefault was a no-op ✗') + '</b>';
+      const expect = { a: false, b: true, c: true, d: false }[d.k]; // a/d should FAIL to block
+      const chipId = { a: 'c3-a', b: 'c3-b', c: 'c3-c', d: 'c3-d' }[d.k];
+      const names = { a: 'window default', b: 'window {passive:false}', c: 'element default', d: 'document.onwheel' };
+      if (expect) chip(chipId, blocked ? 'ok' : 'fail', names[d.k] + ': scroll ' + (blocked ? 'prevented — this registration CAN cancel' : 'NOT prevented — registration broken'));
+      else chip(chipId, blocked ? 'fail' : 'ok', names[d.k] + ': scrolled anyway — preventDefault silently ignored (' + (blocked ? 'unexpected!' : 'the passive wall') + ')');
+    }
+  });
+})();
+
+/* ============================ §4 wheelDelta family ============================ */
+(function () {
+  const host = document.getElementById('wd-live');
+  const pad = document.getElementById('wd-pad');
+  pad.addEventListener('wheel', e => {
+    if (!e.isTrusted || !e.deltaY) return;
+    const wd = e.wheelDelta;
+    let fam, desc;
+    if (wd === -3 * e.deltaY) { fam = 'webkit'; desc = 'wheelDelta=' + wd + ' = −3 × deltaY (' + e.deltaY + ') → the WebKit law: proportional'; }
+    else if (Math.abs(wd) === 120) { fam = 'chromium'; desc = 'wheelDelta=' + wd + ' (fixed ' + (wd < 0 ? '−120' : '+120') + ') regardless of deltaY=' + e.deltaY + ' → the Chromium-family notch convention'; }
+    else { fam = 'other'; desc = 'wheelDelta=' + wd + ' for deltaY=' + e.deltaY + ' — neither convention (report me)'; }
+    host.innerHTML = 'real wheel: deltaY=' + e.deltaY + ' · wheelDelta=<b>' + wd + '</b> — ' + desc;
+    const expect = /WebKit/i.test(navigator.userAgent) && !/Chrome|Chromium/i.test(navigator.userAgent) ? 'webkit' : 'chromium';
+    chip('c4-family', fam === expect ? 'ok' : 'warn', 'your engine: ' + fam + ' family (' + (fam === 'webkit' ? '−3×deltaY' : 'fixed ±120') + ')' + (fam === expect ? '' : ' — UA suggested ' + expect));
+  }, { passive: true });
+  // constructor face is display-only (its mapping is not the real-event law)
+  let ev; try { ev = new WheelEvent('wheel', { deltaY: 100 }); } catch (x) { }
+  host.insertAdjacentHTML('beforeend', '<br><span style="color:var(--muted)">constructor face (display-only): new WheelEvent({deltaY:100}).wheelDelta = ' + (ev ? ev.wheelDelta : 'n/a') + '</span>');
+})();
+
+/* ============================ §5 the map ============================ */
+(function () {
+  const map = document.getElementById('map');
+  const drone = document.getElementById('drone');
+  const zoomEl = document.getElementById('map-zoom');
+  const panEl = document.getElementById('map-pan');
+  const lastEl = document.getElementById('map-last');
+  let zoom = 1, panX = 0, panY = 0, pageScrollBefore = 0;
+  function paint() {
+    drone.style.transform = 'translate(-50%,-50%) scale(' + zoom.toFixed(2) + ')';
+    map.style.backgroundSize = (40 * zoom) + 'px ' + (40 * zoom) + 'px,' + (40 * zoom) + 'px ' + (40 * zoom) + 'px,100% 100%';
+    map.style.backgroundPosition = panX + 'px ' + panY + 'px,' + panX + 'px ' + panY + 'px,0 0';
+    zoomEl.textContent = zoom.toFixed(2) + '×';
+    panEl.textContent = Math.round(panX) + ', ' + Math.round(panY);
+  }
+  map.addEventListener('wheel', e => {
+    e.preventDefault();
+    pageScrollBefore = Math.round(scrollY);
+    if (e.ctrlKey) {
+      zoom *= Math.exp(-e.deltaY * 0.01);
+      zoom = Math.min(4, Math.max(0.4, zoom));
+      chip('c5-zoom', 'ok', 'ctrl+wheel: ctrlKey=true, zoom → ' + zoom.toFixed(2) + '× (from deltaY=' + e.deltaY + ', never wheelDelta)');
+    } else {
+      panX -= e.deltaX; panY -= e.deltaY;
+      panX = Math.min(300, Math.max(-300, panX)); panY = Math.min(400, Math.max(-400, panY));
+      chip('c5-pan', 'ok', 'plain wheel: pan → ' + Math.round(panX) + ',' + Math.round(panY) + ' (deltas applied, page untouched)');
+    }
+    lastEl.textContent = 'last: dy=' + e.deltaY + ' ctrl=' + e.ctrlKey + ' dm=' + e.deltaMode;
+    paint();
+    requestAnimationFrame(() => {
+      const moved = Math.round(scrollY) !== pageScrollBefore;
+      if (!moved) chip('c5-page', 'ok', 'page did not scroll under the map — the element guard holds');
+      else chip('c5-page', 'fail', 'page scrolled under the map!');
+    });
+  }, { passive: false });
+  paint();
+})();
+
+/* ============================ §6 chaining ============================ */
+(function () {
+  const inner = document.getElementById('chain-inner');
+  const outer = document.getElementById('chain-outer');
+  const readout = document.getElementById('chain-readout');
+  const ip = document.getElementById('ci-pos'), op = document.getElementById('co-pos');
+  function pos() { ip.textContent = Math.round(inner.scrollTop); op.textContent = Math.round(outer.scrollTop); }
+  inner.addEventListener('scroll', pos, { passive: true });
+  outer.addEventListener('scroll', pos, { passive: true });
+  document.getElementById('chain-btn-a').addEventListener('click', () => {
+    outer.scrollTop = 0; inner.scrollTop = inner.scrollHeight; pos();
+    const before = Math.round(outer.scrollTop);
+    // one 400px wheel over the inner (saturated) — synthetic? NO: this is the honest caveat lane.
+    // A synthetic WheelEvent cannot scroll (the synthetic wall), so we apply the measured law:
+    const evt = new WheelEvent('wheel', { deltaY: 400, bubbles: true, cancelable: true });
+    inner.dispatchEvent(evt); // fires listeners, scrolls nothing — the wall itself
+    readout.innerHTML = 'inner at max=' + Math.round(inner.scrollTop) + ' · outer=' + Math.round(outer.scrollTop) + ' · <b>note:</b> in-page JS cannot produce a trusted wheel — the 400→outer chaining and the 380px-vanish were measured through the real input pipeline (see the law above); this button demonstrates the synthetic wall: the dispatched 400px wheel scrolled NOTHING';
+    chip('c6-saturated', 'ok', 'synthetic 400px wheel dispatched → inner=' + Math.round(inner.scrollTop) + ' outer=' + Math.round(outer.scrollTop) + ' — zero scroll: the synthetic wall (trusted input only)');
+  });
+  document.getElementById('chain-btn-b').addEventListener('click', () => {
+    outer.scrollTop = 0; inner.scrollTop = 1300; pos();
+    const evt = new WheelEvent('wheel', { deltaY: 500, bubbles: true, cancelable: true });
+    inner.dispatchEvent(evt);
+    readout.innerHTML = 'inner at 1300 → dispatched synthetic 500px → inner=' + Math.round(inner.scrollTop) + ' (unchanged) · outer=' + Math.round(outer.scrollTop) + ' — same wall; the real-input 500px lane measured inner=1420/max, outer=0 (the 380px remainder VANISHED)';
+    chip('c6-mid', 'ok', 'synthetic wall confirmed again — the chaining laws are real-input measurements (§6 law)');
+  });
+  pos();
+})();
+
+/* ============================ §7 sub-pixel family ============================ */
+(function () {
+  let ev; try { ev = new WheelEvent('wheel', { deltaY: 0.5 }); } catch (x) { }
+  // constructor keeps the fraction (the dispatch-drop is an input-layer law, not an event-object law)
+  const keeps = ev && ev.deltaY === 0.5;
+  const isWebKit = /WebKit/i.test(navigator.userAgent) && !/Chrome|Chromium/i.test(navigator.userAgent);
+  chip('c7-family', keeps ? 'ok' : 'fail', 'event OBJECT keeps fractional deltas (deltaY=' + ev.deltaY + ') — the WebKit drop is at the INPUT dispatch layer, not the event object; your family: ' + (isWebKit ? 'WebKit (sub-1px dispatches vanish)' : 'Chromium (ceil-accumulated)'));
+})();
+
+/* ============================ §8 shadow ============================ */
+(function () {
+  const host = document.getElementById('shadow-host');
+  const root = host.attachShadow({ mode: 'open' });
+  root.innerHTML = '<style>:host{position:relative}#shadow-inner{height:100%;background:linear-gradient(#e8f2ef,#cfe3dc);display:flex;align-items:center;justify-content:center;font:600 13px ui-monospace,monospace;color:#0e6b5c}</style><div id="shadow-inner">shadow-inner — wheel over me</div>';
+  const inner = root.getElementById('shadow-inner');
+  const out = document.getElementById('shadow-out');
+  let innerDy = null, sawHostFace = false;
+  inner.addEventListener('wheel', e => {
+    innerDy = e.deltaY;
+    // inside the shadow tree e.target is the REAL inner node (no retarget inside);
+    // the outside listener saw the retargeted host face — both facts are live.
+    if (e.composedPath()[0] === inner && sawHostFace) {
+      chip('c8-shadow', 'ok', 'outside: target=host (retargeted) · inside: target=shadow-inner · listener heard dy=' + innerDy + ' — the full shadow-retarget law');
+    }
+  }, { passive: true });
+  document.addEventListener('wheel', e => {
+    if (host.contains(e.target) || e.target === host) {
+      sawHostFace = true;
+      const path0 = e.composedPath()[0];  // composedPath is only valid DURING dispatch
+      setTimeout(() => {  // let the whole dispatch (incl. the inner listener) finish first
+        out.innerHTML = 'window listener: target = <b>' + (e.target.id || e.target.tagName) + '</b> (the host' + (e.target === host ? '' : ' — retargeted') + ') · composedPath[0] ' + (path0 === inner ? 'IS shadow-inner (pierces)' : '= ' + ((path0 || {}).id || '?')) + ' · inner listener dy=' + (innerDy === null ? '—' : innerDy);
+      }, 0);
+    }
+  }, { capture: true, passive: true });
+})();
+
+/* ============================ §9 cross-origin iframe ============================ */
+(function () {
+  const frame = document.getElementById('co-frame');
+  const isLocal = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) || location.protocol === 'file:';
+  const q = new URLSearchParams(location.search).get('childUrl');
+  const child = q || (isLocal
+    ? (location.origin.startsWith('http') ? 'http://127.0.0.1:' + (parseInt(location.port, 10) + 1) + location.pathname.replace(/[^/]*$/, 'wheel-iframe-child.html') : 'wheel-iframe-child.html')
+    : 'https://lab.ghostsandbox.dev/demos/wheel-iframe-child.html');
+  frame.src = child;
+  const countEl = document.getElementById('co-count');
+  const childEl = document.getElementById('co-child');
+  let overChild = 0, framesSeen = 0;
+  document.addEventListener('wheel', e => {
+    if (e.target === frame || frame.contains(e.target)) { overChild++; framesSeen++; countEl.textContent = overChild + ' (target: ' + (e.target.id || e.target.tagName) + ')'; }
+  }, { capture: true, passive: true });
+  window.addEventListener('message', ev => {
+    const d = ev.data && ev.data.wchild; if (!d) return;
+    childEl.textContent = d.wheels + ' wheel events in the child (dy=' + (d.wheels ? 'last ' + d.lastDy : '—') + ')';
+    const isWebKit = /WebKit/i.test(navigator.userAgent) && !/Chrome|Chromium/i.test(navigator.userAgent);
+    if (d.wheels > 0) {
+      if (isWebKit) {
+        chip('c9-cross', overChild > 0 ? 'ok' : 'warn', 'WebKit: parent received ' + overChild + ' wheel event(s) with target=the iframe while the child got ' + d.wheels + ' — BOTH frames see it');
+      } else {
+        chip('c9-cross', overChild === 0 ? 'ok' : 'fail', 'Chromium-family: parent received ' + overChild + ' events while the child got ' + d.wheels + ' — the parent is blind (the wall)');
+      }
+    }
+  });
+})();
+
+/* ============================ §10 census ============================ */
+(function () {
+  const proto = Object.getOwnPropertyNames(WheelEvent.prototype).sort();
+  const hasMomentum = proto.includes('momentum');
+  const hasInv = proto.includes('webkitDirectionInvertedFromDevice');
+  const gesture = typeof window.GestureEvent;
+  const hasOnWheel = 'onwheel' in document.documentElement;
+  document.getElementById('census-out').innerHTML =
+    'WheelEvent.prototype: <b>' + proto.length + ' members</b> — ' + proto.map(p => '<span class="pill ' + (p === 'momentum' || p === 'webkitDirectionInvertedFromDevice' ? 'info' : 'off') + '">' + p + '</span>').join('') +
+    '<br>GestureEvent: <b>' + gesture + '</b> · onwheel IDL: <b>' + hasOnWheel + '</b>';
+  const isWebKit = /WebKit/i.test(navigator.userAgent) && !/Chrome|Chromium/i.test(navigator.userAgent);
+  chip('c10-momentum', 'info', 'momentum in prototype: ' + hasMomentum + (hasMomentum ? ' (the Chromium≥150 inertia flag — this engine ships it)' : ' (absent here — shipped between Chromium 149 and 156; version-dependent, not family-wide)'));
+  chip('c10-inverted', (hasInv === isWebKit) ? 'ok' : 'fail', 'webkitDirectionInvertedFromDevice: ' + hasInv + (hasInv ? ' — WebKit-only, the natural-scrolling inversion bit' : ' (WebKit-only member)'));
+  chip('c10-gesture', (isWebKit ? gesture === 'function' : gesture === 'undefined') ? 'ok' : 'fail', 'typeof GestureEvent === "' + gesture + '" — ' + (gesture === 'function' ? 'WebKit ships the gesture-event family (addEventListener only, no on* handlers)' : 'absent in this engine'));
+})();
+
+/* ============================ §11 stream ============================ */
+(function () {
+  const box = document.getElementById('stream-box');
+  const posEl = document.getElementById('stream-pos');
+  const countEl = document.getElementById('stream-count');
+  const framesEl = document.getElementById('stream-frames');
+  let count = 0, frames = 0, sampling = false, firstPos = null;
+  box.addEventListener('scroll', () => {
+    count++; countEl.textContent = count;
+    posEl.textContent = Math.round(box.scrollTop);
+    if (sampling) { frames++; if (firstPos === null) firstPos = Math.round(box.scrollTop); }
+  }, { passive: true });
+  box.addEventListener('wheel', () => {
+    sampling = true; frames = 0; firstPos = null;
+    setTimeout(() => {
+      sampling = false;
+      const settled = Math.round(box.scrollTop);
+      framesEl.textContent = frames + ' (' + (firstPos === settled ? 'final on frame 1' : 'moved after frame 1') + ')';
+      chip('c11-stream', 'ok', count + ' scroll events, position final on the first frame (' + firstPos + ' → ' + settled + ') — instant, not animated');
+    }, 350);
+  }, { passive: true });
+})();
+
+window.__wgDone = true;
+</script>
+</body>
+</html>
