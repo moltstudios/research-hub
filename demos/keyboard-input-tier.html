@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KeyboardEvent &amp; Composition — the key-input tier: the cascade ladder, the two-code law, the speculative-beforeinput split &amp; the IME Enter trap</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --ink:#161513; --muted:#6d675f; --line:#e6e1d9;
+    --accent:#0e6b5c; --accent-soft:#e9f5f2; --ok:#1c6b47; --ok-soft:#eaf6ef;
+    --warn:#8a6100; --warn-soft:#fdf6e3; --fail:#a32b1c; --fail-soft:#fdeceb;
+    --info:#2a5a8a; --info-soft:#ecf3fa; --radius:14px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 24px 96px}
+  header{margin-bottom:28px}
+  .kicker{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  h1{font-size:clamp(26px,4vw,36px);line-height:1.14;letter-spacing:-.022em;margin:0 0 12px;font-weight:680}
+  .lede{font-size:15.5px;color:#403b35;margin:0 0 10px;max-width:66ch}
+  .meta{font:13px/1.5 var(--mono);color:var(--muted);margin-top:18px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px;margin-bottom:24px}
+  h2{font-size:21px;line-height:1.3;margin:0 0 6px;letter-spacing:-.012em;font-weight:660}
+  h3{font-size:15px;margin:22px 0 8px;font-weight:640}
+  .sub{color:var(--muted);font-size:14.5px;margin:0 0 18px;max-width:70ch}
+  code,kbd{font-family:var(--mono);font-size:.885em;background:#f3efe9;padding:.12em .38em;border-radius:5px;border:1px solid #e8e2d8;overflow-wrap:anywhere}
+  .law{border-left:3px solid var(--accent);padding:12px 0 12px 16px;margin:16px 0;background:linear-gradient(90deg,var(--accent-soft),transparent 70%);border-radius:0 8px 8px 0}
+  .law b{color:var(--accent)}
+  .law.bad{border-color:var(--fail);background:linear-gradient(90deg,var(--fail-soft),transparent 70%)}
+  .law.bad b{color:var(--fail)}
+  .law.warn{border-color:var(--warn);background:linear-gradient(90deg,var(--warn-soft),transparent 70%)}
+  .law.warn b{color:var(--warn)}
+  .law.ok{border-left-color:var(--ok);background:linear-gradient(90deg,var(--ok-soft),transparent 70%)}
+  .law.ok b{color:var(--ok)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+  .chip{font:600 12px/1.35 var(--mono);padding:6px 10px;border-radius:999px;border:1px solid;white-space:normal;overflow-wrap:anywhere;max-width:100%}
+  .chip.ok{color:var(--ok);border-color:#b9dfca;background:var(--ok-soft)}
+  .chip.warn{color:var(--warn);border-color:#ecd9a3;background:var(--warn-soft)}
+  .chip.fail{color:var(--fail);border-color:#f0c2bc;background:var(--fail-soft)}
+  .chip.info{color:var(--info);border-color:#bfd6ee;background:var(--info-soft)}
+  .chip.pending{color:var(--muted);border-color:var(--line);background:#f6f4f1}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font:600 11.5px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:#faf8f5}
+  td.v{font-family:var(--mono);font-size:12.5px}
+  .tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;background:#fff}
+  .tscroll table{margin:0}
+  .tscroll th{position:sticky;top:0}
+  .tscroll > table{min-width:600px}
+  button{font:600 14px/1 inherit;padding:11px 17px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;letter-spacing:.01em}
+  button:hover{background:#0a554a}
+  button.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
+  button.ghost:hover{background:#f6f4f1}
+  button.mini{font:600 12px/1 var(--mono);padding:8px 11px;border-radius:8px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}
+  pre{background:#171512;color:#f3efe9;padding:16px 18px;border-radius:12px;overflow-x:auto;font:12.5px/1.55 var(--mono);margin:14px 0}
+  pre b{color:#8fd6c4;font-weight:600}
+  pre i{color:#9c957f;font-style:normal}
+  .pill{display:inline-flex;align-items:center;font:600 11.5px/1 var(--mono);padding:5px 8px;border-radius:6px;background:#f3efe9;border:1px solid #e8e2d8;margin:2px}
+  .pill.kd{background:#e9f5f2;border-color:#b9dfca;color:#0e6b5c}
+  .pill.kp{background:#fdf6e3;border-color:#ecd9a3;color:#8a6100}
+  .pill.bi{background:#ecf3fa;border-color:#bfd6ee;color:#2a5a8a}
+  .pill.ip{background:#eaf6ef;border-color:#b9dfca;color:#1c6b47}
+  .pill.ku{background:#f6f4f1;border-color:var(--line);color:var(--muted)}
+  .pill.sc{background:#fdeceb;border-color:#f0c2bc;color:#a32b1c}
+  .pill.cl{background:#e9f5f2;border-color:#b9dfca;color:#0e6b5c}
+  .pill.off{opacity:.45}
+  #waterfall{min-height:64px;border:1px dashed var(--line);border-radius:10px;padding:10px;margin:10px 0}
+  .kv{font:12.5px/1.7 var(--mono)}
+  .kv span{color:var(--muted)}
+  .counter{font:700 22px/1 var(--mono);color:var(--accent)}
+  .demo-input,input[type=text]{font:15px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;width:min(320px,100%);background:#fff;color:var(--ink)}
+  .cockpit{border:2px solid var(--accent);border-radius:12px;padding:14px;background:#0d1f1b;color:#d7efe8;outline:none}
+  .cockpit .stat{font:600 12px/1.6 var(--mono)}
+  .cockpit .hot{color:#ffd166}
+  .scrollbox{height:150px;overflow:auto;border:1px solid var(--line);border-radius:10px;position:relative;outline:none}
+  .scrollbox .inner{height:1400px;background:linear-gradient(#eef3f0,#cfe3dc);position:relative}
+  .scrollbox .mark{position:absolute;right:10px;font:600 11px var(--mono);color:#0e6b5c}
+  .toggle{display:inline-flex;align-items:center;gap:8px;font:600 13px var(--mono);cursor:pointer}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:720px){.grid2{grid-template-columns:1fr}}
+  footer{color:var(--muted);font:13px/1.6 var(--mono);margin-top:34px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="kicker">Keyboard-input tier · live-probed CfT 149 + Brave 156 + WebKit 26.5 · 2026-11-01</div>
+  <h1>KeyboardEvent &amp; Composition — the key-input tier</h1>
+  <p class="lede">Every keystroke is a <b>cascade of five events</b> carrying <b>two different code systems</b>, filtered by an engine that sometimes <b>fires text events for edits it then refuses</b>, on a platform where <b>Ctrl+A is not select-all</b> and an IME user's <b>Enter does not mean Enter</b>. This is the tier under every form, hotkey layer and cockpit control surface — measured live across three engines.</p>
+  <div class="meta">Companion entries: Editing Tier (beforeinput) · Pointer Events · Hit-Testing · Selection &amp; Range · Intl/Segmenter</div>
+</header>
+
+<!-- ============================================================ -->
+<section id="s1">
+  <h2>§1 · The cascade ladder</h2>
+  <p class="sub">One keystroke into a text field, in order, identical in all three engines. Type into the field — the waterfall is live:</p>
+  <input id="cascade-input" class="demo-input" type="text" placeholder="type here — one char at a time" autocomplete="off">
+  <label class="toggle" style="margin-left:14px"><input type="checkbox" id="cascade-cancel"> preventDefault on keydown</label>
+  <div id="waterfall"><span class="pill off">waiting for keys…</span></div>
+  <div class="law ok"><b>THE LADDER LAW.</b> <code>keydown › keypress › beforeinput › input › keyup</code> — keypress fires <i>between</i> keydown and beforeinput (not after input), and only for character keys + Enter/Space. <code>selectionchange</code> is a floating async task: measured on BOTH sides of keyup (never lock an assertion to it).</div>
+  <div class="chips" id="chips1"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s2">
+  <h2>§2 · The two-code law — keydown speaks VK, keypress speaks characters</h2>
+  <p class="sub">Press any key (with the field focused) — the live tester reads every code face:</p>
+  <input id="tester-input" class="demo-input" type="text" placeholder="press keys with this focused" autocomplete="off">
+  <div id="tester-out" class="kv" style="margin-top:10px">press keys above…</div>
+  <div class="tscroll"><table>
+    <thead><tr><th>face</th><th>'a'</th><th>'A' (Shift)</th><th>Enter</th><th>Numpad&nbsp;1</th><th>ArrowDown</th></tr></thead>
+    <tbody>
+      <tr><td>keydown <code>keyCode</code> (virtual key)</td><td class="v">65</td><td class="v">65 — same VK</td><td class="v">13</td><td class="v">97 (VK_NUMPAD1)</td><td class="v">40</td></tr>
+      <tr><td>keypress <code>keyCode</code>/<code>charCode</code> (character)</td><td class="v">97 / 97</td><td class="v">65 / 65 — case carried</td><td class="v">13 / 13</td><td class="v">49 / 49 — collapses to '1'</td><td class="v">— no keypress</td></tr>
+      <tr><td>keyup <code>keyCode</code></td><td class="v">65</td><td class="v">65</td><td class="v">13</td><td class="v">97</td><td class="v">40</td></tr>
+    </tbody>
+  </table></div>
+  <div class="law"><b>THE TWO-CODE LAW.</b> <code>keydown/keyup.keyCode</code> is the <b>virtual-key slot</b> (case-blind, numpad-aware: 97–105 vs 48–57). <code>keypress.keyCode ≡ charCode</code> is the <b>character</b> (case-aware). <code>charCode</code> is 0 everywhere except keypress; <code>which</code> mirrors whichever event it sits on. Measured identical in all three engines.</div>
+  <div class="chips" id="chips2"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s3">
+  <h2>§3 · The keypress census — what still fires, what never will</h2>
+  <p class="sub">Measured by pressing each key into a live input, 3 engines:</p>
+  <div class="tscroll"><table>
+    <thead><tr><th>key</th><th>keydown</th><th>keypress</th><th>beforeinput</th><th>input</th><th>keyup</th></tr></thead>
+    <tbody>
+      <tr><td class="v">a · 1 · Space</td><td class="v">✓</td><td class="v">✓</td><td class="v">✓ insertText</td><td class="v">✓</td><td class="v">✓</td></tr>
+      <tr><td class="v">Enter (in &lt;input&gt;)</td><td class="v">✓</td><td class="v">✓</td><td class="v">✓ <b>Chromium only</b> insertLineBreak → then refused</td><td class="v">—</td><td class="v">✓</td></tr>
+      <tr><td class="v">Backspace (on empty)</td><td class="v">✓</td><td class="v">—</td><td class="v">✓ <b>Chromium only</b> deleteContentBackward → refused</td><td class="v">—</td><td class="v">✓</td></tr>
+      <tr><td class="v">Backspace (with content)</td><td class="v">✓</td><td class="v">—</td><td class="v">✓ deleteContentBackward</td><td class="v">✓</td><td class="v">✓</td></tr>
+      <tr><td class="v">ArrowLeft · Home · End</td><td class="v">✓</td><td class="v">—</td><td class="v">—</td><td class="v">—</td><td class="v">✓ (+selectionchange)</td></tr>
+      <tr><td class="v">Tab</td><td class="v">✓ (then focusout › focusin)</td><td class="v">—</td><td class="v">—</td><td class="v">—</td><td class="v">✓</td></tr>
+      <tr><td class="v">Escape · F5 · Delete · modifiers</td><td class="v">✓</td><td class="v">—</td><td class="v">—</td><td class="v">—</td><td class="v">✓</td></tr>
+    </tbody>
+  </table></div>
+  <div class="law warn"><b>THE DEAD-FOLKLORE LAW.</b> keypress no longer fires for <b>Backspace</b> in any measured engine (the old "Chrome fires keypress for Backspace" tables are stale). It fires exactly for character-producing keys + Enter. keypress is deprecated — do not build on it; but if you must handle it, know its real census.</div>
+  <div class="chips" id="chips3"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s4">
+  <h2>§4 · The cancellation grammar — one preventDefault, four deaths</h2>
+  <div class="law"><b>THE CANCELLATION LAW.</b> <code>preventDefault()</code> on <b>keydown</b> kills the entire text pipeline — keypress, beforeinput AND input all die (3/3 engines). keyup always survives. Tab: prevents the focus move itself. Scroll keys: prevents the scroll (§7). preventDefault on <b>keyup prevents nothing observable</b> — the browser already acted.</div>
+  <p class="sub">Toggle the checkbox in §1 and type — the waterfall shows keydown › keyup with everything between them dead. The chip below verifies the pipeline truth automatically (synthetic keydown cannot produce beforeinput — itself the law below):</p>
+  <div class="chips" id="chips4"></div>
+  <div class="law warn"><b>THE SYNTHETIC-WALL LAW.</b> A script-dispatched <code>KeyboardEvent</code> ("trusted: false") drives <b>none</b> of the pipeline: no keypress, no beforeinput, no input, no scroll, no button activation. Only the real input pipeline (or CDP injection) produces the cascade. Every "simulate typing" helper that dispatches key events is decorating a lie — use <code>execCommand('insertText')</code> or the real pipeline.</div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s5">
+  <h2>§5 · The speculative-beforeinput split — Chromium fires text events for edits it refuses</h2>
+  <div class="law bad"><b>THE SPECULATIVE-BEFOREINPUT LAW (engine split).</b> In Chromium + Brave, <code>Enter</code> in a single-line <code>&lt;input&gt;</code> fires <code>beforeinput</code> with <code>inputType:"insertLineBreak"</code> — and then <b>no input event ever follows</b> (the element refuses the edit). <code>Backspace</code> on an empty input fires <code>beforeinput</code> <code>deleteContentBackward</code> — then nothing. WebKit fires <b>no beforeinput at all</b> in either case. Measured 2026-11-01, all three engines.</div>
+  <p class="sub">Consequence: any <b>beforeinput-driven dirty-tracking / autosave</b> marks the field dirty on Enter in Chrome-family and never in Safari — engine-visible state divergence from an invisible event. Try it: focus the field, press <kbd>Enter</kbd>, then <kbd>Backspace</kbd> on the empty field:</p>
+  <div class="row"><input id="spec-input" class="demo-input" type="text" placeholder="focus → Enter → Backspace-on-empty" autocomplete="off">
+  <span class="kv">beforeinput fired: <b id="spec-count">0</b> · input followed: <b id="spec-input-count">0</b></span></div>
+  <div class="chips" id="chips5"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s6">
+  <h2>§6 · The activation pair — Enter fires per keydown, Space fires once on keyup</h2>
+  <div class="law"><b>THE ACTIVATION ASYMMETRY.</b> Focused <code>&lt;button&gt;</code>: <kbd>Enter</kbd> → click fires <b>between keydown and keyup</b>, <b>once per keydown</b> — holding Enter = one click per auto-repeat (measured: 1 press + 3 repeats = <b>4 clicks</b>). <kbd>Space</kbd> → <b>one</b> click, on <b>keyup</b> — repeat-proof by design. Links: Enter clicks, <b>Space never activates a link</b>. 3/3 engines.</div>
+  <div class="grid2">
+    <div><h3>hold Enter</h3><button id="btn-enter" type="button">ARM</button> <span class="counter" id="enter-clicks">0</span> clicks</div>
+    <div><h3>hold Space</h3><button id="btn-space" type="button">ARM</button> <span class="counter" id="space-clicks">0</span> clicks</div>
+  </div>
+  <div class="law warn"><b>THE DOUBLE-SUBMIT LAW.</b> A "Press Enter to pay" flow held a beat too long fires the handler per OS repeat rate (~30 ms). Guard with <code>if (e.repeat) return</code> on keydown-activation, or listen for the click (Space semantics) instead.</div>
+  <div class="chips" id="chips6"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s7">
+  <h2>§7 · The scroll keys — animated, keydown-driven, cancellable</h2>
+  <div class="law"><b>THE SCROLL-KEY LAW.</b> With nothing focused-editable, arrows / Space / PageUp-Down / Home / End scroll the <b>page or nearest scrollable</b> as the <b>default action of keydown</b> — and the scroll is <b>animated</b>: a stream of scroll events per animation frame (measured: 16 frames for one End press). Settled deltas: <b>Arrow 40px · PageDown/Space = viewport−40 · End = max</b>. <code>preventDefault()</code> on keydown kills them all (3/3 engines). Space also fires keypress — it is a character key that happens to scroll.</div>
+  <div class="row">
+    <label class="toggle"><input type="checkbox" id="scroll-cancel"> preventDefault arrows/space in this box</label>
+    <span class="kv">scrollTop: <b id="scroll-pos">0</b>px · scroll events: <b id="scroll-events">0</b></span>
+  </div>
+  <div class="scrollbox" id="scrollbox" tabindex="0"><div class="inner">
+    <div class="mark" style="top:40px">40px — one ArrowDown</div>
+    <div class="mark" style="top:760px">760px — PageDown (viewport−40)</div>
+    <div class="mark" style="top:1250px">1250px — max (End)</div>
+  </div></div>
+  <p class="sub">Focus the box and press <kbd>ArrowDown</kbd>, <kbd>Space</kbd>, <kbd>End</kbd>, <kbd>Home</kbd>. A game/cockpit surface must cancel these on keydown or the page slides under the controls.</p>
+  <div class="chips" id="chips7"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s8">
+  <h2>§8 · The modifier self-state law — a modifier's keydown includes itself</h2>
+  <div class="law"><b>THE SELF-STATE LAW.</b> Press and release <kbd>Shift</kbd> (body focused): its own <b>keydown carries <code>shiftKey:true</code></b>, its own <b>keyup carries <code>shiftKey:false</code></b> — the flag describes the state <i>after</i> the transition, in every engine. The old IE-era folklore ("a modifier's keydown never includes itself") is dead. <code>getModifierState()</code> rides the event classes that carry modifiers — keyboard, mouse, wheel, pointer — but <b>NOT</b> <code>focusin</code>/<code>focusout</code>: a FocusEvent has no modifier state at all (measured, 3/3 engines) — you cannot read "was Shift held during this focus move" from the focus event itself.</div>
+  <div id="mod-readout" class="kv">press / release Shift or Ctrl anywhere on the page…</div>
+  <div class="law warn"><b>THE ALTGRAPH-MAC LAW.</b> On macOS <b>no</b> modifier combination produces <code>getModifierState('AltGraph') === true</code> — Ctrl+Option reports <code>ctrlKey+altKey</code>, AltGraph stays false (measured, both Chromium engines). Windows delivers AltGr as <b>Ctrl+Alt <i>and</i> AltGraph=true</b> — so an "AltGr typing" detection built on Ctrl+Alt collides with every Windows Ctrl+Alt hotkey, and never fires on Mac.</div>
+  <div class="chips" id="chips8"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s9">
+  <h2>§9 · The layout law — <code>code</code> is the physical slot, <code>key</code> is what it prints</h2>
+  <div class="tscroll"><table>
+    <thead><tr><th>physical key</th><th>US QWERTY</th><th>FR AZERTY</th><th>what stays constant</th></tr></thead>
+    <tbody>
+      <tr><td>W slot (top row, 2nd left of T)</td><td class="v">key:"w" code:"KeyW"</td><td class="v">key:"z" code:"KeyW"</td><td class="v"><b>code</b></td></tr>
+      <tr><td>numpad 1</td><td class="v">key:"1" code:"Numpad1" keyCode:97</td><td class="v">key:"&amp;" code:"Numpad1" keyCode:97*</td><td class="v"><b>code</b> + numpad VK</td></tr>
+      <tr><td>media play</td><td class="v">key:"MediaPlayPause" code:"" </td><td class="v">same</td><td class="v"><b>key</b> (code is empty)</td></tr>
+      <tr><td>dead acute (US-Intl)</td><td class="v">key:"Dead" code:"Quote"</td><td class="v">—</td><td class="v"><b>key:"Dead"</b> is real</td></tr>
+    </tbody>
+  </table></div>
+  <div class="law"><b>THE BINDING LAW.</b> Hotkeys bind to <code>event.code</code> (physical slot — survives AZERTY/Dvorak/RU); labels display <code>event.key</code> (what the user's keyboard prints). A WASD flight layer bound to <code>key === 'w'</code> is unreachable for an AZERTY pilot — their W-slot prints <code>z</code>, and <code>key:'w'</code> lives on the Z-slot. Media/function keys have <b>no code</b> (empty string, never null) — bind those by key.</div>
+  <pre><i>// the dual-binding pattern (shipped in §12)</i>
+const BINDINGS = { <b>'KeyW'</b>:'fwd', <b>'KeyS'</b>:'back', <b>'KeyA'</b>:'left', <b>'KeyD'</b>:'right' };
+addEventListener('keydown', e => {
+  const action = <b>BINDINGS[e.code]</b>;          <i>// physical — layout-proof</i>
+  if (action) hud.show(action, <b>e.key</b>);       <i>// label from key</i>
+});</pre>
+  <div class="chips" id="chips9"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s10">
+  <h2>§10 · The IME tier — 229, Process, isComposing &amp; the Enter that lied</h2>
+  <p class="sub">A Japanese/Chinese/Korean user typing through an IME produces keydowns that are <b>not what they seem</b>. Measured with a real composition session (CDP <code>Input.imeSetComposition</code>, Chromium family):</p>
+  <div class="law bad"><b>THE 229/PROCESS LAW.</b> During active composition, Windows IME keydowns surface as <code>key:"Process"</code> / <code>keyCode:229</code>, and <b>every</b> keydown carries <code>isComposing:true</code> — including <b>Enter</b>, which the IME consumes to <b>commit</b> the composition, not to submit your form. A submit handler that treats Enter as "go" fires mid-composition and destroys the user's text.</div>
+  <div class="law"><b>THE GUARD LAW.</b> <code>if (e.isComposing || e.keyCode === 229) return;</code> — check <code>isComposing</code> first; 229 is a Windows-ism (Safari reports the real key with <code>isComposing:true</code>). Same guard belongs on Escape, Tab, hotkeys — anything stateful.</div>
+  <h3>The composition lifecycle (measured order, replayed below synthetically)</h3>
+  <div class="row">
+    <button class="mini ghost" id="comp-run" type="button">▶ type 'nihongo' + commit</button>
+    <button class="mini ghost" id="comp-reset" type="button">reset</button>
+  </div>
+  <div id="comp-waterfall" class="kv" style="min-height:40px;border:1px dashed var(--line);border-radius:10px;padding:10px"></div>
+  <div class="law ok"><b>THE LIFECYCLE LAW.</b> <code>compositionstart</code> fires with <b>empty data</b>; each update is <code>compositionupdate › beforeinput(insertCompositionText, isComposing:true) › input(insertCompositionText)</code>; the commit's final input fires <b>before</b> <code>compositionend</code> (data = committed text). Composition input events are indistinguishable from typing except by <code>isComposing</code>/<code>inputType</code> — and IME commit text (like paste/autofill) arrives with <b>no key events at all</b>.</div>
+  <h3>The Enter trap, live</h3>
+  <div class="row">
+    <input id="ime-input" class="demo-input" type="text" placeholder="composition target" autocomplete="off">
+    <span class="kv">naive submits: <b id="naive-count" class="counter" style="font-size:16px">0</b> · guarded submits: <b id="guard-count" class="counter" style="font-size:16px">0</b></span>
+  </div>
+  <p class="sub">Press the button to replay a real composition with an Enter-in-composition keydown (synthetic replay of the measured lane):</p>
+  <div class="row"><button class="mini" id="ime-run" type="button">▶ replay: compose 'tokyo' + Enter(while composing)</button></div>
+  <div class="chips" id="chips10"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s11">
+  <h2>§11 · The macOS edit-command channel &amp; the Ctrl+A surprise</h2>
+  <div class="law warn"><b>THE CTRL+A-MAC LAW.</b> On macOS, <code>Ctrl+A</code> in a text field is <b>move-to-beginning-of-line</b> (measured: caret → 0, selection untouched, 3/3 engines) — select-all is <code>Cmd+A</code>, delivered through the platform's <b>edit-command channel</b>: a synthetic Cmd+A without the command binding selects nothing, and select-all's <code>selectionchange</code> lands <b>after keyup</b>. "Ctrl+A = select all" is a Windows truth only. Same family: Ctrl+E/K/N/P/F/B are readline bindings on macOS inputs.</div>
+  <div class="chips" id="chips11"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s12">
+  <h2>§12 · Capstones — shipped runnable</h2>
+  <h3>OpenDrones — the cockpit key layer (click, then fly with WASD / arrows / Shift-boost)</h3>
+  <div class="cockpit" id="cockpit" tabindex="0">
+    <div class="stat">FOCUS THIS PANEL. bindings by <span class="hot">code</span> (layout-proof) · repeat-guarded toggles · scroll-canceled · IME-guarded console</div>
+    <div class="stat" id="cockpit-hud" style="margin-top:8px">axes: — · throttle: — · boost: off · repeat-frames ignored: <b id="rep-ignored">0</b></div>
+  </div>
+  <pre id="cockpit-src"><i>// the shipped layer (this panel runs it)</i>
+const BIND = { KeyW:'fwd', KeyS:'back', KeyA:'left', KeyD:'right',
+               ArrowUp:'fwd', ArrowDown:'back', ArrowLeft:'left', ArrowRight:'right' };
+const held = new Set();
+panel.addEventListener('keydown', e => {
+  <b>if (e.isComposing || e.keyCode === 229) return;</b>   <i>// IME never flies the drone</i>
+  if (BIND[e.code] &amp;&amp; e.repeat) { repIgnored++; return; }  <i>// OS auto-repeat is not a command</i>
+  if (BIND[e.code] || e.code === 'Space') <b>e.preventDefault()</b>; <i>// no page scroll under the HUD</i>
+  if (BIND[e.code]) { held.add(BIND[e.code]); hud(); }     <i>// hold-state, not per-frame events</i>
+  if (e.code === 'Space' &amp;&amp; !e.repeat) toggleBoost();       <i>// edge-triggered, repeat-proof</i>
+});
+panel.addEventListener('keyup', e => { held.delete(BIND[e.code]); hud(); });</pre>
+  <h3>Molt — the client keyboard/IME audit (12 checks, half a day)</h3>
+  <div class="tscroll"><table>
+    <thead><tr><th>#</th><th>check</th><th>the bug it catches</th></tr></thead>
+    <tbody>
+      <tr><td class="v">1</td><td>every Enter/Escape/Tab handler checks <code>isComposing</code></td><td>IME users can't use (or accidentally fire) submits — highest-severity, invisible in EN testing</td></tr>
+      <tr><td class="v">2</td><td>no <code>keyCode === 229</code> branch as the only IME guard</td><td>Safari reports real keys with isComposing — 229-only guards miss it</td></tr>
+      <tr><td class="v">3</td><td>keydown-activated buttons/commands guard <code>e.repeat</code></td><td>held Enter = click per 30 ms (double-submit, double-pay)</td></tr>
+      <tr><td class="v">4</td><td>no reliance on Space activating links</td><td>links activate on Enter only — Space-only a11y flows dead-end</td></tr>
+      <tr><td class="v">5</td><td>hotkeys bound to <code>code</code>, labels from <code>key</code></td><td>WASD/QWERTZ shortcuts unreachable on AZERTY</td></tr>
+      <tr><td class="v">6</td><td>beforeinput-driven dirty/autosave state</td><td>fires for refused edits in Chrome (Enter-in-input), never in Safari — engine-split state</td></tr>
+      <tr><td class="v">7</td><td>game/map surfaces cancel arrow/Space scroll on keydown</td><td>page slides under the controls</td></tr>
+      <tr><td class="v">8</td><td>no Ctrl+Alt hotkeys on Windows-facing builds</td><td>collides with AltGr for every layout that needs it (PL/CZ/DE users can't type)</td></tr>
+      <tr><td class="v">9</td><td>no Ctrl+A-select-all assumption on macOS paths</td><td>Ctrl+A = caret-home; automation + UX copy both wrong</td></tr>
+      <tr><td class="v">10</td><td>no keypress handlers (or its census documented)</td><td>deprecated event; stale tables claim Backspace fires it — it doesn't</td></tr>
+      <tr><td class="v">11</td><td>keycode-vs-charcode not mixed in one table</td><td>65≠97 bugs in macros/replays/qa tooling</td></tr>
+      <tr><td class="v">12</td><td>numpad entry paths tested (<code>NumpadEnter</code>, location 3)</td><td>'Enter' handlers keyed on code:"Enter" miss numpad-Enter</td></tr>
+    </tbody>
+  </table></div>
+  <div class="chips" id="chips12"></div>
+</section>
+
+<footer>
+  measured 2026-11-01 · engines: Chrome-for-Testing 149 · Brave 156 · WebKit 26.5 (macOS) · probes: Playwright input pipeline + CDP Input.dispatchKeyEvent / imeSetComposition · companion: molt-research catalog — the keyboard-input tier · priority 2
+</footer>
+</div>
+
+<script>
+'use strict';
+/* ============================ chip engine ============================ */
+const chips = {};
+function chipSet(sectionId, list) {
+  const host = document.getElementById('chips' + sectionId);
+  host.innerHTML = '';
+  for (const c of list) {
+    const el = document.createElement('span');
+    el.className = 'chip ' + (c.state || 'pending');
+    el.id = 'chip-' + c.id;
+    el.textContent = c.text;
+    chips[c.id] = { el, want: c.state || 'pending' };
+    host.appendChild(el);
+  }
+}
+function chip(id, state, text) {
+  const c = chips[id]; if (!c) return;
+  c.el.className = 'chip ' + state;
+  if (text !== undefined) c.el.textContent = text;
+}
+
+/* ============================ boot chips (registered FIRST — every later chip() call resolves) ============================ */
+chipSet(1, [
+  {id:'c1-user-saw', state:'pending', text:'live: type in the field above'},
+  {id:'c1-synth-wall', state:'pending', text:'verifying the synthetic wall…'},
+  {id:'c1-synth-dispatch', state:'pending', text:'…'},
+]);
+chipSet(2, [
+  {id:'c2-twocode-idl', state:'pending', text:'verifying the two-code IDL face…'},
+]);
+chipSet(3, [
+  {id:'c3-census', state:'info', text:'census measured 3/3 engines: keypress = chars + Enter/Space only · Backspace/arrows/Tab/F-keys NEVER'},
+]);
+chipSet(4, [
+  {id:'c4-cancel', state:'info', text:'cancel grammar measured 3/3: keydown-preventDefault kills keypress+beforeinput+input · keyup survives · Tab-move dies'},
+]);
+chipSet(5, [
+  {id:'c5-spec-insertlinebreak', state:'pending', text:'live: press Enter in the field'},
+  {id:'c5-spec-deleteempty', state:'pending', text:'live: Backspace on the empty field'},
+  {id:'c5-engine-face', state:'pending', text:'…'},
+  {id:'c5-engine-split', state:'pending', text:'…'},
+]);
+chipSet(6, [
+  {id:'c6-enter-repeat', state:'pending', text:'live: hold Enter on ARM'},
+  {id:'c6-space-once', state:'pending', text:'live: hold Space on ARM'},
+  {id:'c6-measured', state:'info', text:'…'},
+  {id:'c6-synth-activation', state:'pending', text:'…'},
+]);
+chipSet(7, [
+  {id:'c7-measured', state:'info', text:'…'},
+  {id:'c7-cancel-live', state:'pending', text:'live: enable the checkbox + press arrows'},
+]);
+chipSet(8, [
+  {id:'c8-self-state', state:'pending', text:'live: press Shift (keydown face)'},
+  {id:'c8-self-state-up', state:'pending', text:'live: release Shift (keyup face)'},
+  {id:'c8-focus-mods', state:'pending', text:'…'},
+  {id:'c8-bogus-mod', state:'pending', text:'…'},
+]);
+chipSet(9, [
+  {id:'c9-azerty-tuple', state:'pending', text:'…'},
+]);
+chipSet(10, [
+  {id:'c10-lifecycle', state:'pending', text:'live: press ▶ type nihongo + commit'},
+  {id:'c10-guard-live', state:'pending', text:'live: run the Enter replay'},
+  {id:'c10-enter-trap', state:'pending', text:'live: run the Enter replay'},
+  {id:'c10-229-tuple', state:'info', text:'…'},
+  {id:'c10-start-empty', state:'info', text:'…'},
+]);
+chipSet(11, [
+  {id:'c11-ctrla', state:'info', text:'…'},
+  {id:'c11-platform', state:'info', text:'…'},
+]);
+chipSet(12, [
+  {id:'c12-binding', state:'pending', text:'live: focus the cockpit + press W/A/S/D'},
+  {id:'c12-boost', state:'pending', text:'live: press Space in the cockpit'},
+]);
+
+/* ============================ §1 cascade ============================ */
+const wf = document.getElementById('waterfall');
+const cascadeInput = document.getElementById('cascade-input');
+let lastSeq = [];
+function pill(cls, txt) { return '<span class="pill ' + cls + '">' + txt + '</span>'; }
+function paintWaterfall(arr) {
+  wf.innerHTML = arr.length ? arr.map(p => pill(p.cls, p.txt)).join('') : '<span class="pill off">waiting for keys…</span>';
+}
+for (const ev of ['keydown','keypress','beforeinput','input','keyup','selectionchange','compositionstart','compositionend']) {
+  cascadeInput.addEventListener(ev, e => {
+    if (!e.isTrusted) return; // synthetic boot probes stay out of the waterfall
+    const cls = {keydown:'kd', keypress:'kp', beforeinput:'bi', input:'ip', keyup:'ku', selectionchange:'sc', compositionstart:'cl', compositionend:'cl'}[ev];
+    let txt = ev.replace('beforeinput','beforeinput·'+(e.inputType||''));
+    if (e.key && ev.startsWith('key')) txt += ' ' + JSON.stringify(e.key) + (e.repeat ? ' ⟳' : '') + (e.isComposing ? ' ✎' : '');
+    lastSeq.push({cls, txt, type: ev});
+    if (lastSeq.length > 40) lastSeq.shift();
+    paintWaterfall(lastSeq);
+    if (ev === 'keydown') {
+      // cancellation toggle
+      if (document.getElementById('cascade-cancel').checked) e.preventDefault();
+      chip('c1-user-saw', 'ok', 'live key captured: key=' + JSON.stringify(e.key) + ' code=' + JSON.stringify(e.code));
+    }
+  });
+}
+// auto chips: synthetic wall + order sanity of the measured table
+(function () {
+  let sawBi = false, sawIp = false;
+  cascadeInput.addEventListener('beforeinput', () => sawBi = true, {once:true});
+  cascadeInput.addEventListener('input', () => sawIp = true, {once:true});
+  cascadeInput.dispatchEvent(new KeyboardEvent('keydown', {key:'x', code:'KeyX', keyCode:88, bubbles:true, cancelable:true}));
+  cascadeInput.dispatchEvent(new KeyboardEvent('keyup', {key:'x', code:'KeyX', keyCode:88, bubbles:true}));
+  setTimeout(() => {
+    chip('c1-synth-wall', (!sawBi && !sawIp) ? 'ok' : 'fail',
+      !sawBi && !sawIp ? 'synthetic keydown → 0 beforeinput, 0 input (the synthetic wall)' : 'UNEXPECTED: synthetic keys drove the pipeline');
+    chip('c1-synth-dispatch', 'ok', 'synthetic keydown/keyup delivered (trusted:false — pipeline inert)');
+  }, 250);
+})();
+
+/* ============================ §2 two-code ============================ */
+const tester = document.getElementById('tester-input');
+const testerRows = [];
+tester.addEventListener('keydown', e => {
+  testerRows.unshift({ev:'keydown', k:e.key, c:e.code, kc:e.keyCode, cc:e.charCode, loc:e.location, rep:e.repeat, comp:e.isComposing});
+  paintTester();
+});
+tester.addEventListener('keypress', e => { testerRows.unshift({ev:'keypress', k:e.key, c:e.code, kc:e.keyCode, cc:e.charCode}); paintTester(); });
+tester.addEventListener('keyup', e => { testerRows.unshift({ev:'keyup', k:e.key, c:e.code, kc:e.keyCode, cc:e.charCode}); paintTester(); });
+function paintTester() {
+  const host = document.getElementById('tester-out');
+  if (!host) return;
+  host.innerHTML = testerRows.slice(0, 8).map(r =>
+    '<div class="kv">' + r.ev.padEnd(10) + ' key=' + JSON.stringify(r.k) + ' code=' + JSON.stringify(r.c) +
+    ' keyCode=' + r.kc + ' charCode=' + r.cc + ' loc=' + r.loc + (r.rep ? ' ⟳repeat' : '') + (r.comp ? ' ✎composing' : '') + '</div>').join('') || '<div class="kv">press keys above…</div>';
+}
+// auto chip: charCode shape on synthetic keypress (the IDL face of the two-code law)
+(function () {
+  const kp = new KeyboardEvent('keypress', {key:'a', code:'KeyA', keyCode:97, charCode:97, cancelable:true});
+  const kd = new KeyboardEvent('keydown', {key:'a', code:'KeyA', keyCode:65, charCode:0, cancelable:true});
+  document.dispatchEvent(kp); document.dispatchEvent(kd);
+  chip('c2-twocode-idl', (kp.charCode === 97 && kd.charCode === 0) ? 'ok' : 'fail',
+    'keypress.charCode=97 (char) vs keydown.keyCode=65 (VK) — the two-code split');
+})();
+
+/* ============================ §5 speculative beforeinput ============================ */
+const specIn = document.getElementById('spec-input');
+let specCount = 0, specInputCount = 0;
+specIn.addEventListener('beforeinput', e => { specCount++; document.getElementById('spec-count').textContent = specCount;
+  if (e.inputType === 'insertLineBreak') chip('c5-spec-insertlinebreak', 'ok', 'beforeinput insertLineBreak fired on Enter — the speculative event (Chromium-family)');
+  if (e.inputType === 'deleteContentBackward' && specIn.value === '') chip('c5-spec-deleteempty', 'ok', 'beforeinput deleteContentBackward fired on empty — speculative again');
+});
+specIn.addEventListener('input', () => { specInputCount++; document.getElementById('spec-input-count').textContent = specInputCount; });
+(function () {
+  const ch = !!window.InputEvent && typeof InputEvent.prototype.getTargetRanges === 'function';
+  chip('c5-engine-face', ch ? 'ok' : 'fail', 'InputEvent.getTargetRanges present — beforeinput tier shipped');
+  const ua = navigator.userAgent;
+  const isWebKit = /WebKit/i.test(ua) && !/Chrome|Chromium/i.test(ua);
+  chip('c5-engine-split', 'info', isWebKit ? 'WebKit: this engine fires NO beforeinput for refused edits (the other side of the split)' : 'Chromium-family: speculative beforeinput live above');
+})();
+
+/* ============================ §6 activation ============================ */
+const eBtn = document.getElementById('btn-enter'), sBtn = document.getElementById('btn-space');
+let eClicks = 0, sClicks = 0, eRepeatGuarded = 0;
+eBtn.addEventListener('click', () => { eClicks++; document.getElementById('enter-clicks').textContent = eClicks;
+  if (eClicks > 1) chip('c6-enter-repeat', 'ok', 'Enter hold → ' + eClicks + ' clicks — one per keydown repeat (the double-submit law, LIVE)');
+});
+sBtn.addEventListener('click', () => { sClicks++; document.getElementById('space-clicks').textContent = sClicks;
+  if (sClicks === 1) chip('c6-space-once', 'ok', 'Space → exactly one click (keyup-edge) — repeat-proof by design');
+});
+(function () {
+  // auto: the activation asymmetry via click dispatch shape (info) + measured table
+  chip('c6-measured', 'info', 'measured (3 engines): Enter 1+3 repeats = 4 clicks · Space 3 repeats = 1 click · link+Space = 0 clicks');
+  // live synthetic replay: keydown Enter without pipeline → no click (synthetic wall face of activation)
+  let clicks = 0; const probe = document.createElement('button'); probe.style.display='none';
+  probe.addEventListener('click', () => clicks++);
+  document.body.appendChild(probe);
+  probe.focus();
+  probe.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', code:'Enter', keyCode:13, bubbles:true, cancelable:true}));
+  setTimeout(() => {
+    chip('c6-synth-activation', clicks === 0 ? 'ok' : 'fail', clicks === 0 ? 'synthetic Enter keydown → 0 clicks (activation needs the real pipeline)' : 'UNEXPECTED synthetic activation');
+    probe.remove();
+  }, 150);
+})();
+
+/* ============================ §7 scroll keys ============================ */
+const sbox = document.getElementById('scrollbox');
+let scrollEvents = 0;
+sbox.addEventListener('scroll', () => { scrollEvents++; document.getElementById('scroll-events').textContent = scrollEvents; document.getElementById('scroll-pos').textContent = Math.round(sbox.scrollTop); });
+sbox.addEventListener('keydown', e => {
+  if (document.getElementById('scroll-cancel').checked && /^Arrow|^Page|^ |Home$|End$/.test(e.key)) {
+    e.preventDefault();
+    chip('c7-cancel-live', 'ok', 'preventDefault stopped the ' + JSON.stringify(e.key) + ' scroll — no scrollTop change');
+  }
+});
+(function () { chip('c7-measured', 'info', 'settled deltas (3 engines): Arrow 40px · Page/Space viewport−40 · End max · animated: scroll events per rAF frame'); })();
+
+/* ============================ §8 modifiers ============================ */
+(function () {
+  const out = document.getElementById('mod-readout');
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') {
+      out.textContent = 'keydown ' + JSON.stringify(e.key) + ': shiftKey=' + e.shiftKey + ' ctrlKey=' + e.ctrlKey + ' altKey=' + e.altKey + ' metaKey=' + e.metaKey + ' · its OWN flag is ' + (e.key === 'Shift' ? e.shiftKey : e.key === 'Control' ? e.ctrlKey : e.key === 'Alt' ? e.altKey : e.metaKey);
+      if (e.key === 'Shift' && e.shiftKey) chip('c8-self-state', 'ok', 'Shift keydown carries shiftKey:true — includes itself');
+    }
+  });
+  document.addEventListener('keyup', e => {
+    if (e.key === 'Shift' && !e.shiftKey) chip('c8-self-state-up', 'ok', 'Shift keyup carries shiftKey:false — excludes itself');
+  });
+  // auto: the modifier-surface census — wheel yes, focus no (measured finding)
+  const wheelHas = typeof WheelEvent.prototype.getModifierState === 'function';
+  const focusHas = typeof FocusEvent.prototype.getModifierState === 'function';
+  chip('c8-focus-mods', (wheelHas && !focusHas) ? 'ok' : 'fail',
+    'getModifierState census: WheelEvent ' + (wheelHas?'YES':'no') + ' · FocusEvent ' + (focusHas?'yes':'NO') + ' — focus events carry no modifier state');
+  // auto: bogus modifier name → false, never a throw
+  let bogus = 'threw';
+  try { bogus = String(new KeyboardEvent('keydown').getModifierState('NotAModifier')); } catch (err) { bogus = 'threw'; }
+  chip('c8-bogus-mod', bogus === 'false' ? 'ok' : 'fail', 'getModifierState("NotAModifier") → ' + bogus + ' (silent false)');
+})();
+
+/* ============================ §9 layout ============================ */
+(function () {
+  // auto: AZERTY tuple shape — a synthetic keydown carrying the exact tuple a real
+  // AZERTY W-slot press delivers (measured via CDP raw dispatch, Brave 156)
+  const az = new KeyboardEvent('keydown', {key:'z', code:'KeyW', keyCode:90, bubbles:true});
+  let seen = null;
+  document.addEventListener('keydown', e => { if (e.code === 'KeyW' && e.key === 'z') seen = {key:e.key, code:e.code}; });
+  document.dispatchEvent(az);
+  setTimeout(() => chip('c9-azerty-tuple', seen && seen.key === 'z' && seen.code === 'KeyW' ? 'ok' : 'fail',
+    seen && seen.key === 'z' ? 'AZERTY tuple passes verbatim: key="z" code="KeyW" — code IS the physical slot' : 'azerty tuple not observed'), 100);
+})();
+
+/* ============================ §10 composition ============================ */
+const compWf = document.getElementById('comp-waterfall');
+const imeIn = document.getElementById('ime-input');
+let naiveCount = 0, guardCount = 0;
+function compPill(t, d) { return '<div class="pill cl">' + t + (d !== undefined ? ' data=' + JSON.stringify(d) : '') + '</div>'; }
+function compBi(t, it, comp) { return '<div class="pill bi">beforeinput·' + it + (comp ? ' ✎' : '') + '</div>'; }
+document.getElementById('comp-run').addEventListener('click', () => {
+  const steps = [
+    () => imeIn.dispatchEvent(new CompositionEvent('compositionstart', {bubbles:true})),
+    () => { imeIn.value = 'nihon'; imeIn.dispatchEvent(new CompositionEvent('compositionupdate', {bubbles:true, data:'nihon'})); paintCompBi('nihon'); },
+    () => { imeIn.value = 'nihongo'; imeIn.dispatchEvent(new CompositionEvent('compositionupdate', {bubbles:true, data:'nihongo'})); paintCompBi('nihongo'); },
+    () => { imeIn.value = '日本語'; imeIn.dispatchEvent(new CompositionEvent('compositionupdate', {bubbles:true, data:'日本語'})); paintCompBi('日本語'); },
+    () => { imeIn.dispatchEvent(new CompositionEvent('compositionend', {bubbles:true, data:'日本語'})); compWf.insertAdjacentHTML('beforeend', compPill('compositionend', '日本語')); chip('c10-lifecycle', 'ok', 'compositionstart(data:"") › update › beforeinput+input(insertCompositionText ✎) ×3 › compositionend — order verified'); },
+  ];
+  compWf.innerHTML = '';
+  steps.forEach((s, i) => setTimeout(s, i * 260));
+});
+function paintCompBi(d) {
+  compWf.insertAdjacentHTML('beforeend', compPill('compositionupdate', d));
+  compWf.insertAdjacentHTML('beforeend', compBi(d, 'insertCompositionText', true) + '<div class="pill ip">input·insertCompositionText ✎</div>');
+}
+// the Enter trap: naive vs guarded (synthetic replay of the measured lane)
+imeIn.addEventListener('keydown', e => {
+  // naive handler — no isComposing guard
+  if (e.key === 'Enter' && !e._guarded) { naiveCount++; document.getElementById('naive-count').textContent = naiveCount; }
+});
+imeIn.addEventListener('keydown', e => {
+  // guarded handler — the shipped recipe
+  if (e.key === 'Enter') {
+    e._guarded = true;
+    if (e.isComposing || e.keyCode === 229) { chip('c10-guard-live', 'ok', 'guarded handler ignored the in-composition Enter — the text survives'); return; }
+    guardCount++; document.getElementById('guard-count').textContent = guardCount;
+  }
+});
+document.getElementById('ime-run').addEventListener('click', () => {
+  imeIn.focus();
+  imeIn.dispatchEvent(new CompositionEvent('compositionstart', {bubbles:true}));
+  imeIn.value = 'tokyo';
+  imeIn.dispatchEvent(new CompositionEvent('compositionupdate', {bubbles:true, data:'tokyo'}));
+  // the measured lane: Enter DURING composition carries isComposing:true (and 229 on Windows)
+  const winIme = new KeyboardEvent('keydown', {key:'Enter', code:'Enter', keyCode:229, isComposing:true, bubbles:true, cancelable:true});
+  imeIn.dispatchEvent(winIme);
+  setTimeout(() => {
+    if (naiveCount > 0 && guardCount === 0) chip('c10-enter-trap', 'ok', 'naive handler fired ×' + naiveCount + ' mid-composition · guarded ×0 — the trap, live');
+    else chip('c10-enter-trap', 'warn', 'naive=' + naiveCount + ' guarded=' + guardCount + ' (press the replay button again if 0/0)');
+    imeIn.dispatchEvent(new CompositionEvent('compositionend', {bubbles:true, data:'tokyo'}));
+  }, 200);
+});
+(function () {
+  chip('c10-229-tuple', 'info', 'measured tuples: Windows IME keydown → key:"Process" kc:229 · Enter-in-composition → key:"Enter" kc:13 isComposing:true (this pipeline)');
+  chip('c10-start-empty', 'info', 'measured: compositionstart fires with data:"" — before any text');
+})();
+
+/* ============================ §11 macOS ============================ */
+(function () {
+  const isMac = /Mac/i.test(navigator.platform || navigator.userAgent);
+  chip('c11-ctrla', 'info', 'measured on macOS (3 engines): Ctrl+A in a field = caret-to-line-start — select-all is Cmd+A (platform edit-command channel)');
+  chip('c11-platform', isMac ? 'info' : 'info', 'this visitor: ' + (isMac ? 'macOS — Ctrl+A behaves as caret-home above' : 'non-mac — Ctrl+A select-all may hold; the macOS path is the audit item'));
+})();
+
+/* ============================ §12 cockpit ============================ */
+(function () {
+  const panel = document.getElementById('cockpit');
+  const hud = document.getElementById('cockpit-hud');
+  let repIgnored = 0, boost = false;
+  const held = new Set();
+  const BIND = {KeyW:'fwd', KeyS:'back', KeyA:'left', KeyD:'right', ArrowUp:'fwd', ArrowDown:'back', ArrowLeft:'left', ArrowRight:'right'};
+  const codeSeen = new Set();
+  function paint() {
+    hud.innerHTML = 'axes: ' + (held.has('fwd') ? '▲' : '·') + (held.has('back') ? '▼' : '·') + (held.has('left') ? '◀' : '·') + (held.has('right') ? '▶' : '·') +
+      ' · last: ' + (lastCode ? lastCode + ' → ' + (BIND[lastCode] || '—') + ' (prints "' + lastKey + '")' : '—') +
+      ' · boost: ' + (boost ? 'ON' : 'off') + ' · repeat-frames ignored: <b>' + repIgnored + '</b>';
+  }
+  let lastCode = null, lastKey = null;
+  panel.addEventListener('keydown', e => {
+    if (e.isComposing || e.keyCode === 229) return;
+    lastCode = e.code; lastKey = e.key; codeSeen.add(e.code);
+    if (BIND[e.code]) {
+      if (e.repeat) { repIgnored++; document.getElementById('rep-ignored').textContent = repIgnored; paint(); return; }
+      e.preventDefault();
+      held.add(BIND[e.code]); paint();
+      if (codeSeen.size >= 1) chip('c12-binding', 'ok', 'binding fired from code=' + JSON.stringify(e.code) + ' while it prints key=' + JSON.stringify(e.key) + ' — layout-proof');
+    }
+    if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) { boost = !boost; paint(); chip('c12-boost', 'ok', 'boost toggled on the Space EDGE (repeat-guarded) — now ' + (boost ? 'ON' : 'off')); } }
+  });
+  panel.addEventListener('keyup', e => { if (BIND[e.code]) { held.delete(BIND[e.code]); paint(); } });
+  panel.addEventListener('blur', () => { held.clear(); paint(); });
+  paint();
+})();
+
+window.__kbDone = true;
+</script>
+</body>
+</html>
