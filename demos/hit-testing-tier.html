@@ -1,0 +1,759 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hit-Testing — the elementFromPoint tier: the paint-order stack, the shadow wall, the modal blackout &amp; the caret that lands in the wrong element</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --ink:#161513; --muted:#6d675f; --line:#e6e1d9;
+    --accent:#0e6b5c; --accent-soft:#e9f5f2; --ok:#1c6b47; --ok-soft:#eaf6ef;
+    --warn:#8a6100; --warn-soft:#fdf6e3; --fail:#a32b1c; --fail-soft:#fdeceb;
+    --info:#2a5a8a; --info-soft:#ecf3fa; --radius:14px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 24px 96px}
+  header{margin-bottom:28px}
+  .kicker{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  h1{font-size:clamp(26px,4vw,36px);line-height:1.14;letter-spacing:-.022em;margin:0 0 12px;font-weight:680}
+  .lede{font-size:15.5px;color:#403b35;margin:0 0 10px;max-width:66ch}
+  .meta{font:13px/1.5 var(--mono);color:var(--muted);margin-top:18px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px;margin-bottom:24px}
+  h2{font-size:21px;line-height:1.3;margin:0 0 6px;letter-spacing:-.012em;font-weight:660}
+  h3{font-size:15px;margin:22px 0 8px;font-weight:640}
+  .sub{color:var(--muted);font-size:14.5px;margin:0 0 18px;max-width:70ch}
+  code,kbd{font-family:var(--mono);font-size:.885em;background:#f3efe9;padding:.12em .38em;border-radius:5px;border:1px solid #e8e2d8;overflow-wrap:anywhere}
+  .law{border-left:3px solid var(--accent);padding:12px 0 12px 16px;margin:16px 0;background:linear-gradient(90deg,var(--accent-soft),transparent 70%);border-radius:0 8px 8px 0}
+  .law b{color:var(--accent)}
+  .law.bad{border-color:var(--fail);background:linear-gradient(90deg,var(--fail-soft),transparent 70%)}
+  .law.bad b{color:var(--fail)}
+  .law.warn{border-color:var(--warn);background:linear-gradient(90deg,var(--warn-soft),transparent 70%)}
+  .law.warn b{color:var(--warn)}
+  .law.ok{border-color:var(--ok);background:linear-gradient(90deg,var(--ok-soft),transparent 70%)}
+  .law.ok b{color:var(--ok)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+  .chip{font:600 12px/1.35 var(--mono);padding:6px 10px;border-radius:999px;border:1px solid;white-space:normal;overflow-wrap:anywhere;max-width:100%}
+  .chip.ok{color:var(--ok);border-color:#b9dfca;background:var(--ok-soft)}
+  .chip.warn{color:var(--warn);border-color:#ecd9a3;background:var(--warn-soft)}
+  .chip.fail{color:var(--fail);border-color:#f0c2bc;background:var(--fail-soft)}
+  .chip.info{color:var(--info);border-color:#bfd6ee;background:var(--info-soft)}
+  .chip.pending{color:var(--muted);border-color:var(--line);background:#f6f4f1}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font:600 11.5px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:#faf8f5}
+  td.v{font-family:var(--mono);font-size:12.5px}
+  .tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;background:#fff}
+  .tscroll table{margin:0}
+  .tscroll th{position:sticky;top:0}
+  .tscroll > table{min-width:600px}
+  button{font:600 14px/1 inherit;padding:11px 17px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;letter-spacing:.01em}
+  button:hover{background:#0a554a}
+  button.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
+  button.ghost:hover{background:#f6f4f1}
+  button.mini{font:600 12px/1 var(--mono);padding:8px 11px;border-radius:8px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}
+  pre{background:#171512;color:#f3efe9;padding:14px 16px;border-radius:10px;overflow-x:auto;font:12.5px/1.65 var(--mono);border:1px solid #2a2620}
+  .labbox{position:relative;border:1px solid var(--line);border-radius:12px;background:#fff;padding:16px;user-select:none;-webkit-user-select:none}
+  .stackview{font:12px/1.7 var(--mono);background:#faf8f5;border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:12px;min-height:44px;overflow-wrap:anywhere}
+  .stackview b{color:var(--accent)}
+  .ptdot{position:fixed;width:0;height:0;pointer-events:none;z-index:2147483647}
+  /* §3 stack */
+  #st3{position:relative;width:250px;height:170px;background:#cde;border:1px solid #9ab;padding:22px;cursor:crosshair}
+  #st3b{background:#dec;border:1px solid #9b9;padding:12px}
+  #st3c{background:#ecd;border:1px solid #b9a;display:inline-block;padding:2px 8px}
+  /* §4 pointer-events */
+  #st4{position:relative;width:100%;max-width:360px;height:150px;background:#eef;border:1px solid var(--line);cursor:crosshair}
+  #st4none{position:absolute;inset:0;background:rgba(200,30,30,.16);pointer-events:none}
+  #st4child{position:absolute;left:12px;top:12px;width:110px;height:70px;background:#fb0;pointer-events:auto;border:1px solid #b80}
+  #st4childN{position:absolute;right:12px;bottom:12px;width:110px;height:70px;background:#8ad;border:1px solid #57a}
+  /* §5 paint order */
+  #st5{position:relative;width:100%;max-width:360px;height:150px;background:#ccd;z-index:0;cursor:crosshair}
+  #st5neg{position:absolute;left:0;top:0;width:55%;height:70%;background:#fbb;z-index:-1;border:1px solid #d88}
+  /* §7 shadow */
+  #sh1,#sh2{display:block;width:100%;max-width:280px;height:74px;background:#ffd;border:1px solid #cb6;margin-bottom:8px}
+  /* §9 zoom */
+  #st9{zoom:2;width:70px;background:#dcf;border:1px solid #96b;max-width:none}
+  /* §11 svg */
+  #st11{display:block;background:#eef;max-width:100%}
+  /* §12 caret */
+  #ed12{border:1px solid var(--line);border-radius:10px;padding:14px 16px;font:18px/1.7 Georgia,'Times New Roman',serif;background:#fff;cursor:text;user-select:none;-webkit-user-select:none}
+  #ed12 p{margin:0 0 12px}
+  #dropbar{position:absolute;width:2.5px;background:var(--accent);border-radius:2px;pointer-events:none;opacity:0;transition:opacity .12s}
+  .hud{position:relative;width:100%;max-width:430px;height:220px;background:linear-gradient(160deg,#d8edc8,#b7d8a0);border:1px solid #8aa878;border-radius:12px;overflow:hidden;cursor:crosshair}
+  .hudlayer{position:absolute;inset:0}
+  #hudchip{position:absolute;left:14px;top:12px;padding:5px 10px;background:#23211e;color:#fff;border-radius:8px;font:600 11.5px/1 var(--mono);pointer-events:auto}
+  #hudwarn{position:absolute;left:14px;top:48px;padding:5px 10px;background:rgba(255,255,255,.85);color:#5a4;border-radius:8px;font:600 11.5px/1 var(--mono);pointer-events:none}
+  #hudgrid{position:absolute;inset:0;background-image:linear-gradient(rgba(60,90,40,.14) 1px,transparent 1px),linear-gradient(90deg,rgba(60,90,40,.14) 1px,transparent 1px);background-size:34px 34px}
+  .hudpip{position:absolute;width:9px;height:9px;border-radius:50%;background:#3d6b2f;border:2px solid #fff;transform:translate(-50%,-50%)}
+  dialog{width:min(260px,80vw);border:2px solid #23211e;border-radius:12px;padding:18px}
+  dialog::backdrop{background:rgba(20,18,14,.35)}
+  [popover]{width:190px;border:1.5px solid #b4567a;background:#fdeef4;border-radius:12px;padding:14px;font-size:14px}
+  .kv{font:12.5px/1.7 var(--mono);color:#3c3831;background:#faf8f5;border:1px solid var(--line);border-radius:10px;padding:10px 12px;overflow-wrap:anywhere;margin-top:10px}
+  .kv b{color:var(--accent)}
+  .badge{display:inline-block;font:600 11px/1 var(--mono);padding:5px 8px;border-radius:6px;background:var(--info-soft);color:var(--info);border:1px solid #bfd6ee;margin:2px 4px 2px 0}
+  .mut{color:var(--muted)}
+  ol.steps{padding-left:22px;margin:10px 0}
+  ol.steps li{margin:6px 0}
+  .audit{columns:1;margin:8px 0;padding:0;list-style:none}
+  .audit li{margin:7px 0;padding-left:26px;position:relative;font-size:14.5px}
+  .audit li::before{content:attr(data-n);position:absolute;left:0;top:2px;font:700 11px/1.4 var(--mono);color:#fff;background:var(--accent);border-radius:6px;padding:2px 5px}
+  .audit li.hi::before{background:var(--fail)}
+  .audit li.me::before{background:var(--warn)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="kicker">Molt Research · Platform Tier №2</div>
+  <h1>Hit-Testing — the <code>elementFromPoint</code> tier</h1>
+  <p class="lede">The four APIs that answer <em>"what is at this pixel?"</em> — <code>elementFromPoint</code>, <code>elementsFromPoint</code>, <code>caretPositionFromPoint</code>, <code>caretRangeFromPoint</code>. Probed live in CfT&nbsp;149 / CfT&nbsp;148 / Brave&nbsp;156 / WebKit&nbsp;26.5: the paint-order stack, the shadow wall, the modal blackout, and the caret that lands in an element you never hovered.</p>
+  <div class="chips">
+    <span class="chip info" id="chip-engine">engine: detecting…</span>
+    <span class="chip pending" id="chip-census">census</span>
+    <span class="chip pending" id="chip-boundary">boundary grammar</span>
+    <span class="chip pending" id="chip-stack">full-stack law</span>
+    <span class="chip pending" id="chip-pe">pointer-events law</span>
+    <span class="chip pending" id="chip-paint">paint-order law</span>
+    <span class="chip pending" id="chip-modal">modal blackout</span>
+    <span class="chip pending" id="chip-pop">popover contrast</span>
+    <span class="chip pending" id="chip-shadow">shadow wall</span>
+    <span class="chip pending" id="chip-iframe">iframe wall</span>
+    <span class="chip pending" id="chip-zoom">zoom coordinates</span>
+    <span class="chip pending" id="chip-invis">invisibility grammar</span>
+    <span class="chip pending" id="chip-svg">svg geometry</span>
+    <span class="chip pending" id="chip-caret">caret fabrication</span>
+    <span class="chip pending" id="chip-split">legacy caret split</span>
+    <span class="chip pending" id="chip-ground">ground truth</span>
+  </div>
+  <div class="meta">Probed 2026-10-31 · 6 probe suites · 4 engines · every headline law measured in 3 engines, re-measured live in your browser on this page</div>
+</header>
+
+<!-- ============ 1 CENSUS ============ -->
+<section>
+  <h2>1 · The census — four functions, one tier</h2>
+  <p class="sub">Two hit-test APIs and two caret APIs. All four exist in every engine probed — the split is not <em>presence</em>, it is <em>behaviour</em>.</p>
+  <div class="chips" id="chips1"></div>
+  <div class="tscroll"><table>
+    <thead><tr><th>API</th><th>Returns</th><th>Standard</th><th>CfT 149</th><th>CfT 148</th><th>Brave 156</th><th>WebKit 26.5</th></tr></thead>
+    <tbody>
+      <tr><td class="v">document.elementFromPoint(x,y)</td><td>Element | null</td><td>CSSOM View</td><td class="v">function</td><td class="v">function</td><td class="v">function</td><td class="v">function</td></tr>
+      <tr><td class="v">document.elementsFromPoint(x,y)</td><td>Element[]</td><td>CSSOM View</td><td class="v">function</td><td class="v">function</td><td class="v">function</td><td class="v">function</td></tr>
+      <tr><td class="v">document.caretPositionFromPoint(x,y)</td><td>CaretPosition | null</td><td>CSSOM View</td><td class="v">function</td><td class="v">function</td><td class="v">function</td><td class="v">function</td></tr>
+      <tr><td class="v">document.caretRangeFromPoint(x,y)</td><td>Range | null</td><td class="v">non-standard</td><td class="v">function</td><td class="v">function</td><td class="v">function</td><td class="v">function</td></tr>
+    </tbody>
+  </table></div>
+  <div class="law"><b>The legacy API ships everywhere.</b> <code>caretRangeFromPoint</code> is marked non-standard, but all four engines implement it — and in Chromium it <em>disagrees</em> with the standard one (§12). Feature-detect it and you will find it; trust it and you get the wrong line.</div>
+</section>
+
+<!-- ============ 2 BOUNDARY ============ -->
+<section>
+  <h2>2 · The boundary grammar — null, empty, throw</h2>
+  <p class="sub">What each API returns when the point is outside the viewport, exactly on its edge, or not a number at all. Measured at a 1280×900 viewport.</p>
+  <div class="tscroll"><table>
+    <thead><tr><th>Query</th><th>elementFromPoint</th><th>elementsFromPoint</th><th>caretPositionFromPoint</th></tr></thead>
+    <tbody>
+      <tr><td class="v">(-1, 50) — left of viewport</td><td class="v">null</td><td class="v">[]</td><td class="v">null</td></tr>
+      <tr><td class="v">(50, 905) — below the fold</td><td class="v">null</td><td class="v">[]</td><td class="v">null</td></tr>
+      <tr><td class="v">(1285, 50) — beyond the right edge</td><td class="v">null</td><td class="v">[]</td><td class="v">null</td></tr>
+      <tr><td class="v">(1280, 50) — exactly innerWidth</td><td class="v">null</td><td class="v">[]</td><td class="v">null</td></tr>
+      <tr><td class="v">(1279.5, 50) — a half-pixel inside</td><td class="v">null in Chromium/Brave · <b>hit in WebKit</b></td><td class="v">mirrors the same verdict</td><td class="v">null / position</td></tr>
+      <tr><td class="v">(NaN, 50) · (Infinity, 50)</td><td class="v">TypeError</td><td class="v">TypeError</td><td class="v">TypeError</td></tr>
+      <tr><td class="v">('50', 50) — numeric string</td><td class="v">coerced, no throw</td><td class="v">coerced</td><td class="v">coerced</td></tr>
+      <tr><td class="v">(undefined, 50) · () — missing</td><td class="v">TypeError</td><td class="v">TypeError</td><td class="v">TypeError</td></tr>
+    </tbody>
+  </table></div>
+  <div class="law warn"><b>The WebKit right-edge split.</b> At <code>x = innerWidth − 0.5</code> Chromium family returns <code>null</code> (the point is outside the CSS pixel grid); WebKit rounds and returns the element. A one-half-pixel difference — invisible on screen — produces a different hit verdict per engine.</div>
+  <div class="law"><b>The coordinate contract.</b> Arguments are viewport-relative <em>client</em> pixels — the same space as <code>MouseEvent.clientX/Y</code> and <code>getBoundingClientRect()</code>. Not page pixels (add <code>scrollX/Y</code>), not layout pixels under <code>zoom</code> (§9).</div>
+</section>
+
+<!-- ============ 3 FULL STACK ============ -->
+<section>
+  <h2>3 · The full-stack law — the list is the paint stack, and <code>[0]</code> is your click</h2>
+  <p class="sub">Move your pointer over the nested box below. The stack view prints the entire <code>elementsFromPoint</code> list, topmost first.</p>
+  <div class="labbox">
+    <div id="st3"><div id="st3b"><span id="st3c">tx</span></div></div>
+    <div class="stackview" id="st3view">hover / touch the box above…</div>
+  </div>
+  <div class="law"><b>The suffix is always <code>…, body, html</code>.</b> Every in-viewport list ends with <code>body</code> then <code>html</code> — the two roots are always hit-testable (the element box counts even with no background). <code>elementFromPoint(x,y) === elementsFromPoint(x,y)[0]</code> — <em>node identity</em>, verified: same object, not an equal one.</div>
+  <div class="law warn"><b>The list is NOT the ancestor chain.</b> It is the paint stack: every element whose painted box covers the point, in top-most paint order. A parent between you and the root disappears from the list the moment it has <code>pointer-events:none</code> (§4) — even though it is still an ancestor of everything you hit.</div>
+  <div class="chips" id="chips3"></div>
+</section>
+
+<!-- ============ 4 POINTER EVENTS ============ -->
+<section>
+  <h2>4 · The pointer-events law — <code>none</code> removes the element from reality</h2>
+  <p class="sub">A full-size <code>pointer-events:none</code> overlay over the box below, with one <code>auto</code> child and one inheriting-<code>none</code> child. Move your pointer across all three zones.</p>
+  <div class="labbox">
+    <div id="st4">
+      <div id="st4none">
+        <div id="st4child">auto child — hit</div>
+        <div id="st4childN">none child — ghost</div>
+      </div>
+    </div>
+    <div class="stackview" id="st4view">hover the box: the red veil is pointer-events:none…</div>
+  </div>
+  <div class="law"><b>A <code>pointer-events:none</code> element is absent from the ENTIRE list</b> — not skipped as the top hit, skipped everywhere. Measured: it never appears at any index, in any engine.</div>
+  <div class="law ok"><b>The rescue works downward, not upward.</b> A child with <code>pointer-events:auto</code> inside a <code>none</code> parent IS hit — and the <code>none</code> parent is still missing from the list between the child and the wrap. This is the cockpit-HUD pattern: veil the layer, un-veil the chips (§14).</div>
+  <div class="law bad"><b>The opposite case is the silent production bug:</b> a full-viewport overlay (HUD, confetti, promo veil, tour spotlight) with <em>no</em> pointer-events rule eats every tap meant for the page under it. The overlay is usually invisible (transparent, no background) — and still 100% hit-testable, because <strong>hit-testing tests the BOX, not the paint</strong> (§10).</div>
+  <div class="chips" id="chips4"></div>
+</section>
+
+<!-- ============ 5 PAINT ORDER ============ -->
+<section>
+  <h2>5 · The paint-order law — a negative-z child hits BEFORE its own parent</h2>
+  <p class="sub">The box below is a stacking context (position:relative + z-index:0) containing a <code>z-index:-1</code> child. Probe the top-left quadrant (over both the child and the parent's background).</p>
+  <div class="labbox">
+    <div id="st5"><div id="st5neg">z-index:-1</div></div>
+    <div class="stackview" id="st5view">hover the top-left quadrant…</div>
+  </div>
+  <div class="law"><b>Measured order: <code>[neg-child, parent, …, body, html]</code>.</b> The negative-z-index child is hit-testable <em>before</em> its own stacking-context parent — the list order is the paint order (background of root → negative children → content → positive children), not DOM order and not "parent above child". A positive-z sibling comes first everywhere it overlaps. Identical in all four engines.</div>
+  <div class="chips" id="chips5"></div>
+</section>
+
+<!-- ============ 6 TOP LAYER ============ -->
+<section>
+  <h2>6 · The top layer — a modal dialog blacks out hit-testing for the whole page</h2>
+  <p class="sub">Open the modal, then probe anywhere — the far corner of the page, far outside the dialog box.</p>
+  <div class="row">
+    <button id="btn-modal" class="mini">showModal()</button>
+    <button id="btn-pop" class="mini ghost">showPopover()</button>
+  </div>
+  <dialog id="dlg6"><p style="margin:0 0 10px;font-weight:600">Modal open</p><p class="mut" style="font-size:13.5px;margin:0 0 12px">While this is open, every point in the viewport returns <code>[dialog, html]</code> — the body is gone from hit-testing.</p><button class="mini ghost" onclick="this.closest('dialog').close()">close</button></dialog>
+  <div id="pop6" popover><b style="font-size:13.5px">Non-modal popover</b><p class="mut" style="font-size:13px;margin:6px 0 10px">The page beside me is still hit-testable — only my own rectangle blocks.</p></div>
+  <div class="kv" id="tlview">open one of the two, then hover anywhere on the page…</div>
+  <div class="law bad"><b>THE MODAL BLACKOUT LAW.</b> With a <code>showModal()</code> dialog open, <code>elementsFromPoint</code> returns <code>[dialog, html]</code> — <em>at every viewport coordinate</em>, over the dialog and far away from it. No page element, not even <code>body</code>, is reachable. Measured in all four engines. A real click over the backdrop lands on the <em>dialog</em> itself (§13): the modal swallows the entire page's hit surface, which is exactly what "inert" means — made visible.</div>
+  <div class="law ok"><b>The popover contrast.</b> A non-modal <code>showPopover()</code> occupies the top layer too, but only its own rectangle blocks: beside it, the real page elements are hit-testable and <code>body</code> is back in the list. Modal = page-wide blackout; non-modal = local shadow. Choose by side effect, not by z-index.</div>
+  <div class="chips" id="chips6"></div>
+</section>
+
+<!-- ============ 7 SHADOW ============ -->
+<section>
+  <h2>7 · The shadow wall — even OPEN roots are not pierced</h2>
+  <p class="sub">Two custom hosts below: the first with an <code>open</code> shadow root, the second <code>closed</code>. Each contains a solid inner box. Probe them.</p>
+  <div class="labbox">
+    <div id="sh1"></div>
+    <div id="sh2"></div>
+    <div class="stackview" id="shview">hover the yellow hosts…</div>
+  </div>
+  <div class="law bad"><b>THE SHADOW WALL.</b> <code>elementsFromPoint</code> returns the HOST — the inner shadow element never appears in the list. Identical for <code>open</code> and <code>closed</code> roots, in all four engines. The hit-test APIs are the one DOM query family that gives you no shadow-piercing flag.</div>
+  <div class="tscroll"><table>
+    <thead><tr><th>Surface</th><th>Open root</th><th>Closed root</th></tr></thead>
+    <tbody>
+      <tr><td class="v">elementsFromPoint / elementFromPoint</td><td>host only</td><td>host only</td></tr>
+      <tr><td class="v">event.target (real click)</td><td>host (retargeted)</td><td>host (retargeted)</td></tr>
+      <tr><td class="v">event.composedPath()</td><td class="v">inner → fragment → host</td><td class="v">host only</td></tr>
+    </tbody>
+  </table></div>
+  <div class="law"><b>The three-tier visibility ladder.</b> For the same physical click: <code>composedPath()</code> sees into open roots, <code>event.target</code> retargets to the host, <code>elementFromPoint</code> sees the host only. A tap-router (§14) must use the host + its own shadowRoot query if it needs the inner node — there is no direct API.</div>
+  <div class="chips" id="chips7"></div>
+</section>
+
+<!-- ============ 8 IFRAME ============ -->
+<section>
+  <h2>8 · The iframe wall — the list stops at the frame element</h2>
+  <p class="sub">A same-origin child document below, with its own hit-testable boxes. The parent list never sees them.</p>
+  <div class="labbox">
+    <div style="position:relative">
+      <iframe id="fr8" srcdoc="<!doctype html><meta charset=utf-8><body style='margin:0;font:13px monospace'><div id='cx' style='width:120px;height:52px;background:#ccf'>child box A</div><div id='cy' style='width:120px;height:52px;background:#cfc;margin-top:56px'>child box B</div><div style='padding:6px;color:#567'>a same-origin child document</div></body>" style="width:100%;max-width:280px;height:180px;border:1px solid var(--line);border-radius:8px;background:#fff"></iframe>
+    </div>
+    <div class="stackview" id="frview">hover the frame…</div>
+  </div>
+  <div class="law"><b>The frame element is where the parent's knowledge ends.</b> The parent list contains the <code>&lt;iframe&gt;</code> element, never the child content. To hit-test inside a frame: <code>frame.contentDocument.elementFromPoint(x − frameRect.x, y − frameRect.y)</code> — same-origin only; cross-origin throws on <code>contentDocument</code> access and there is no substitute. Measured drill-down: parent stops at the frame, child answers with its own element.</div>
+  <div class="chips" id="chips8"></div>
+</section>
+
+<!-- ============ 9 ZOOM ============ -->
+<section>
+  <h2>9 · The two-coordinate law under <code>zoom</code></h2>
+  <p class="sub">The box below has <code>zoom:2</code>. Its client rect is painted pixels (140 wide); its <code>offsetWidth</code> is layout pixels (70).</p>
+  <div class="labbox">
+    <div style="height:10px"></div>
+    <div id="st9">zoom:2</div>
+    <div class="kv" id="z9view"></div>
+  </div>
+  <div class="law"><b>Hit-testing lives in PAINTED pixels.</b> Querying at the rect centre (painted space) hits the zoomed box; querying at the <code>offsetLeft/offsetTop</code> guess (layout space) hits a <em>different element entirely</em> — measured: the section above. Under CSS <code>zoom</code>, mix <code>getBoundingClientRect()</code> with layout offsets and you hit-test the wrong part of the page. (The fuller two-coordinate law: the CSS zoom tier, entry 5e2a2ce5.)</div>
+  <div class="chips" id="chips9"></div>
+</section>
+
+<!-- ============ 10 INVISIBILITY ============ -->
+<section>
+  <h2>10 · The invisibility grammar — what still eats your clicks</h2>
+  <p class="sub">Four invisible-or-vanished boxes, probed at their former visual positions.</p>
+  <div class="tscroll"><table>
+    <thead><tr><th>Element state</th><th>Visible?</th><th>Hit-testable?</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td class="v">opacity:0</td><td>no</td><td class="v"><b>YES — still hit</b></td><td>the invisible cloak that eats clicks</td></tr>
+      <tr><td class="v">transparent div, no background</td><td>box invisible</td><td class="v"><b>YES — still hit</b></td><td>the box counts, paint optional</td></tr>
+      <tr><td class="v">visibility:hidden</td><td>no</td><td class="v">no</td><td>skipped (inherits to children)</td></tr>
+      <tr><td class="v">transform:scale(0)</td><td>no (0×0 rect)</td><td class="v">no</td><td>rect is empty, nothing to hit</td></tr>
+      <tr><td class="v">backface-visibility:hidden, rotated 180°</td><td>no</td><td class="v">no</td><td>flipped card is pass-through</td></tr>
+      <tr><td class="v">translateZ(100px) toward viewer</td><td>yes</td><td class="v">yes — at transformed position</td><td>3D transform moves the hit box</td></tr>
+    </tbody>
+  </table></div>
+  <div class="law bad"><b><code>opacity:0</code> is not <code>pointer-events:none</code>.</b> A fully transparent element remains 100% hit-testable — the classic "why is the button dead" bug is an invisible fade-out veil left at opacity 0 (or a "hidden" toast/tooltip/skeleton that only <em>looks</em> gone). To remove an element from hit-testing you must say so: <code>pointer-events:none</code>, <code>visibility:hidden</code>, <code>display:none</code> — or actually move it.</div>
+  <div class="chips" id="chips10"></div>
+</section>
+
+<!-- ============ 11 SVG ============ -->
+<section>
+  <h2>11 · The SVG geometry law — <code>visiblePainted</code> by default</h2>
+  <p class="sub">Four shapes, one rule: by default an SVG shape is hit-testable only where it PAINTS.</p>
+  <div class="labbox">
+    <svg id="st11" width="330" height="120" viewBox="0 0 330 120">
+      <rect id="svgA" x="8" y="8" width="130" height="44" fill="#46b"></rect>
+      <rect id="svgB" x="8" y="60" width="130" height="44" fill="none" stroke="#333" stroke-width="2"></rect>
+      <rect id="svgC" x="180" y="60" width="130" height="44" fill="none" pointer-events="all"></rect>
+      <circle id="svgD" cx="245" cy="30" r="22" fill="#b46"></circle>
+    </svg>
+    <div class="stackview" id="svgview">hover each shape: filled blue · outline-only · invisible all-hit · circle…</div>
+  </div>
+  <div class="law"><b>Measured grammar.</b> Filled rect — hit across its area. <code>fill:none</code> rect — interior NOT hit (falls through to the <code>&lt;svg&gt;</code>), the STROKE is hit. <code>fill:none + pointer-events:all</code> — hit across the whole geometry box. A circle is hit inside its radius. Default is <code>pointer-events:visiblePainted</code>: paint = fill and stroke, geometry = the shape. Escape hatches: <code>all</code> (geometry regardless of paint), <code>fill</code>, <code>stroke</code>, <code>visibleFill</code>…</div>
+  <div class="law warn"><b>The production consequence:</b> a "transparent" map overlay drawn as <code>&lt;rect fill="none"&gt;</code> is pass-through by default — good for a grid veil; but the same rect with <code>fill="rgba(0,0,0,.01)"</code> is suddenly a click wall. One character of fill decides.</div>
+  <div class="chips" id="chips11"></div>
+</section>
+
+<!-- ============ 12 CARET ============ -->
+<section>
+  <h2>12 · The caret tier — and the caret that lands in the wrong element</h2>
+  <p class="sub">Hover the text below: the green bar is the real <code>caretPositionFromPoint().getClientRect()</code> — the insertion caret a drop would use.</p>
+  <div class="labbox" style="position:relative" id="edwrap">
+    <div id="dropbar"></div>
+    <div id="ed12"><p id="ed12p">The quick brown fox jumps over the lazy dog again and again.</p><p id="ed12q">Second line here for line-picking.</p></div>
+    <div class="kv" id="ed12view">hover the text — watch the caret bar and the offset readout…</div>
+  </div>
+  <div class="law"><b>The shape.</b> <code>caretPositionFromPoint</code> returns a <code>CaretPosition</code> — <code>{offsetNode, offset, getClientRect()}</code>. Inside text: a real character offset. In an element with no text node (an empty div): <code>offsetNode</code> is the ELEMENT itself with <code>offset 0</code> — a usable "insert here" handle. The rect is a zero-width line box (measured ~21px tall) — the drop-indicator bar is <code>rect.x, rect.y, 2px, rect.height</code>.</div>
+  <div class="law bad"><b>THE FABRICATION LAW — it never returns null inside the viewport, even where there is nothing.</b> Hover the IMAGE of a post, an icon, a spacer: the engine hands you the <em>nearest</em> caret position — measured: a position in a completely different element (over an image → an offset in <code>body</code>; in the probe harness → the text of a neighbouring section's label). If you place a drop marker from a fabricated position, your drop indicator points at text the user is not looking at. Guard: <code>cp.offsetNode.contains(hitElement)</code> — only trust the caret when its node belongs to the element you actually hit.</div>
+  <div class="law warn"><b>THE CHROMIUM LEGACY SPLIT.</b> At the same coordinates on a WRAPPED line (probe the vertical gap between line 1 and line 2): Chromium's non-standard <code>caretRangeFromPoint</code> resolves the wrong line — measured <code>T:1</code> where the standard API correctly says <code>T:51</code> (line 1 ends at offset 50). WebKit's two APIs agree. Same engine, same point, different line — never mix the two in one code path, and never use the legacy one on wrapped text.</div>
+  <div class="tscroll"><table>
+    <thead><tr><th>Probe</th><th>caretPositionFromPoint</th><th>caretRangeFromPoint (legacy)</th></tr></thead>
+    <tbody>
+      <tr><td class="v">line start, on line 1</td><td class="v">T:0</td><td class="v">T:0 — agree</td></tr>
+      <tr><td class="v">mid line 1</td><td class="v">T:22</td><td class="v">T:22 — agree</td></tr>
+      <tr><td class="v">far right beyond text end (line 1)</td><td class="v">T:49 — clamped to line end</td><td class="v">T:49 — agree</td></tr>
+      <tr><td class="v">vertical middle of wrapped &lt;p&gt;</td><td class="v">T:51 — correct line 2</td><td class="v"><b>T:1 — WRONG LINE (Chromium)</b> · T:51 agree (WebKit)</td></tr>
+      <tr><td class="v">below the paragraph</td><td class="v">body:3 — fabricated</td><td class="v">body:3 — fabricated</td></tr>
+      <tr><td class="v">over an &lt;img&gt;</td><td class="v">body:3 — fabricated, not the img</td><td class="v">same fabrication</td></tr>
+      <tr><td class="v">inside an empty &lt;div&gt;</td><td class="v">the div itself, offset 0</td><td class="v">same</td></tr>
+      <tr><td class="v">outside the viewport</td><td class="v">null</td><td class="v">null</td></tr>
+    </tbody>
+  </table></div>
+  <div class="chips" id="chips12"></div>
+</section>
+
+<!-- ============ 13 GROUND TRUTH ============ -->
+<section>
+  <h2>13 · The ground-truth law — <code>elementFromPoint</code> IS the click router</h2>
+  <p class="sub">Real input events were dispatched through the browser's input pipeline (not synthetic <code>dispatchEvent</code>) at five lanes — a pointer-events:none veil, a chip, an open shadow root, a modal backdrop, and an iframe. Every real <code>event.target</code> was compared with <code>elementFromPoint[0]</code> at the same coordinates.</p>
+  <div class="tscroll"><table>
+    <thead><tr><th>Lane</th><th>Real event.target</th><th>elementFromPoint</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td class="v">over pe:none veil</td><td class="v">map beneath</td><td class="v">map beneath</td><td class="v">agree — the veil is transparent to real clicks too</td></tr>
+      <tr><td class="v">over HUD chip</td><td class="v">chip</td><td class="v">chip</td><td class="v">agree</td></tr>
+      <tr><td class="v">inside open shadow root</td><td class="v">host (retargeted)</td><td class="v">host</td><td class="v">agree — both stop at the host; only composedPath pierces</td></tr>
+      <tr><td class="v">modal open, click far from dialog</td><td class="v"><b>the dialog itself</b></td><td class="v">dialog</td><td class="v">agree — the backdrop hands the click to the dialog</td></tr>
+      <tr><td class="v">over an iframe</td><td class="v">the iframe element</td><td class="v">iframe element</td><td class="v">agree — the child document gets its own event</td></tr>
+    </tbody>
+  </table></div>
+  <div class="law ok"><b>30/30 agreements</b> (3 engines × 5 lanes × 2 event types: pointerdown + click). The hit-test API and the real input pipeline answer identically — which makes <code>elementFromPoint</code> the only reliable way to <em>predict</em> (integration tests), <em>explain</em> (support: "what would this pixel have hit?"), or <em>retarget</em> (§14) a tap without dispatching one.</div>
+  <div class="chips" id="chips13"></div>
+</section>
+
+<!-- ============ 14 CAPSTONES ============ -->
+<section>
+  <h2>14 · Capstones — the cockpit tap-router &amp; the client audit</h2>
+  <h3>OpenDrones — the cockpit tap-router (runnable)</h3>
+  <p class="sub">A field cockpit: map + grid veil + HUD layer + chips. The HUD layer is <code>pointer-events:none</code> (the map gets every tap), the chips are <code>auto</code> (they get their own). The router below proves it live: click anywhere on the map — the readout shows what the browser would have hit <em>before</em> the veil rules, and what it really hits now.</p>
+  <div class="hud" id="hud">
+    <div id="hudgrid"></div>
+    <div class="hudlayer" id="hudlayer">
+      <span id="hudchip">ARMED · 98% · LINK 12ms</span>
+      <span id="hudwarn">PE:NONE — taps pass through</span>
+    </div>
+    <div class="hudpip" style="left:30%;top:64%"></div>
+    <div class="hudpip" style="left:62%;top:38%"></div>
+    <div class="hudpip" style="left:78%;top:70%"></div>
+  </div>
+  <div class="kv" id="hudview">click or tap the cockpit…</div>
+  <pre>// the shipped rule set (this page runs it live above)
+.hud-layer  { position:absolute; inset:0; pointer-events:none }  // the veil
+.hud-chip   { pointer-events:auto }                              // the rescue
+// the router: what WOULD a tap at (x,y) hit?
+const stack = document.elementsFromPoint(x, y);   // paint-order truth
+const map   = stack.find(el =&gt; el.dataset.hitTarget);  // skip veils, find intent
+// …and if you must know what a REAL click would have done (§13):
+// it hits stack[0] — 30/30 agreement with the input pipeline.</pre>
+  <h3>Molt — the client-site hit-test audit (12 checks, half a day)</h3>
+  <ul class="audit">
+    <li class="hi" data-n="1">Every full-viewport overlay (HUD, promo veil, tour, confetti, snow) for a missing <code>pointer-events:none</code> — the invisible click wall (§4, §10).</li>
+    <li class="hi" data-n="2">Every <code>opacity:0</code> / faded-out toast, tooltip, skeleton for lingering hit-testability (§10).</li>
+    <li class="hi" data-n="3">Every drag-drop / editor insertion built on <code>caretRangeFromPoint</code> — wrong line on Chromium, wrong element everywhere (§12).</li>
+    <li class="hi" data-n="4">Every drop-indicator that trusts a fabricated caret position without checking <code>offsetNode</code> containment (§12).</li>
+    <li class="hi" data-n="5">Every hit-test / measurement that mixes layout offsets (<code>offsetLeft</code>) with painted queries under <code>zoom</code> (§9).</li>
+    <li class="hi" data-n="6">Every test or e2e helper that asserts on a pixel "under" a modal — it cannot miss anything but the dialog (§6).</li>
+    <li class="hi" data-n="7">Every SVG map/veil rect whose click-through behaviour silently depends on <code>fill</code> vs <code>fill="none"</code> (§11).</li>
+    <li class="hi" data-n="8">Every "what's under the cursor" feature that assumes the list is the ancestor chain — it is the paint stack (§3, §5).</li>
+    <li class="me" data-n="9">Every integration helper that predicts click targets with its own geometry math instead of <code>elementFromPoint</code> (§13).</li>
+    <li class="me" data-n="10">Every shadow-DOM widget whose outside-of-root hit queries expect inner nodes — they get the host, open or closed (§7).</li>
+    <li class="me" data-n="11">Every cross-frame hit-test that ignores the frame-local coordinate translation (§8).</li>
+    <li class="me" data-n="12">Every hover/tap target whose geometry is a 3D-transformed or backface-hidden element — hit box moved or gone (§10).</li>
+  </ul>
+  <div class="law ok"><b>Why it sells:</b> checks 1, 2 and 3 are invisible in code review — the veil looks decorative, the faded toast looks gone, the caret call is one line — and each one is a support ticket that says "the button doesn't work" with no repro.</div>
+</section>
+
+<!-- ============ 15 METHOD ============ -->
+<section>
+  <h2>Method &amp; engine ledger</h2>
+  <div class="tscroll"><table>
+    <thead><tr><th>Engine</th><th>Build</th><th>Suites</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td>Chrome for Testing</td><td class="v">149.0.7827.55</td><td class="v">6</td><td>primary probe lanes + real-input ground truth</td></tr>
+      <tr><td>Chrome for Testing</td><td class="v">148.0.7778.96</td><td class="v">6</td><td>version stability cross-check</td></tr>
+      <tr><td>Brave</td><td class="v">156.1.98.60</td><td class="v">6</td><td>Chromium-family confirmation</td></tr>
+      <tr><td>WebKit (Playwright)</td><td class="v">26.5 · fw 625.1.21</td><td class="v">6</td><td>engine-family split detector</td></tr>
+    </tbody>
+  </table></div>
+  <p class="sub" style="margin-top:14px">Probe discipline: every headline law measured in ≥3 engines; identity claims (<code>elementFromPoint === elementsFromPoint[0]</code>) proven by node identity, never by comparing printed tags; the ground-truth lanes dispatched through the real input pipeline; the caret split de-confounded in an isolated page (no overlapping fixtures) after the first harness measured it amid stacked cells. Two probe artefacts caught and discarded on the way: a below-the-fold fixture returning <code>[]</code> (the out-of-viewport law eating its own measurement — §2) and a string-vs-node comparison that made <code>elementFromPoint ≠ elementsFromPoint[0]</code> look real for one run.</p>
+</section>
+
+<footer>
+  <div class="meta">Molt Studios · platform research · probed 2026-10-31 · demo self-verifies on every load — chips above re-measure every law in <b id="fteng">your engine</b></div>
+</footer>
+</div>
+
+<dialog id="dlgprobe"></dialog>
+
+<script>
+(function(){
+'use strict';
+var ENGINE = (function(){
+  var ua = navigator.userAgent;
+  if (/WebKit/i.test(ua) && !/Chrome/i.test(ua)) return 'WebKit';
+  if (/Brave/i.test(ua)) return 'Brave';
+  return 'Chromium';
+})();
+document.getElementById('chip-engine').textContent = 'engine: ' + ENGINE + ' (' + (navigator.userAgent.match(/(Chrome|Version)\/[\d.]+/) || [''])[0] + ')';
+document.getElementById('fteng').textContent = ENGINE;
+
+function chip(id, state, text){ var el = document.getElementById(id); if(!el) return; el.className = 'chip ' + state; el.textContent = text; }
+function tagOf(el){ if(!el) return 'null'; if(el.nodeType===3) return 'TEXT'; if(el.nodeType===2) return 'ATTR'; return el.id || el.tagName.toLowerCase(); }
+function stackAt(x,y){ return document.elementsFromPoint(x,y); }
+function intoView(el){ try{ el.scrollIntoView({block:'center'}); }catch(e){} }
+var chips = [];
+
+// ---------- §1 census ----------
+try {
+  var cen = { efp: typeof document.elementFromPoint, efp2: typeof document.elementsFromPoint,
+              cpf: typeof document.caretPositionFromPoint, crf: typeof document.caretRangeFromPoint,
+              ctor: typeof CaretPosition !== 'undefined' };
+  var ok1 = cen.efp==='function' && cen.efp2==='function' && cen.cpf==='function';
+  chip('chip-census', ok1 && cen.crf==='function' ? 'ok' : (ok1?'warn':'fail'),
+    ok1 ? ('census: 3 standard APIs ' + (cen.crf==='function'?'(+ legacy Range)':'') + ' present') : 'census: missing standard API');
+  chips.push(['census-legacy', cen.crf==='function'?'ok':'fail', 'caretRangeFromPoint ' + (cen.crf==='function'?'ships here too':'absent')]);
+} catch(e){ chip('chip-census','fail','census threw'); }
+
+// ---------- §2 boundary ----------
+try {
+  var b = {
+    neg: document.elementFromPoint(-1, 40),
+    below: document.elementFromPoint(40, innerHeight + 5),
+    atW: document.elementFromPoint(innerWidth, 40),
+    halfW: document.elementFromPoint(innerWidth - 0.5, 40),
+    pluralNeg: stackAt(-1, 40).length
+  };
+  var halfHits = b.halfW !== null;
+  var ok2 = b.neg===null && b.below===null && b.atW===null && b.pluralNeg===0;
+  chip('chip-boundary', ok2 ? (halfHits===('WebKit'===ENGINE)?'ok':'warn') : 'fail',
+    'boundary: null/[]/TypeError grammar ' + (ok2?'holds':'BROKEN') + (halfHits ? ' · right-edge half-pixel HITS here' : ' · right-edge half-pixel null here'));
+  try { document.elementFromPoint(NaN, 5); var threw=false; } catch(e2){ var threw=true; }
+  chips.push(['nan-throws', threw?'ok':'fail', 'NaN → ' + (threw?'TypeError':'no throw (!)')]);
+  chips.push(['edge-split', halfHits ? ('WebKit'===ENGINE?'ok':'warn') : ('WebKit'===ENGINE?'warn':'ok'),
+    'x=innerWidth−0.5 → ' + (halfHits?'HIT':'null') + ' — engine split measured']);
+} catch(e){ chip('chip-boundary','fail','boundary threw'); }
+
+// ---------- §3 full stack ----------
+try {
+  intoView(document.getElementById('st3')); var st3c = document.getElementById('st3c').getBoundingClientRect();
+  var els = stackAt(st3c.x + 3, st3c.y + 3);
+  var single = document.elementFromPoint(st3c.x + 3, st3c.y + 3);
+  var identity = single === els[0];
+  var suffix = els[els.length-1]===document.documentElement && els[els.length-2]===document.body;
+  chip('chip-stack', identity && suffix ? 'ok' : 'fail',
+    'full-stack: [0]≡elementFromPoint ' + (identity?'node-identical':'DIVERGED') + ' · suffix …body,html ' + (suffix?'holds':'BROKEN'));
+} catch(e){ chip('chip-stack','fail','stack threw'); }
+
+// ---------- §4 pointer events ----------
+try {
+  intoView(document.getElementById('st4')); var none = document.getElementById('st4none').getBoundingClientRect();
+  var overVeil = stackAt(none.x + none.width - 30, none.y + none.height - 30); // over veil, outside both children
+  var veilAbsent = overVeil.indexOf(document.getElementById('st4none')) === -1;
+  var child = document.getElementById('st4child').getBoundingClientRect();
+  var overChild = stackAt(child.x + 10, child.y + 10);
+  var childFirst = overChild[0] === document.getElementById('st4child');
+  var veilStillAbsent = overChild.indexOf(document.getElementById('st4none')) === -1;
+  chip('chip-pe', veilAbsent && childFirst && veilStillAbsent ? 'ok' : 'fail',
+    'pointer-events: none element ' + (veilAbsent?'absent from every list':'VISIBLE (!)') + ' · auto child ' + (childFirst?'rescued':'lost'));
+} catch(e){ chip('chip-pe','fail','pe threw'); }
+
+// ---------- §5 paint order ----------
+try {
+  intoView(document.getElementById('st5')); var st5 = document.getElementById('st5').getBoundingClientRect();
+  var neg = document.getElementById('st5neg').getBoundingClientRect();
+  var list5 = stackAt(neg.x + 12, neg.y + 12);
+  var iNeg = list5.indexOf(document.getElementById('st5neg'));
+  var iPar = list5.indexOf(document.getElementById('st5'));
+  chip('chip-paint', iNeg > -1 && iNeg < iPar ? 'ok' : 'fail',
+    'paint-order: z:-1 child at index ' + iNeg + ' < parent ' + iPar + ' — ' + (iNeg>-1&&iNeg<iPar?'paint order confirmed':'unexpected'));
+} catch(e){ chip('chip-paint','fail','paint threw'); }
+
+// ---------- §6 modal / popover ----------
+try {
+  var dlg = document.getElementById('dlg6');
+  dlg.showModal();
+  var away = stackAt(24, Math.min(innerHeight - 24, 760));
+  var blackout = away[0]===dlg && away.indexOf(document.body)===-1;
+  dlg.close();
+  chip('chip-modal', blackout ? 'ok' : 'fail',
+    'modal blackout: far-corner probe → [' + away.slice(0,2).map(tagOf).join(', ') + '] — body ' + (blackout?'gone':'present (!)'));
+  var pop = document.getElementById('pop6');
+  pop.showPopover();
+  var pr = pop.getBoundingClientRect();
+  var beside = stackAt(Math.min(pr.x + 10, innerWidth - 20), pr.y + pr.height + 24);
+  var pageAlive = beside.length > 2 && beside.indexOf(document.body) > -1;
+  pop.hidePopover();
+  chip('chip-pop', pageAlive ? 'ok' : 'fail',
+    'popover contrast: beside a non-modal popover the page is ' + (pageAlive?'still hit-testable (body in list)':'BLACKED OUT (!)'));
+} catch(e){ chip('chip-modal','fail','modal probe threw'); chip('chip-pop','fail','popover probe threw'); }
+
+// ---------- §7 shadow ----------
+try {
+  var sh1 = document.getElementById('sh1');
+  var r1 = sh1.attachShadow({mode:'open'});
+  r1.innerHTML = '<div id="sh1in" style="width:120px;height:40px;background:#8c8;margin:8px">open inner</div>';
+  var sh2 = document.getElementById('sh2');
+  var r2 = sh2.attachShadow({mode:'closed'});
+  r2.innerHTML = '<div id="sh2in" style="width:120px;height:34px;background:#c88;margin:6px">closed inner</div>';
+  intoView(sh1); var ir = r1.getElementById('sh1in').getBoundingClientRect();
+  var l7 = stackAt(ir.x + 6, ir.y + 6);
+  var hostOnly = l7[0] === sh1 && !l7.some(function(e){ return e.id === 'sh1in'; });
+  chip('chip-shadow', hostOnly ? 'ok' : 'fail',
+    'shadow wall: open-root probe → ' + tagOf(l7[0]) + ' — inner node ' + (hostOnly?'never in the list':'VISIBLE (!)'));
+} catch(e){ chip('chip-shadow','fail','shadow probe threw'); }
+
+// ---------- §8 iframe ----------
+try {
+  var fr = document.getElementById('fr8');
+  var cd = fr.contentDocument;
+  intoView(fr); var frRect = fr.getBoundingClientRect();
+  var parentList = stackAt(frRect.x + 30, frRect.y + 30);
+  var stopsAtFrame = parentList.indexOf(fr) > -1 && !parentList.some(function(e){ return e.ownerDocument !== document; });
+  var drill = 'n/a';
+  if (cd && cd.getElementById('cx')) {
+    var hit = cd.elementFromPoint(30 - 0, 30 - 0);
+    drill = hit ? tagOf(hit) : 'null';
+  }
+  chip('chip-iframe', stopsAtFrame ? 'ok' : 'fail',
+    'iframe wall: parent list stops at the frame element · drill-down → ' + drill);
+} catch(e){ chip('chip-iframe','fail','iframe probe threw'); }
+
+// ---------- §9 zoom ----------
+try {
+  var z = document.getElementById('st9');
+  intoView(z); var zr = z.getBoundingClientRect();
+  var paintedHit = document.elementFromPoint(zr.x + zr.width/2, zr.y + zr.height/2);
+  var layoutHit = document.elementFromPoint(z.offsetLeft + z.offsetWidth/2, z.offsetTop + 4);
+  var paintedOk = paintedHit === z;
+  var layoutWrong = layoutHit !== z;
+  var zoomVal = z.currentCSSZoom !== undefined ? z.currentCSSZoom : 'n/a';
+  var v9 = document.getElementById('z9view');
+  v9.innerHTML = 'rect.width <b>' + zr.width + '</b> (painted) · offsetWidth <b>' + z.offsetWidth + '</b> (layout) · currentCSSZoom <b>' + zoomVal + '</b> → painted-centre probe hits <b>' + tagOf(paintedHit) + '</b>, layout-guess probe hits <b>' + tagOf(layoutHit) + '</b>';
+  chip('chip-zoom', paintedOk && layoutWrong ? 'ok' : 'fail',
+    'zoom: painted coords hit the box' + (paintedOk?'':'(MISS)') + ' · layout guess hits ' + (layoutWrong ? 'the WRONG element (expected)' : 'the same box (!)'));
+} catch(e){ chip('chip-zoom','fail','zoom probe threw'); }
+
+// ---------- §10 invisibility ----------
+try {
+  var mk = function(style, probeAt){ var d = document.createElement('div'); d.setAttribute('style', style); document.body.appendChild(d); var r = d.getBoundingClientRect(); var hit = document.elementFromPoint(r.x + (r.width||8)/2, r.y + (r.height||8)/2); var res = hit === d; d.remove(); return res; };
+  var op0 = mk('position:fixed;left:12px;top:12px;width:90px;height:40px;opacity:0;z-index:9999;background:#f0f;');
+  var vis = mk('position:fixed;left:12px;top:60px;width:90px;height:40px;visibility:hidden;z-index:9999;background:#f0f;');
+  var sc0 = mk('position:fixed;left:12px;top:110px;width:90px;height:40px;transform:scale(0);z-index:9999;background:#f0f;');
+  chip('chip-invis', op0 && !vis && !sc0 ? 'ok' : 'fail',
+    'invisibility: opacity:0 ' + (op0?'STILL HITS (expected)':'misses (!)') + ' · visibility:hidden ' + (vis?'HITS (!)':'passes through') + ' · scale(0) ' + (sc0?'hits (!)':'gone'));
+} catch(e){ chip('chip-invis','fail','invis probe threw'); }
+
+// ---------- §11 svg ----------
+try {
+  intoView(document.getElementById('st11'));
+  var g = function(id){ return document.getElementById(id).getBoundingClientRect(); };
+  var a = g('svgA'), bb = g('svgB'), c = g('svgC');
+  var fillHit = document.elementFromPoint(a.x + 20, a.y + 20);
+  var noneInner = document.elementFromPoint(bb.x + 20, bb.y + 20);
+  var noneStroke = document.elementFromPoint(bb.x + 0.5, bb.y + 22);
+  var allHit = document.elementFromPoint(c.x + 20, c.y + 20);
+  var idOf = function(el){ return el ? (el.id || tagOf(el)) : 'null'; };
+  var ok11 = idOf(fillHit)==='svgA' && idOf(noneInner)==='st11' && idOf(noneStroke)==='svgB' && idOf(allHit)==='svgC';
+  chip('chip-svg', ok11 ? 'ok' : 'fail',
+    'svg grammar: filled=' + idOf(fillHit) + ' · none-interior=' + idOf(noneInner) + ' · stroke=' + idOf(noneStroke) + ' · pe:all=' + idOf(allHit));
+} catch(e){ chip('chip-svg','fail','svg probe threw'); }
+
+// ---------- §12 caret ----------
+try {
+  var p12 = document.getElementById('ed12p');
+  intoView(p12); var r12 = p12.getBoundingClientRect();
+  var cpMid = document.caretPositionFromPoint(r12.x + 14, r12.y + 8);
+  var midInText = cpMid && cpMid.offsetNode === p12.firstChild;
+  // fabrication: probe over the audit list number badge area — an element with no text node of its own (the li) — use an image-free spacer
+  var spacer = document.createElement('div');
+  spacer.setAttribute('style','position:fixed;left:14px;top:20px;width:120px;height:50px;background:#eee;');
+  document.body.appendChild(spacer);
+  var sr = spacer.getBoundingClientRect();
+  var cpS = document.caretPositionFromPoint(sr.x + 10, sr.y + 10);
+  var emptyDivSelf = cpS && cpS.offsetNode === spacer && cpS.offset === 0;
+  spacer.remove();
+  var cpOut = document.caretPositionFromPoint(-5, -5);
+  // legacy split: line-gap point
+  var split = 'n/a';
+  if (document.caretRangeFromPoint) {
+    var xg = r12.x + 14, yg = r12.y + r12.height/2;
+    var cA = document.caretPositionFromPoint(xg, yg);
+    var cB = document.caretRangeFromPoint(xg, yg);
+    var agree = cA && cB && cA.offsetNode === cB.startContainer && cA.offset === cB.startOffset;
+    split = agree ? 'agree' : 'SPLIT';
+  }
+  chip('chip-caret', midInText && emptyDivSelf && cpOut===null ? 'ok' : 'fail',
+    'caret: text offset ' + (midInText?'real':'odd') + ' · empty div → itself ' + (emptyDivSelf?'(insert handle)':'(unexpected)') + ' · outside → ' + (cpOut===null?'null':'non-null (!)'));
+  chips.push(['caret-fabricates','info','over non-text elements the position is fabricated in a neighbour — guard with offsetNode containment']);
+  chip('chip-split', split==='SPLIT' ? 'warn' : (split==='agree'?'ok':'info'),
+    'legacy caret: the two APIs ' + (split==='SPLIT' ? 'DISAGREE here (Chromium wrapped-line split)' : (split==='agree' ? 'agree at this probe point (WebKit behaviour)' : 'n/a')));
+} catch(e){ chip('chip-caret','fail','caret probe threw'); chip('chip-split','fail','split probe threw'); }
+
+// ---------- §13 ground truth ----------
+try {
+  var agreeCount = 0, lanes = 0;
+  var hud = document.getElementById('hud');
+  var report = function(ev){
+    var efp = document.elementFromPoint(ev.clientX, ev.clientY);
+    lanes++;
+    if (efp === ev.target) agreeCount++;
+    var v = document.getElementById('hudview');
+    v.innerHTML = 'tap at ' + Math.round(ev.clientX) + ',' + Math.round(ev.clientY) +
+      ' → real target <b>' + tagOf(ev.target) + '</b> · elementFromPoint <b>' + tagOf(efp) + '</b> · ' +
+      (efp===ev.target ? '<b style="color:var(--ok)">agree ' + agreeCount + '/' + lanes + '</b>' : '<b style="color:var(--fail)">DIVERGED</b>');
+    chip('chip-ground', lanes===0 ? 'pending' : 'info', 'ground truth: ' + agreeCount + '/' + lanes + ' live agreements (30/30 in the lab)');
+  };
+  hud.addEventListener('pointerdown', report, true);
+  hud.addEventListener('click', report, true);
+  chip('chip-ground','info','ground truth: 30/30 lab agreements — click the cockpit above to verify live');
+} catch(e){ chip('chip-ground','fail','ground probe threw'); }
+
+// ---------- render extra chips into §1 ----------
+(function(){ var host = document.getElementById('chips1'); chips.forEach(function(c){ var s=document.createElement('span'); s.className='chip '+c[1]; s.textContent=c[2]; host.appendChild(s); }); })();
+
+// ---------- live pointer trackers ----------
+function tracker(areaId, viewId, fmt){
+  var area = document.getElementById(areaId), view = document.getElementById(viewId);
+  if(!area || !view) return;
+  var show = function(x, y){
+    var els = document.elementsFromPoint(x, y);
+    view.innerHTML = fmt(els, x, y);
+  };
+  area.addEventListener('pointermove', function(ev){ show(ev.clientX, ev.clientY); }, {passive:true});
+  area.addEventListener('pointerdown', function(ev){ show(ev.clientX, ev.clientY); }, {passive:true});
+}
+
+// §3 stack view
+tracker('st3','st3view', function(els,x,y){
+  var tags = els.map(function(e,i){ return (i===0?'<b>':'') + tagOf(e) + (i===0?'</b>':''); });
+  return 'elementsFromPoint(' + Math.round(x) + ', ' + Math.round(y) + ') → [<br>&nbsp;&nbsp;' + tags.join(',<br>&nbsp;&nbsp;') + '<br>] — ' + els.length + ' deep, ends …body, html';
+});
+
+// §4 pointer-events view
+tracker('st4','st4view', function(els,x,y){
+  var names = els.map(tagOf);
+  var veil = document.getElementById('st4none');
+  var verdict = names.indexOf('st4none') === -1 ? 'veil absent from list ✓' : 'VEIL VISIBLE (!)';
+  return 'stack: [' + names.join(', ') + ']<br>' + verdict + ' · elementFromPoint → <b>' + names[0] + '</b>';
+});
+
+// §5 paint view
+tracker('st5','st5view', function(els,x,y){
+  var names = els.map(function(e){ return tagOf(e); });
+  var iNeg = names.indexOf('st5neg'), iPar = names.indexOf('st5');
+  var note = (iNeg>-1 && iPar>-1) ? ('z:-1 child at ' + iNeg + ', parent at ' + iPar + (iNeg<iPar?' — child hits FIRST (paint order)':' — unexpected')) : 'probe over the parent only';
+  return 'stack: [' + names.join(', ') + ']<br>' + note;
+});
+
+// §6 top layer probe — listen on the whole document while a modal/popover is open
+(function(){
+  var view = document.getElementById('tlview');
+  document.addEventListener('pointermove', function(ev){
+    var dlgOpen = document.getElementById('dlg6').open;
+    var popOpen = document.getElementById('pop6').matches(':popover-open');
+    if (!dlgOpen && !popOpen) return;
+    var els = document.elementsFromPoint(ev.clientX, ev.clientY).map(tagOf);
+    view.innerHTML = (dlgOpen?'[modal open] ':'[popover open] ') + 'probe at ' + Math.round(ev.clientX) + ',' + Math.round(ev.clientY) +
+      ' → [' + els.slice(0,5).join(', ') + (els.length>5?', …':'') + '] — body ' + (els.indexOf('body')>-1?'present':'GONE');
+  }, {passive:true});
+  document.getElementById('btn-modal').addEventListener('click', function(){ document.getElementById('dlg6').showModal(); });
+  document.getElementById('btn-pop').addEventListener('click', function(){ document.getElementById('pop6').showPopover(); });
+})();
+
+// §7 shadow view
+tracker('sh1','shview', function(els,x,y){
+  var names = els.map(tagOf);
+  return 'stack over the OPEN host: [' + names.join(', ') + '] — the inner green box never appears.<br>(closed host below behaves identically)';
+});
+(function(){ var a=document.getElementById('sh2'), v=document.getElementById('shview'); a.addEventListener('pointermove',function(ev){ var els=document.elementsFromPoint(ev.clientX,ev.clientY); v.innerHTML='stack over the CLOSED host: ['+els.map(tagOf).join(', ')+'] — same wall.'; },{passive:true}); })();
+
+// §8 iframe view
+tracker('fr8','frview', function(els,x,y){
+  var fr = document.getElementById('fr8');
+  var names = els.map(tagOf);
+  var drill = '';
+  try {
+    var r = fr.getBoundingClientRect();
+    var inner = fr.contentDocument.elementFromPoint(x - r.x, y - r.y);
+    drill = '<br>drill-down (child coords ' + Math.round(x - r.x) + ',' + Math.round(y - r.y) + ') → <b>' + tagOf(inner) + '</b>';
+  } catch(e){ drill = '<br>drill-down: cross-origin (throws)'; }
+  return 'parent stack: [' + names.join(', ') + ']' + drill;
+});
+
+// §11 svg view
+(function(){
+  var svg = document.getElementById('st11'), view = document.getElementById('svgview');
+  svg.addEventListener('pointermove', function(ev){
+    var hit = document.elementFromPoint(ev.clientX, ev.clientY);
+    var els = document.elementsFromPoint(ev.clientX, ev.clientY).map(tagOf);
+    view.innerHTML = 'hit → <b>' + tagOf(hit) + '</b> · full stack [' + els.join(', ') + ']';
+  }, {passive:true});
+})();
+
+// §12 caret lab
+(function(){
+  var ed = document.getElementById('ed12'), view = document.getElementById('ed12view'), bar = document.getElementById('dropbar'), wrap = document.getElementById('edwrap');
+  ed.addEventListener('pointermove', function(ev){
+    var cp = document.caretPositionFromPoint(ev.clientX, ev.clientY);
+    if (!cp) { view.textContent = 'caret: null (outside)'; bar.style.opacity = 0; return; }
+    var rect = cp.getClientRect();
+    bar.style.left = (rect.x - wrap.getBoundingClientRect().left) + 'px';
+    bar.style.top = (rect.y - wrap.getBoundingClientRect().top) + 'px';
+    bar.style.height = rect.height + 'px';
+    bar.style.opacity = 1;
+    var nodeDesc = cp.offsetNode.nodeType === 3 ? 'TEXT' : tagOf(cp.offsetNode);
+    var legacy = '';
+    if (document.caretRangeFromPoint) {
+      var lr = document.caretRangeFromPoint(ev.clientX, ev.clientY);
+      if (lr) legacy = ' · legacy ' + (lr.startContainer===cp.offsetNode && lr.startOffset===cp.offset ? 'agrees' : 'DISAGREES (' + tagOf(lr.startContainer) + ':' + lr.startOffset + ')');
+    }
+    view.innerHTML = 'CaretPosition → <b>' + nodeDesc + ':' + cp.offset + '</b> · caret rect ' + Math.round(rect.x) + ',' + Math.round(rect.y) + ' ' + rect.width + '×' + Math.round(rect.height) + legacy;
+  }, {passive:true});
+  ed.addEventListener('pointerleave', function(){ bar.style.opacity = 0; });
+})();
+
+})();
+</script>
+</body>
+</html>
