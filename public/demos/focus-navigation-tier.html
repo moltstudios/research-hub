@@ -1,0 +1,838 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Focus &amp; Sequential Navigation — the focus tier: the four-step ladder, the async-event law, the Safari click split &amp; the removal silence</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --ink:#161513; --muted:#6d675f; --line:#e6e1d9;
+    --accent:#0e6b5c; --accent-soft:#e9f5f2; --ok:#1c6b47; --ok-soft:#eaf6ef;
+    --warn:#8a6100; --warn-soft:#fdf6e3; --fail:#a32b1c; --fail-soft:#fdeceb;
+    --info:#2a5a8a; --info-soft:#ecf3fa; --radius:14px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 24px 96px}
+  header{margin-bottom:28px}
+  .kicker{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  h1{font-size:clamp(26px,4vw,36px);line-height:1.14;letter-spacing:-.022em;margin:0 0 12px;font-weight:680}
+  .lede{font-size:15.5px;color:#403b35;margin:0 0 10px;max-width:66ch}
+  .meta{font:13px/1.5 var(--mono);color:var(--muted);margin-top:18px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px;margin-bottom:24px}
+  h2{font-size:21px;line-height:1.3;margin:0 0 6px;letter-spacing:-.012em;font-weight:660}
+  h3{font-size:15px;margin:22px 0 8px;font-weight:640}
+  .sub{color:var(--muted);font-size:14.5px;margin:0 0 18px;max-width:70ch}
+  code,kbd{font-family:var(--mono);font-size:.885em;background:#f3efe9;padding:.12em .38em;border-radius:5px;border:1px solid #e8e2d8;overflow-wrap:anywhere}
+  .law{border-left:3px solid var(--accent);padding:12px 0 12px 16px;margin:16px 0;background:linear-gradient(90deg,var(--accent-soft),transparent 70%);border-radius:0 8px 8px 0}
+  .law b{color:var(--accent)}
+  .law.bad{border-color:var(--fail);background:linear-gradient(90deg,var(--fail-soft),transparent 70%)}
+  .law.bad b{color:var(--fail)}
+  .law.warn{border-color:var(--warn);background:linear-gradient(90deg,var(--warn-soft),transparent 70%)}
+  .law.warn b{color:var(--warn)}
+  .law.ok{border-left-color:var(--ok);background:linear-gradient(90deg,var(--ok-soft),transparent 70%)}
+  .law.ok b{color:var(--ok)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+  .chip{font:600 12px/1.35 var(--mono);padding:6px 10px;border-radius:999px;border:1px solid;white-space:normal;overflow-wrap:anywhere;max-width:100%}
+  .chip.ok{color:var(--ok);border-color:#b9dfca;background:var(--ok-soft)}
+  .chip.warn{color:var(--warn);border-color:#ecd9a3;background:var(--warn-soft)}
+  .chip.fail{color:var(--fail);border-color:#f0c2bc;background:var(--fail-soft)}
+  .chip.info{color:var(--info);border-color:#bfd6ee;background:var(--info-soft)}
+  .chip.pending{color:var(--muted);border-color:var(--line);background:#f6f4f1}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font:600 11.5px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:#faf8f5}
+  td.v{font-family:var(--mono);font-size:12.5px}
+  .tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;background:#fff}
+  .tscroll table{margin:0}
+  button{font:600 14px/1 inherit;padding:11px 17px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;letter-spacing:.01em}
+  button:hover{background:#0a554a}
+  button.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
+  button.ghost:hover{background:#f6f4f1}
+  button.mini{font:600 12px/1 var(--mono);padding:8px 11px;border-radius:8px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}
+  pre{background:#171512;color:#f3efe9;padding:16px 18px;border-radius:12px;overflow-x:auto;font:12.5px/1.55 var(--mono);margin:14px 0}
+  pre b{color:#8fd6c4;font-weight:600}
+  .lab{border:1px dashed var(--line);border-radius:12px;padding:16px;margin:14px 0;background:#fdfcfa}
+  .lab .out{font:12.5px/1.5 var(--mono);background:#171512;color:#f3efe9;padding:12px 14px;border-radius:10px;overflow-x:auto;white-space:pre;margin-top:10px;min-height:20px}
+  .pill{display:inline-block;font:600 11px/1 var(--mono);padding:4px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);margin-left:8px;vertical-align:2px}
+  .split{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:12px 0}
+  .cell{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fff}
+  .cell h4{margin:0 0 8px;font-size:13px;font-family:var(--mono);color:var(--muted);font-weight:600}
+  input[type=text]{font:14px/1.2 var(--mono);padding:9px 10px;border:1px solid var(--line);border-radius:8px;width:170px;background:#fff;color:var(--ink)}
+  input[type=text]:focus{outline:2px solid var(--accent);outline-offset:1px}
+  .fbox{display:inline-flex;align-items:center;justify-content:center;border:1.5px solid var(--line);border-radius:9px;background:#fff;padding:10px 14px;font:600 12.5px/1 var(--mono);color:var(--ink);cursor:pointer;user-select:none}
+  .fbox:focus{outline:2px solid var(--accent);outline-offset:2px}
+  .fbox:focus-visible{outline:2px solid #b3541e;outline-offset:2px}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:99px;background:var(--line);margin-right:7px;vertical-align:0}
+  .dot.on{background:var(--accent)}
+  .anchorzone{height:56px;background:repeating-linear-gradient(45deg,#f2ede5,#f2ede5 12px,#faf7f2 12px,#faf7f2 24px);border:1.5px dashed var(--line);border-radius:10px;display:flex;align-items:center;justify-content:center;font:600 12px/1 var(--mono);color:var(--muted)}
+  .hud{border:1.5px solid var(--line);border-radius:14px;padding:14px;background:linear-gradient(160deg,#101614,#1c2420);color:#e8efe9}
+  .hud h4{margin:0 0 10px;font:700 12px/1 var(--mono);letter-spacing:.1em;color:#9fd8c3}
+  .hudchip{display:inline-flex;align-items:center;border:1px solid #32453c;background:#16201b;color:#cfe7d9;border-radius:8px;padding:8px 11px;font:600 11.5px/1 var(--mono);cursor:pointer}
+  .hudchip:focus-visible{outline:2px solid #ffb454;outline-offset:2px}
+  footer{margin-top:36px;color:var(--muted);font-size:13px}
+  .toc{columns:2;column-gap:28px;font-size:14px;margin:6px 0 0;padding:0;list-style:none}
+  .toc li{margin:3px 0;break-inside:avoid}
+  .toc a{color:var(--accent);text-decoration:none}
+  .toc a:hover{text-decoration:underline}
+  @media (max-width:640px){.toc{columns:1}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="kicker">research tier · focus &amp; sequential navigation</div>
+  <h1>Focus Events &amp; Tab Navigation — the tier every modal, menu and cockpit HUD rides on</h1>
+  <p class="lede">The focus system is the platform's <b>navigation state machine</b>: four events in a fixed ladder, an order grammar for the Tab key, an interaction-keyed <code>:focus-visible</code> heuristic, and a set of walls (shadow, iframe, inert, removal) that each decide what the rest of the page is allowed to see. Measured live in four engines — three hard engine splits, one focus() no-op that manufactures phantom laws, and one piece of modern folklore (async focus events) <b>falsified on the bench</b>.</p>
+  <div class="meta">measured 2026-11-02 · engines: Chrome-for-Testing 149 + 148 · Brave 156 · WebKit 26.5 (macOS) · probes: Playwright real input pipeline (Tab / Shift+Tab / real clicks), document-capture instrument battery, fresh-page isolation lanes · companion: molt-research catalog — the focus tier · priority 2</div>
+</header>
+
+<section id="s0">
+  <h2>The laws at a glance</h2>
+  <ul class="toc">
+    <li><a href="#s1">§1 the four-step ladder — blur → focusout → focus → focusin</a></li>
+    <li><a href="#s2">§2 the async-event law — activeElement now, events later</a></li>
+    <li><a href="#s3">§3 the click-focus census — Safari's button split</a></li>
+    <li><a href="#s4">§4 :focus-visible — the interaction heuristic + the universal option</a></li>
+    <li><a href="#s5">§5 the tabindex grammar — positives first, invalid = invisible</a></li>
+    <li><a href="#s6">§6 the click-anchor law — Tab continues from your click</a></li>
+    <li><a href="#s7">§7 the removal split &amp; the hidden/inert grammar</a></li>
+    <li><a href="#s8">§8 the shadow tier — retarget, relatedTarget, delegatesFocus</a></li>
+    <li><a href="#s9">§9 the iframe wall — window blur &amp; the nullified relatedTarget</a></li>
+    <li><a href="#s10">§10 dialog trap + restore · the autofocus race split</a></li>
+    <li><a href="#s11">§11 the focus-scroll split — sync vs animated, minimum alignment</a></li>
+    <li><a href="#s12">§12 capstones — the cockpit focus layer &amp; the client audit</a></li>
+  </ul>
+</section>
+
+<section id="s1">
+  <h2>§1 The four-step ladder <span class="pill">universal · 4/4 engines</span></h2>
+  <p class="sub">Moving focus from A to B fires exactly four events, in a fixed order — and it is not the order most diagrams draw. The two old-target events fire first, <b>blur before focusout</b>; then the two new-target events, <b>focus before focusin</b>. <code>focus</code>/<code>blur</code> do not bubble but are <code>composed:true</code>; <code>focusin</code>/<code>focusout</code> bubble. A non-capture listener on <code>document</code> sees only <code>focusin</code>/<code>focusout</code> — attach with capture to see all four.</p>
+  <div class="law"><b>THE LADDER.</b> <code>blur(A, related=B) → focusout(A, related=B) → focus(B, related=A) → focusin(B, related=A)</code>. The relatedTarget points at the <i>other</i> side on all four — never null during an in-document move. Measured identical for <code>.focus()</code> calls, real Tab presses and programmatic moves, in every engine.</div>
+  <div class="lab">
+    <div class="row">
+      <div class="fbox" id="lad-a" tabindex="0">A — t0 target</div>
+      <div class="fbox" id="lad-b" tabindex="0">B — t1 target</div>
+      <button class="mini" id="lad-run">move A → B (focus())</button>
+      <button class="ghost mini" id="lad-clear">clear</button>
+    </div>
+    <div class="out" id="lad-out">press “move A → B”, or click A then press Tab…</div>
+    <div class="chips" id="chips1"></div>
+  </div>
+  <div class="law ok"><b>THE BUBBLING SPLIT.</b> <code>document.addEventListener('focus', h)</code> (bubble phase) fires <b>never</b> — only the capture phase or the target sees focus/blur. If your global focus tracker hears nothing, this is why: listen for <code>focusin</code>/<code>focusout</code> at document level, or add <code>{capture:true}</code>.</div>
+</section>
+
+<section id="s2">
+  <h2>§2 The synchronous ladder &amp; the no-op trap <span class="pill">universal · 4/4 engines · folklore falsified</span></h2>
+  <p class="sub">A focus <b>move</b> fires all four ladder events <b>synchronously, inside the <code>focus()</code> call</b> — blur and focusout on the old element, focus and focusin on the new one — in every engine measured, from a script context or a real click handler. The "focus events are now asynchronous" folklore (a real spec proposal, briefly shipped in some builds) does not describe any 2026 engine on this bench. But the call has a silent no-op mode that fakes async perfectly.</p>
+  <div class="law"><b>THE SYNC LAW.</b> <code>y.focus()</code> while <code>x</code> is focused: by the time the call returns, <b>all four listeners have already run</b> — <code>blur@x</code>, <code>focusout@x</code>, <code>focus@y</code>, <code>focusin@y</code>, each measurable synchronously. Identical from <code>evaluate</code> (no gesture) and from inside real click/keydown handlers. State and events arrive together.</div>
+  <div class="law bad"><b>THE NO-OP TRAP (and how it fakes async).</b> <code>y.focus()</code> when <code>y</code> <b>already has focus</b> fires <b>nothing</b> — no events, no scroll, silent return. Our own first probe measured "async events, 4/4 engines" this way: a prior lane had already focused the target, the flag never flipped inside the call, and the no-op read as "events fire later." A focus test that doesn't rotate its targets is measuring the no-op, not the timing. <i>One falsified law, caught by this demo's own §2 chip disagreeing with the probe.</i></div>
+  <div class="lab">
+    <div class="row">
+      <div class="fbox" id="as-a" tabindex="0">A — old</div>
+      <div class="fbox" id="as-b" tabindex="0">B — new</div>
+      <button class="mini" id="as-run">move A→B: read the flags inside focus()</button>
+      <button class="ghost mini" id="as-run2">no-op: focus B again</button>
+    </div>
+    <div class="out" id="as-out">…</div>
+    <div class="chips" id="chips2"></div>
+  </div>
+</section>
+
+<section id="s3">
+  <h2>§3 The click-focus census — Safari's button split <span class="pill">engine split · measured 4/4</span></h2>
+  <p class="sub">What does a real click focus? Not what you think, and not the same thing in every engine. Click each row's element — the census reads <code>document.activeElement</code> after the real click.</p>
+  <div class="law bad"><b>THE WEBKIT BUTTON SPLIT.</b> In Safari, clicking a native <code>&lt;button&gt;</code> does <b>not</b> focus it — <code>activeElement</code> stays <code>body</code>. Text-entry surfaces (<code>input</code>, <code>select</code>, <code>textarea</code>), links, <code>&lt;summary&gt;</code>, <code>contenteditable</code> and any <code>tabindex</code> element <i>are</i> click-focused in Safari. The Chromium family click-focuses all of them. Consequences: <code>:focus</code> styles never apply to Safari buttons; “is this control active?” checks return body; a dialog opened by clicking a button restores focus to <b>body</b> on close in Safari (§10).</div>
+  <div class="lab">
+    <div class="tscroll"><table id="census">
+      <thead><tr><th>element</th><th>your click → activeElement</th><th>measured</th></tr></thead>
+      <tbody>
+        <tr><td><button class="ghost mini" id="cn-btn" type="button">&lt;button&gt;</button></td><td class="v" id="cn-btn-r">click me</td><td class="v">all but WebKit: button · WebKit: body</td></tr>
+        <tr><td><input type="text" id="cn-inp" placeholder="&lt;input&gt;"></td><td class="v" id="cn-inp-r">click me</td><td class="v">focused in all 4</td></tr>
+        <tr><td><a href="#s3" id="cn-lnk">&lt;a href&gt;</a></td><td class="v" id="cn-lnk-r">click me</td><td class="v">focused in all 4 (fragment link — no navigation)</td></tr>
+        <tr><td><div class="fbox" id="cn-div" tabindex="0">&lt;div tabindex=0&gt;</div></td><td class="v" id="cn-div-r">click me</td><td class="v">focused in all 4 — an explicit tabindex IS click-focusable in Safari</td></tr>
+        <tr><td><div class="fbox" id="cn-plain">&lt;div&gt; no tabindex</div></td><td class="v" id="cn-plain-r">click me</td><td class="v">never focused, anywhere</td></tr>
+      </tbody>
+    </table></div>
+    <div class="chips" id="chips3"></div>
+  </div>
+</section>
+
+<section id="s4">
+  <h2>§4 :focus-visible — the interaction heuristic <span class="pill">universal · 4/4 engines</span></h2>
+  <p class="sub">The heuristic every focus ring now rides on, measured with real Tab presses and real clicks. And the new <code>focusVisible</code> option — shipped everywhere, including WebKit.</p>
+  <div class="law"><b>THE HEURISTIC TABLE.</b> Tab → <code>:focus-visible</code> <b>matches</b>. Mouse click on a button or tabindex div → <b>no match</b>. Mouse click on a text input → <b>match</b> (text-entry surfaces always match — the caret is the ring). Script <code>focus()</code> → depends on the page's interaction state: on a virgin page it <b>matches</b>, after any pointer interaction it <b>doesn't</b>. No stickiness: Tab once, then click — the click's focus shows <b>no</b> ring. Identical in all four engines.</div>
+  <div class="lab">
+    <div class="row">
+      <button class="ghost mini" id="fv-btn" type="button">button</button>
+      <input type="text" id="fv-inp" placeholder="text input">
+      <div class="fbox" id="fv-div" tabindex="0">tabindex div</div>
+      <button class="mini" id="fv-run">script-focus each + read the heuristic</button>
+    </div>
+    <div class="out" id="fv-out">also try it yourself: Tab here, then click a control — the orange ring is :focus-visible</div>
+    <div class="chips" id="chips4"></div>
+  </div>
+  <div class="law ok"><b>THE focusVisible OPTION — UNIVERSAL.</b> <code>el.focus({focusVisible:true})</code> forces the ring on, <code>{focusVisible:false}</code> forces it off — honored in Chrome-for-Testing 148 + 149, Brave 156 <i>and</i> WebKit 26.5. The proof for “off”: on a virgin page the script-focus heuristic says <i>match</i>, and the option flips it to no-match. The escape hatch for menu/roving-tabindex widgets that script-focus real targets is now Baseline.</div>
+</section>
+
+<section id="s5">
+  <h2>§5 The tabindex grammar <span class="pill">universal · 4/4 engines</span></h2>
+  <p class="sub">The Tab key walks a strict grammar: <b>positive tabindex values first, ascending, ties in DOM order — then</b> tabindex=0 and natively-focusable elements in DOM order. <code>tabindex="-1"</code> (and any negative value) means programmatically focusable but never Tab-reached. And an <i>invalid</i> value is not a zero — it is invisibility.</p>
+  <div class="law warn"><b>THE INVALID-TABINDEX LAW.</b> <code>tabindex="abc"</code> does <b>not</b> fall back to 0 — the element is <b>not focusable at all</b>, not by Tab and not by <code>.focus()</code>, in any engine. A templated tabindex (<code>:tabindex="null"</code> rendering the string “null”) silently removes the element from focus reality. Any negative value behaves exactly like −1.</div>
+  <div class="lab">
+    <div class="row" id="ord-strip">
+      <div class="fbox" id="od-2" tabindex="2">tabindex 2</div>
+      <div class="fbox" id="od-1b" tabindex="1">tabindex 1 (B)</div>
+      <input type="text" id="od-inp" placeholder="input (0)">
+      <div class="fbox" id="od-0a" tabindex="0">tabindex 0</div>
+      <div class="fbox" id="od-1a" tabindex="1">tabindex 1 (A)</div>
+      <div class="fbox" id="od-neg" tabindex="-1">tabindex −1</div>
+      <div class="fbox" id="od-bad" tabindex="abc">tabindex “abc”</div>
+    </div>
+    <div class="row">
+      <span style="font:600 12px/1.4 var(--mono);color:var(--muted)">the recorder is always on — press Tab anywhere on this page and the sweep appears here</span>
+      <button class="ghost mini" id="od-prog">probe .focus() on every cell</button>
+    </div>
+    <div class="out" id="od-out">…</div>
+    <div class="chips" id="chips5"></div>
+  </div>
+</section>
+
+<section id="s6">
+  <h2>§6 The click-anchor law <span class="pill">universal · 4/4 engines</span></h2>
+  <p class="sub">Click anywhere non-focusable, then press Tab. Focus does <b>not</b> start at the first element — it continues from your click. The spec's “sequential focus navigation starting point” is real, in every engine, and it is set by pointer.</p>
+  <div class="lab">
+    <div class="row">
+      <input type="text" id="an-first" placeholder="first">
+      <div class="anchorzone" id="an-zone" style="flex:1;min-width:140px">click zone — not focusable</div>
+      <input type="text" id="an-mid" placeholder="mid">
+      <input type="text" id="an-last" placeholder="last">
+    </div>
+    <div class="out" id="an-out">click the striped zone, then press Tab (then Shift+Tab)…</div>
+    <div class="law"><b>THE ANCHOR.</b> After the click, Tab lands on the first tabbable <b>after the click point</b> (mid), and Shift+Tab on the last one <b>before it</b> (first). On a virgin page the first Tab follows the §5 grammar — on this demo's first Tab it enters §1's targets, because the page order is document order for tabindex=0. Support engineers: “Tab skips my login form” is usually this law plus a stray earlier focusable, not a bug.</div>
+    <div class="chips" id="chips6"></div>
+  </div>
+</section>
+
+<section id="s7">
+  <h2>§7 The removal split · hidden · inert <span class="pill">engine split · measured 4/4</span></h2>
+  <p class="sub">Three ways a focused element stops being focusable — three different answers about who gets told.</p>
+  <div class="law bad"><b>THE REMOVAL SPLIT.</b> Remove the focused element from the DOM: the Chromium family fires <code>blur</code> + <code>focusout</code> (relatedTarget null) and focus falls to body. <b>WebKit fires nothing at all</b> — <code>activeElement</code> silently becomes body. A cleanup path wired to the element's own blur listener (unsubscribe, save state, release a lock) runs in Chrome and never in Safari. The React unmount-with-focus-inside class of bug is engine-split four ways to Sunday.</div>
+  <div class="law"><b>THE HIDDEN GRAMMAR.</b> <code>focus()</code> on a <code>display:none</code> element is a silent no-op (no events). Hiding a <i>focused</i> element via <code>display:none</code> <b>or</b> <code>visibility:hidden</code> fires blur+focusout in all four engines and focus falls to body.</div>
+  <div class="law"><b>THE INERT LAW.</b> Setting <code>inert</code> on an ancestor of the focused element fires blur+focusout immediately (all four engines) and focus falls to body; <code>focus()</code> on an inert element is a silent no-op. Loading overlays: add <code>inert</code>, don't just stack a veil.</div>
+  <div class="lab">
+    <div class="row">
+      <div class="fbox" id="rm-x" tabindex="0">the victim</div>
+      <button class="mini" id="rm-run">focus it, then remove it</button>
+      <button class="ghost mini" id="in-run">focus it, then set inert</button>
+      <button class="ghost mini" id="hd-run">focus it, then display:none</button>
+      <span id="rm-restore" hidden><button class="ghost mini" id="rs-run">restore a fresh victim</button></span>
+    </div>
+    <div class="out" id="rm-out">…</div>
+    <div class="chips" id="chips7"></div>
+  </div>
+</section>
+
+<section id="s8">
+  <h2>§8 The shadow tier — retarget, relatedTarget, delegatesFocus <span class="pill">universal + 1 split</span></h2>
+  <p class="sub">Focus crosses an open shadow boundary, but the outside world sees a retold story: the host.</p>
+  <div class="law"><b>THE RETARGET TRIPLE.</b> Focus the inner element of an open shadow root: outside listeners see <code>focus</code>/<code>focusin</code> with <code>target = the host</code>; <code>document.activeElement === host</code>; and the inner truth is only at <code>host.shadowRoot.activeElement</code>. The <code>relatedTarget</code> of the blur on the old outer element retargets to the host too — never null, never the inner node.</div>
+  <div class="law warn"><b>THE DELEGATESFOCUS SPLIT.</b> With <code>{delegatesFocus:true}</code>, <code>host.focus()</code> lands on the first focusable <i>inside</i> the tree — in all four engines (outer <code>activeElement</code> = host, <code>shadowRoot.activeElement</code> = inner). But for <b>clicks</b>: the Chromium family delegates any click within the host — even on a non-focusable shadow pad — to the inner focusable. <b>WebKit delegates nothing on click</b>: clicking inside stays on body (Safari's button-click law, §3, pierces even delegatesFocus).</div>
+  <div class="lab">
+    <div class="row">
+      <div id="sh-host" style="display:inline-block;border:2px solid var(--accent);border-radius:10px;padding:10px"></div>
+      <div id="sh-dfh" style="display:inline-block;border:2px dashed var(--warn);border-radius:10px;padding:10px"></div>
+      <button class="mini" id="sh-run">focus the shadow input (host.focus path)</button>
+    </div>
+    <div class="out" id="sh-out">…</div>
+    <div class="chips" id="chips8"></div>
+  </div>
+</section>
+
+<section id="s9">
+  <h2>§9 The iframe wall — window blur &amp; the nullified relatedTarget <span class="pill">universal · 4/4 engines</span></h2>
+  <p class="sub">Focus moves between documents at an iframe boundary — the parent document learns less than you think, from more places than you think.</p>
+  <div class="law"><b>THE IFRAME LAW.</b> Focusing an element <i>inside</i> an iframe: the parent's blur on the old element carries <code>relatedTarget = null</code> (it never crosses the document boundary — same-origin or not), the parent <b>window itself fires <code>blur</code></b> (focus now belongs to the child browsing context), and the parent's <code>activeElement</code> becomes the <code>&lt;iframe&gt;</code> element. Returning focus fires <code>window focus</code> first, then the element's focus. Global “is the app focused” trackers must treat window blur from an embedded pane as a <i>context</i> move, not a page-deactivation.</div>
+  <div class="lab">
+    <div class="row">
+      <div class="fbox" id="fr-before" tabindex="0">outer target</div>
+      <iframe id="fr-frame" src="focus-iframe-child.html" title="child" style="width:150px;height:52px;border:1.5px solid var(--line);border-radius:10px;background:#fff"></iframe>
+    </div>
+    <div class="out" id="fr-out">focus the outer target, then click inside the child input…</div>
+    <div class="chips" id="chips9"></div>
+  </div>
+</section>
+
+<section id="s10">
+  <h2>§10 Dialog trap + restore · the autofocus race <span class="pill">universal + 1 split</span></h2>
+  <p class="sub">The platform's native focus machine, and the one attribute whose winner depends on your engine.</p>
+  <div class="law ok"><b>THE TRAP+RESTORE.</b> <code>showModal()</code> moves focus to the first focusable inside (a <code>tabindex=-1</code> dialog with no focusables takes the focus itself); <code>close()</code> returns focus to the previously-focused element — in all four engines. The WebKit footnote: if the dialog was opened by a <i>click</i> on a native button, §3 means nothing was focused — restore lands on body. Focus the opener programmatically and Safari restores it too.</p>
+  <div class="law bad"><b>THE AUTOFOCUS RACE SPLIT.</b> Page with <code>&lt;input autofocus&gt;</code> <i>and</i> a script focus on another element: Chromium family — the <b>script wins</b>, autofocus never fires a single event. <b>WebKit — the autofocus attribute wins</b>, blur/focus pair fired after load. Dynamically-inserted autofocus elements focus <b>nothing, anywhere</b>. An SSR page that focuses a search box on load behaves differently in Safari than Chrome when markup carries autofocus elsewhere.</div>
+  <div class="lab">
+    <div class="row">
+      <button class="mini" id="dg-run">open → close the dialog (watch the restore)</button>
+      <span id="dg-op" class="fbox" tabindex="0" style="border-color:var(--accent)">the opener</span>
+    </div>
+    <dialog id="dg-modal" style="border:1.5px solid var(--line);border-radius:14px;padding:20px">
+      <p style="margin:0 0 12px;font-weight:650">a modal with one input</p>
+      <input type="text" id="dg-in" placeholder="first focusable gets focus">
+      <button class="ghost mini" id="dg-close" type="button">close</button>
+    </dialog>
+    <div class="out" id="dg-out">…</div>
+    <div class="chips" id="chips10"></div>
+  </div>
+</section>
+
+<section id="s11">
+  <h2>§11 The focus-scroll split <span class="pill">engine split · measured 4/4</span></h2>
+  <p class="sub"><code>focus()</code> scrolls the element into view — but when, and by how much, differs per engine.</p>
+  <div class="law"><b>MINIMUM ALIGNMENT.</b> The default scroll brings the element <b>just barely into view</b> — measured: an element 2200px below lands at <code>rect.top 868</code> in a 900px viewport (bottom edge inside, zero centering). Not <code>scrollIntoView({block:'center'})</code> — the minimum.</div>
+  <div class="law warn"><b>THE TIMING SPLIT.</b> In the Chromium family the scroll is settled <b>synchronously</b> — <code>scrollY</code> reads its final value the instant <code>focus()</code> returns. <b>In WebKit the scroll happens asynchronously</b> — a synchronous <code>scrollY</code> read after <code>focus()</code> still shows the old position; it settles a frame or two later. E2E scroll-after-focus assertions must wait-for-settle on Safari. And <code>{preventScroll:true}</code> is honored by all four — the fix for dropdown/flyout focus that yanks the page.</div>
+  <div class="lab">
+    <div class="row">
+      <button class="mini" id="sc-run">focus the footer target (plain focus())</button>
+      <button class="ghost mini" id="sc-run2">again with preventScroll</button>
+    </div>
+    <div class="out" id="sc-out">…</div>
+    <div class="chips" id="chips11"></div>
+  </div>
+</section>
+
+<section id="s12">
+  <h2>§12 Capstones — the cockpit focus layer &amp; the client audit</h2>
+  <h3>OpenDrones — the cockpit focus layer</h3>
+  <div class="law ok"><b>RUNNABLE.</b> Never assume the clicked button is focused (§3) — carry the intended target explicitly. Open confirmations with <code>showModal()</code> (native trap + restore, §10) and <i>programmatically focus</i> the opener so Safari restores too. HUD chips use <code>tabindex="0"</code> only — a single stray positive tabindex hijacks the whole Tab order (§5). Telemetry panes in iframes: window blur/focus is the “operator is in the map pane” signal (§9). Locked-out panels get <code>inert</code> — the blur fires everywhere (§7).</div>
+  <div class="hud" style="margin:14px 0">
+    <h4>COCKPIT HUD — TAB-ORDER SANDBOX</h4>
+    <div class="row" id="hud-row">
+      <span class="hudchip" tabindex="0" data-hud="map">MAP</span>
+      <span class="hudchip" tabindex="0" data-hud="telemetry">TELEMETRY</span>
+      <span class="hudchip" tabindex="0" data-hud="arm">ARM ⚠</span>
+      <button class="hudchip" id="hud-confirm" type="button" data-hud="confirm">CONFIRM DIALOG</button>
+    </div>
+    <div class="out" id="hud-out" style="background:#0b100e;color:#cfe7d9;border-color:#223129">Tab through the chips, then CONFIRM — focus is trapped and restored natively</div>
+  </div>
+  <dialog id="hud-modal" style="border:1px solid #32453c;border-radius:14px;padding:20px;background:#16201b;color:#e8efe9">
+    <p style="margin:0 0 12px;font-weight:650">Arm the vehicle?</p>
+    <button class="hudchip" id="hud-yes" type="button">ARM</button>
+    <button class="hudchip" id="hud-no" type="button" style="margin-left:8px">CANCEL</button>
+  </dialog>
+  <h3>Molt — the client focus audit (12 checks, half a day)</h3>
+  <div class="tscroll"><table>
+    <thead><tr><th>#</th><th>check</th><th>why it's invisible in review</th></tr></thead>
+    <tbody>
+      <tr><td class="v">1</td><td>activeElement/button-click assumptions (menus, toolbars, “is this control active”)</td><td>correct in Chrome, silently body in Safari</td></tr>
+      <tr><td class="v">2</td><td>dialog openers that rely on focus-restore after click</td><td>restore exists everywhere — but Safari never focused the opener</td></tr>
+      <tr><td class="v">3</td><td>cleanup wired to a focused element's blur listener on unmount</td><td>WebKit fires nothing on removal — the handler never runs</td></tr>
+      <tr><td class="v">4</td><td><code>autofocus</code> + script-focus races on landing pages</td><td>winner differs per engine; no error either way</td></tr>
+      <tr><td class="v">5</td><td>positive tabindex anywhere</td><td>reorders the whole page's Tab sequence; looks harmless in markup</td></tr>
+      <tr><td class="v">6</td><td>templated/invalid tabindex values</td><td>“abc”/“null” = not focusable at all, not zero</td></tr>
+      <tr><td class="v">7</td><td>document-level focus trackers without capture</td><td>hear focusin only — half the ladder, by design</td></tr>
+      <tr><td class="v">8</td><td>flyout/menu <code>.focus()</code> without preventScroll</td><td>page jumps under the widget; alignment is minimum, not center</td></tr>
+      <tr><td class="v">9</td><td>focus-scroll assertions without settle-wait</td><td>WebKit scrolls async — the read races the animation</td></tr>
+      <tr><td class="v">10</td><td>loading overlays without <code>inert</code></td><td>the veil eats clicks (hit-testing tier) but Tab still enters the disabled form</td></tr>
+      <tr><td class="v">11</td><td>shadow-widget focus routing via target/relatedTarget</td><td>both retarget to the host — inner identity is behind shadowRoot only</td></tr>
+      <tr><td class="v">12</td><td>delegatesFocus click expectations in embedded widgets</td><td>Chrome click-delegates; Safari doesn't — the widget looks dead on click in one engine</td></tr>
+    </tbody>
+  </table></div>
+  <p class="sub" style="margin-top:10px">Checks 1–4 pass every Chromium-only test suite and fail in production on Safari. The audit is a half-day, sellable line item for any client shipping interactive UI.</p>
+</section>
+
+<footer>
+  measured 2026-11-02 · engines: Chrome-for-Testing 149 + 148 · Brave 156 · WebKit 26.5 (macOS) · probes: Playwright real input pipeline, document-capture instrument, fresh-page isolation · companion: molt-research catalog — the focus &amp; navigation tier · priority 2
+</footer>
+</div>
+
+<script>
+'use strict';
+/* ============================ chip engine ============================ */
+const chips = {};
+function chipSet(sectionId, list) {
+  const host = document.getElementById('chips' + sectionId);
+  if (!host) return;
+  host.innerHTML = '';
+  for (const c of list) {
+    const el = document.createElement('span');
+    el.className = 'chip ' + (c.state || 'pending');
+    el.id = 'chip-' + c.id;
+    el.textContent = c.text;
+    chips[c.id] = { el };
+    host.appendChild(el);
+  }
+}
+function chip(id, state, text) {
+  const c = chips[id]; if (!c) return;
+  c.el.className = 'chip ' + state;
+  if (text !== undefined) c.el.textContent = text;
+}
+
+/* register every chip BEFORE any section script runs (drop-before-registration law) */
+chipSet(1, [
+  {id:'c1-order', state:'pending', text:'live: run the A→B move'},
+  {id:'c1-related', state:'pending', text:'live: relatedTarget on all four'},
+  {id:'c1-bubble', state:'info', text:'measured: document-level bubble-phase listener hears focusin/focusout only — focus/blur are capture-or-target'},
+]);
+chipSet(2, [
+  {id:'c2-sync', state:'pending', text:'live: run the A→B move — all four flags inside the call'},
+  {id:'c2-noop', state:'pending', text:'live: then the no-op — focus B again'},
+]);
+chipSet(3, [
+  {id:'c3-btn', state:'pending', text:'live: click the <button> row'},
+  {id:'c3-census', state:'pending', text:'live: click all five rows'},
+  {id:'c3-split', state:'info', text:'measured: WebKit leaves body after a button click; Chromium family focuses it — 4/4'},
+]);
+chipSet(4, [
+  {id:'c4-heuristic', state:'pending', text:'live: run the script-focus sweep'},
+  {id:'c4-option', state:'pending', text:'live: focusVisible true/false option'},
+]);
+chipSet(5, [
+  {id:'c5-order', state:'pending', text:'live: press Tab — the recorder catches the grammar'},
+  {id:'c5-bad', state:'pending', text:'live: probe .focus() on the invalid cell'},
+]);
+chipSet(6, [
+  {id:'c6-anchor', state:'pending', text:'live: click the zone, then Tab'},
+  {id:'c6-back', state:'pending', text:'live: …then Shift+Tab'},
+]);
+chipSet(7, [
+  {id:'c7-remove', state:'pending', text:'live: run “focus it, then remove it”'},
+  {id:'c7-inert', state:'pending', text:'live: run the inert lane'},
+  {id:'c7-hide', state:'pending', text:'live: run the display:none lane'},
+]);
+chipSet(8, [
+  {id:'c8-retarget', state:'pending', text:'live: run the shadow focus'},
+  {id:'c8-df', state:'pending', text:'live: click inside the dashed delegatesFocus host'},
+]);
+chipSet(9, [
+  {id:'c9-frame', state:'pending', text:'live: outer target → child input → back'},
+]);
+chipSet(10, [
+  {id:'c10-restore', state:'pending', text:'live: run the dialog open/close'},
+  {id:'c10-race', state:'info', text:'measured: Chromium — script focus wins, autofocus fires nothing; WebKit — the autofocus attribute wins'},
+]);
+chipSet(11, [
+  {id:'c11-sync', state:'pending', text:'live: plain focus() — read scrollY synchronously'},
+  {id:'c11-settled', state:'pending', text:'live: …then after settle'},
+  {id:'c11-prevent', state:'pending', text:'live: preventScroll keeps the page'},
+]);
+
+/* ============================ shared instrument ============================ */
+const FXLOG = [];
+const LBL = (el) => {
+  if (!el) return null;
+  if (el === window) return 'window';
+  if (el === document) return 'document';
+  if (el === document.body) return 'body';
+  const id = el.id ? '#' + el.id : '';
+  const host = el.getRootNode && el.getRootNode().host;
+  if (host) return (host.id || 'host') + '>' + (id || el.tagName.toLowerCase());
+  return id || el.tagName.toLowerCase();
+};
+for (const t of [window, document]) {
+  for (const e of ['focus', 'blur', 'focusin', 'focusout']) {
+    t.addEventListener(e, (ev) => {
+      FXLOG.push({ t: ev.type, target: LBL(ev.target), related: LBL(ev.relatedTarget), ts: Math.round(ev.timeStamp * 10) / 10 });
+      if (FXLOG.length > 60) FXLOG.shift();
+    }, true);
+  }
+}
+const DEDUP = (log) => log.filter((x, i) => !(i > 0 && JSON.stringify(log[i - 1]) === JSON.stringify(x)));
+const fmtLog = (log) => DEDUP(log).map(x => x.t + ' @ ' + x.target + (x.related ? ' →rel ' + x.related : '')).join('\n') || '(no events)';
+const $ = (id) => document.getElementById(id);
+
+/* ============================ §1 ladder ============================ */
+(function () {
+  $('lad-run').addEventListener('click', () => {
+    $('lad-a').focus();            // settle A first (initial focus from body carries related=null — by design)
+    setTimeout(() => {
+      FXLOG.length = 0;            // measure ONLY the A→B move
+      $('lad-b').focus();
+      setTimeout(() => {
+        const log = FXLOG.slice();
+        $('lad-out').textContent = fmtLog(log);
+        const seq = DEDUP(log).map(x => x.t);
+        const want = ['blur', 'focusout', 'focus', 'focusin'];
+        chip('c1-order', JSON.stringify(seq) === JSON.stringify(want) ? 'ok' : 'warn',
+          'order: ' + seq.join(' → ') + (JSON.stringify(seq) === JSON.stringify(want) ? ' — the ladder, live' : ' — differs from the measured 4/4 order'));
+        const relOK = DEDUP(log).length === 4 && DEDUP(log).every(x => x.related !== null && x.related !== undefined);
+        chip('c1-related', relOK ? 'ok' : 'warn', relOK ? 'relatedTarget on all four move events (old pair → B, new pair → A)' : 'a null relatedTarget appeared in the move — see the log');
+        FXLOG.length = 0;
+      }, 60);
+    }, 40);
+  });
+  $('lad-clear').addEventListener('click', () => { $('lad-out').textContent = 'cleared — run again'; FXLOG.length = 0; });
+})();
+
+/* ============================ §2 sync + no-op ============================ */
+(function () {
+  const run = (move) => {
+    const a = $('as-a'), b = $('as-b');
+    const flags = { blurA: false, focusoutA: false, focusB: false, focusinB: false };
+    const on = (el, ev, k) => el.addEventListener(ev, () => { flags[k] = true; }, { once: true });
+    on(a, 'blur', 'blurA'); on(a, 'focusout', 'focusoutA'); on(b, 'focus', 'focusB'); on(b, 'focusin', 'focusinB');
+    if (move) {
+      a.focus();
+      flags.blurA = flags.focusoutA = flags.focusB = flags.focusinB = false; // reset: count only the move
+      b.focus();
+    } else {
+      if (document.activeElement !== b) b.focus();
+      flags.blurA = flags.focusoutA = flags.focusB = flags.focusinB = false;
+      b.focus();
+    }
+    const inside = JSON.stringify(flags);
+    setTimeout(() => {
+      const after = JSON.stringify(flags);
+      $('as-out').textContent =
+        (move ? 'MOVE (A focused, then B.focus()):' : 'NO-OP (B already focused, B.focus() again):') + '\n' +
+        'flags read INSIDE the call:  ' + inside + '\n' +
+        'flags read one task later:   ' + after;
+      if (move) {
+        const allSync = flags.blurA && flags.focusoutA && flags.focusB && flags.focusinB;
+        chip('c2-sync', allSync ? 'ok' : 'fail', allSync
+          ? 'all four ladder events fired inside focus() — the synchronous ladder, live in your engine'
+          : 'flags inside call: ' + inside + ' — unexpected (4/4 measured sync)');
+      } else {
+        const none = !flags.focusB && !flags.focusinB;
+        chip('c2-noop', none ? 'ok' : 'fail', none
+          ? 'zero events — focus() on the already-focused element is a silent no-op (the trap that fakes async)'
+          : 'events fired on re-focus — unexpected (4/4 measured no-op)');
+      }
+    }, 40);
+  };
+  $('as-run').addEventListener('click', () => run(true));
+  $('as-run2').addEventListener('click', () => run(false));
+})();
+
+/* ============================ §3 census ============================ */
+(function () {
+  const rows = [['cn-btn', 'a button'], ['cn-inp', 'an input'], ['cn-lnk', 'a link'], ['cn-div', 'a tabindex div'], ['cn-plain', 'a plain div']];
+  const seen = {};
+  const readActive = () => LBL(document.activeElement);
+  for (const [id] of rows) {
+    const el = $(id);
+    const rec = () => {
+      const a = readActive();
+      seen[id] = a;
+      $(id + '-r').textContent = a === null ? 'null' : String(a);
+      const done = rows.every(([rid]) => seen[rid] !== undefined);
+      if (done) {
+        const btnFocused = seen['cn-btn'] === '#cn-btn';
+        chip('c3-btn', btnFocused ? 'ok' : 'warn',
+          btnFocused ? 'your engine focuses a clicked button (Chromium family behavior)' : 'your engine leaves body after a button click — the WebKit split, live');
+        chip('c3-census', 'ok', 'census: ' + rows.map(([rid]) => rid.replace('cn-', '') + '=' + seen[rid]).join(' · '));
+      }
+    };
+    el.addEventListener('click', () => setTimeout(rec, 30));
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setTimeout(rec, 30); } });
+  }
+})();
+
+/* ============================ §4 :focus-visible ============================ */
+(function () {
+  $('fv-run').addEventListener('click', () => {
+    const out = [];
+    const probe = (label, el) => {
+      el.focus();
+      out.push(label + ':focus-visible = ' + el.matches(':focus-visible'));
+      return el.matches(':focus-visible');
+    };
+    if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+    const btn = probe('button', $('fv-btn'));
+    const inp = probe('text input', $('fv-inp'));
+    const div = probe('tabindex div', $('fv-div'));
+    // option lanes
+    $('fv-btn').blur();
+    $('fv-btn').focus({ focusVisible: true });
+    const withOpt = $('fv-btn').matches(':focus-visible');
+    $('fv-btn').blur();
+    $('fv-btn').focus({ focusVisible: false });
+    const offOpt = $('fv-btn').matches(':focus-visible');
+    $('fv-btn').blur();
+    out.push('focus({focusVisible:true}) → ' + withOpt);
+    out.push('focus({focusVisible:false}) → ' + offOpt);
+    $('fv-out').textContent = out.join('\n');
+    const consistent = inp === true; // inputs always match — the one invariant
+    chip('c4-heuristic', consistent ? 'ok' : 'warn',
+      'your engine: button=' + btn + ' input=' + inp + ' div=' + div + ' (script-focus state depends on your earlier interactions — Tab/click it yourself)');
+    chip('c4-option', (withOpt === true) ? 'ok' : 'warn',
+      withOpt ? 'the focusVisible option is honored here ({true}→ring, {false}→' + offOpt + ')' : 'focusVisible:true produced no match — option unsupported?');
+  });
+})();
+
+/* ============================ §5 tabindex grammar ============================ */
+(function () {
+  // passive, always-on Tab recorder — no arming click (a click would itself
+  // become the sequential-navigation starting point, §6)
+  const sweep = [];
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+    setTimeout(() => {
+      sweep.push(LBL(document.activeElement));
+      if (sweep.length > 9) sweep.shift();
+      $('od-out').textContent = 'your Tab landings (most recent last):\n' + sweep.join('\n') +
+        '\n\ngrammar (measured 4/4): 1(B) → 1(A) → 2 → input(0) → 0 — positives ascending, ties in DOM order, THEN zeros';
+      if (sweep.length >= 3 && sweep[0] === '#od-1b' && sweep[1] === '#od-1a' && sweep[2] === '#od-2') {
+        chip('c5-order', 'ok', 'your first three landings: 1(B) → 1(A) → 2 — positives ascending with DOM-order ties, THEN zeros — live');
+      }
+    }, 30);
+  });
+  $('od-prog').addEventListener('click', () => {
+    const res = [];
+    for (const id of ['od-2', 'od-1b', 'od-inp', 'od-0a', 'od-1a', 'od-neg', 'od-bad']) {
+      const el = $(id);
+      if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+      el.focus();
+      res.push(id.replace('od-', '') + ': ' + (document.activeElement === el ? 'focus()' : 'NO-OP'));
+    }
+    $('od-out').textContent = res.join('\n');
+    $('od-neg').focus();
+    const negOK = document.activeElement === $('od-neg');
+    const badNotFocusable = document.activeElement !== $('od-bad');
+    chip('c5-bad', (badNotFocusable && negOK) ? 'ok' : 'fail',
+      (badNotFocusable && negOK) ? 'tabindex="abc" = not focusable AT ALL; tabindex="-1" = programmatically focusable — both live' : 'unexpected: your engine focused the invalid cell or refused −1');
+  });
+})();
+
+/* ============================ §6 click-anchor ============================ */
+(function () {
+  let armed = 0; // 0 idle · 1 awaiting Tab · 2 awaiting Shift+Tab
+  $('an-zone').addEventListener('click', () => {
+    armed = 1;
+    $('an-out').textContent = 'zone clicked — now press Tab once, then Shift+Tab';
+  });
+  document.addEventListener('keydown', (e) => {
+    if (!armed || e.key !== 'Tab') return;
+    const stage = armed;
+    setTimeout(() => {
+      const a = LBL(document.activeElement);
+      if (stage === 1 && !e.shiftKey) {
+        armed = 2;
+        chip('c6-anchor', a === '#an-mid' ? 'ok' : 'warn',
+          'Tab after the click → ' + a + (a === '#an-mid' ? ' — the first tabbable AFTER the click point, not the first on the page' : ' (expected #an-mid)'));
+        $('an-out').textContent += '\nTab landed on: ' + a + ' — now Shift+Tab';
+      } else if (stage === 2 && e.shiftKey) {
+        armed = 0;
+        chip('c6-back', a === '#an-first' ? 'ok' : 'warn',
+          'Shift+Tab after the click → ' + a + (a === '#an-first' ? ' — the element BEFORE the click point' : ' (expected #an-first)'));
+        $('an-out').textContent += '\nShift+Tab landed on: ' + a;
+      }
+    }, 30);
+  });
+})();
+
+/* ============================ §7 removal / inert / hidden ============================ */
+(function () {
+  const fresh = () => {
+    if ($('rm-x')) return $('rm-x');
+    const d = document.createElement('div');
+    d.id = 'rm-x'; d.className = 'fbox'; d.tabIndex = 0; d.textContent = 'the victim (fresh)';
+    $('rm-run').parentNode.insertBefore(d, $('rm-run'));
+    return d;
+  };
+  $('rm-run').addEventListener('click', () => {
+    const v = fresh();
+    v.focus();
+    FXLOG.length = 0;
+    v.remove();
+    setTimeout(() => {
+      const log = FXLOG.slice();
+      $('rm-out').textContent = 'after remove():\n' + fmtLog(log) + '\nactiveElement: ' + LBL(document.activeElement);
+      const fired = DEDUP(log).some(x => x.t === 'blur' || x.t === 'focusout');
+      chip('c7-remove', 'ok', fired
+        ? 'your engine fires blur/focusout on removal (Chromium family) — activeElement falls to ' + LBL(document.activeElement)
+        : 'your engine fires NOTHING on removal (WebKit) — activeElement silently becomes ' + LBL(document.activeElement));
+      FXLOG.length = 0;
+    }, 60);
+  });
+  $('in-run').addEventListener('click', () => {
+    const v = fresh();
+    v.focus();
+    FXLOG.length = 0;
+    v.inert = true;
+    setTimeout(() => {
+      const log = FXLOG.slice();
+      $('rm-out').textContent = 'after inert=true:\n' + fmtLog(log) + '\nactiveElement: ' + LBL(document.activeElement);
+      const fired = DEDUP(log).some(x => x.t === 'blur');
+      v.inert = false;
+      chip('c7-inert', fired ? 'ok' : 'fail', fired ? 'inert ejects focus with blur+focusout — live' : 'inert did not fire blur (unexpected — 4/4 measured)');
+      FXLOG.length = 0;
+    }, 60);
+  });
+  $('hd-run').addEventListener('click', () => {
+    const v = fresh();
+    v.focus();
+    FXLOG.length = 0;
+    v.style.display = 'none';
+    setTimeout(() => {
+      const log = FXLOG.slice();
+      $('rm-out').textContent = 'after display:none:\n' + fmtLog(log) + '\nactiveElement: ' + LBL(document.activeElement);
+      v.style.display = '';
+      const fired = DEDUP(log).some(x => x.t === 'blur');
+      chip('c7-hide', fired ? 'ok' : 'fail', fired ? 'hiding a focused element fires blur+focusout — live' : 'no blur on hide (unexpected — 4/4 measured)');
+      FXLOG.length = 0;
+    }, 60);
+  });
+})();
+
+/* ============================ §8 shadow ============================ */
+(function () {
+  const host = $('sh-host');
+  const sr = host.attachShadow({ mode: 'open' });
+  sr.innerHTML = '<input type="text" id="sh-in" placeholder="shadow input" style="font:14px/1.2 var(--mono);padding:9px 10px;border:1.5px solid #32453c;border-radius:8px;width:150px;background:#fff;color:#161513">';
+  const dfh = $('sh-dfh');
+  const sr2 = dfh.attachShadow({ mode: 'open', delegatesFocus: true });
+  sr2.innerHTML = '<div id="pad" style="height:18px;background:#f2ede5;border-radius:6px;font:600 11px/18px var(--mono);text-align:center;color:#8a6100">pad (not focusable)</div><button id="ib" type="button" style="margin-top:6px;font:600 12px/1 var(--mono);padding:8px 11px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer">inner button</button>';
+
+  $('sh-run').addEventListener('click', () => {
+    FXLOG.length = 0;
+    host.shadowRoot.getElementById('sh-in').focus();
+    setTimeout(() => {
+      const ae = document.activeElement;
+      const outer = LBL(ae);
+      const inner = (ae && ae.shadowRoot) ? LBL(ae.shadowRoot.activeElement) : null;
+      $('sh-out').textContent =
+        'events seen at document level:\n' + fmtLog(FXLOG.slice()) + '\n' +
+        'document.activeElement: ' + outer + '\n' +
+        'host.shadowRoot.activeElement: ' + inner;
+      const retargeted = outer === '#sh-host' && inner === '#sh-host>#sh-in';
+      chip('c8-retarget', retargeted ? 'ok' : 'warn',
+        retargeted ? 'outside sees the host; the inner truth is at shadowRoot.activeElement — the retarget triple, live' : 'outer=' + outer + ' inner=' + inner);
+      FXLOG.length = 0;
+    }, 60);
+  });
+  const dfClick = () => {
+    setTimeout(() => {
+      const ae = document.activeElement;
+      const outer = LBL(ae);
+      const inner = (ae && ae.shadowRoot) ? LBL(ae.shadowRoot.activeElement) : null;
+      $('sh-out').textContent = 'after a real click inside the delegatesFocus host:\ndocument.activeElement: ' + outer + '\nshadowRoot.activeElement: ' + inner;
+      chip('c8-df', inner && inner.includes('#ib') ? 'ok' : 'warn',
+        inner && inner.includes('#ib')
+          ? 'your engine click-delegates to the inner focusable (Chromium family)'
+          : 'your engine does NOT click-delegate (WebKit behavior — §3 pierces delegatesFocus)');
+    }, 50);
+  };
+  dfh.addEventListener('click', dfClick);
+})();
+
+/* ============================ §9 iframe ============================ */
+(function () {
+  const frame = $('fr-frame');
+  const report = () => {
+    $('fr-out').textContent =
+      'document.activeElement: ' + LBL(document.activeElement) + '\n' +
+      'last events at document level:\n' + fmtLog(FXLOG.slice(-8));
+    const sawWindowBlur = DEDUP(FXLOG).some(x => x.t === 'blur' && x.target === 'window');
+    const aeFrame = document.activeElement === frame;
+    const nullRelated = DEDUP(FXLOG).some(x => x.t === 'blur' && x.target === '#fr-before' && x.related === null);
+    if (sawWindowBlur || aeFrame) {
+      chip('c9-frame', (sawWindowBlur && aeFrame) ? 'ok' : 'warn',
+        'child focus: window blur ' + (sawWindowBlur ? 'FIRED' : 'not seen') + ' · activeElement=' + LBL(document.activeElement) + (nullRelated ? ' · relatedTarget=nullified' : ''));
+    }
+    FXLOG.length = 0;
+  };
+  $('fr-before').addEventListener('focus', () => { FXLOG.length = 0; });
+  frame.addEventListener('focus', () => setTimeout(report, 80)); // iframe element gets focus
+  window.addEventListener('blur', () => { if (LBL(document.activeElement) === '#fr-frame') setTimeout(report, 120); });
+})();
+
+/* ============================ §10 dialog ============================ */
+(function () {
+  $('dg-run').addEventListener('click', () => {
+    const opener = $('dg-op');
+    opener.focus(); // programmatic focus — the Safari-safe restore anchor
+    FXLOG.length = 0;
+    $('dg-modal').showModal();
+    setTimeout(() => {
+      const openAE = LBL(document.activeElement);
+      $('dg-modal').close();
+      setTimeout(() => {
+        const closedAE = LBL(document.activeElement);
+        $('dg-out').textContent =
+          'on open: activeElement = ' + openAE + ' (the first focusable inside)\n' +
+          'on close: activeElement = ' + closedAE + ' (restored)\n' +
+          'events:\n' + fmtLog(FXLOG.slice());
+        chip('c10-restore', closedAE === '#dg-op' ? 'ok' : 'warn',
+          closedAE === '#dg-op' ? 'trap + native restore, live in your engine' : 'restore landed on ' + closedAE + ' (expected #dg-op)');
+        FXLOG.length = 0;
+      }, 90);
+    }, 90);
+  });
+  $('dg-close').addEventListener('click', () => $('dg-modal').close());
+})();
+
+/* ============================ §11 focus-scroll ============================ */
+(function () {
+  const far = document.createElement('div');
+  far.id = 'sc-far'; far.tabIndex = 0;
+  far.textContent = '⟟ the scroll target — parked far below';
+  far.style.cssText = 'margin:2200px 0 40px;padding:14px;border:1.5px dashed var(--accent);border-radius:10px;font:600 12px/1 var(--mono);color:var(--accent)';
+  document.querySelector('footer').before(far);
+  const results = {};
+  $('sc-run').addEventListener('click', () => {
+    if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+    const before = Math.round(scrollY);
+    far.focus();
+    const sync = Math.round(scrollY);
+    results.sync = { before, sync };
+    setTimeout(() => {
+      const settled = Math.round(scrollY);
+      const rect = Math.round(far.getBoundingClientRect().top);
+      results.settled = { settled, rect, vh: innerHeight };
+      $('sc-out').textContent =
+        'scrollY before: ' + before + '\n' +
+        'scrollY read SYNCHRONOUSLY after focus(): ' + sync + '\n' +
+        'scrollY after settle: ' + settled + '\n' +
+        'element rect.top after settle: ' + rect + ' (viewport ' + innerHeight + ')';
+      const moved = settled > before + 500;
+      const asyncScroll = sync === before && moved;
+      chip('c11-sync', moved ? 'ok' : 'fail', 'plain focus() scrolled ' + (settled - before) + 'px — minimum alignment, not center');
+      chip('c11-settled', moved ? (asyncScroll ? 'warn' : 'ok') : 'fail',
+        asyncScroll ? 'sync read said ' + sync + ' (old position) — your engine scrolls ASYNC (WebKit)' : 'scroll was already settled inside focus() (Chromium family)');
+    }, 350);
+  });
+  $('sc-run2').addEventListener('click', () => {
+    scrollTo(0, 0);
+    setTimeout(() => {
+      if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+      const before = Math.round(scrollY);
+      far.focus({ preventScroll: true });
+      setTimeout(() => {
+        const after = Math.round(scrollY);
+        $('sc-out').textContent += '\npreventScroll: before ' + before + ' → after ' + after;
+        chip('c11-prevent', after === before ? 'ok' : 'fail', 'preventScroll kept scrollY at ' + after + ' — honored');
+      }, 200);
+    }, 120);
+  });
+})();
+
+/* ============================ §12 cockpit ============================ */
+(function () {
+  const modal = $('hud-modal');
+  let armed = false;
+  $('hud-confirm').addEventListener('click', (e) => {
+    e.preventDefault();
+    // §3/§10: click-focus is engine-split — carry the opener explicitly
+    $('hud-confirm').focus();
+    modal.showModal();
+  });
+  $('hud-yes').addEventListener('click', () => { armed = true; modal.close(); });
+  $('hud-no').addEventListener('click', () => modal.close());
+  modal.addEventListener('close', () => {
+    $('hud-out').textContent = armed
+      ? 'ARMED — focus restored to: ' + LBL(document.activeElement) + ' (native restore)'
+      : 'cancelled — focus restored to: ' + LBL(document.activeElement);
+    armed = false;
+  });
+  for (const chipEl of document.querySelectorAll('.hudchip[tabindex]')) {
+    chipEl.addEventListener('focus', () => {
+      $('hud-out').textContent = 'focused: ' + (chipEl.dataset.hud || chipEl.id) + ' — tabindex=0 only, no positives anywhere';
+    });
+  }
+})();
+</script>
+</body>
+</html>
