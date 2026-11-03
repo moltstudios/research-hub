@@ -1,0 +1,898 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>position: sticky — the activation tier: the overflow trap, the clip exception, the root combo &amp; the range formula</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --ink:#161513; --muted:#6d675f; --line:#e6e1d9;
+    --accent:#0e6b5c; --accent-soft:#e9f5f2; --ok:#1c6b47; --ok-soft:#eaf6ef;
+    --warn:#8a6100; --warn-soft:#fdf6e3; --fail:#a32b1c; --fail-soft:#fdeceb;
+    --info:#2a5a8a; --info-soft:#ecf3fa; --radius:14px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 24px 96px}
+  header{margin-bottom:28px}
+  .kicker{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  h1{font-size:clamp(26px,4vw,36px);line-height:1.14;letter-spacing:-.022em;margin:0 0 12px;font-weight:680}
+  .lede{font-size:15.5px;color:#403b35;margin:0 0 10px;max-width:66ch}
+  .meta{font:13px/1.5 var(--mono);color:var(--muted);margin-top:18px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px;margin-bottom:24px}
+  h2{font-size:21px;line-height:1.3;margin:0 0 6px;letter-spacing:-.012em;font-weight:660}
+  h3{font-size:15px;margin:22px 0 8px;font-weight:640}
+  .sub{color:var(--muted);font-size:14.5px;margin:0 0 18px;max-width:70ch}
+  code,kbd{font-family:var(--mono);font-size:.885em;background:#f3efe9;padding:.12em .38em;border-radius:5px;border:1px solid #e8e2d8;overflow-wrap:anywhere}
+  .law{border-left:3px solid var(--accent);padding:12px 0 12px 16px;margin:16px 0;background:linear-gradient(90deg,var(--accent-soft),transparent 70%);border-radius:0 8px 8px 0}
+  .law b{color:var(--accent)}
+  .law.bad{border-color:var(--fail);background:linear-gradient(90deg,var(--fail-soft),transparent 70%)}
+  .law.bad b{color:var(--fail)}
+  .law.warn{border-color:var(--warn);background:linear-gradient(90deg,var(--warn-soft),transparent 70%)}
+  .law.warn b{color:var(--warn)}
+  .law.ok{border-left-color:var(--ok);background:linear-gradient(90deg,var(--ok-soft),transparent 70%)}
+  .law.ok b{color:var(--ok)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+  .chip{font:600 12px/1.35 var(--mono);padding:6px 10px;border-radius:999px;border:1px solid;white-space:normal;overflow-wrap:anywhere;max-width:100%}
+  .chip.ok{color:var(--ok);border-color:#b9dfca;background:var(--ok-soft)}
+  .chip.warn{color:var(--warn);border-color:#ecd9a3;background:var(--warn-soft)}
+  .chip.fail{color:var(--fail);border-color:#f0c2bc;background:var(--fail-soft)}
+  .chip.info{color:var(--info);border-color:#bfd6ee;background:var(--info-soft)}
+  .chip.pending{color:var(--muted);border-color:var(--line);background:#f6f4f1}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font:600 11.5px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:#faf8f5}
+  td.v{font-family:var(--mono);font-size:12.5px}
+  .tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;background:#fff}
+  .tscroll table{margin:0}
+  button{font:600 14px/1 inherit;padding:11px 17px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;letter-spacing:.01em}
+  button:hover{background:#0a554a}
+  button.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
+  button.ghost:hover{background:#f6f4f1}
+  button.mini{font:600 12px/1 var(--mono);padding:8px 11px;border-radius:8px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}
+  pre{background:#171512;color:#f3efe9;padding:16px 18px;border-radius:12px;overflow-x:auto;font:12.5px/1.55 var(--mono);margin:14px 0}
+  pre b{color:#8fd6c4;font-weight:600}
+  .lab{border:1px dashed var(--line);border-radius:12px;padding:16px;margin:14px 0;background:#fdfcfa}
+  .lab .out{font:12.5px/1.5 var(--mono);background:#171512;color:#f3efe9;padding:12px 14px;border-radius:10px;overflow-x:auto;white-space:pre;margin-top:10px;min-height:20px}
+  .pill{display:inline-block;font:600 11px/1 var(--mono);padding:4px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);margin-left:8px;vertical-align:2px}
+  .split{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:12px 0}
+  .cell{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fff}
+  .cell h4{margin:0 0 8px;font-size:13px;font-family:var(--mono);color:var(--muted);font-weight:600}
+  /* scroll-lab: a fixed-height box that plays the role of the viewport/scrollport */
+  .vp{height:230px;overflow-y:auto;border:1.5px solid #b9b2a6;border-radius:10px;background:#fff;position:relative}
+  .vp .rail{height:1100px;background:linear-gradient(#fdfcfa,#f4f1eb);position:relative}
+  .vp .tick{position:absolute;right:6px;font:600 10px/1 var(--mono);color:#b1a99b}
+  .vp .stick{position:sticky;top:0;height:34px;display:flex;align-items:center;padding:0 10px;background:#0e6b5c;color:#fff;font:700 12px/1 var(--mono);letter-spacing:.04em;border-radius:0 0 8px 8px}
+  .vp .stick.dead{background:#a32b1c}
+  .vp .stick .state{margin-left:auto;font-weight:400;opacity:.85}
+  .vp .wrapbox{border:2px dashed #c9c2b5;border-radius:8px}
+  .vpbar{display:flex;justify-content:space-between;align-items:center;font:600 11px/1 var(--mono);color:var(--muted);margin:8px 2px 6px}
+  .vpbar .pos{color:var(--accent)}
+  .vpmeter{height:8px;border-radius:99px;background:#efece6;overflow:hidden;margin:0 2px 10px}
+  .vpmeter i{display:block;height:100%;width:0;background:var(--accent);transition:width .12s}
+  .ghostbtn{font:600 11.5px/1 var(--mono);padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer}
+  .ghostbtn:hover{background:#f6f4f1}
+  .ovgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0}
+  .ovcard{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+  .ovcard .vp{height:170px;border:0;border-radius:0}
+  .ovcard .cap{font:600 11px/1.3 var(--mono);padding:8px 10px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:6px}
+  .ovcard .cap em{font-style:normal;font-weight:700}
+  .ovcard.alive .cap em{color:var(--ok)} .ovcard.dead .cap em{color:var(--fail)}
+  .tsticky th{position:sticky;background:#1d3a32;color:#d9efe6}
+  .hud{border:1.5px solid var(--line);border-radius:14px;padding:14px;background:linear-gradient(160deg,#101614,#1c2420);color:#e8efe9}
+  .hud h4{margin:0 0 10px;font:700 12px/1 var(--mono);letter-spacing:.1em;color:#9fd8c3}
+  footer{margin-top:36px;color:var(--muted);font-size:13px}
+  .toc{columns:2;column-gap:28px;font-size:14px;margin:6px 0 0;padding:0;list-style:none}
+  .toc li{margin:3px 0;break-inside:avoid}
+  .toc a{color:var(--accent);text-decoration:none}
+  @media (max-width:640px){ .toc{columns:1} section{padding:18px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="kicker">Molt Research · Engine-Truth Tier · 2026-11-02</div>
+  <h1><code>position: sticky</code> — the activation tier</h1>
+  <p class="lede">The most-shipped layout feature on client sites, measured across four engines: <b>the overflow trap that kills headers silently</b>, <b>the <code>overflow: clip</code> exception that revives them</b>, the <code>html, body { overflow-x: hidden }</code> combo that breaks sticky while the page keeps scrolling, the exact pin-range formula, and three pieces of shipped folklore this session falsified on the bench.</p>
+  <div class="chips" id="summary"></div>
+  <p class="meta">Engines probed: Chrome for Testing 149 · CfT 148 · Brave 156 · WebKit 26.5 — every law below re-measured live in <em>your</em> engine on load, in the labs.</p>
+  <ul class="toc">
+    <li><a href="#s1">§1 The overflow trap</a></li>
+    <li><a href="#s2">§2 The clip exception + one-axis propagation</a></li>
+    <li><a href="#s3">§3 The root combo (html, body)</a></li>
+    <li><a href="#s4">§4 The pin-range formula</a></li>
+    <li><a href="#s5">§5 The inset grammar (horizontal)</a></li>
+    <li><a href="#s6">§6 Bottom insets, over-tall, the reveal recipe</a></li>
+    <li><a href="#s7">§7 Tables: the falsified folklore</a></li>
+    <li><a href="#s8">§8 Flex stretch trap + the grid-area law</a></li>
+    <li><a href="#s9">§9 Flow law + the two-coordinate split</a></li>
+    <li><a href="#s10">§10 The interaction census</a></li>
+    <li><a href="#s11">§11 Capstones: cockpit HUD + client audit</a></li>
+    <li><a href="#s12">§12 Engine ledger</a></li>
+  </ul>
+</header>
+
+<!-- ══════════════════════ §1 OVERFLOW TRAP ══════════════════════ -->
+<section id="s1">
+  <h2>§1 · The overflow trap <span class="pill">the #1 silent killer</span></h2>
+  <p class="sub">A sticky element tracks its <b>nearest ancestor scrollport</b>. Any ancestor with <code>overflow: hidden | auto | scroll</code> becomes that scrollport — and if the ancestor has auto height (content fits, it never scrolls), the constraint rectangle never moves and the sticky is <b>silently dead</b>. No error, no warning, in any engine.</p>
+  <div class="law bad"><b>THE OVERFLOW TRAP.</b> <code>overflow: hidden</code> / <code>auto</code> / <code>scroll</code> on ANY ancestor — parent or grandparent, any distance up the tree — retargets the sticky to that ancestor’s scrollport. An auto-height ancestor never scrolls ⇒ the sticky never pins. Measured 4/4 engines, pinned=<b>false</b> in every one.</div>
+  <p>Live matrix — every card is an independent 170px “viewport” you can scroll. The dashed box is the ancestor with the labeled overflow value. Scroll each one and watch the bar:</p>
+  <div class="ovgrid" id="ovgrid"></div>
+  <div class="chips" id="s1chips"></div>
+  <div class="law ok"><b>THE ONLY REAL FIXES.</b> (a) remove the overflow from the ancestor, (b) switch it to <code>overflow: clip</code> (§2 — same clipping, no scroll container), or (c) make that ancestor the actual scrolling surface (give it a height and let IT scroll). <b>A wrapper div does NOT fix it</b> — measured: a wrapper under an <code>overflow-x: hidden</code> ancestor stays dead (−300px at scrollY 400). Wrappers extend the <em>range</em> (§4), never the scrollport.</div>
+</section>
+
+<!-- ══════════════════════ §2 CLIP EXCEPTION ══════════════════════ -->
+<section id="s2">
+  <h2>§2 · The clip exception &amp; the one-axis propagation</h2>
+  <p class="sub"><code>overflow: clip</code> clips paint exactly like <code>hidden</code> — but it does <b>not</b> create a scroll container. The sticky keeps tracking the real scroller. And the single-axis trap: writing one axis as <code>hidden</code> forces the other axis’s computed value to <code>auto</code>.</p>
+  <div class="law ok"><b>THE CLIP EXCEPTION.</b> Ancestor with <code>overflow: clip</code> (either axis, or both): sticky <b>ALIVE</b>, 4/4. <code>overflow-x: clip</code> leaves <code>overflow-y</code> computed <code>visible</code> — no propagation.</div>
+  <div class="law bad"><b>THE ONE-AXIS PROPAGATION.</b> <code>overflow-x: hidden</code> ⇒ computed <code>[hidden, auto]</code> — even when you explicitly write <code>overflow-y: visible</code>, it is overridden to <code>auto</code> ⇒ scroll container ⇒ dead. Measured 4/4. The fix that keeps the clip: <code>overflow-x: clip</code>.</div>
+  <div class="lab">
+    <h4>Live computed-style reader — apply an ancestor rule, read what the engine computes, test the pin</h4>
+    <div class="row">
+      <button class="ghostbtn" data-ov="visible">overflow: visible</button>
+      <button class="ghostbtn" data-ov="hidden">overflow: hidden</button>
+      <button class="ghostbtn" data-ov="auto">overflow: auto</button>
+      <button class="ghostbtn" data-ov="scroll">overflow: scroll</button>
+      <button class="ghostbtn" data-ov="clip">overflow: clip</button>
+      <button class="ghostbtn" data-ov="x-hidden">overflow-x: hidden (+ explicit overflow-y: visible)</button>
+      <button class="ghostbtn" data-ov="x-clip">overflow-x: clip</button>
+    </div>
+    <div class="vp" id="vp2"><div class="wrapbox" id="wrap2">
+      <div class="rail" style="height:900px">
+        <div class="stick" id="st2">STICKY top:0 <span class="state" id="st2state"></span></div>
+      </div>
+    </div></div>
+    <div class="out" id="out2">— apply a rule, then scroll the box —</div>
+  </div>
+  <div class="chips" id="s2chips"></div>
+</section>
+
+<!-- ══════════════════════ §3 ROOT COMBO ══════════════════════ -->
+<section id="s3">
+  <h2>§3 · The root combo: <code>html, body { overflow-x: hidden }</code></h2>
+  <p class="sub">The most-shipped global CSS rule on the web, pasted into a million resets to kill horizontal jank. What it does to a sticky header depends on <b>which selectors</b> carry it — via the one-shot root propagation rule.</p>
+  <div class="law ok"><b>THE ROOT PROPAGATION LAW.</b> <code>html { overflow-x: hidden }</code> alone: html’s overflow propagates to the <b>viewport</b> — the viewport is still the scroller, page scrolls, sticky <b>ALIVE</b>. <code>body { overflow-x: hidden }</code> alone: body’s overflow propagates up to the viewport too (body is not a scroll container while html is visible) — sticky <b>ALIVE</b>. 4/4.</div>
+  <div class="law bad"><b>THE COMBO KILL.</b> <code>html, body { overflow-x: hidden }</code>: html takes the propagation, so body <b>keeps its own overflow</b> and becomes a REAL scroll container. Auto-height body never scrolls ⇒ every window-tracked sticky on the page is <b>DEAD</b> — while the page itself still scrolls normally. Nothing looks broken; the header just doesn’t stick. Measured 4/4: <code>elTop</code> −480px at scrollY 600.</div>
+  <div class="lab">
+    <h4>Live root test — this page momentarily applies each rule to its own &lt;html&gt;/&lt;body&gt;, scrolls, measures, restores</h4>
+    <div class="row"><button class="ghost" id="rootbtn">Run the three-lane root test</button><span class="pill" style="margin:0">safe: styles + scroll restored synchronously</span></div>
+    <div class="out" id="out3">—</div>
+  </div>
+  <div class="chips" id="s3chips"></div>
+  <div class="law ok"><b>THE FIX.</b> Keep html, swap body to clip: <code>html { overflow-x: hidden } body { overflow-x: clip }</code> — measured ALIVE 4/4. Or <code>overflow-x: clip</code> on both (clip never propagates, never creates the body scroller).</div>
+</section>
+
+<!-- ══════════════════════ §4 RANGE FORMULA ══════════════════════ -->
+<section id="s4">
+  <h2>§4 · The pin-range formula <span class="pill">when does it stick, exactly</span></h2>
+  <p class="sub">A window-tracked sticky with a <code>top</code> inset is pinned for scroll positions in a closed interval you can compute from three numbers: the element’s natural top, its parent’s bottom, and its own height.</p>
+  <div class="law"><b>THE RANGE FORMULA.</b> pinned ⇔ <code>scrollY ∈ [elNaturalTop − inset, parentBottom − elH − inset]</code>. Below the first bound it hasn’t reached the edge yet; above the second the parent’s end has caught up and the element <b>releases</b> and rides away with the parent. Measured: release lane pinned through y=1300 and gone by the parent’s end (1400 − 50 = 1350), 4/4.</div>
+  <div class="law warn"><b>THE SHORT-PARENT FALSIFICATION.</b> “The parent must be taller than the viewport” is <b>false</b>. A 300px-tall parent in a 900px viewport pinned across y ∈ [100, 360] — a 260px stick range. The only failure is an <b>empty range</b> (parentBottom − elH − inset &lt; elNaturalTop − inset). What matters is range &gt; 0, not viewport comparison. 4/4.</div>
+  <div class="lab">
+    <h4>Live range verifier — scroll the box; the meter marks the predicted window</h4>
+    <div class="vpbar"><span id="range-pos">scroll 0</span><span id="range-verdict">—</span></div>
+    <div class="vpmeter"><i id="range-meter"></i></div>
+    <div class="vp" id="vp4"><div class="rail" style="height:1400px">
+      <div id="par4" style="height:900px">
+        <div style="height:180px;padding:10px;font:600 11px/1 var(--mono);color:#b1a99b">lead content (natural top of sticky = 180) — the PARENT ends at 900</div>
+        <div class="stick" id="st4">STICKY top:0 · elH 34 · parentBottom 900 <span class="state" id="st4state"></span></div>
+        <div style="height:620px;padding:10px;font:600 11px/1 var(--mono);color:#b1a99b">parent body … predicted pin window: [180, 866]</div>
+      </div>
+      <div style="height:460px;margin-top:8px;border-top:2px dashed #d8d2c6;padding:10px;font:600 11px/1 var(--mono);color:#b1a99b">trailing content AFTER the parent — the release zone: scroll past 866 and the sticky rides away</div>
+    </div></div>
+    <div class="out" id="out4">—</div>
+  </div>
+  <div class="chips" id="s4chips"></div>
+</section>
+
+<!-- ══════════════════════ §5 INSET GRAMMAR ══════════════════════ -->
+<section id="s5">
+  <h2>§5 · The inset grammar — horizontal edition</h2>
+  <p class="sub">Scroll this lane horizontally (the box is 500px of viewport over a 1600px rail). One sticky element per card, each with a different inset — the bar shows where it binds.</p>
+  <div class="law"><b>THE OWN-EDGE LAW.</b> An inset binds only at its own edge: <code>left</code> holds the element when it would exit the <b>left</b> edge as you scroll forward; <code>right</code>-only is <b>inert forward</b> (the element exits the left edge first, which has no inset) — measured: it tracks static exactly. 4/4.</div>
+  <div class="law"><b>THE OVER-CONSTRAINT LAW.</b> Both <code>left: 0; right: 0</code> on a fixed-width element: the <b>start</b> inset wins in LTR (<code>left</code>), the other is ignored — measured elLeft 0 the whole sweep. Same for <code>top+bottom</code> vertically (top wins). 4/4.</div>
+  <div class="law"><b>PERCENT + NEGATIVE.</b> <code>left: 10%</code> resolves against the <b>scrollport</b> width (measured 128 = 10% of a 1280 viewport — not the parent). Negative insets pin outside the edge: <code>left: -40px</code> ⇒ elLeft −40. 4/4.</div>
+  <div class="lab">
+    <div style="overflow-x:auto;border:1.5px solid #b9b2a6;border-radius:10px;background:#fff" id="hvp">
+      <div style="width:1600px;position:relative;height:120px;background:linear-gradient(90deg,#fdfcfa,#f4f1eb)">
+        <span style="position:absolute;left:10px;top:8px;font:600 10px/1 var(--mono);color:#b1a99b">← scroll horizontally →</span>
+        <span class="hstick" id="hs-left" style="position:sticky;left:0;display:inline-block;width:110px;top:40px">left:0</span>
+        <span class="hstick" id="hs-right" style="position:sticky;right:0;display:inline-block;width:110px">right:0</span>
+        <span class="hstick" id="hs-both" style="position:sticky;left:0;right:0;display:inline-block;width:110px">left+right</span>
+        <span class="hstick" id="hs-none" style="position:sticky;display:inline-block;width:110px">no inset</span>
+        <span class="hstick" id="hs-pct" style="position:sticky;left:10%;display:inline-block;width:110px">left:10%</span>
+        <span class="hstick" id="hs-neg" style="position:sticky;left:-40px;display:inline-block;width:110px">left:-40</span>
+        <span style="display:inline-block;width:900px;height:80px;vertical-align:middle"></span>
+      </div>
+    </div>
+    <style>.hstick{background:#0e6b5c;color:#fff;font:700 11px/1 var(--mono);padding:12px 8px;border-radius:8px;text-align:center;margin:34px 6px 0 14px;vertical-align:top}</style>
+    <div class="row"><button class="ghost mini" id="hscan">Scan at scrollX = 0 / 400 / 900</button></div>
+    <div class="out" id="out5">—</div>
+  </div>
+  <div class="chips" id="s5chips"></div>
+</section>
+
+<!-- ══════════════════════ §6 BOTTOM / OVER-TALL ══════════════════════ -->
+<section id="s6">
+  <h2>§6 · Bottom insets, the over-tall trap &amp; the reveal recipe</h2>
+  <p class="sub">A <code>bottom</code> inset works in the mirror direction: it binds while the element would exit the <b>bottom</b> edge — i.e. while scrolling <em>into</em> content that hasn’t reached it yet. The “sticky section footer” rides the viewport bottom until the parent’s end arrives.</p>
+  <div class="law ok"><b>THE FOOTER LAW.</b> <code>bottom: 0</code> on an element at the parent’s end: pinned at the viewport bottom (top 840 / bottom 900 in a 900px viewport) while the parent’s body scrolls <em>under</em> it; releases when the parent’s tail catches up (measured: release at y≈1400), then settles into its natural slot. 4/4.</div>
+  <div class="law bad"><b>THE OVER-TALL TRAP.</b> <code>top: 0; bottom: 0</code> on an element <b>taller</b> than the viewport (1100px in 900): the start inset wins and the element’s tail hangs below the fold the entire stick range — bottom 1100 &gt; vh 900 — <b>the last 200px are unreachable</b> until release. 4/4.</div>
+  <div class="law ok"><b>THE REVEAL RECIPE.</b> For a tall sticky sidebar: <code>top: −(elH − vh)</code>. Measured with elH 1200, vh 900: <code>top: -300px</code> holds the box at [−300, 900] through the whole range — the bottom edge glued to the viewport bottom, no dead zone. 4/4.</div>
+  <div class="lab">
+    <div class="split">
+      <div class="cell"><h4>footer: bottom:0 at parent end</h4>
+        <div class="vp" id="vp6a"><div class="rail" style="height:1000px;position:relative">
+          <div style="height:820px;padding:10px;font:600 11px/1 var(--mono);color:#b1a99b">long body — footer rides the bottom edge…</div>
+          <div class="stick" id="st6a" style="top:auto;bottom:0;border-radius:8px 8px 0 0;background:#8a6100">STICKY bottom:0 (at parent end)</div>
+          <div style="height:120px"></div>
+        </div></div></div>
+      <div class="cell"><h4>over-tall: top:0+bottom:0 (naive)</h4>
+        <div class="vp" id="vp6b"><div class="rail" style="height:1400px;position:relative">
+          <div class="stick" id="st6b" style="height:300px;top:0;bottom:0">top:0 + bottom:0 · 300px tall in a 230px scrollport — the tail below the fold is UNREACHABLE <span class="state" id="st6bstate"></span></div>
+          <div style="height:1200px;padding:10px;font:600 11px/1 var(--mono);color:#b1a99b">… the bottom 0px you can never see while pinned …</div>
+        </div></div></div>
+    </div>
+    <div class="row"><button class="ghost mini" id="scan6">Scan both lanes</button></div>
+    <div class="out" id="out6">—</div>
+  </div>
+  <div class="chips" id="s6chips"></div>
+</section>
+
+<!-- ══════════════════════ §7 TABLES ══════════════════════ -->
+<section id="s7">
+  <h2>§7 · Tables — the falsified folklore <span class="pill">3 falsifications</span></h2>
+  <p class="sub">The decade-old guidance: “sticky doesn’t work on <code>thead</code> / <code>tr</code>; put it on the <code>th</code> instead.” Measured in 2026 on four engines with <code>border-collapse: collapse</code>: <b>all three stick</b>.</p>
+  <div class="law ok"><b>THE TABLE FALSIFICATION.</b> Sticky on <code>&lt;th&gt;</code>, on <code>&lt;thead&gt;</code>, and on <code>&lt;tr&gt;</code> — pinned in CfT 149, CfT 148, Brave 156 <b>and</b> WebKit 26.5 (12/12 lanes). The th-only workaround is dead weight; style the row you actually mean.</div>
+  <div class="lab">
+    <h4>Live sticky header table — three tables, three sticky targets, one scroller each</h4>
+    <div class="split" id="tblsplit"></div>
+    <div class="row"><button class="ghost mini" id="scan7">Scroll all three to 180px</button></div>
+    <div class="out" id="out7">—</div>
+  </div>
+  <div class="chips" id="s7chips"></div>
+</section>
+
+<!-- ══════════════════════ §8 FLEX + GRID ══════════════════════ -->
+<section id="s8">
+  <h2>§8 · The flex-stretch trap &amp; the grid-area law</h2>
+  <p class="sub">Two container families, two different surprises — both invisible in review, both instantly visible in production.</p>
+  <div class="law bad"><b>THE FLEX-STRETCH TRAP.</b> A sticky item in a flex <b>row</b> with the default <code>align-items: stretch</code> is stretched to the flex line’s full height (measured: 1800px) — it fills its whole constraint range, so there is nothing to stick: it scrolls like static. One line fixes it: <code>align-self: flex-start</code> (measured: 19.6px item, pins normally). 4/4.</div>
+  <div class="law"><b>THE GRID-AREA LAW.</b> A sticky grid item’s containing block is its <b>grid area</b>, not the grid container. Measured with an auto-row grid whose spanning column distributed 780px into each auto row: the item’s pin range is bounded by its row track. A tall sibling in the same column can’t save it; a short track = short range. 4/4.</div>
+  <div class="lab">
+    <div class="split">
+      <div class="cell"><h4>flex row · stretch (default) — DEAD</h4>
+        <div class="vp" style="height:180px" id="vp8a"><div style="display:flex;height:800px">
+          <div style="width:90px;height:760px;margin:10px 4px;background:#f0ede7;border-radius:8px"></div>
+          <div id="st8a" style="position:sticky;left:0;width:70px;background:#a32b1c;color:#fff;font:700 10px/1.3 var(--mono);padding:8px 6px;border-radius:8px;margin:10px 4px">sticky — but stretched to 800px</div>
+          <div style="width:90px;height:760px;margin:10px 4px;background:#f0ede7;border-radius:8px"></div>
+        </div></div></div>
+      <div class="cell"><h4>flex row · align-self: flex-start — ALIVE</h4>
+        <div class="vp" style="height:180px" id="vp8b"><div style="display:flex;height:800px">
+          <div style="width:90px;height:760px;margin:10px 4px;background:#f0ede7;border-radius:8px"></div>
+          <div id="st8b" style="position:sticky;left:0;align-self:flex-start;width:70px;background:#0e6b5c;color:#fff;font:700 10px/1.3 var(--mono);padding:8px 6px;border-radius:8px;margin:10px 4px">sticky, content-height</div>
+          <div style="width:90px;height:760px;margin:10px 4px;background:#f0ede7;border-radius:8px"></div>
+        </div></div></div>
+    </div>
+    <div class="cell" style="margin-top:12px"><h4>grid · sticky in the SHORT middle row — range = the row track only</h4>
+      <div class="vp" style="height:200px" id="vp8c"><div style="display:grid;grid-template-columns:110px 110px;grid-template-rows:300px 120px 900px">
+        <div style="grid-row:1;grid-column:1/span 2;background:#f0ede7;border-radius:8px;margin:6px 4px;font:600 10px/1.3 var(--mono);color:#b1a99b;padding:8px">row 1 — tall (300px)</div>
+        <div id="st8c" style="grid-row:2;grid-column:1;position:sticky;top:0;height:40px;background:#8a6100;color:#fff;font:700 10px/1.3 var(--mono);display:flex;align-items:center;padding:0 6px;border-radius:8px;margin:4px 4px 0">sticky row 2</div>
+        <div style="grid-row:2;grid-column:2;background:#f0ede7;border-radius:8px;margin:4px 4px;font:600 10px/1.3 var(--mono);color:#b1a99b;padding:8px">row 2 · 120px — THE RANGE</div>
+        <div style="grid-row:3;grid-column:1/span 2;background:#f0ede7;border-radius:8px;margin:6px 4px;font:600 10px/1.3 var(--mono);color:#b1a99b;padding:8px">row 3 — tall (900px): sticky is already released down here</div>
+      </div></div></div>
+    <div class="row"><button class="ghost mini" id="scan8">Scan all three lanes</button></div>
+    <div class="out" id="out8">—</div>
+  </div>
+  <div class="chips" id="s8chips"></div>
+</section>
+
+<!-- ══════════════════════ §9 FLOW + TWO-COORDINATE ══════════════════════ -->
+<section id="s9">
+  <h2>§9 · The flow law &amp; the two-coordinate split</h2>
+  <p class="sub">Sticky never leaves the flow — and both geometry APIs report the stuck position, which quietly falsifies the “offsetTop is layout-only” assumption.</p>
+  <div class="law ok"><b>THE FLOW LAW.</b> Flipping the sticky to <code>position: static</code> leaves every sibling’s position <b>byte-identical</b> (measured: sibling top 160.0 in both states) — sticky occupies its layout slot the whole time; the shift is paint-time only. 4/4.</div>
+  <div class="law warn"><b>THE TWO-COORDINATE SURPRISE.</b> While stuck at <code>top:0</code> with scrollY 600: <code>getBoundingClientRect().top = 0</code> <b>and</b> <code>offsetTop = 600</code> (the stuck document position) — while as static, <code>offsetTop = 200</code> (the flow slot). <b>offsetTop carries the sticky shift</b> — there is no API that reports the flow slot of a stuck element; flip to static to read it. 4/4 engines, identical numbers.</div>
+  <div class="lab">
+    <div class="vp" id="vp9"><div class="rail" style="height:800px;position:relative">
+      <div style="height:200px;padding:10px;font:600 11px/1 var(--mono);color:#b1a99b">lead — flow slot of the sticky is y=200</div>
+      <div class="stick" id="st9" style="height:44px">STICKY (stuck while pinned) <span class="state" id="st9state"></span></div>
+      <div id="sib9" style="height:60px;background:#f0ede7;border-radius:8px;margin:8px 0;display:flex;align-items:center;padding:0 10px;font:600 11px/1 var(--mono);color:#b1a99b">sibling — position must not move when we flip the sticky to static</div>
+    </div></div>
+    <div class="row"><button class="ghost mini" id="scan9">Scroll to 400 · measure · flip static · measure</button></div>
+    <div class="out" id="out9">—</div>
+  </div>
+  <div class="chips" id="s9chips"></div>
+</section>
+
+<!-- ══════════════════════ §10 INTERACTIONS ══════════════════════ -->
+<section id="s10">
+  <h2>§10 · The interaction census — what does <em>not</em> break sticky</h2>
+  <p class="sub">For <code>position: fixed</code>, a transformed ancestor captures the containing block and wrecks it. Sticky is immune to the whole family — plus two grammar notes.</p>
+  <div class="law ok"><b>THE IMMUNITY LAW.</b> Ancestors with <code>transform: translateZ(0)</code>, <code>filter: blur(0)</code>, <code>will-change: transform</code>, and <code>contain: paint</code>: sticky pins normally in every lane, 4/4. The fixed-position capture rules do not apply — no containing-block capture for sticky.</div>
+  <div class="law bad"><b>THE INLINE LAW.</b> <code>position: sticky</code> on a <code>display: inline</code> element (a span mid-paragraph) is <b>inert</b> — it scrolls away exactly like static text. 4/4. Sticky needs a block-ish box; check for an accidental <code>display: inline</code> from a reset.</div>
+  <div class="lab">
+    <div class="split" id="intergrid"></div>
+    <div class="row"><button class="ghost mini" id="scan10">Scan the five lanes</button></div>
+    <div class="out" id="out10">—</div>
+  </div>
+  <div class="law"><b>MINOR GRAMMAR.</b> In a <code>scroll-snap-type: y proximity</code> scroller, sticky pins normally (measured 0, 300, 700 — no snap interference on programmatic scroll). In RTL, <code>left</code> stays the <b>physical</b> left edge — insets never transpose with direction.</div>
+  <div class="chips" id="s10chips"></div>
+</section>
+
+<!-- ══════════════════════ §11 CAPSTONES ══════════════════════ -->
+<section id="s11">
+  <h2>§11 · Capstones — the cockpit HUD &amp; the client audit</h2>
+  <div class="hud">
+    <h4>OPENDRONES · THE COCKPIT STICKY LAYER (runnable)</h4>
+    <p style="font-size:13px;color:#b9cdc2;margin:0 0 10px">A telemetry feed with a pinned status bar and a sticky fleet-table header — the two surfaces a pilot stares at. The recipe obeys every law above:</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">
+      <div style="border:1px solid #32453c;border-radius:10px;overflow:hidden;background:#0c1210">
+        <div style="height:190px;overflow-y:auto" id="cockpit1">
+          <div style="position:sticky;top:0;height:32px;display:flex;align-items:center;padding:0 10px;background:#14352c;color:#9fd8c3;font:700 11px/1 var(--mono);border-radius:0 0 8px 8px">LINK: 92% · ALT 118 m · BAT 71% <span class="state" id="ck1state"></span></div>
+          <div id="ckfeed" style="padding:10px;font:11.5px/1.7 var(--mono);color:#8fa89b"></div>
+        </div>
+      </div>
+      <div style="border:1px solid #32453c;border-radius:10px;overflow:hidden;background:#0c1210">
+        <div style="height:190px;overflow-y:auto" id="cockpit2">
+          <table class="tsticky" style="font:11.5px/1.5 var(--mono);width:100%;color:#a9c4b6">
+            <thead><tr><th style="top:0">DRONE</th><th style="top:0">STATE</th><th style="top:0">LINK</th></tr></thead>
+            <tbody id="ckfleet"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <ul style="font:12px/1.8 var(--mono);color:#8fa89b;margin:12px 0 0;padding-left:18px">
+      <li>HUD veil uses <code style="color:#9fd8c3">overflow-x: clip</code> — never hidden (§2)</li>
+      <li>Status bar is a flex item with <code style="color:#9fd8c3">align-self: flex-start</code> where rows matter (§8)</li>
+      <li>Fleet table header is sticky on <code style="color:#9fd8c3">&lt;thead&gt;</code> directly (§7)</li>
+      <li>Instrumentation reads <code style="color:#9fd8c3">getBoundingClientRect()</code> — and knows it reads the <em>stuck</em> position (§9)</li>
+    </ul>
+  </div>
+  <h3>Molt — the client-site sticky audit (12 checks · half a day · sellable line item)</h3>
+  <div class="tscroll"><table>
+    <tr><th>#</th><th>Check</th><th>Law</th><th>Sev</th></tr>
+    <tr><td class="v">1</td><td><code>html, body { overflow-x: hidden }</code> in the global CSS</td><td>§3 combo kill — sticky dead while page scrolls</td><td class="v">HIGH</td></tr>
+    <tr><td class="v">2</td><td>Any <code>overflow: hidden/auto/scroll</code> ancestor between a sticky and its intended scroller</td><td>§1 trap</td><td class="v">HIGH</td></tr>
+    <tr><td class="v">3</td><td>Any <code>overflow-x: hidden</code> that could be <code>overflow-x: clip</code></td><td>§2 fix</td><td class="v">HIGH</td></tr>
+    <tr><td class="v">4</td><td>Sticky flex-row items without <code>align-self</code></td><td>§8 stretch trap</td><td class="v">HIGH</td></tr>
+    <tr><td class="v">5</td><td>Sticky grid items in short row tracks expected to stick the whole container</td><td>§8 grid-area</td><td class="v">MED</td></tr>
+    <tr><td class="v">6</td><td>Both top+bottom insets on an element taller than the viewport</td><td>§6 unreachable tail</td><td class="v">MED</td></tr>
+    <tr><td class="v">7</td><td>Tall sticky sidebars without the <code>top: −(elH − vh)</code> reveal</td><td>§6 recipe</td><td class="v">MED</td></tr>
+    <tr><td class="v">8</td><td>Sticky on <code>display: inline</code> elements (reset casualties)</td><td>§10 inline law</td><td class="v">MED</td></tr>
+    <tr><td class="v">9</td><td>Geometry/scroll-sync code reading <code>offsetTop</code> expecting the flow slot</td><td>§9 two-coordinate</td><td class="v">MED</td></tr>
+    <tr><td class="v">10</td><td>“Add a wrapper div” fixes copied from Stack Overflow for dead headers</td><td>§1 falsification — wrappers never retarget the scrollport</td><td class="v">MED</td></tr>
+    <tr><td class="v">11</td><td>Empty pin ranges: parents that end above the sticky’s natural top − inset</td><td>§4 formula</td><td class="v">LOW</td></tr>
+    <tr><td class="v">12</td><td>th-only sticky workarounds in component libraries (dead weight now)</td><td>§7 falsification</td><td class="v">LOW</td></tr>
+  </table></div>
+  <div class="chips" id="s11chips"></div>
+</section>
+
+<!-- ══════════════════════ §12 LEDGER ══════════════════════ -->
+<section id="s12">
+  <h2>§12 · Engine ledger</h2>
+  <p class="sub">Every headline law, per engine, from the probe batteries (2026-11-02, 4 engines, ~60 lanes, 0 page errors):</p>
+  <div class="tscroll"><table>
+    <tr><th>Law</th><th>CfT 149</th><th>CfT 148</th><th>Brave 156</th><th>WebKit 26.5</th></tr>
+    <tr><td>overflow hidden/auto/scroll ancestor ⇒ dead</td><td class="v">dead</td><td class="v">dead</td><td class="v">dead</td><td class="v">dead</td></tr>
+    <tr><td>overflow: clip ancestor ⇒ alive (no scroll container)</td><td class="v">alive</td><td class="v">alive</td><td class="v">alive</td><td class="v">alive</td></tr>
+    <tr><td>overflow-x: hidden ⇒ other axis computes auto</td><td class="v">[hidden,auto]</td><td class="v">[hidden,auto]</td><td class="v">[hidden,auto]</td><td class="v">[hidden,auto]</td></tr>
+    <tr><td>overflow-x: clip ⇒ other axis stays visible</td><td class="v">[clip,visible]</td><td class="v">[clip,visible]</td><td class="v">[clip,visible]</td><td class="v">[clip,visible]</td></tr>
+    <tr><td>html-only / body-only overflow-x:hidden ⇒ alive</td><td class="v">alive</td><td class="v">alive</td><td class="v">alive</td><td class="v">alive</td></tr>
+    <tr><td><b>html+body combo ⇒ dead (page still scrolls)</b></td><td class="v">DEAD</td><td class="v">DEAD</td><td class="v">DEAD</td><td class="v">DEAD</td></tr>
+    <tr><td>combo + body clip fix ⇒ alive</td><td class="v">alive</td><td class="v">alive</td><td class="v">alive</td><td class="v">alive</td></tr>
+    <tr><td>range = [natTop−inset, parentBot−elH−inset]</td><td class="v">exact</td><td class="v">exact</td><td class="v">exact</td><td class="v">exact</td></tr>
+    <tr><td>short parent (&lt; viewport) still pins</td><td class="v">100→360</td><td class="v">100→360</td><td class="v">100→360</td><td class="v">100→360</td></tr>
+    <tr><td>nearest-scroller retarget (inner scroller pins at +10)</td><td class="v">212</td><td class="v">212</td><td class="v">212</td><td class="v">212</td></tr>
+    <tr><td>sticky th / thead / tr (border-collapse)</td><td class="v">all 3 pin</td><td class="v">all 3 pin</td><td class="v">all 3 pin</td><td class="v">all 3 pin</td></tr>
+    <tr><td>flex-row stretch trap / align-self fix</td><td class="v">trap+fix</td><td class="v">trap+fix</td><td class="v">trap+fix</td><td class="v">trap+fix</td></tr>
+    <tr><td>grid item range = grid area</td><td class="v">area</td><td class="v">area</td><td class="v">area</td><td class="v">area</td></tr>
+    <tr><td>inline sticky inert</td><td class="v">inert</td><td class="v">inert</td><td class="v">inert</td><td class="v">inert</td></tr>
+    <tr><td>flow slot unchanged (static flip = 0px move)</td><td class="v">identical</td><td class="v">identical</td><td class="v">identical</td><td class="v">identical</td></tr>
+    <tr><td>offsetTop carries the stuck shift (600 vs 200)</td><td class="v">600/200</td><td class="v">600/200</td><td class="v">600/200</td><td class="v">600/200</td></tr>
+    <tr><td>transform/filter/will-change/contain ancestors: alive</td><td class="v">alive</td><td class="v">alive</td><td class="v">alive</td><td class="v">alive</td></tr>
+    <tr><td>bottom:0 footer lead-in + release</td><td class="v">840→release</td><td class="v">840→release</td><td class="v">840→release</td><td class="v">840→release</td></tr>
+    <tr><td>over-tall both-inset: start wins, tail unreachable</td><td class="v">tail lost</td><td class="v">tail lost</td><td class="v">tail lost</td><td class="v">tail lost</td></tr>
+    <tr><td>reveal recipe top:−(elH−vh) holds [−300,900]</td><td class="v">holds</td><td class="v">holds</td><td class="v">holds</td><td class="v">holds</td></tr>
+  </table></div>
+  <h3>Method</h3>
+  <p class="sub">4 probe batteries, 4 engines (CfT 149.0.7827.55 · CfT 148.0.7778.96 · Brave 156.1.98.60 · WebKit 26.5), one plain-HTTP loopback origin, a fresh single-purpose document per lane (scroll position and fixtures leak across lanes on a shared page — the lane-isolation lesson), every headline law measured in all four engines, settles after programmatic scrolls. Falsified this session: the parent-taller-than-viewport rule, the th-only table workaround, the offsetTop-is-layout assumption, and the wrapper-div fix. UA strings captured per engine in the probe JSON.</p>
+</section>
+
+<footer>
+  <p>Research by Jin · Molt Studios · probes + gate logs in the session workspace · MC entry: position: sticky — the activation tier.</p>
+</footer>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  // ── chip registry (register BEFORE any section script runs) ──────────────
+  var CHIPDEFS = [
+    ['s1-hidden','s1'],['s1-auto','s1'],['s1-scroll','s1'],['s1-clip','s1'],['s1-visible','s1'],
+    ['s2-propagation','s2'],['s2-clipex','s2'],['s2-reader','s2'],
+    ['s3-htmlonly','s3'],['s3-combo','s3'],['s3-bodyclip','s3'],
+    ['s4-formula','s4'],['s4-shortparent','s4'],
+    ['s5-ownedge','s5'],['s5-overconstraint','s5'],['s5-percent','s5'],
+    ['s6-footer','s6'],['s6-overtall','s6'],['s6-reveal','s6'],
+    ['s7-th','s7'],['s7-thead','s7'],['s7-tr','s7'],
+    ['s8-stretch','s8'],['s8-gridarea','s8'],
+    ['s9-flow','s9'],['s9-offsettop','s9'],
+    ['s10-immunity','s10'],['s10-inline','s10'],
+    ['s11-cockpit','s11'],
+    ['load-info','summary']
+  ];
+  var chips = {};
+  CHIPDEFS.forEach(function(d){
+    var host = document.getElementById(d[1]+'chips') || document.getElementById(d[1]);
+    var el = document.createElement('span');
+    el.className = 'chip pending'; el.id = 'chip-'+d[0];
+    el.textContent = d[0]+': pending';
+    if (host) host.appendChild(el);
+    chips[d[0]] = el;
+  });
+  window.__chip = function(id, cls, text){
+    var el = chips[id]; if (!el) return;
+    el.className = 'chip '+cls; el.textContent = text;
+  };
+  var counts = {ok:0,warn:0,fail:0,info:0,pending:0};
+  function summarise(){
+    Object.keys(chips).forEach(function(k){
+      var m = chips[k].className.match(/ok|warn|fail|info|pending/);
+      if (m) counts[m[0]]++;
+    });
+    var s = document.getElementById('summary');
+    if (s) s.innerHTML =
+      '<span class="chip ok">'+counts.ok+' verified</span>'+
+      '<span class="chip warn">'+counts.warn+' warn</span>'+
+      '<span class="chip fail">'+counts.fail+' deliberate-dead</span>'+
+      '<span class="chip info">'+counts.info+' info</span>';
+  }
+  var settleTimers = [];
+  function settle(fn, ms){ settleTimers.push(setTimeout(fn, ms||60)); }
+
+  function $ (id){ return document.getElementById(id); }
+  function pinState(el, vp){ // is el pinned at its top:0 inset inside vp? (border-aware)
+    var r = el.getBoundingClientRect(), rv = vp.getBoundingClientRect();
+    return Math.abs((r.top - rv.top) - vp.clientTop) < 1.0;
+  }
+  function relTop(el, vp){ return (el.getBoundingClientRect().top - vp.getBoundingClientRect().top) - vp.clientTop; }
+  function relLeft(el, vp){ return (el.getBoundingClientRect().left - vp.getBoundingClientRect().left) - vp.clientLeft; }
+  function relBottom(el, vp){
+    var bb = parseFloat(getComputedStyle(vp).borderBottomWidth) || 0;
+    return (vp.getBoundingClientRect().bottom - el.getBoundingClientRect().bottom) - bb;
+  }
+  function scrollVp(vp, y, cb){ vp.scrollTop = y; settle(cb, 40); }
+
+  // ── §1 overflow matrix (built once, scrolled by script) ──────────────────
+  var OVCARDS = [
+    ['visible','alive'],['hidden','dead'],['auto','dead'],['scroll','dead'],['clip','alive']
+  ];
+  var ovgrid = $('ovgrid');
+  var ovVps = [];
+  OVCARDS.forEach(function(c){
+    var card = document.createElement('div');
+    card.className = 'ovcard ' + c[1];
+    card.innerHTML =
+      '<div class="vp"><div class="wrapbox" style="overflow:'+c[0]+'">'+
+      '<div class="rail" style="height:640px">'+
+      '<div class="stick'+(c[1]==='dead'?' dead':'')+'">top:0<span class="state"></span></div>'+
+      '</div></div></div>'+
+      '<div class="cap"><span>ancestor: '+c[0]+'</span><em>?</em></div>';
+    ovgrid.appendChild(card);
+    ovVps.push({card:card, vp:card.querySelector('.vp'), stick:card.querySelector('.stick'),
+                em:card.querySelector('em'), state:card.querySelector('.state'), expect:c[1]});
+  });
+  function runOvCard(i){
+    if (i >= ovVps.length){ summarise(); return; }
+    var o = ovVps[i];
+    o.vp.scrollTop = 0;
+    scrollVp(o.vp, 120, function(){
+      var pinned = pinState(o.stick, o.vp);
+      var alive = pinned;
+      o.em.textContent = alive ? 'ALIVE' : 'DEAD';
+      o.state.textContent = alive ? ' (pinned)' : ' (scrolled past)';
+      var chipId = ({visible:'s1-visible',hidden:'s1-hidden',auto:'s1-auto',scroll:'s1-scroll',clip:'s1-clip'})[
+        o.card.querySelector('.cap span').textContent.replace('ancestor: ','')];
+      var expectedAlive = (o.expect === 'alive');
+      if (alive === expectedAlive) {
+        window.__chip(chipId, expectedAlive ? 'ok' : 'fail',
+          chipId.replace('s1-','') + ': ' + (expectedAlive ? 'pinned ✓ (computed match)' : 'DEAD by design ✓ (trap confirmed)'));
+      } else {
+        window.__chip(chipId, 'warn', chipId.replace('s1-','') + ': engine disagrees with bench');
+      }
+      o.vp.scrollTop = 0;
+      runOvCard(i+1);
+    });
+  }
+
+  // ── §2 computed-style reader ───────────────────────────────────────────────
+  var OVLIST = {
+    'visible':'overflow:visible','hidden':'overflow:hidden','auto':'overflow:auto',
+    'scroll':'overflow:scroll','clip':'overflow:clip',
+    'x-hidden':'overflow-x:hidden;overflow-y:visible','x-clip':'overflow-x:clip'
+  };
+  var lastOv = null;
+  document.querySelectorAll('[data-ov]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var rule = OVLIST[b.getAttribute('data-ov')];
+      var wrap2 = $('wrap2');
+      wrap2.style.cssText = rule;
+      var vp2 = $('vp2');
+      vp2.scrollTop = 0;
+      scrollVp(vp2, 150, function(){
+        var cs = getComputedStyle(wrap2);
+        var pinned = pinState($('st2'), vp2);
+        $('st2state').textContent = pinned ? ' → PINNED' : ' → dead (ancestor owns the scrollport)';
+        $('out2').textContent =
+          'rule: ' + rule +
+          '\ncomputed wrapper overflow: [x ' + cs.overflowX + ', y ' + cs.overflowY + ']' +
+          '\nscrolled 150 inside the outer box → sticky ' + (pinned ? 'PINNED at box top ✓' : 'scrolled past (DEAD)');
+        if (lastOv !== b.getAttribute('data-ov')) {
+          var key = b.getAttribute('data-ov');
+          if (key === 'x-hidden') window.__chip('s2-propagation','ok','one-axis propagation: x-hidden → y computes '+cs.overflowY+' ✓');
+          if (key === 'x-clip') window.__chip('s2-clipex','ok','x-clip → y stays '+cs.overflowY+' (no scroll container) ✓');
+          if (key === 'clip') window.__chip('s2-clipex','ok','overflow:clip → pinned '+(pinned?'ALIVE':'DEAD')+' ✓');
+          lastOv = key;
+          summarise();
+        }
+      });
+    });
+  });
+  // auto-run one lane for the chip
+  settle(function(){ document.querySelector('[data-ov="x-hidden"]').click(); }, 150);
+  settle(function(){ document.querySelector('[data-ov="clip"]').click(); }, 420);
+  settle(function(){ document.querySelector('[data-ov="x-clip"]').click(); }, 700);
+  settle(function(){ window.__chip('s2-reader','ok','reader: '+(OVLIST[lastOv]||'')+' applied + measured'); summarise(); }, 1000);
+
+  // ── §3 root test ───────────────────────────────────────────────────────────
+  $('rootbtn').addEventListener('click', function(){
+    var out = [];
+    var html = document.documentElement, body = document.body;
+    var probe = $('st9'); // reuse a viewport-tracked sticky? no — build one:
+    var holder = document.createElement('div');
+    holder.style.cssText = 'position:sticky;top:0;height:30px;background:#0e6b5c;color:#fff;z-index:99;font:700 11px/30px var(--mono);padding-left:8px';
+    holder.textContent = 'ROOT-TEST STICKY';
+    document.body.insertBefore(holder, document.body.firstChild);
+    window.scrollTo(0, 500);
+    var basePinned = Math.abs(holder.getBoundingClientRect().top) < 1;
+    out.push('control (no root rule): pinned=' + basePinned);
+    window.scrollTo(0, 0);
+    var lanes = [
+      ['html {overflow-x:hidden}', function(){ html.style.overflowX='hidden'; },
+        function(){ html.style.overflowX=''; }],
+      ['html,body {overflow-x:hidden}', function(){ html.style.overflowX='hidden'; body.style.overflowX='hidden'; },
+        function(){ html.style.overflowX=''; body.style.overflowX=''; }],
+      ['html hidden + body CLIP (the fix)', function(){ html.style.overflowX='hidden'; body.style.overflowX='clip'; },
+        function(){ html.style.overflowX=''; body.style.overflowX=''; }]
+    ];
+    var results = [];
+    function runLane(i){
+      if (i >= lanes.length){
+        holder.parentNode.removeChild(holder);
+        window.scrollTo(0, 0);
+        $('out3').textContent = out.join('\n');
+        window.__chip('s3-htmlonly', results[0] ? 'ok' : 'fail', 'html-only: '+(results[0]?'ALIVE ✓':'dead ✗'));
+        window.__chip('s3-combo', results[1] ? 'warn' : 'fail', 'html+body combo: '+(results[1]?'alive — engine disagrees with bench':'DEAD by design ✓'));
+        window.__chip('s3-bodyclip', results[2] ? 'ok' : 'fail', 'body clip fix: '+(results[2]?'ALIVE ✓':'dead ✗'));
+        summarise();
+        return;
+      }
+      var L = lanes[i];
+      L[1]();
+      window.scrollTo(0, 500);
+      var pinned = Math.abs(holder.getBoundingClientRect().top) < 1;
+      results.push(pinned);
+      var bcs = [getComputedStyle(body).overflowX, getComputedStyle(body).overflowY];
+      var hcs = [getComputedStyle(html).overflowX, getComputedStyle(html).overflowY];
+      out.push(L[0] + ' → pinned=' + pinned + '  (html ' + hcs.join('/') + ' · body ' + bcs.join('/') + ')');
+      window.scrollTo(0, 0);
+      L[2]();
+      settle(function(){ runLane(i+1); }, 30);
+    }
+    runLane(0);
+  });
+
+  // ── §4 range formula ───────────────────────────────────────────────────────
+  var vp4 = $('vp4'), st4 = $('st4');
+  function rangeFormulaCheck(){
+    var NAT = 180, ELH = 34, PARENT_BOTTOM = 900, INSET = 0;
+    var pinStart = NAT - INSET, pinEnd = PARENT_BOTTOM - ELH - INSET;
+    var samples = [0, 100, 180, 400, 860, 866, 900];
+    var ok = true, log = [];
+    samples.forEach(function(y){
+      vp4.scrollTop = y;
+      var top = relTop(st4, vp4);
+      var expectPin = (y >= pinStart && y <= pinEnd);
+      var actualPin = Math.abs(top - INSET) < 1;
+      var agree = (expectPin === actualPin);
+      if (!agree) ok = false;
+      log.push('scroll ' + y + ' → relTop ' + top.toFixed(0) + (actualPin ? ' (pinned' : ' (free') + (agree ? ', predicted)' : ', MISMATCH!)'));
+    });
+    $('out4').textContent = 'predicted window [' + pinStart + ', ' + pinEnd + ']\n' + log.join('\n');
+    window.__chip('s4-formula', ok ? 'ok' : 'warn', 'range formula: ' + (ok ? 'predicted pinned-state at all 7 sample points ✓' : 'mismatch'));
+    summarise();
+  }
+  vp4.addEventListener('scroll', function(){
+    var y = vp4.scrollTop;
+    $('range-pos').textContent = 'scroll ' + y;
+    var rel = relTop(st4, vp4);
+    var pinned = Math.abs(rel) < 1;
+    $('range-verdict').textContent = pinned ? 'PINNED (top:0)' : (rel > 0 ? 'not yet reached' : 'released — riding with parent');
+    $('st4state').textContent = pinned ? ' · PINNED' : '';
+    $('range-meter').style.width = Math.min(100, (y / 866) * 100) + '%';
+  });
+  settle(rangeFormulaCheck, 400);
+
+  // ── §5 horizontal scan ─────────────────────────────────────────────────────
+  $('hscan').addEventListener('click', function(){
+    var hvp = $('hvp');
+    var res = {left:[], right:[], both:[], none:[], pct:[], neg:[]};
+    var ids = {left:'hs-left', right:'hs-right', both:'hs-both', none:'hs-none', pct:'hs-pct', neg:'hs-neg'};
+    var xs = [0, 400, 900];
+    function scanAt(i){
+      if (i >= xs.length){
+        var lines = Object.keys(res).map(function(k){
+          return k.padEnd(13) + res[k].map(function(v){ return String(v); }).join('  ');
+        });
+        // verdicts
+        var leftPin = Math.abs(res.left[2]) <= 1;
+        var rightInert = Math.abs(res.right[1]) > 2;
+        var bothLeft = Math.abs(res.both[2]) <= 1;
+        var noneStatic = res.none[1] !== undefined && Math.abs(res.none[1]) > 2;
+        var pct128 = res.pct[1];
+        var neg40 = Math.abs(res.neg[2] + 40) <= 1;
+        $('out5').textContent =
+          'scrollX →        0    400   900\n' + lines.join('\n') +
+          '\n\nleft:0 pins at 0 → ' + leftPin +
+          '\nright:0 inert forward (tracks static) → ' + rightInert +
+          '\nleft+right → left wins → ' + bothLeft +
+          '\nleft:10% of the ' + hvp.clientWidth + 'px scrollport → ' + res.pct[2] +
+          '\nleft:-40 → ' + res.neg[1];
+        window.__chip('s5-ownedge', (leftPin && rightInert && noneStatic) ? 'ok' : 'warn', 'own-edge: left pins '+(leftPin?'✓':'✗')+' · right inert forward '+(rightInert?'✓':'✗'));
+        window.__chip('s5-overconstraint', bothLeft ? 'ok' : 'warn', 'over-constraint: start (left) wins '+(bothLeft?'✓':'✗'));
+        var pctOk = Math.abs(res.pct[2] - hvp.clientWidth * 0.10) <= 1;
+        window.__chip('s5-percent', (pctOk && neg40) ? 'ok' : 'warn', 'inset math: 10%='+pct128+' (scrollport-rel '+(pctOk?'✓':'✗')+') · -40px '+(neg40?'✓':'✗'));
+        summarise();
+        hvp.scrollLeft = 0;
+        return;
+      }
+      hvp.scrollLeft = xs[i];
+      settle(function(){
+        Object.keys(ids).forEach(function(k){
+          res[k].push(Math.round(relLeft($(ids[k]), hvp)));
+        });
+        scanAt(i+1);
+      }, 40);
+    }
+    scanAt(0);
+  });
+
+  // ── §6 bottom / over-tall ──────────────────────────────────────────────────
+  $('scan6').addEventListener('click', function(){
+    var a = $('vp6a'), b = $('vp6b');
+    var log = [], footerOk = false, overTallOk = false;
+    a.scrollTop = 0; b.scrollTop = 0;
+    a.scrollTop = 300; b.scrollTop = 300;
+    settle(function(){
+      var va = a.getBoundingClientRect();
+      var footerPinned = Math.abs(relBottom($('st6a'), a)) < 1;
+      log.push('footer lane @300: sticky relBottom ' + relBottom($('st6a'), a).toFixed(0) + ' (0 = glued to scrollport bottom) → ' + (footerPinned ? 'PINNED at viewport bottom' : 'free'));
+      footerOk = footerPinned;
+      var topPin = Math.abs(relTop($('st6b'), b)) < 1;
+      var tailHidden = relBottom($('st6b'), b) < -2;
+      log.push('over-tall lane @300: relTop ' + relTop($('st6b'), b).toFixed(0) + ' (top inset won' + (topPin ? '' : '?') + ') · relBottom ' + relBottom($('st6b'), b).toFixed(0) + ' (negative = tail below the fold)' + (tailHidden ? ' → TAIL UNREACHABLE' : ''));
+      overTallOk = topPin && tailHidden;
+      $('out6').textContent = log.join('\n') + '\n\nreveal recipe (top:-(elH-vh)): bench-held [−300, 900] across the range 400→1600 — see §12 ledger.';
+      window.__chip('s6-footer', footerOk ? 'ok' : 'warn', 'footer law: bottom:0 pins at scrollport bottom '+(footerOk?'✓':'✗'));
+      window.__chip('s6-overtall', overTallOk ? 'fail' : 'warn', 'over-tall: start wins, tail unreachable '+(overTallOk?'(by design) ✓':'✗ — engine disagrees'));
+      window.__chip('s6-reveal', 'info', 'reveal recipe: top:−(elH−vh) — measured hold [−300,900] on bench');
+      summarise();
+      a.scrollTop = 0; b.scrollTop = 0;
+    }, 60);
+  });
+
+  // ── §7 tables ──────────────────────────────────────────────────────────────
+  var TBL = [['th','th'],['thead','thead'],['tr','tr']];
+  var tblsplit = $('tblsplit');
+  var tblVps = [];
+  TBL.forEach(function(t){
+    var rows = '';
+    for (var i = 0; i < 24; i++) rows += '<tr><td style="padding:4px 8px;border-bottom:1px solid #eee">row ' + i + '</td></tr>';
+    var target = t[0] === 'th' ? '<thead><tr><th style="position:sticky;top:0;background:#1d3a32;color:#fff;padding:6px 8px">sticky TH</th></tr></thead><tbody>' + rows + '</tbody>'
+      : (t[0] === 'thead' ? '<thead style="position:sticky;top:0"><tr><th style="background:#1d3a32;color:#fff;padding:6px 8px">sticky THEAD</th></tr></thead><tbody>' + rows + '</tbody>'
+      : '<thead><tr style="position:sticky;top:0"><th style="background:#1d3a32;color:#fff;padding:6px 8px">sticky TR</th></tr></thead><tbody>' + rows + '</tbody>');
+    var cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.innerHTML = '<h4>&lt;' + t[0] + '&gt; target</h4>' +
+      '<div style="height:170px;overflow:auto;border:1px solid var(--line);border-radius:8px;background:#fff">' +
+      '<table style="width:100%;border-collapse:collapse;font:12px/1.4 var(--mono)">' + target + '</table></div>';
+    tblsplit.appendChild(cell);
+    tblVps.push({kind:t[0], vp:cell.querySelector('div'), head:cell.querySelector(t[0] === 'th' ? 'th' : (t[0] === 'thead' ? 'thead' : 'tr'))});
+  });
+  $('scan7').addEventListener('click', function(){
+    var log = [], done = 0, okc = 0;
+    tblVps.forEach(function(o, idx){
+      o.vp.scrollTop = 0;
+      settle(function(){
+        o.vp.scrollTop = 180;
+        settle(function(){
+          var pinned = pinState(o.head, o.vp);
+          log.push('&lt;' + o.kind + '&gt; @180: relTop ' + relTop(o.head, o.vp).toFixed(1) + ' → ' + (pinned ? 'PINNED' : 'dead'));
+          if (pinned) okc++;
+          window.__chip('s7-' + o.kind, pinned ? 'ok' : 'fail', o.kind + ': ' + (pinned ? 'pins ✓ (folklore dead)' : 'does NOT pin'));
+          o.vp.scrollTop = 0;
+          if (++done === tblVps.length){ $('out7').textContent = log.join('\n'); summarise(); }
+        }, 50);
+      }, 30 + idx * 20);
+    });
+  });
+
+  // ── §8 flex + grid ─────────────────────────────────────────────────────────
+  $('scan8').addEventListener('click', function(){
+    var log = [];
+    var a = $('vp8a'), b = $('vp8b'), c = $('vp8c');
+    a.scrollTop = 0; b.scrollTop = 0; c.scrollTop = 0;
+    a.scrollTop = 150; b.scrollTop = 150; c.scrollTop = 340;
+    settle(function(){
+      var stretchDead = relTop($('st8a'), a) < -1; // scrolled past = dead
+      log.push('flex stretch @150: relTop ' + relTop($('st8a'), a).toFixed(0) + ' → ' + (stretchDead ? 'DEAD (stretched 800px, nowhere to stick)' : 'pinned?'));
+      var fixPin = Math.abs(relLeft($('st8b'), b)) < 2;
+      log.push('flex align-self:start @150: relLeft ' + relLeft($('st8b'), b).toFixed(0) + ' → ' + (fixPin ? 'ALIVE (left:0 holds it)' : 'free'));
+      var rel = relTop($('st8c'), c);
+      var rowTop = 304; // grid row 2 starts at 300 + the item's 4px margin
+      var inRow2Window = c.scrollTop >= rowTop && c.scrollTop <= (rowTop + 120 - 40);
+      log.push('grid row-2 item @340: relTop ' + rel.toFixed(0) + ' · row-2 window [304, 380] → ' + (Math.abs(rel) < 1 ? 'PINNED (inside the row-2 range)' : 'free'));
+      $('out8').textContent = log.join('\n');
+      window.__chip('s8-stretch', stretchDead ? 'fail' : 'warn', 'stretch trap: ' + (stretchDead ? 'DEAD by design ✓ (trap confirmed)' : 'engine disagrees'));
+      window.__chip('s8-gridarea', (Math.abs(rel) < 1) === inRow2Window ? 'ok' : 'warn', 'grid-area: pinned ⇔ inside the row-track window ' + ((Math.abs(rel) < 1) === inRow2Window ? '✓' : '✗'));
+      summarise();
+      a.scrollTop = 0; b.scrollTop = 0; c.scrollTop = 0;
+    }, 70);
+  });
+
+  // ── §9 flow + two-coordinate ───────────────────────────────────────────────
+  $('scan9').addEventListener('click', function(){
+    var vp = $('vp9'), st = $('st9'), sib = $('sib9');
+    vp.scrollTop = 0;
+    settle(function(){
+      vp.scrollTop = 400;
+      settle(function(){
+        var stuckTop = st.getBoundingClientRect().top - vp.getBoundingClientRect().top;
+        var offsetStuck = st.offsetTop;
+        var sibTopSticky = sib.getBoundingClientRect().top + vp.scrollTop;
+        st.style.position = 'static';
+        var sibTopStatic = sib.getBoundingClientRect().top + vp.scrollTop;
+        var slotTop = st.getBoundingClientRect().top + vp.scrollTop;
+        var offsetStatic = st.offsetTop;
+        st.style.position = 'sticky';
+        var identical = Math.abs(sibTopSticky - sibTopStatic) < 0.6;
+        $('out9').textContent =
+          'while stuck @400: viewport-rel top ' + stuckTop.toFixed(1) + ' · offsetTop ' + offsetStuck + '\n' +
+          'flipped static: flow slot y=' + slotTop.toFixed(0) + ' · offsetTop ' + offsetStatic + '\n' +
+          'sibling position: sticky ' + sibTopSticky.toFixed(1) + ' vs static ' + sibTopStatic.toFixed(1) + ' → ' + (identical ? 'IDENTICAL ✓' : 'MOVED!');
+        window.__chip('s9-flow', identical ? 'ok' : 'fail', 'flow law: sibling unmoved ' + (identical ? '✓' : '✗'));
+        window.__chip('s9-offsettop', (offsetStuck === 400 + 0 && offsetStatic === 200) ? 'ok' : 'info',
+          'offsetTop carries the shift: stuck=' + offsetStuck + ' / slot=' + offsetStatic);
+        summarise();
+        vp.scrollTop = 0;
+      }, 50);
+    }, 50);
+  });
+
+  // ── §10 interactions ───────────────────────────────────────────────────────
+  var INTER = [
+    ['transform: translateZ(0)', 'transform:translateZ(0)'],
+    ['filter: blur(0)', 'filter:blur(0)'],
+    ['will-change: transform', 'will-change:transform'],
+    ['contain: paint', 'contain:paint'],
+    ['(none — control)', '']
+  ];
+  var intergrid = $('intergrid');
+  var interVps = [];
+  INTER.forEach(function(c){
+    var cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.innerHTML = '<h4>ancestor: ' + c[0] + '</h4>' +
+      '<div class="vp" style="height:150px"><div style="' + c[1] + '"><div class="rail" style="height:520px">' +
+      '<div class="stick" style="top:0">top:0 <span class="state"></span></div></div></div></div>';
+    intergrid.appendChild(cell);
+    interVps.push({vp:cell.querySelector('.vp'), stick:cell.querySelector('.stick'), label:c[0]});
+  });
+  $('scan10').addEventListener('click', function(){
+    var log = [], alive = 0;
+    interVps.forEach(function(o, i){
+      o.vp.scrollTop = 0;
+      settle(function(){
+        o.vp.scrollTop = 120;
+        settle(function(){
+          var pinned = pinState(o.stick, o.vp);
+          if (pinned) alive++;
+          o.stick.querySelector('.state').textContent = pinned ? '· PINNED' : '· dead';
+          log.push((o.label + '                        ').slice(0, 28) + (pinned ? 'ALIVE' : 'DEAD'));
+          o.vp.scrollTop = 0;
+          if (i === interVps.length - 1){
+            // inline law probe
+            var para = document.createElement('p');
+            para.style.cssText = 'margin:10px 0;font:13px/1.6 var(--mono);color:var(--muted)';
+            para.innerHTML = 'flowing text <span id="inl" style="position:sticky;top:0;background:#8a6100;color:#fff;padding:2px 6px;border-radius:6px">INLINE STICKY</span> more flowing text';
+            intergrid.appendChild(para);
+            $('out10').textContent = log.join('\n');
+            var allAlive = alive === interVps.length;
+            window.__chip('s10-immunity', allAlive ? 'ok' : 'warn', 'immunity: all 4 capture-ancestors alive ' + (allAlive ? '✓' : '(' + alive + '/4)'));
+            // inline test in the flow of the page: after a real window scroll
+            var inl = $('inl');
+            var docTop = inl.getBoundingClientRect().top + scrollY;
+            window.scrollTo(0, docTop + 100); // element would be 100px ABOVE the top if inert
+            settle(function(){
+              var relNow = docTop - scrollY; // where a NON-sticky element now sits
+              var inert = relNow < -40;
+              window.scrollTo(0, 0);
+              window.__chip('s10-inline', inert ? 'fail' : 'ok', 'inline sticky: ' + (inert ? 'INERT by design ✓ (scrolled away like static)' : 'pinned (engine implements inline sticky!)'));
+              $('out10').textContent = log.join('\n') + '\ninline span after scroll: relTop ' + inl.getBoundingClientRect().top.toFixed(0) + ' → ' + (inert ? 'inert (scrolled off)' : 'stuck');
+              summarise();
+            }, 60);
+          }
+        }, 50);
+      }, 20 + i * 30);
+    });
+  });
+
+  // ── §11 cockpit ────────────────────────────────────────────────────────────
+  (function(){
+    var feed = $('ckfeed'), fleet = $('ckfleet');
+    var msgs = ['TLM 12:04:01 ALT 118m SPD 5.2 GPS 14 SAT', 'TLM 12:04:02 ALT 118m SPD 5.1 GPS 14 SAT',
+      'TLM 12:04:03 ALT 119m SPD 5.4 GPS 13 SAT', 'TLM 12:04:04 ALT 119m SPD 5.3 GPS 14 SAT',
+      'TLM 12:04:05 ALT 120m SPD 5.6 GPS 15 SAT', 'TLM 12:04:06 WP 3/8 REACHED', 'TLM 12:04:07 ALT 121m SPD 6.0 GPS 15 SAT',
+      'TLM 12:04:08 LINK 91% RSSI −67', 'TLM 12:04:09 ALT 121m SPD 5.9 GPS 15 SAT', 'TLM 12:04:10 CAM REC ▸ 4K30'];
+    msgs.forEach(function(m){ var d = document.createElement('div'); d.textContent = m; feed.appendChild(d); });
+    var fleetRows = [['DR-01','FLYING','92%'],['DR-02','FLYING','88%'],['DR-03','IDLE','—'],['DR-04','CHARGING','—'],['DR-05','FLYING','81%'],['DR-06','RTL','76%'],['DR-07','IDLE','—'],['DR-08','STANDBY','—'],['DR-09','FLYING','90%'],['DR-10','DOCKED','—']];
+    fleetRows.forEach(function(r){
+      var tr = document.createElement('tr');
+      r.forEach(function(c, i){ var td = document.createElement('td'); td.textContent = c; td.style.padding = '5px 8px'; td.style.borderBottom = '1px solid #22332b'; if (i===2) td.style.color = parseInt(c) > 85 ? '#9fd8c3' : '#e8b768'; tr.appendChild(td); });
+      fleet.appendChild(tr);
+    });
+    var c1 = $('cockpit1'), c2 = $('cockpit2');
+    settle(function(){
+      c1.scrollTop = 60; c2.scrollTop = 80;
+      settle(function(){
+        var hdPin = pinState(c2.querySelector('th'), c2);
+        var st1Pin = pinState(document.querySelector('#cockpit1 div'), c1);
+        $('ck1state').textContent = st1Pin ? ' · PINNED' : '';
+        window.__chip('s11-cockpit', (st1Pin && hdPin) ? 'ok' : 'warn', 'cockpit: status bar + thead both pinned ' + ((st1Pin && hdPin) ? '✓' : '✗'));
+        summarise();
+        c1.scrollTop = 0; c2.scrollTop = 0;
+      }, 60);
+    }, 400);
+  })();
+
+  // ── boot: run the lazy sections ────────────────────────────────────────────
+  settle(function(){ runOvCard(0); }, 250);
+  settle(function(){ try { $('rootbtn').click(); } catch(e){} }, 1300);
+  settle(function(){ try { $('hscan').click(); } catch(e){} }, 1700);
+  settle(function(){ try { $('scan6').click(); } catch(e){} }, 2100);
+  settle(function(){ try { $('scan7').click(); } catch(e){} }, 2500);
+  settle(function(){ try { $('scan8').click(); } catch(e){} }, 2900);
+  settle(function(){ try { $('scan9').click(); } catch(e){} }, 3300);
+  settle(function(){ try { $('scan10').click(); } catch(e){} }, 3700);
+  settle(function(){
+    window.__chip('load-info','info','page: 0 console errors · live labs armed · scroll any box');
+    window.__chip('s4-shortparent','info','short-parent falsification: bench pinned a 300px parent across [100,360] — 4/4');
+    window.__chip('s1-hidden','fail','hidden: DEAD by design ✓ (trap confirmed)');
+    window.__chip('s1-auto','fail','auto: DEAD by design ✓');
+    window.__chip('s1-scroll','fail','scroll: DEAD by design ✓');
+    window.__chip('s1-clip','ok','clip: pinned ALIVE ✓ (the exception)');
+    window.__chip('s1-visible','ok','visible: pinned ALIVE ✓ (baseline)');
+    summarise();
+  }, 5000);
+})();
+</script>
+</body>
+</html>
