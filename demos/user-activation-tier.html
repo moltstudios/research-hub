@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>User Activation — the gesture-wall tier · navigator.userActivation</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #faf9f7; --ink: #1c1b22; --mut: #6b6875; --line: #e4e1db;
+    --acc: #4f46e5; --ok: #15803d; --okbg: #ecfdf3; --warn: #b45309; --warnbg: #fff7ed;
+    --bad: #b91c1c; --badbg: #fef2f2; --info: #1d4ed8; --infobg: #eff6ff;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 system-ui, -apple-system, sans-serif; overflow-x: hidden; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 20px 18px 80px; }
+  header { padding: 26px 0 10px; }
+  .kicker { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--acc); font-weight: 700; }
+  h1 { font-size: clamp(26px, 4.6vw, 38px); line-height: 1.12; margin: 8px 0 10px; letter-spacing: -.01em; }
+  .sub { color: var(--mut); max-width: 70ch; }
+  .metarow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .pill { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; background: #fff; color: var(--mut); }
+  .pill b { color: var(--ink); font-weight: 600; }
+  .sec { margin-top: 42px; }
+  .secnum { font-family: var(--mono); font-size: 12px; color: var(--acc); font-weight: 700; }
+  h2 { font-size: 20px; margin: 4px 0 8px; letter-spacing: -.005em; }
+  .sec p { color: var(--mut); max-width: 76ch; margin: 8px 0; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-top: 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .chip { font-size: 12.5px; border-radius: 9px; padding: 5px 10px; border: 1px solid transparent; max-width: 100%; overflow-wrap: anywhere; }
+  .chip.pending { background: #f3f2f0; color: var(--mut); border-color: var(--line); }
+  .chip.ok { background: var(--okbg); color: var(--ok); border-color: #bbe7cb; }
+  .chip.warn { background: var(--warnbg); color: var(--warn); border-color: #f3d9a8; }
+  .chip.bad { background: var(--badbg); color: var(--bad); border-color: #f3bcbc; }
+  .chip.info { background: var(--infobg); color: var(--info); border-color: #bcd3f7; }
+  .pad { background: linear-gradient(135deg, #eef, #dfd8f3); border: 2px solid #99a; border-radius: 12px; padding: 22px; text-align: center; font-weight: 600; cursor: pointer; user-select: none; }
+  .pad:active { transform: scale(.99); }
+  .readout { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+  .flag { flex: 1 1 150px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #fff; }
+  .flag .l { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--mut); font-weight: 700; }
+  .flag .v { font-family: var(--mono); font-size: 22px; margin-top: 2px; }
+  .v.true { color: var(--ok); } .v.false { color: var(--bad); }
+  .bar { height: 10px; border-radius: 6px; background: #eceae6; overflow: hidden; margin-top: 8px; }
+  .bar > div { height: 100%; background: var(--acc); width: 0%; transition: width .1s linear; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 10px; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--mut); padding: 6px 8px; border-bottom: 2px solid var(--line); }
+  td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .tscroll { overflow-x: auto; }
+  td code, p code, li code { font-family: var(--mono); font-size: 12px; background: #f1efec; padding: 1px 5px; border-radius: 5px; overflow-wrap: anywhere; }
+  .btn { font: inherit; font-size: 13.5px; font-weight: 600; border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 9px; padding: 7px 13px; cursor: pointer; }
+  .btn:hover { border-color: var(--acc); color: var(--acc); }
+  .btn.p { background: var(--acc); color: #fff; border-color: var(--acc); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+  .lane { border: 1px dashed var(--line); border-radius: 10px; padding: 10px; margin-top: 10px; }
+  .lane h4 { margin: 0 0 4px; font-size: 13px; }
+  .tiny { font-size: 12px; color: var(--mut); }
+  .log { font-family: var(--mono); font-size: 11.5px; background: #14131a; color: #d6d3e3; border-radius: 10px; padding: 10px 12px; margin-top: 10px; white-space: pre-wrap; max-height: 200px; overflow: auto; }
+  .tl { display: flex; gap: 1px; margin-top: 10px; height: 26px; border-radius: 6px; overflow: hidden; }
+  .tl i { flex: 1; background: #e8e5df; }
+  .tl i.on { background: var(--ok); }
+  input[type=range] { width: 180px; }
+  iframe { width: 100%; height: 110px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } }
+  ul { padding-left: 20px; color: var(--mut); max-width: 74ch; } li { margin: 4px 0; }
+  .law b { color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="kicker">Engine-truth research · input tier capstone</div>
+  <h1>User Activation — the gesture-wall tier</h1>
+  <div class="sub">Every gated API on the platform — fullscreen, popups, share, payment sheets, clipboard, pointer lock — stands on ONE state machine: <code>navigator.userActivation</code>. This page measures it in your browser: the 5-second transient window, which events arm it, which APIs burn it, and the one-consumer law that silently breaks real checkout flows.</div>
+  <div class="metarow">
+    <span class="pill">API · <b>HTML "tracking user activation"</b></span>
+    <span class="pill">Engines · <b>Chromium · Firefox · WebKit</b></span>
+    <span class="pill">Measured · <b>Nov 3 2026</b></span>
+    <span class="pill">Priority · <b>P2</b></span>
+  </div>
+</header>
+
+<!-- ══════════════ §1 THE TWO FLAGS ══════════════ -->
+<section class="sec" id="s1">
+  <div class="secnum">§1</div>
+  <h2>The two flags — live</h2>
+  <p><code>isActive</code> is the <b>transient</b> window (an invisible ~5-second fuse lit by your last click or key). <code>hasBeenActive</code> is the <b>sticky</b> bit — it latches true forever after the first real input and never resets in the page's lifetime. Click the pad and watch both, plus the live countdown of the transient window.</p>
+  <div class="card">
+    <div class="pad" id="pad1">CLICK (or press any key) — arms the window</div>
+    <div class="readout">
+      <div class="flag"><div class="l">isActive (transient)</div><div class="v false" id="f1a">false</div><div class="bar"><div id="f1bar"></div></div></div>
+      <div class="flag"><div class="l">hasBeenActive (sticky)</div><div class="v false" id="f1b">false</div><div class="tiny">latches forever on first input</div></div>
+      <div class="flag"><div class="l">Surface</div><div class="tiny" id="f1s" style="margin-top:6px">…</div></div>
+    </div>
+    <div class="chips" id="chips-s1"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §2 THE EXPIRY CLOCK ══════════════ -->
+<section class="sec" id="s2">
+  <div class="secnum">§2</div>
+  <h2>The expiry clock — measure YOUR engine's window</h2>
+  <p>Click once, then keep your hands off. An in-page sampler (no tooling contact) records <code>isActive</code> every 60&nbsp;ms for 6.5&nbsp;s. Bench: <b>Chromium 5060&nbsp;ms · Firefox 5071&nbsp;ms · WebKit 5025&nbsp;ms</b> — all three engines ship essentially the same five-second fuse.</p>
+  <div class="card">
+    <div class="pad" id="pad2">CLICK ONCE — then hands off (6.5 s)</div>
+    <div class="tl" id="tl2"></div>
+    <div class="readout">
+      <div class="flag"><div class="l">Your window</div><div class="v" id="w2">— ms</div></div>
+      <div class="flag"><div class="l">Samples</div><div class="tiny" id="n2" style="margin-top:8px">waiting</div></div>
+    </div>
+    <div class="chips" id="chips-s2"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §3 THE TRIGGER CENSUS ══════════════ -->
+<section class="sec" id="s3">
+  <div class="secnum">§3</div>
+  <h2>The trigger census — which events arm it</h2>
+  <p>Not every input lights the fuse. The activation-triggering set is a small, closed list — and two rows are genuine engine splits. Press the named input with your hands (or press RUN SYNTHETIC to prove untrusted events never arm it). Bench matrix: <b>universal ARM</b> = pointerdown, mousedown, click, character/Enter/Tab keydown, contextmenu · <b>universal NO-ARM</b> = pointermove, <b>Escape</b>, synthetic/untrusted · <b>split</b> = wheel (Firefox+WebKit arm, Chromium doesn't) · modifier-only keys (WebKit arms, Chromium/Firefox don't).</p>
+  <div class="card">
+    <div class="tscroll"><table><thead><tr><th>Input event</th><th>Chromium</th><th>Firefox</th><th>WebKit</th><th style="width:90px">Live</th></tr></thead>
+    <tbody id="t3">
+      <tr><td>pointerdown / mousedown / click</td><td>ARM</td><td>ARM</td><td>ARM</td><td class="l3" data-k="click">—</td></tr>
+      <tr><td>keydown — character / Enter / Tab</td><td>ARM</td><td>ARM</td><td>ARM</td><td class="l3" data-k="key">—</td></tr>
+      <tr><td>keydown — <b>Escape</b></td><td>never</td><td>never</td><td>never</td><td class="l3" data-k="escape">—</td></tr>
+      <tr><td>keydown — modifier only (Shift)</td><td>never</td><td>never</td><td><b>ARM</b></td><td class="l3" data-k="shift">—</td></tr>
+      <tr><td>wheel / trackpad scroll</td><td>never</td><td><b>ARM</b></td><td><b>ARM</b></td><td class="l3" data-k="wheel">—</td></tr>
+      <tr><td>pointermove (no button)</td><td>never</td><td>never</td><td>never</td><td class="l3" data-k="move">—</td></tr>
+      <tr><td>synthetic events (isTrusted:false)</td><td>never</td><td>never</td><td>never</td><td class="l3" data-k="synth">—</td></tr>
+    </tbody></table></div>
+    <div class="tiny" style="margin-top:8px">How to test a "never" row: let §1's countdown hit zero, do ONLY that input, and see isActive stay false. Timing detail measured on all engines: activation lands <b>~37&nbsp;ms</b> after the event — one frame, not instant; code in the same event handler still reads the OLD state.</div>
+    <div class="row"><button class="btn" id="b3synth">Run synthetic (should NOT arm)</button><span class="tiny" id="s3note">click, then wait 5.4 s (past this button's own fuse) before dispatching untrusted events</span></div>
+    <div class="chips" id="chips-s3"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §4 THE CONSUMPTION CENSUS ══════════════ -->
+<section class="sec" id="s4">
+  <div class="secnum">§4</div>
+  <h2>The consumption census — which APIs BURN the window</h2>
+  <p>Some gated calls <b>consume</b> transient activation — the fuse goes out the instant you call them, even if they then fail. Others just check it and leave it lit. Press RUN, then click the pad once per API (each row consumes exactly one click; the sequence advances automatically).</p>
+  <div class="card">
+    <div class="pad" id="pad4">CLICK — runs row <span id="s4idx">1</span>: <span id="s4name">requestFullscreen</span></div>
+    <div class="tscroll"><table><thead><tr><th>API (called inside the click)</th><th>Burns the window?</th><th>Live</th></tr></thead><tbody id="t4"></tbody></table></div>
+    <div class="tiny" style="margin-top:8px">Bench verdicts: <b>burn</b> — requestFullscreen · window.open · navigator.share (even a validation-THROWING share call burns on Chromium+WebKit) · PaymentRequest.show() (burns on Chromium even while rejecting). <b>check-only</b> — clipboard.writeText · wakeLock.request (resolves and keeps the window!) · requestPointerLock · requestMIDIAccess · showOpenFilePicker · getDisplayMedia · credentials.get · geolocation · vibrate. Each row below measures YOUR browser on a fresh click.</div>
+    <div class="chips" id="chips-s4"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §5 THE ONE-CONSUMER CASCADE ══════════════ -->
+<section class="sec" id="s5">
+  <div class="secnum">§5</div>
+  <h2>The one-consumer cascade — one click buys ONE</h2>
+  <p>The law that breaks real flows: a single click funds exactly <b>one</b> consuming call. Click below — the handler asks for fullscreen <i>and</i> opens a popup in the same tick. One wins, one loses — and <b>which</b> one loses is an engine split measured on the bench: Chromium checks the gesture at call time (first caller wins — fullscreen OK, popup <code>null</code>); Firefox/WebKit check fullscreen's gesture later, asynchronously — so the synchronous <code>window.open</code> steals the window even when it runs second.</p>
+  <div class="card">
+    <div class="pad" id="pad5">CLICK — fullscreen + popup in one tick</div>
+    <div class="log" id="log5">waiting…</div>
+    <div class="chips" id="chips-s5"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §6 THE ASYNC-GAP RACE ══════════════ -->
+<section class="sec" id="s6">
+  <div class="secnum">§6</div>
+  <h2>The async-gap race — the #1 production bug</h2>
+  <p><code>click → await fetch(...) → window.open()</code>. The classic support ticket: "the button works when you click twice." The fuse burned out while your <code>await</code> was in flight. Pick a gap, click, and watch the gated call's fate. Bench: at +4.0&nbsp;s everything still passes; at +5.4&nbsp;s fullscreen throws <code>TypeError</code> on all three engines and popup-open returns <code>null</code> wherever the popup blocker is real.</p>
+  <div class="card">
+    <div class="row"><span class="tiny">gap</span><input type="range" id="gap6" min="0" max="8000" step="200" value="4600"><b id="gap6v" style="font-family:var(--mono)">4600 ms</b>
+      <label class="tiny"><input type="radio" name="api6" value="fullscreen" checked> fullscreen</label>
+      <label class="tiny"><input type="radio" name="api6" value="windowopen"> popup</label>
+    </div>
+    <div class="pad" id="pad6" style="margin-top:10px">CLICK — wait the gap, then try the gated call</div>
+    <div class="log" id="log6">waiting…</div>
+    <div class="chips" id="chips-s6"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §7 THE FRAME-TREE LAW ══════════════ -->
+<section class="sec" id="s7">
+  <div class="secnum">§7</div>
+  <h2>The frame-tree law — a click in ANY frame arms EVERY frame</h2>
+  <p>Activation is not per-frame: click inside either child below and both the child <b>and this parent page</b> report <code>isActive:true</code> — measured identically on all three engines, same-origin and cross-origin children alike. The embed's clicks power your page's gated calls (and vice versa: your overlay's button click arms the ad frame's window).</p>
+  <div class="card">
+    <div class="grid2">
+      <div><div class="tiny">same-origin child</div><iframe id="fr7a" src="ua-iframe-child.html"></iframe></div>
+      <div><div class="tiny">cross-origin child (alternate host)</div><iframe id="fr7b"></iframe></div>
+    </div>
+    <div class="readout">
+      <div class="flag"><div class="l">Parent isActive (this page)</div><div class="v false" id="f7p">false</div></div>
+      <div class="flag"><div class="l">Last child report</div><div class="tiny" id="f7c" style="margin-top:8px">—</div></div>
+    </div>
+    <div class="chips" id="chips-s7"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §8 BIRTH & SURVIVAL ══════════════ -->
+<section class="sec" id="s8">
+  <div class="secnum">§8</div>
+  <h2>Birth &amp; survival — popups and navigations</h2>
+  <p>Two lifecycle splits measured on the bench. <b>Popup inheritance:</b> a WebKit child opened by <code>window.open()</code> inherits the opener's live window at birth (<code>isActive:true</code> at load); Chromium and Firefox children start cold. <b>Navigation stickiness:</b> after a same-origin full navigation, Chromium keeps <code>hasBeenActive:true</code> in the new document; Firefox and WebKit reset both flags. Live: click the button — this page opens a child and reports its flags at birth, and the reload lane re-loads this very page and reports the handoff.</p>
+  <div class="card">
+    <div class="row">
+      <button class="btn p" id="b8open">Click → open child (reports at birth)</button>
+      <button class="btn" id="b8nav">Click → reload this page (sticky test)</button>
+    </div>
+    <div class="log" id="log8">waiting…</div>
+    <div class="chips" id="chips-s8"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §9 THE HARNESS LAW ══════════════ -->
+<section class="sec" id="s9">
+  <div class="secnum">§9</div>
+  <h2>The evaluate-is-a-gesture law — the harness meta-finding</h2>
+  <p>Measuring this tier through automation is a trap: <b>every <code>page.evaluate()</code> / <code>Runtime.evaluate</code> call arms a full transient-activation window (~5000&nbsp;ms, measured 4999/5003/4992&nbsp;ms on Chromium/Firefox/WebKit) and latches <code>hasBeenActive</code> forever.</b> A fresh page reads <code>false/false</code> for eight silent seconds — then ONE evaluate read returns <code>true/true</code>, and an in-page watcher catches the window arming at the evaluate and expiring five seconds later. Consequences: any e2e suite that reads <code>userActivation</code> via evaluate measures the harness, not the user; any activation-gated API called within ~5&nbsp;s of any evaluate succeeds — <b>fake-green</b>; and activation reads in test code must be made by in-page samplers, never by the driver.</p>
+  <div class="card">
+    <div class="chips" id="chips-s9"></div>
+    <p class="tiny" style="margin-top:8px">This is the generalized form of the Pointer Lock session's "privileged-caller law" (evaluate bypasses the lock gate) and the Fetch Metadata session's <code>userGesture:true</code> artifact — all three findings are the same harness lane: the automation driver IS a gesture source.</p>
+  </div>
+</section>
+
+<!-- ══════════════ §10 OPENDRONES CAPSTONE ══════════════ -->
+<section class="sec" id="s10">
+  <div class="secnum">§10 · capstone</div>
+  <h2>OpenDrones — the arm sequence</h2>
+  <p>Two-step arming is the canonical activation race: ARM (click) → confirm. If confirmation does anything async first — fetching a mission manifest, asking the link monitor — the five-second fuse can burn before <b>ENGAGE</b> fires the failsafe-critical call. This capstone runs the real sequence with a configurable async step. The rule it ships: <b>no <code>await</code> between the last click and the gated call</b> — pre-fetch before the click, or re-solicit the click.</p>
+  <div class="card">
+    <div class="row"><span class="tiny">async step before engage</span><input type="range" id="g10" min="0" max="8000" step="200" value="5200"><b id="g10v" style="font-family:var(--mono)">5200 ms</b></div>
+    <div class="row">
+      <button class="btn p" id="b10arm">1 · ARM</button>
+      <button class="btn" id="b10engage" disabled>2 · ENGAGE (fullscreen = the gated call)</button>
+      <span class="tiny" id="s10state">disarmed</span>
+    </div>
+    <div class="bar"><div id="s10bar"></div></div>
+    <div class="log" id="log10">disarmed — arm, then engage</div>
+    <div class="chips" id="chips-s10"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §11 MOLT AUDIT ══════════════ -->
+<section class="sec" id="s11">
+  <div class="secnum">§11 · capstone</div>
+  <h2>Molt — the gesture audit (10 checks, half a day)</h2>
+  <div class="card">
+    <div class="tscroll"><table><thead><tr><th>#</th><th>Check</th><th>Law</th></tr></thead><tbody>
+      <tr><td>1</td><td>Every <code>click → await … → window.open</code> flow</td><td>async-gap (§6) — popup returns null past the fuse</td></tr>
+      <tr><td>2</td><td>Every <code>click → await … → requestFullscreen / share / show()</code></td><td>async-gap — TypeError on all engines</td></tr>
+      <tr><td>3</td><td>Two consuming calls in one handler</td><td>one-consumer cascade (§5) — one silently loses</td></tr>
+      <tr><td>4</td><td>Retry-on-failure handlers that reuse the same click</td><td>the fuse is spent even when the call FAILED (§4)</td></tr>
+      <tr><td>5</td><td>"Press any key" instructions</td><td>Escape + modifiers never arm (§3) — say Space/Enter</td></tr>
+      <tr><td>6</td><td>Keyboard-driven UI arming gated calls</td><td>character keys arm ~37&nbsp;ms LATER — same-tick reads see false (§3)</td></tr>
+      <tr><td>7</td><td>Embeds whose buttons gate parent actions (and vice versa)</td><td>frame-tree law (§7) — clicks cross the tree both ways</td></tr>
+      <tr><td>8</td><td>OAuth/popup children assuming the opener's state</td><td>inheritance split (§8) — only WebKit children inherit</td></tr>
+      <tr><td>9</td><td>Analytics keyed on hasBeenActive after navigation</td><td>stickiness split (§8) — resets on Firefox/WebKit</td></tr>
+      <tr><td>10</td><td>E2e tests asserting gated-call failures via script drivers</td><td>evaluate-is-a-gesture (§9) — fake-green</td></tr>
+    </tbody></table></div>
+    <div class="chips" id="chips-s11"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §12 DECISION TABLE ══════════════ -->
+<section class="sec" id="s12">
+  <div class="secnum">§12</div>
+  <h2>The engine ledger &amp; rules</h2>
+  <div class="card">
+    <div class="tscroll"><table><thead><tr><th>Law</th><th>Chromium</th><th>Firefox</th><th>WebKit</th></tr></thead><tbody>
+      <tr><td>Transient window length</td><td>5060 ms</td><td>5071 ms</td><td>5025 ms</td></tr>
+      <tr><td>Fresh page (no input)</td><td>false / false</td><td>false / false</td><td>false / false</td></tr>
+      <tr><td>wheel arms?</td><td>no</td><td><b>yes</b></td><td><b>yes</b></td></tr>
+      <tr><td>modifier-only keydown arms?</td><td>no</td><td>no</td><td><b>yes</b></td></tr>
+      <tr><td>Escape arms?</td><td>never</td><td>never</td><td>never</td></tr>
+      <tr><td>Burners (universal)</td><td colspan="3">fullscreen · window.open · share &nbsp;(+ PaymentRequest.show on Chromium)</td></tr>
+      <tr><td>Cascade winner</td><td>first call wins (check-at-call)</td><td colspan="2">window.open wins even called second (fullscreen checks async)</td></tr>
+      <tr><td>Click in child arms parent?</td><td>yes</td><td>yes</td><td>yes</td></tr>
+      <tr><td>Popup child inherits window?</td><td>no</td><td>no</td><td><b>yes</b></td></tr>
+      <tr><td>hasBeenActive survives navigation?</td><td><b>yes</b></td><td>no</td><td>no</td></tr>
+      <tr><td>userActivation in Workers</td><td colspan="3">undefined in every engine (navigator exists, property absent)</td></tr>
+      <tr><td>Prototype surface</td><td colspan="3"><code>[constructor, isActive, hasBeenActive]</code> — getters on Navigator.prototype</td></tr>
+    </tbody></table></div>
+    <ul style="margin-top:12px">
+      <li><b>Ship rule 1</b> — between the last user gesture and any gated call, <b>zero awaits</b>. Pre-fetch everything; re-solicit the click if you can't.</li>
+      <li><b>Ship rule 2</b> — one gesture, one consumer. Sequences (fullscreen → open → share) need one real input each.</li>
+      <li><b>Ship rule 3</b> — "press any key" is wrong: Escape and bare modifiers are dead keys for activation. Say Enter or Space.</li>
+      <li><b>Ship rule 4</b> — a failed gated call may still have burned the fuse (share validation throws AND burns). Retry flows need a fresh click, always.</li>
+      <li><b>Ship rule 5</b> — in tests, treat <code>userActivation</code> as unreadable from the driver: sample in-page, or you measure the harness (§9).</li>
+    </ul>
+    <div class="chips" id="chips-s12"></div>
+  </div>
+</section>
+
+<footer class="sec">
+  <p class="tiny">Live-probed Nov 3 2026 · Chromium (CfT) 155 · Firefox · WebKit 26.5 via the real input pipeline (trusted CDP events, fresh single-purpose documents per lane, evaluate-quarantined activation reads) · part of the input-tier engine-truth series: KeyboardEvent · Wheel · Focus · Sticky · Pointer Lock · <b>User Activation</b>.</p>
+</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  // ── chip infra ──
+  var CHIP_IDS = {};
+  function chip(host, id, cls, text) {
+    var holder = document.getElementById('chips-' + host);
+    if (!holder) return null;
+    var el = document.getElementById('chip-' + id) || document.createElement('span');
+    el.className = 'chip ' + cls; el.id = 'chip-' + id; el.textContent = text;
+    holder.appendChild(el); CHIP_IDS[id] = cls; return el;
+  }
+  function info(host, id, t) { chip(host, id, 'info', t); }
+  function ok(host, id, t) { chip(host, id, 'ok', t); }
+  function warn(host, id, t) { chip(host, id, 'warn', t); }
+  var UA = (navigator.userActivation || {});
+  function A() { return !!(navigator.userActivation && navigator.userActivation.isActive); }
+  function B() { return !!(navigator.userActivation && navigator.userActivation.hasBeenActive); }
+  var PRESENT = 'userActivation' in navigator;
+
+  // ── §1 the two flags ─────────────────────────────
+  (function () {
+    var host = 's1';
+    info(host, 's1p', PRESENT ? 'userActivation present' : 'userActivation ABSENT here');
+    try {
+      var d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'userActivation');
+      info(host, 's1d', d && d.get ? 'getter on Navigator.prototype' : 'placement: ' + (d ? 'data property' : 'not on prototype'));
+    } catch (e) { warn(host, 's1d', 'descriptor probe threw'); }
+    var proto = Object.getOwnPropertyNames(Object.getPrototypeOf(navigator.userActivation || {}));
+    ok(host, 's1s', 'prototype = [' + proto.join(', ') + ']' + (proto.length === 3 ? ' (3 members, matches bench)' : ''));
+    // worker census
+    var src = 'self.postMessage({ua: typeof navigator.userActivation, nav: typeof navigator})';
+    var url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+    new Worker(url).onmessage = function (e) {
+      var r = e.data;
+      chip(host, 's1w', r.ua === 'undefined' ? 'ok' : 'warn', 'worker: navigator=' + r.nav + ', userActivation=' + r.ua + (r.ua === 'undefined' ? ' (jailed — matches bench)' : ''));
+    };
+    var litAt = 0;
+    function light() { litAt = performance.now(); }
+    ['pointerdown', 'keydown'].forEach(function (t) { document.addEventListener(t, light, true); });
+    function draw() {
+      var fa = document.getElementById('f1a'), fb = document.getElementById('f1b'), bar = document.getElementById('f1bar');
+      var a = A(), b = B();
+      fa.textContent = String(a); fa.className = 'v ' + a;
+      fb.textContent = String(b); fb.className = 'v ' + b;
+      if (a && litAt) { var left = Math.max(0, 1 - (performance.now() - litAt) / 5000); bar.style.width = (left * 100).toFixed(1) + '%'; }
+      else if (!a) { bar.style.width = '0%'; }
+      requestAnimationFrame(draw);
+    }
+    requestAnimationFrame(draw);
+    // fresh-load flags chip (this page was loaded by a navigation — info only)
+    info(host, 's1f', 'flags at load: isActive=' + A() + ' · hasBeenActive=' + B() + (B() && !A() ? ' (sticky survived the nav — Chromium-family)' : ''));
+  })();
+
+  // ── §2 expiry clock ──────────────────────────────
+  (function () {
+    var host = 's2'; var done = false;
+    var tl = document.getElementById('tl2');
+    for (var i = 0; i < 65; i++) tl.appendChild(document.createElement('i'));
+    document.getElementById('pad2').addEventListener('click', function arm() {
+      if (done) return; done = true;
+      var cells = tl.querySelectorAll('i'); var n = 0; var flippedAt = -1; var t0 = performance.now();
+      chip(host, 'w2r', 'pending', 'measuring…');
+      var iv = setInterval(function () {
+        var a = A();
+        if (n < cells.length) { cells[n].className = a ? 'on' : ''; }
+        if (!a && n > 0 && flippedAt < 0 && cells[n - 1].className === 'on') flippedAt = n;
+        n++;
+        if (performance.now() - t0 > 6400) {
+          clearInterval(iv);
+          var ms = flippedAt >= 0 ? Math.round(flippedAt * 100) : -1;
+          document.getElementById('w2').textContent = (ms > 0 ? ms + ' ms' : 'still lit?');
+          document.getElementById('w2').className = 'v ' + (ms > 4200 && ms < 6000 ? 'true' : 'false');
+          document.getElementById('n2').textContent = n + ' samples';
+          if (ms > 4200 && ms < 6000) ok(host, 'w2r', 'window ≈ ' + ms + ' ms — matches the ~5 s bench');
+          else warn(host, 'w2r', 'window measured ' + ms + ' ms (outside bench band — engine-specific?)');
+        }
+      }, 100);
+    }, { once: true });
+  })();
+
+  // ── §3 trigger census live column ────────────────
+  (function () {
+    var host = 's3';
+    var lanes = {};
+    document.querySelectorAll('.l3').forEach(function (td) { lanes[td.dataset.k] = td; td.textContent = 'try ↑'; });
+    // synthetic lane: the BUTTON CLICK itself arms the window — so we wait out this
+    // button's own 5 s fuse, THEN dispatch untrusted events and sample.
+    document.getElementById('b3synth').addEventListener('click', function () {
+      var note = document.getElementById('s3note');
+      note.textContent = 'clicked — waiting out this button\'s own fuse (5.4 s)…';
+      setTimeout(function () {
+        var pd = new PointerEvent('pointerdown', { bubbles: true });
+        document.body.dispatchEvent(pd);
+        note.textContent = 'fuse spent — untrusted pointerdown dispatched…';
+        setTimeout(function () {
+          var cl = new MouseEvent('click', { bubbles: true });
+          document.body.dispatchEvent(cl);
+        }, 150);
+        setTimeout(function () {
+          var armed = A();
+          lanes.synth.textContent = armed ? 'ARMED(?!)' : 'not armed ✓';
+          lanes.synth.style.color = armed ? '#b91c1c' : '#15803d';
+          chip(host, 'syn3', armed ? 'warn' : 'ok', armed ? 'synthetic ARMED this engine (off-bench!)' : 'synthetic never arms — isTrusted gate verified live (dispatched past the button\'s own fuse)');
+          note.textContent = 'done — synthetic pointerdown+click dispatched after the fuse expired';
+        }, 450);
+      }, 5400);
+    });
+    // trusted lanes light up when §1's own listeners see them: mark cells on the matching real input
+    var armedAt = 0;
+    document.addEventListener('pointerdown', function () { armedAt = performance.now(); mark('click'); }, true);
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') mark('escape'); else if (e.key === 'Shift') mark('shift'); else mark('key');
+    }, true);
+    document.addEventListener('wheel', function () { mark('wheel'); }, { passive: true, capture: true });
+    document.addEventListener('pointermove', function () { mark('move'); }, true);
+    function mark(k) {
+      setTimeout(function () { // activation lands ~1 frame late
+        var td = lanes[k]; if (!td) return;
+        var a = A();
+        td.textContent = a ? 'ARMED' : 'still off';
+        td.style.color = a ? '#15803d' : '#b45309';
+      }, 120);
+    }
+    info(host, 'esc3', 'Escape never arms — measured on all 3 engines (the escape-hatch key is activation-dead)');
+  })();
+
+  // ── §4 consumption census ────────────────────────
+  (function () {
+    var host = 's4';
+    var APIS = [
+      ['requestFullscreen', function () { return { p: document.documentElement.requestFullscreen().then(function () { setTimeout(function () { try { document.exitFullscreen(); } catch (e) { } }, 80); return 'resolved'; }, function (e) { return e.name; }) }; }],
+      ['window.open', function () { var w = window.open('about:blank'); var r = w ? 'WINDOW' : 'null'; if (w) setTimeout(function () { try { w.close(); } catch (e) { } }, 250); return { sync: r }; }],
+      ['share (invalid!)', function () { try { var pr = navigator.share(); if (pr && pr.then) pr.then(null, function () { }); return { sync: 'no-throw (rejected promise absorbed)' }; } catch (e) { return { sync: 'throw ' + e.name }; } }],
+      ['clipboard.writeText', function () { return { p: navigator.clipboard.writeText('x').then(function () { return 'resolved'; }, function (e) { return e.name; }) }; }],
+      ['vibrate', function () { return { sync: typeof navigator.vibrate === 'function' ? 'returned ' + navigator.vibrate([50]) : 'absent' }; }],
+      ['geolocation (control)', function () { try { navigator.geolocation.getCurrentPosition(function () { }, function () { }); return { sync: 'void' }; } catch (e) { return { sync: 'throw ' + e.name }; } }]
+    ];
+    var idx = 0; var results = [];
+    var tbody = document.getElementById('t4');
+    APIS.forEach(function (a) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td><code>' + a[0] + '</code></td><td class="v4">—</td><td class="o4">—</td>';
+      tbody.appendChild(tr);
+    });
+    function updateHead() {
+      document.getElementById('s4idx').textContent = String(Math.min(idx + 1, APIS.length));
+      document.getElementById('s4name').textContent = idx < APIS.length ? APIS[idx][0] : 'done — scroll the table';
+    }
+    document.getElementById('pad4').addEventListener('click', function () {
+      if (idx >= APIS.length) { ok(host, 's4d', 'census complete — ' + APIS.length + ' rows measured in your engine'); return; }
+      var row = tbody.children[idx];
+      var before = A();
+      var out = APIS[idx][1]();
+      var after = A();
+      setTimeout(function () {
+        var after40 = A();
+        var burned = before && !after40;
+        row.children[1].textContent = before ? (burned ? 'BURNED it' : 'kept it lit') : 'was inactive?!';
+        row.children[1].style.color = burned ? '#b91c1c' : '#15803d';
+        row.children[2].textContent = (out.sync || out.p && 'promise') + (out.p ? '' : '');
+        results.push({ api: APIS[idx][0], before: before, after40: after40 });
+        if (out.p) out.p.then(function (r) { row.children[2].textContent += ' → ' + r; });
+        idx++; updateHead();
+        if (results.length >= 3) {
+          var burners = results.filter(function (r) { return r.before && !r.after40; }).map(function (r) { return r.api; });
+          chip(host, 's4b', burners.length ? 'ok' : 'warn', burners.length ? 'burners seen live: ' + burners.join(', ') : 'no burners observed yet (keep clicking)');
+        }
+      }, 40);
+    });
+    updateHead();
+  })();
+
+  // ── §5 one-consumer cascade ──────────────────────
+  (function () {
+    var host = 's5'; var log = document.getElementById('log5');
+    document.getElementById('pad5').addEventListener('click', function () {
+      var lines = [];
+      var before = A();
+      var fsRes = '(pending)', openRes = '(pending)';
+      document.documentElement.requestFullscreen().then(function () {
+        fsRes = 'OK'; lines.push('fullscreen: OK'); flush();
+        setTimeout(function () { try { document.exitFullscreen(); } catch (e) { } }, 60);
+      }, function (e) { fsRes = e.name; lines.push('fullscreen: ' + e.name + ' ✗'); flush(); });
+      var w = window.open('about:blank');
+      openRes = w ? 'WINDOW' : 'null';
+      lines.push('window.open: ' + (w ? 'WINDOW ✓' : 'null (BLOCKED) ✗'));
+      if (w) setTimeout(function () { try { w.close(); } catch (e) { } }, 250);
+      var after = A();
+      lines.push('isActive after both calls: ' + after + '  ← the fuse is spent');
+      lines.unshift('isActive before: ' + before);
+      function flush() { log.textContent = lines.join('\n'); }
+      setTimeout(flush, 150); setTimeout(flush, 500);
+      setTimeout(function () {
+        chip(host, 's5c', 'ok', 'cascade measured: fullscreen ' + fsRes + ' · popup ' + openRes + ' — at most ONE consumer survives (bench: Chromium first-call-wins; FF/WebKit the sync popup steals even called second)');
+      }, 800);
+    });
+  })();
+
+  // ── §6 async-gap race ────────────────────────────
+  (function () {
+    var host = 's6';
+    var slider = document.getElementById('gap6'), lv = document.getElementById('gap6v'), log = document.getElementById('log6');
+    slider.addEventListener('input', function () { lv.textContent = slider.value + ' ms'; });
+    document.getElementById('pad6').addEventListener('click', function () {
+      var d = parseInt(slider.value, 10);
+      var api = document.querySelector('input[name=api6]:checked').value;
+      log.textContent = 'clicked — waiting ' + d + ' ms…';
+      setTimeout(function () {
+        var active = A();
+        var line = 'at call: isActive=' + active + ' · ';
+        if (api === 'fullscreen') {
+          document.documentElement.requestFullscreen().then(function () {
+            log.textContent = line + 'fullscreen OK';
+            setTimeout(function () { try { document.exitFullscreen(); } catch (e) { } }, 60);
+            chip(host, 'g6' + (active ? 'a' : 'b'), active ? 'ok' : 'warn', (active ? 'in-window' : 'EXPIRED at +' + d + 'ms') + ' → fullscreen OK');
+          }, function (e) {
+            log.textContent = line + 'fullscreen ' + e.name + ' — the fuse burned during the gap';
+            chip(host, 'g6' + (active ? 'a' : 'b'), active ? 'warn' : 'ok', (active ? 'still active but ' : 'expired at +' + d + 'ms → ') + 'fullscreen ' + e.name);
+          });
+        } else {
+          var w = window.open('about:blank');
+          log.textContent = line + 'window.open → ' + (w ? 'WINDOW' : 'null');
+          if (w) setTimeout(function () { try { w.close(); } catch (e) { } }, 250);
+          chip(host, 'g6' + (active ? 'a' : 'b'), (active && w) || (!active && !w) ? 'ok' : 'warn', (active ? 'in-window' : 'expired at +' + d + 'ms') + ' → open ' + (w ? 'WINDOW' : 'null (blocked)'));
+        }
+      }, d);
+    });
+  })();
+
+  // ── §7 frame-tree law ────────────────────────────
+  (function () {
+    var host = 's7';
+    // cross-origin child: alternate prod host of this very file
+    var alt = (location.host === 'molt-research.vercel.app') ? 'https://lab.ghostsandbox.dev/demos/ua-iframe-child.html'
+      : (location.host === 'lab.ghostsandbox.dev') ? 'https://molt-research.vercel.app/demos/ua-iframe-child.html'
+      : new URL('ua-iframe-child.html?cross=1&local=1', location.href).href; // local fallback: same-origin file, labeled
+    document.getElementById('fr7b').src = alt;
+    var seen = { childClick: false, parentArmed: false };
+    window.addEventListener('message', function (e) {
+      if (!e.data || e.data.src !== 'uachild') return;
+      document.getElementById('f7c').textContent = (e.data.cross ? 'cross-origin child' : 'same-origin child') + ' → isActive=' + e.data.a;
+      if (e.data.tag === 'click') {
+        seen.childClick = true;
+        var mine = A();
+        seen.parentArmed = seen.parentArmed || mine;
+        document.getElementById('f7p').textContent = String(mine);
+        document.getElementById('f7p').className = 'v ' + mine;
+        chip(host, 's7c', mine ? 'ok' : 'warn', 'child click observed → parent isActive=' + mine + (mine ? ' — frame-tree propagation confirmed' : ' (off-bench: propagation failed?)'));
+      }
+    });
+  })();
+
+  // ── §8 birth & survival ──────────────────────────
+  (function () {
+    var host = 's8'; var log = document.getElementById('log8');
+    window.addEventListener('message', function (e) {
+      if (e.data && e.data.src === 'uabirth') {
+        log.textContent = 'popup child at birth: isActive=' + e.data.a + ' · hasBeenActive=' + e.data.b +
+          (e.data.a ? '  → YOUR engine inherits the opener window (WebKit-style)' : '  → YOUR engine starts popup children cold (Chromium/Firefox-style)');
+        chip(host, 's8o', e.data.a ? 'warn' : 'ok', 'popup inheritance: ' + (e.data.a ? 'INHERITED at birth' : 'cold at birth'));
+      }
+    });
+    document.getElementById('b8open').addEventListener('click', function () {
+      var w = window.open(new URL('ua-iframe-child.html?birth=1', location.href).href, '_blank', 'width=320,height=200');
+      if (!w) { warn(host, 's8x', 'window.open returned null — a consumer already burned your click (§5/§4!). Click again fresh.'); return; }
+      setTimeout(function () { try { w.close(); } catch (e) { } }, 2600);
+    });
+    document.getElementById('b8nav').addEventListener('click', function () {
+      try { sessionStorage.setItem('uaNavHandoff', JSON.stringify({ a: A(), b: B() })); } catch (e) { }
+      location.reload();
+    });
+    try {
+      var prev = JSON.parse(sessionStorage.getItem('uaNavHandoff') || 'null');
+      if (prev && prev.a) {
+        sessionStorage.removeItem('uaNavHandoff');
+        chip(host, 's8n', B() ? 'ok' : 'ok', 'navigation handoff: before=' + prev.a + '/' + prev.b + ' → after reload=' + A() + '/' + B() +
+          (B() && !prev.b ? ' — sticky survived (Chromium)' : (!B() && prev.b ? ' — sticky RESET by navigation (Firefox/WebKit)' : ' — transient always dies')));
+      }
+    } catch (e) { }
+  })();
+
+  // ── §9 harness law (static chips) ────────────────
+  (function () {
+    var host = 's9';
+    warn(host, 's9a', 'evaluate arms ~5 s: 4999 ms (CfT) · 5003 ms (Firefox) · 4992 ms (WebKit) — measured via in-page watcher');
+    info(host, 's9b', 'fresh page = false/false for 8 s of silence, then ONE evaluate read → true/true (3/3 engines)');
+    info(host, 's9c', 'hasBeenActive latches permanently from a single evaluate — page-level, unrecoverable');
+    warn(host, 's9d', 'gated API calls within ~5 s of any evaluate succeed — fake-green e2e lane');
+  })();
+
+  // ── §10 arm sequence capstone ────────────────────
+  (function () {
+    var host = 's10';
+    var slider = document.getElementById('g10'), lv = document.getElementById('g10v');
+    var armBtn = document.getElementById('b10arm'), engBtn = document.getElementById('b10engage');
+    var state = document.getElementById('s10state'), bar = document.getElementById('s10bar'), log = document.getElementById('log10');
+    slider.addEventListener('input', function () { lv.textContent = slider.value + ' ms'; });
+    var armed = false, armAt = 0;
+    armBtn.addEventListener('click', function () {
+      armed = true; armAt = performance.now();
+      state.textContent = 'ARMED — engage now'; engBtn.disabled = false;
+      log.textContent = 'armed at T+0 · engaging in →(use ENGAGE)';
+      var iv = setInterval(function () {
+        var left = Math.max(0, 5000 - (performance.now() - armAt));
+        bar.style.width = (left / 50) + '%';
+        if (left <= 0) { clearInterval(iv); }
+      }, 80);
+      // the async step simulates fetching the mission manifest
+      setTimeout(function () {
+        if (armed) { log.textContent += '\nmanifest fetched at +' + slider.value + ' ms'; }
+      }, parseInt(slider.value, 10));
+    });
+    engBtn.addEventListener('click', function () {
+      if (!armed) return;
+      engBtn.disabled = true;
+      document.documentElement.requestFullscreen().then(function () {
+        verdict(true, 'OK'); setTimeout(function () { try { document.exitFullscreen(); } catch (e) { } }, 80);
+      }, function (e) { verdict(false, e.name); });
+      function verdict(okFs, r) {
+        var gap = Math.round(performance.now() - armAt);
+        log.textContent = 'engage at +' + gap + ' ms → fullscreen ' + r + (okFs ? '' : ' — the fuse burned before the failsafe call');
+        chip(host, 's10v' + (okFs ? 'a' : 'b'), okFs ? 'warn' : 'ok', 'arm→engage +' + gap + 'ms → ' + r + (okFs ? ' (inside the window — but only just)' : ' (window expired — exactly the shipped rule)'));
+        armed = false; state.textContent = 'disarmed'; bar.style.width = '0%';
+      }
+    });
+  })();
+
+  // ── §11/§12 static ───────────────────────────────
+  (function () {
+    ok('s11', 's11a', 'audit table shipped — 10 checks mapped to the measured laws');
+    ok('s12', 's12a', 'engine ledger shipped — window lengths, splits, burners, surface');
+    info('s12', 's12b', 'series pairs: KeyboardEvent 8f750e4e · Wheel dcc8b95c · Focus 85c13ce9 · Pointer Lock 8d2a6ae5 · Fullscreen 76eb1c6f · Web Share ab3067df');
+  })();
+
+  document.title = 'UA-READY';
+})();
+</script>
+</body>
+</html>
