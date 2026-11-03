@@ -1,42 +1,52 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Pointer Lock iframe child</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pointer-lock tier — iframe child</title>
 <link rel="icon" href="data:,">
 <style>
-body{margin:0;font:13px/1.5 -apple-system,BlinkMacSystemFont,sans-serif;background:#eef2ff;color:#3730a3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:160px}
-button{font:600 13px/1.2 inherit;color:#fff;background:#4338ca;border:none;border-radius:8px;padding:9px 14px;cursor:pointer}
-#out{font-family:ui-monospace,monospace;font-size:11px;max-width:92%;overflow-wrap:anywhere}
+  :root{ --ok:#1c6b47; --fail:#a32b1c; --info:#2a5a8a; --mono:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.5 -apple-system,system-ui,sans-serif;background:#fff;padding:14px}
+  .lane{font:600 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:#6d675f;margin-bottom:8px}
+  button{font:600 13px/1 inherit;padding:9px 14px;border-radius:9px;border:1px solid #0e6b5c;background:#0e6b5c;color:#fff;cursor:pointer}
+  .out{font:12px/1.55 var(--mono);margin-top:10px;min-height:34px;white-space:pre-wrap;background:#f6f4f1;border-radius:8px;padding:8px 10px}
+  .ok{color:var(--ok)} .fail{color:var(--fail)}
 </style>
 </head>
 <body>
-<div>🔒 child pointer-lock booth</div>
-<button id="kid">Lock from inside iframe</button>
-<div id="out">idle</div>
+<div class="lane" id="lane">child</div>
+<button id="try">TRY LOCK (this document)</button>
+<div class="out" id="out">— not run —</div>
 <script>
-(function(){
-const q = new URLSearchParams(location.search);
-const tag = q.get('tag') || 'anon';
-const out = document.getElementById('out');
-let errEvent = false;
-document.addEventListener('pointerlockerror', () => { errEvent = true; });
-function post(m){ try { parent.postMessage(Object.assign({kind:'pl-child', tag}, m), '*'); } catch(e){} }
-document.getElementById('kid').addEventListener('click', async () => {
-  let msg = {clicked:true};
-  try {
-    const p = document.body.requestPointerLock();
-    if (p && p.then) await Promise.race([p.then(()=>{msg.result='resolved';}), p.catch(e=>{msg.result='rejected'; msg.name=e.name; msg.message=String(e.message).slice(0,120);}), new Promise(r=>setTimeout(()=>{msg.result='pending-timeout'; r();},2000))]);
-    else msg.result = 'no-promise';
-  } catch(e){ msg.result='sync-throw'; msg.name=e.name; msg.message=String(e.message).slice(0,120); }
-  await new Promise(r=>setTimeout(r,150));
-  msg.locked = document.pointerLockElement === document.body;
-  msg.errEvent = errEvent;
-  if (msg.locked){ document.exitPointerLock(); }
-  out.textContent = `${tag}: ${msg.result}${msg.name?':'+msg.name:''} locked=${msg.locked} errEvent=${errEvent}`;
-  post(msg);
-});
-post({kind:'pl-child', tag, loaded:true});
+(function () {
+  'use strict';
+  var q = new URLSearchParams(location.search).get('lane') || '?';
+  document.getElementById('lane').textContent = 'child · lane: ' + q + ' · origin ' + location.origin;
+  var out = document.getElementById('out');
+  document.addEventListener('pointerlockchange', function () {
+    var el = document.pointerLockElement;
+    out.innerHTML = el
+      ? '<span class="ok">LOCKED — pointerLockElement = ' + (el.id || el.nodeName) + '</span>'
+      : '<span class="ok">unlocked (pointerlockchange fired)</span>';
+    if (el) setTimeout(function () { document.exitPointerLock(); }, 1200);
+  });
+  document.addEventListener('pointerlockerror', function () {
+    out.innerHTML = '<span class="fail">pointerlockerror — BLOCKED in this frame</span>';
+  });
+  document.getElementById('try').addEventListener('click', function () {
+    var r;
+    try { r = document.body.requestPointerLock(); } catch (e) { out.innerHTML = '<span class="fail">THREW ' + e + '</span>'; return; }
+    var ret = (r === undefined) ? 'undefined (callback era)' : 'promise';
+    out.textContent = 'requested (ret=' + ret + ')…';
+    if (r && typeof r.then === 'function') {
+      r.then(function () {}, function (e) {
+        out.innerHTML = '<span class="fail">rejected ' + (e && e.name) + ': ' + (e && e.message || '') + '</span>';
+      });
+    }
+  });
+  window.__childReady = true;
 })();
 </script>
 </body>

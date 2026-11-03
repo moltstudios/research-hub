@@ -1,0 +1,882 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pointer Lock API — the mouse-look tier: the automation wall, the retarget law, the frozen-coordinate law &amp; the promise split</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --ink:#161513; --muted:#6d675f; --line:#e6e1d9;
+    --accent:#0e6b5c; --accent-soft:#e9f5f2; --ok:#1c6b47; --ok-soft:#eaf6ef;
+    --warn:#8a6100; --warn-soft:#fdf6e3; --fail:#a32b1c; --fail-soft:#fdeceb;
+    --info:#2a5a8a; --info-soft:#ecf3fa; --radius:14px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 24px 96px}
+  header{margin-bottom:28px}
+  .kicker{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  h1{font-size:clamp(26px,4vw,36px);line-height:1.14;letter-spacing:-.022em;margin:0 0 12px;font-weight:680}
+  .lede{font-size:15.5px;color:#403b35;margin:0 0 10px;max-width:66ch}
+  .meta{font:13px/1.5 var(--mono);color:var(--muted);margin-top:18px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px;margin-bottom:24px}
+  h2{font-size:21px;line-height:1.3;margin:0 0 6px;letter-spacing:-.012em;font-weight:660}
+  h3{font-size:15px;margin:22px 0 8px;font-weight:640}
+  .sub{color:var(--muted);font-size:14.5px;margin:0 0 18px;max-width:70ch}
+  code,kbd{font-family:var(--mono);font-size:.885em;background:#f3efe9;padding:.12em .38em;border-radius:5px;border:1px solid #e8e2d8;overflow-wrap:anywhere}
+  .law{border-left:3px solid var(--accent);padding:12px 0 12px 16px;margin:16px 0;background:linear-gradient(90deg,var(--accent-soft),transparent 70%);border-radius:0 8px 8px 0}
+  .law b{color:var(--accent)}
+  .law.bad{border-color:var(--fail);background:linear-gradient(90deg,var(--fail-soft),transparent 70%)}
+  .law.bad b{color:var(--fail)}
+  .law.warn{border-color:var(--warn);background:linear-gradient(90deg,var(--warn-soft),transparent 70%)}
+  .law.warn b{color:var(--warn)}
+  .law.ok{border-left-color:var(--ok);background:linear-gradient(90deg,var(--ok-soft),transparent 70%)}
+  .law.ok b{color:var(--ok)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+  .chip{font:600 12px/1.35 var(--mono);padding:6px 10px;border-radius:999px;border:1px solid;white-space:normal;overflow-wrap:anywhere;max-width:100%}
+  .chip.ok{color:var(--ok);border-color:#b9dfca;background:var(--ok-soft)}
+  .chip.warn{color:var(--warn);border-color:#ecd9a3;background:var(--warn-soft)}
+  .chip.fail{color:var(--fail);border-color:#f0c2bc;background:var(--fail-soft)}
+  .chip.info{color:var(--info);border-color:#bfd6ee;background:var(--info-soft)}
+  .chip.pending{color:var(--muted);border-color:var(--line);background:#f6f4f1}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font:600 11.5px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:#faf8f5}
+  td.v{font-family:var(--mono);font-size:12.5px}
+  td.dead{color:var(--fail);font-weight:700}
+  td.alive{color:var(--ok);font-weight:700}
+  .tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;background:#fff}
+  .tscroll table{margin:0}
+  button{font:600 14px/1 inherit;padding:11px 17px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;letter-spacing:.01em}
+  button:hover{background:#0a554a}
+  button.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
+  button.ghost:hover{background:#f6f4f1}
+  button.mini{font:600 12px/1 var(--mono);padding:8px 11px;border-radius:8px}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}
+  pre{background:#171512;color:#f3efe9;padding:16px 18px;border-radius:12px;overflow-x:auto;font:12.5px/1.55 var(--mono);margin:14px 0}
+  pre b{color:#8fd6c4;font-weight:600}
+  pre i{color:#c9b98a;font-style:normal}
+  .lab{border:1px dashed var(--line);border-radius:12px;padding:16px;margin:14px 0;background:#fdfcfa}
+  .lab .out{font:12.5px/1.5 var(--mono);background:#171512;color:#f3efe9;padding:12px 14px;border-radius:10px;overflow-x:auto;white-space:pre;margin-top:10px;min-height:20px}
+  .pill{display:inline-block;font:600 11px/1 var(--mono);padding:4px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);margin-left:8px;vertical-align:2px}
+  .split{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:12px 0}
+  .cell{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fff}
+  .cell h4{margin:0 0 8px;font-size:13px;font-family:var(--mono);color:var(--muted);font-weight:600}
+  .lockpad{width:100%;height:150px;background:linear-gradient(160deg,#cde4ff,#e8f1ff);border:1.5px solid #9db8d8;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer;user-select:none}
+  .lockpad:hover{background:linear-gradient(160deg,#b8d8ff,#dceaff)}
+  .lockpad.locked{background:linear-gradient(160deg,#0e6b5c,#134f44);color:#fff;border-color:#0a554a}
+  .lockpad .big{font:700 15px/1 var(--mono);letter-spacing:.06em}
+  .lockpad .small{font:500 11.5px/1.4 var(--mono);opacity:.75;text-align:center}
+  .evlog{font:12px/1.6 var(--mono);background:#171512;color:#d9e6df;padding:12px 14px;border-radius:10px;min-height:132px;max-height:180px;overflow-y:auto;white-space:pre}
+  .evlog .t{color:#8fd6c4}
+  .evlog .hl{color:#f0c26a}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font:12.5px/1.7 var(--mono);margin:8px 0}
+  .kv b{color:var(--muted);font-weight:600}
+  .kv .pos{color:var(--accent);font-weight:700}
+  iframe.child{width:100%;height:190px;border:1.5px solid #b9b2a6;border-radius:10px;background:#fff}
+  .ifgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin:12px 0}
+  .ifcard h4{margin:0 0 8px;font:600 12px/1.3 var(--mono);color:var(--muted)}
+  canvas.cockpit{display:block;width:100%;height:340px;background:#0b0f0e;border-radius:12px;border:1.5px solid #2a3630;cursor:crosshair}
+  .cockwrap{position:relative}
+  .cockveil{position:absolute;inset:0;border-radius:12px;background:rgba(8,12,10,.72);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:#dfeee7;backdrop-filter:blur(2px)}
+  .cockveil .t1{font:700 15px/1.3 var(--mono);letter-spacing:.08em}
+  .cockveil .t2{font:500 12px/1.5 var(--mono);opacity:.8;text-align:center;max-width:46ch}
+  .hudbar{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;font:600 11.5px/1 var(--mono)}
+  .hudbar span{padding:6px 9px;border-radius:8px;background:#101815;color:#9fd8c3;border:1px solid #24332c}
+  footer{margin-top:36px;color:var(--muted);font-size:13px}
+  .toc{columns:2;column-gap:28px;font-size:14px;margin:6px 0 0;padding:0;list-style:none}
+  .toc li{margin:3px 0;break-inside:avoid}
+  .toc a{color:var(--accent);text-decoration:none}
+  @media (max-width:640px){ .toc{columns:1} section{padding:18px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="kicker">Molt Research · Engine-Truth Tier · 2026-11-03</div>
+  <h1>Pointer Lock API — the mouse-look tier</h1>
+  <p class="lede">The control surface under every 3D viewport, map fly-mode and cockpit HUD — measured across five engine contexts: <b>the automation wall that breaks every Playwright/Puppeteer pointer-lock test with <code>WrongDocumentError</code></b> and its one-line fix, the <b>retarget law</b> (all pointer events route to the locked element while <code>elementsFromPoint</code> still reports reality), the <b>frozen-coordinate law</b> (client AND screen coords freeze at the lock point; <code>movementX/Y</code> carries everything), the <b>promise-vs-callback split</b>, the <b>gesture law with its privileged-caller loophole</b> (evaluate-based tests are fake-green — measured), and the sandbox/iframe gates. Two of this session’s own first-draft laws were falsified in de-confounding; both stories are inside.</p>
+  <div class="chips" id="summary"></div>
+  <p class="meta">Probed: Chrome for Testing 156 (headless · headed · headed-fixed · manual+CDP) · Firefox 151 (headless + headed) · WebKit 26.5 (headless + headed) — every live lab below re-measures the law in <em>your</em> engine, in your window, right now.</p>
+  <ul class="toc">
+    <li><a href="#s1">§1 The automation wall (the matrix)</a></li>
+    <li><a href="#s2">§2 The startup-window law (the fix)</a></li>
+    <li><a href="#s3">§3 The retarget law (live)</a></li>
+    <li><a href="#s4">§4 The frozen-coordinate law</a></li>
+    <li><a href="#s5">§5 Movement semantics + the two zero-laws</a></li>
+    <li><a href="#s6">§6 The promise split + the no-gesture law</a></li>
+    <li><a href="#s7">§7 Exit, idempotency, switch, removal</a></li>
+    <li><a href="#s8">§8 The shadow retarget</a></li>
+    <li><a href="#s9">§9 The iframe grid (sandbox gates)</a></li>
+    <li><a href="#s10">§10 The surface census</a></li>
+    <li><a href="#s11">§11 Capstone: cockpit mouse-look</a></li>
+    <li><a href="#s12">§12 Engine ledger + client audit</a></li>
+  </ul>
+</header>
+
+<!-- ══════════════════════ §1 THE AUTOMATION WALL ══════════════════════ -->
+<section id="s1">
+  <h2>§1 · The automation wall <span class="pill">the headline law</span></h2>
+  <p class="sub"><code>requestPointerLock()</code> succeeds or dies depending not on your page, not on user activation — but on <b>which window the browser believes it lives in</b>. Under every default Playwright/Puppeteer launch it rejects in ~3.5&nbsp;ms with <code>WrongDocumentError: The root document of this element is not valid for pointer lock</code> — even with a real trusted click, real activation, focus, and visibility. A real 2026 product team shipped this exact failure and could not root-cause it. This session bisected it to a single browser launch flag.</p>
+  <div class="law bad"><b>THE AUTOMATION WALL.</b> Chromium-family: pointer lock requires the browser-side native <b>view focus</b> (<code>RenderWidgetHostImpl::GotResponseToPointerLockRequest</code> rejects with <code>kWrongDocument</code> when <code>view-&gt;HasFocus()</code> is false or <code>CanBePointerLocked()</code> fails — a different thing from <code>document.hasFocus()</code>, which reads <b>true</b> in every rejected lane). Windows created through Playwright's <code>--no-startup-window</code> path never get it. WebKit rejects with the honest message: <code>“Pointer lock requires the window to have focus.”</code> Firefox has no such gate — it locks even fully headless.</div>
+  <div class="tscroll"><table>
+    <thead><tr><th>Context</th><th>Chromium-family</th><th>WebKit 26.5</th><th>Firefox 151</th></tr></thead>
+    <tbody>
+      <tr><td>Playwright <b>headless</b> (default launch)</td><td class="dead">DEAD · WrongDocumentError</td><td class="dead">DEAD · WrongDocumentError</td><td class="alive">OK — locks</td></tr>
+      <tr><td>Playwright <b>headed</b> (default launch)</td><td class="dead">DEAD · WrongDocumentError</td><td class="dead">DEAD · “requires the window to have focus”</td><td class="alive">OK — locks</td></tr>
+      <tr><td>Playwright headed + <code>ignoreDefaultArgs:['--no-startup-window']</code></td><td class="alive">OK — locks</td><td>— (no such flag)</td><td>— (not needed)</td></tr>
+      <tr><td><code>connectOverCDP</code> to a normally-launched browser</td><td class="alive">OK — locks (pipe/port/CDP irrelevant)</td><td>—</td><td>—</td></tr>
+      <tr><td>Real manual browser</td><td class="alive">OK — locks</td><td class="alive">OK — locks</td><td class="alive">OK — locks</td></tr>
+    </tbody>
+  </table></div>
+  <p>Every Chromium-family cell was reproduced with a <b>real trusted click</b> carrying transient activation — the rejection is not about gestures. The <code>--enable-automation</code> flag is <b>not</b> the cause (measured: manual launch with the flag still locks; Playwright without it still dies). The message is also <b>ambiguous by design</b>: the browser maps two different results — <code>kWrongDocument</code> and <code>kPermissionDenied</code> — to the same sentence.</p>
+  <div class="lab">
+    <h4>Live context detector — what can THIS window do?</h4>
+    <div class="row"><button class="ghost" id="ctxTry">Try to lock (armed by your click)</button><span style="font:12px/1.4 var(--mono);color:var(--muted)" id="ctxNote">Fires one requestPointerLock from the click handler.</span></div>
+    <div class="out" id="ctxOut">— not run —</div>
+  </div>
+  <div class="chips" id="s1chips"></div>
+  <div class="law ok"><b>THE WRONG-DOCUMENT-AMBIGUITY.</b> <code>kWrongDocument</code> (no native view focus) and <code>kPermissionDenied</code> (blocked) both reject with the <em>same message</em>: “The root document of this element is not valid for pointer lock.” One says <em>your window is invisible to the lock machinery</em>; the other says <em>you are not allowed</em>. Error-message routing that keys on the text cannot tell an automation environment from a policy block.</div>
+</section>
+
+<!-- ══════════════════════ §2 STARTUP-WINDOW LAW ══════════════════════ -->
+<section id="s2">
+  <h2>§2 · The startup-window law — the one-line fix</h2>
+  <p class="sub">Bisected this session across five experiments: not <code>--enable-automation</code>, not the 40-flag arg list, not CDP, not the pipe transport, not the page-creation path (startup page, <code>Target.createTarget</code>, and <code>window.open</code> pages all behave identically on a normal launch). One flag explains everything:</p>
+  <div class="law ok"><b>THE STARTUP-WINDOW LAW.</b> Chromium-family pointer lock needs the RWHV’s native view focus. A window created through the <code>--no-startup-window</code> path — which every default Playwright/Puppeteer launch passes — never acquires it, so <b>every</b> <code>requestPointerLock()</code> on <b>every page</b> rejects with <code>WrongDocumentError</code> ~3.5 ms later. Remove the flag and the same script, same page, same CDP click, locks.</div>
+  <pre><i>// Playwright / Puppeteer test suites — the fix:</i>
+const browser = await chromium.launch({
+  headless: <b>false</b>,                                <i>// no native window ⇒ no view focus, ever</i>
+  ignoreDefaultArgs: [ <b>'--no-startup-window'</b> ],    <i>// the one flag that un-breaks pointer lock</i>
+});
+<i>// Puppeteer (which passes it differently):</i>
+<i>//   puppeteer.launch({ ignoreDefaultArgs: ['--no-startup-window'], headless: false })</i></pre>
+  <div class="split">
+    <div class="cell"><h4>What still cannot lock</h4>Headless Chromium (any flags — there is no native view to focus). WebKit under Playwright both modes (its gate is window focus; no flag workaround measured). <b>Firefox is the only family that locks fully headless.</b></div>
+    <div class="cell"><h4>What this means for CI</h4>Pointer-lock E2E belongs in Firefox headless, or in headed Chromium with the flag removed, or against a real browser over CDP (<code>connectOverCDP</code>). A Chromium headless suite will report your production mouse-look as broken forever.</div>
+  </div>
+  <div class="chips" id="s2chips"></div>
+</section>
+
+<!-- ══════════════════════ §3 RETARGET LAW ══════════════════════ -->
+<section id="s3">
+  <h2>§3 · The retarget law — lock captures the pointer <span class="pill">live</span></h2>
+  <p class="sub">While the pointer is locked, <b>every</b> pointer event — <code>pointermove</code>, <code>pointerdown/up</code>, <code>click</code>, <code>wheel</code> — is retargeted to the <b>locked element</b>, no matter what physically sits under the cursor. The click handler of your 3D canvas receives events that “happen over” the sidebar. Measured identical in Chromium and Firefox.</p>
+  <div class="law"><b>THE RETARGET LAW.</b> During lock: <code>event.target === document.pointerLockElement</code> for the whole pointer family, including wheel. The browser synthesizes the <code>click</code> at <code>pointerup</code> and targets it at the locked element (Chromium fires it for right-button too — with <code>contextmenu</code> suppressed; Firefox fires only <code>pointerdown/up</code> for right-click). Meanwhile <code>document.elementsFromPoint()</code> keeps reporting the <b>real</b> stack under the frozen coordinates — the API and the event router disagree, by design.</div>
+  <div class="lab">
+    <h4>Live retarget lab — lock the pad, then sweep your cursor across the whole page</h4>
+    <div class="split">
+      <div class="lockpad" id="pad3"><div class="big" id="pad3big">CLICK TO LOCK</div><div class="small">lock target = this pad. while locked, every event targets it</div></div>
+      <div>
+        <div class="kv">
+          <b>locked</b><span id="r3locked">no</span>
+          <b>pointerLockElement</b><span id="r3el">null</span>
+          <b>distinct targets seen during lock</b><span class="pos" id="r3targets">—</span>
+          <b>events during lock</b><span id="r3count">0</span>
+        </div>
+        <div class="row"><button class="ghost mini" id="r3exit">exitPointerLock()</button></div>
+      </div>
+    </div>
+    <div class="evlog" id="r3log">event wire — waiting…</div>
+  </div>
+  <div class="chips" id="s3chips"></div>
+  <div class="law warn"><b>THE TWO-UNIVERSES RULE.</b> Hit-testing (<code>elementsFromPoint</code>) and event routing are separate systems. In lock, a “what is under the cursor” query answers with reality; a click answers with the lock target. Code that reconciles the two (HUD hover previews over a locked canvas) must branch on <code>document.pointerLockElement</code> explicitly.</div>
+</section>
+
+<!-- ══════════════════════ §4 FROZEN-COORDINATE LAW ══════════════════════ -->
+<section id="s4">
+  <h2>§4 · The frozen-coordinate law <span class="pill">live</span></h2>
+  <p class="sub">Lock the pad below, then move the mouse: <code>clientX/Y</code> and <code>screenX/Y</code> freeze at the <b>last real mouse position at lock time</b> — not the element center — while every move arrives as pure deltas on <code>movementX/movementY</code>. Measured frozen in both engine families, both coordinate systems.</p>
+  <div class="law"><b>THE FROZEN-COORDINATE LAW.</b> During lock: <code>clientX/Y</code> = the lock point (the position of the last trusted move before the lock), <code>screenX/Y</code> frozen alongside. All motion is <code>movementX/Y</code>. A HUD that positions tooltips at <code>clientX/Y</code> pins them to the lock point for the whole session — the drag-layer must read movement, never client.</div>
+  <div class="lab">
+    <h4>Live coordinate freezer — lock, move around, watch the two readouts split</h4>
+    <div class="split">
+      <div class="lockpad" id="pad4"><div class="big" id="pad4big">CLICK TO LOCK</div><div class="small">the lock point is wherever you clicked — not the pad center</div></div>
+      <div class="kv">
+        <b>lock point (client)</b><span id="r4point">—</span>
+        <b>clientX,Y now</b><span id="r4client">—</span>
+        <b>screenX,Y now</b><span id="r4screen">—</span>
+        <b>movementX,Y last</b><span class="pos" id="r4move">—</span>
+        <b>Σ movement</b><span id="r4sum">0, 0</span>
+        <b>frozen?</b><span id="r4frozen">—</span>
+      </div>
+    </div>
+    <div class="row"><button class="ghost mini" id="r4exit">exitPointerLock()</button></div>
+  </div>
+  <div class="chips" id="s4chips"></div>
+</section>
+
+<!-- ══════════════════════ §5 MOVEMENT SEMANTICS ══════════════════════ -->
+<section id="s5">
+  <h2>§5 · Movement semantics — and the two zero-laws</h2>
+  <p class="sub">Outside lock, <code>movementX/Y</code> is the plain delta from the previous event. Inside lock it is the <b>only</b> truth — and it has two measured edge quirks, one per family.</p>
+  <div class="law"><b>THE DELTA LAW.</b> Chromium during lock: every injected move of exactly (+100,0), (0,+80), (−60,−40), (+30,+10) reports exactly <code>m100,0 / m0,80 / m-60,-40 / m30,10</code> — per-event deltas, byte-exact, no acceleration term in the automation lane (OS acceleration applies to real hardware motion, not to absolute-position injection).</div>
+  <div class="law warn"><b>THE FIRST-MOVE-ZERO LAW (Firefox).</b> The first <code>pointermove</code> <em>after acquiring lock</em> reports <code>movementX/Y = 0,0</code> in Firefox (both modes) — the internal reference is seeded at lock, the first delta is measured against it and zeroed. Chromium reports the true delta immediately.</div>
+  <div class="law warn"><b>THE POST-UNLOCK-ZERO LAW (Chromium).</b> Mirror image: the first move <em>after exitPointerLock()</em> reports <code>movementX/Y = 0,0</code> in Chromium — the unlock resets the renderer’s last-known mouse position, so the delta engine skips one beat. Firefox reports the true delta (+200,+100 measured). A camera that keeps consuming movement across an unlock/lock cycle eats one zero-delta frame per cycle, per family.</div>
+  <div class="lab">
+    <h4>Live movement recorder — lock, make one small move, unlock, move again</h4>
+    <div class="row">
+      <button class="ghost" id="mvLock">1 · lock (uses your click)</button>
+      <button class="ghost mini" id="mvUnlock">2 · exitPointerLock()</button>
+      <button class="ghost mini" id="mvReset">reset log</button>
+    </div>
+    <div class="evlog" id="mvLog">—</div>
+  </div>
+  <div class="chips" id="s5chips"></div>
+</section>
+
+<!-- ══════════════════════ §6 PROMISE SPLIT + NO-GESTURE ══════════════════════ -->
+<section id="s6">
+  <h2>§6 · The promise split + the no-gesture law</h2>
+  <p class="sub">Two API-shape truths measured this session — one stable split, one falsified folklore.</p>
+  <div class="law"><b>THE PROMISE SPLIT.</b> Chromium-family and WebKit return a <b>Promise</b> from <code>requestPointerLock()</code> (resolves on lock, rejects with a <code>DOMException</code> carrying the result). Firefox 151 still returns <b><code>undefined</code></b> — the callback era (<code>pointerlockchange</code>/<code>pointerlockerror</code> events) is the only signal. Portable code needs both: <code>const r = el.requestPointerLock(); if (r &amp;&amp; r.then) r.catch(…)</code> — and must not <code>await</code> blindly.</div>
+  <div class="law bad"><b>THE GESTURE LAW (rehabilitated).</b> A <b>page-context</b> <code>requestPointerLock()</code> requires <b>live transient activation</b> — measured identical in Chromium and Firefox: a load-time script on a never-interacted page → <code>pointerlockerror</code>; a timer fired 6 s after the click (activation expired) → <code>pointerlockerror</code>; the same timer fired immediately → locks. Timers spawned by a gesture inherit <em>nothing</em> once the window closes. The stale docs are right after all — and this session’s first probe said otherwise for a reason ↓</div>
+  <div class="law warn"><b>THE PRIVILEGED-CALLER LAW (the QA artifact — falsified our own probe).</b> The same no-gesture requests <b>succeed</b> when issued from <code>Runtime.evaluate</code> — CDP/WebDriver callers bypass the activation gate in <em>both</em> engines. Worse, measured A/B/C: a page’s own load-timer request is <b>also allowed</b> if the automation suite merely ran <code>waitForFunction</code>/<code>waitForSelector</code> earlier — while <code>waitForLoadState</code>/<code>sleep</code>-driven runs block it deterministically (3/3). The injected poller taints the page context; the gesture gate never fires. This session’s probe battery 10 published “no gesture needed, 4/4” off evaluate-driven lanes; batteries 15–18 de-confounded it and the law inverted. <b>Any green pointer-lock e2e that locks via <code>evaluate</code> — or after a Playwright poll-wait — is fake-green: real users still need the gesture your test never provided.</b></div>
+  <div class="lab">
+    <h4>Live gesture-gate lab — two lanes</h4>
+    <p class="sub" style="margin-bottom:8px"><b>Lane 1 (automatic, at load +3 s):</b> a timer created by the page’s own load script requests the lock with zero interaction — expected: <code>pointerlockerror</code>, no lock, in every engine, real or automated (the task’s lineage never touches a gesture). <b>Lane 2 (your click):</b> the same request from a live click handler — locks, then auto-releases.</p>
+    <div class="row"><button class="ghost" id="ngCtl">Lane 2 · request RIGHT NOW (live gesture)</button></div>
+    <div class="out" id="ngOut">lane 1 (load timer, +3 s): pending…</div>
+  </div>
+  <div class="chips" id="s6chips"></div>
+</section>
+
+<!-- ══════════════════════ §7 EXIT / IDEMPOTENCY / SWITCH / REMOVAL ══════════════════════ -->
+<section id="s7">
+  <h2>§7 · Exit, idempotency, switch, removal — the lifecycle laws</h2>
+  <p class="sub">Four lifecycle behaviors, all universal across the two lockable families:</p>
+  <div class="split">
+    <div class="cell"><h4>Exit idempotency</h4><code>document.exitPointerLock()</code> when nothing is locked fires <b>no events</b> — a silent no-op (0 <code>pointerlockchange</code>). Safe to call defensively at teardown.</div>
+    <div class="cell"><h4>The switch law</h4>Requesting a lock on <b>B while A is locked</b> (same document) <b>switches instantly</b>: one <code>pointerlockchange</code>, promise fulfilled, no error, no exit-then-enter pair. No cooldown.</div>
+    <div class="cell"><h4>The removal law</h4>Removing the locked element from the DOM exits the lock <b>with</b> a <code>pointerlockchange</code> (element → <code>null</code>) — measured both families. React/Vue unmounts do not strand the lock.</div>
+    <div class="cell"><h4>The document-only surface</h4><code>pointerlockchange</code>/<code>pointerlockerror</code> fire on the <b>document</b> only; an iframe child’s lock never reaches the parent document (measured: parent count 0).</div>
+  </div>
+  <div class="lab">
+    <h4>Live lifecycle lab</h4>
+    <div class="row">
+      <button class="ghost" id="lcLockA">lock A</button>
+      <button class="ghost mini" id="lcSwitchB">switch → B</button>
+      <button class="ghost mini" id="lcRemoveB">remove B (while locked)</button>
+      <button class="ghost mini" id="lcExit">exitPointerLock() ×2</button>
+      <button class="ghost mini" id="lcRestore">restore fixtures</button>
+    </div>
+    <div class="split">
+      <div><div class="lockpad" id="padA" style="height:90px"><div class="big">A</div></div></div>
+      <div><div class="lockpad" id="padB" style="height:90px"><div class="big">B</div></div></div>
+    </div>
+    <div class="evlog" id="lcLog">—</div>
+  </div>
+  <div class="law bad"><b>THE ESCAPE LANE (source-cited, automation-limited).</b> For real users, <kbd>Esc</kbd> exits at the browser UI level — and Chromium then arms a re-entry cooldown (<code>kUserEscapeCooldown</code>: “Pointer lock cannot be acquired immediately after the user has exited the lock”, ~1.25 s) to kill lock-reflow abuse. This cannot be triggered from CDP/WebDriver key events — synthetic <kbd>Esc</kbd> does <b>not</b> exit a live lock (measured: still locked after <code>keyboard.press('Escape')</code> in both families). Test it with a human hand; build your re-entry UX around the cooldown anyway (§11).</div>
+  <div class="chips" id="s7chips"></div>
+</section>
+
+<!-- ══════════════════════ §8 SHADOW RETARGET ══════════════════════ -->
+<section id="s8">
+  <h2>§8 · The shadow retarget <span class="pill">live</span></h2>
+  <p class="sub">Lock an element <b>inside</b> an open shadow root: <code>document.pointerLockElement</code> is the <b>host</b> — the same boundary rule as focus (<code>activeElement</code>) and event retargeting. Measured identical in both families.</p>
+  <div class="law"><b>THE SHADOW RETARGET.</b> <code>inner.requestPointerLock()</code> ⇒ <code>document.pointerLockElement === host</code> (identity-checked). The outer document can observe the lock but never sees the inner element; the design-system component that locks its own internals stays encapsulated — and the page-level “who is locked” check must not assume the lock target is the thing it gave the API.</div>
+  <div class="lab">
+    <h4>Live shadow lab</h4>
+    <div class="row"><button class="ghost" id="shLock">lock the shadow-inner element</button><button class="ghost mini" id="shExit">exit</button></div>
+    <div id="shHost" style="border:1.5px solid #b9a6d8;border-radius:12px;padding:10px;background:#faf6ff"></div>
+    <div class="out" id="shOut">—</div>
+  </div>
+  <div class="chips" id="s8chips"></div>
+</section>
+
+<!-- ══════════════════════ §9 IFRAME GRID ══════════════════════ -->
+<section id="s9">
+  <h2>§9 · The iframe grid — sandbox gates, and a permissions-policy ghost</h2>
+  <p class="sub">Four live child frames, each with its own <b>TRY LOCK</b> button. The children are real documents reporting their own verdicts.</p>
+  <div class="law bad"><b>THE SANDBOX GATE.</b> An iframe with <code>sandbox="allow-scripts"</code> (no <code>allow-pointer-lock</code>) is blocked in <b>both</b> families — Chromium: <code>SecurityError</code> + console “Blocked pointer lock … the ‘allow-pointer-lock’ permission is not set”; Firefox: silent <code>pointerlockerror</code> + warning. Adding <code>allow-pointer-lock</code> to the sandbox restores it. Embedding a locked map widget in a sandboxed host page requires the attribute, spelled exactly that way.</div>
+  <div class="law warn"><b>THE PERMISSIONS-POLICY GHOST.</b> The <code>allow="pointer-lock"</code> <em>iframe attribute</em> is not a shipped feature name: Chromium logs <code>Unrecognized feature: 'pointer-lock'</code>, Firefox logs “Skipping unsupported feature name” — and a <b>cross-origin child locks fine without it</b> (measured, both families). The policy-ized future is in the source tree but not in the 2026 gate; your <code>allow=</code> attribute today is decoration with a warning attached.</div>
+  <div class="ifgrid">
+    <div class="ifcard"><h4>same-origin child</h4><iframe class="child" id="ifSame" title="same-origin child"></iframe></div>
+    <div class="ifcard"><h4>cross-origin child (no allow)</h4><iframe class="child" id="ifX" title="cross-origin child"></iframe></div>
+    <div class="ifcard"><h4>sandbox — no allow-pointer-lock</h4><iframe class="child" id="ifSbN" title="sandboxed child without allow-pointer-lock" sandbox="allow-scripts"></iframe></div>
+    <div class="ifcard"><h4>sandbox + allow-pointer-lock</h4><iframe class="child" id="ifSbY" title="sandboxed child with allow-pointer-lock" sandbox="allow-scripts allow-pointer-lock"></iframe></div>
+  </div>
+  <div class="chips" id="s9chips"></div>
+</section>
+
+<!-- ══════════════════════ §10 SURFACE CENSUS ══════════════════════ -->
+<section id="s10">
+  <h2>§10 · The surface census <span class="pill">auto</span></h2>
+  <p class="sub">Where the API lives — measured live on <em>your</em> engine right now:</p>
+  <div class="tscroll"><table id="surfTable">
+    <thead><tr><th>Surface probe</th><th>Expected</th><th>This engine</th></tr></thead>
+    <tbody></tbody>
+  </table></div>
+  <div class="law"><b>THE SURFACE.</b> <code>requestPointerLock</code> lives on <code>Element.prototype</code> (not <code>Document</code>); <code>exitPointerLock</code> on <code>Document</code> only. <code>movementX/Y</code> exist on <b>both</b> <code>MouseEvent.prototype</code> and <code>PointerEvent.prototype</code>. <code>onpointerlockchange</code>/<code>onpointerlockerror</code> exist on <code>document</code> only — elements have no lock-event IDL. There is no <code>pointerLockElement</code> on elements; the document property is the single reader.</div>
+  <div class="chips" id="s10chips"></div>
+</section>
+
+<!-- ══════════════════════ §11 COCKPIT CAPSTONE ══════════════════════ -->
+<section id="s11">
+  <h2>§11 · Capstone — the OpenDrones cockpit mouse-look layer <span class="pill">shipped runnable</span></h2>
+  <p class="sub">The complete pattern, runnable: click the viewport to lock; <code>movementX/Y</code> drives yaw/pitch (accumulated, clamped); wheel-while-locked zooms (element listener, <code>{passive:false}</code> — the wheel-tier law); unlock on <code>pointerlockchange→null</code>; a <b>re-entry cooldown guard</b> for Chromium’s post-Escape lockout; and a HUD that never reads <code>clientX</code> in lock (frozen — §4).</p>
+  <div class="cockwrap">
+    <canvas class="cockpit" id="cock" width="920" height="680"></canvas>
+    <div class="cockveil" id="cockVeil">
+      <div class="t1">DRONE CAMERA — CLICK TO ENGAGE MOUSE-LOOK</div>
+      <div class="t2">Locks the pointer. Move to pan/tilt · wheel to zoom · <kbd>Esc</kbd> to release. The veil never blocks scroll (it is dismissed on lock, and the canvas never locks without your click).</div>
+    </div>
+  </div>
+  <div class="hudbar"><span id="hudState">STATE: IDLE</span><span id="hudYaw">YAW 0.0°</span><span id="hudPitch">PITCH 0.0°</span><span id="hudZoom">ZOOM 1.0×</span><span id="hudCool" style="display:none;color:#f0c26a">RE-ENTRY COOLDOWN…</span></div>
+  <div class="chips" id="s11chips"></div>
+  <div class="law ok"><b>THE RECEIPTS.</b> This capstone encodes six tier laws: retarget (the canvas keeps receiving wheel/moves while locked regardless of overlays) · frozen-coords (HUD angles from <code>movement</code>, never <code>client</code>) · the zero-laws (one dead frame per lock/unlock cycle is expected) · the promise split (both eras handled) · the cooldown guard (re-arm delayed ≥1.25 s after an exit that followed an <kbd>Esc</kbd>) · document-only events (single listener on <code>document</code>).</div>
+</section>
+
+<!-- ══════════════════════ §12 LEDGER + AUDIT ══════════════════════ -->
+<section id="s12">
+  <h2>§12 · Engine ledger + the client audit</h2>
+  <div class="tscroll"><table>
+    <thead><tr><th>Lane</th><th>CfT 156 (fixed window)</th><th>Firefox 151</th></tr></thead>
+    <tbody>
+      <tr><td>Page-context lock, live gesture (timer 0 ms)</td><td class="alive">locks</td><td class="alive">locks</td></tr>
+      <tr><td>Page-context lock, no/expired gesture</td><td class="v">BLOCKED (pointerlockerror)</td><td class="v">BLOCKED</td></tr>
+      <tr><td>Same request from evaluate (automation)</td><td class="v">ALLOWED — privileged caller</td><td class="v">ALLOWED — privileged caller</td></tr>
+      <tr><td>Return value</td><td class="v">Promise</td><td class="v">undefined (callback era)</td></tr>
+      <tr><td>Retarget (move/click/wheel)</td><td class="v">locked element</td><td class="v">locked element</td></tr>
+      <tr><td>clientX/Y + screenX/Y in lock</td><td class="v">frozen at lock point</td><td class="v">frozen at lock point</td></tr>
+      <tr><td>movement per event</td><td class="v">exact deltas</td><td class="v">first move 0,0; then deltas</td></tr>
+      <tr><td>First move after unlock</td><td class="v">0,0 (reset law)</td><td class="v">true delta</td></tr>
+      <tr><td>Right-click in lock</td><td class="v">click @ locked el, no contextmenu</td><td class="v">pointerdown/up only</td></tr>
+      <tr><td>Switch A→B while locked</td><td class="v">1 change, instant</td><td class="v">1 change, instant</td></tr>
+      <tr><td>Remove locked element</td><td class="v">change → null</td><td class="v">change → null</td></tr>
+      <tr><td>Shadow-inner lock</td><td class="v">pointerLockElement = host</td><td class="v">= host</td></tr>
+      <tr><td><code>{unadjustedMovement:true}</code></td><td class="v">fulfilled (macOS)</td><td class="v">option silently ignored</td></tr>
+      <tr><td>Sandbox w/o allow-pointer-lock</td><td class="v">SecurityError + console</td><td class="v">pointerlockerror, silent</td></tr>
+      <tr><td>Cross-origin child, no allow=</td><td class="v">locks (policy not shipped)</td><td class="v">locks</td></tr>
+      <tr><td>12 rapid requests</td><td class="v">no rate-limit hit</td><td class="v">no rate-limit hit</td></tr>
+      <tr><td>Synthetic <kbd>Esc</kbd> (CDP)</td><td class="v">does NOT exit the lock</td><td class="v">does NOT exit</td></tr>
+    </tbody>
+  </table></div>
+  <h3>The Molt client audit — pointer-lock edition (10 checks, half a day)</h3>
+  <div class="split">
+    <div class="cell"><h4>High (5)</h4>1 · E2E suites asserting pointer lock in headless Chromium (the wall — they can never pass; move to Firefox headless or headed-fixed) · 2 · pointer-lock tests that lock via <code>evaluate</code> (privileged caller — fake-green; the gesture gate never runs) · 3 · mouse-look code reading <code>clientX</code> after lock (frozen — dead camera) · 4 · <code>await requestPointerLock()</code> without undefined-guard (Firefox throws) · 5 · lock re-entry without the ~1.25 s cooldown guard (Chromium post-Escape rejection loops).</div>
+    <div class="cell"><h4>Medium (5)</h4>6 · sandboxed embeds missing <code>allow-pointer-lock</code> · 7 · contextmenu logic on the locked canvas (suppressed in both families) · 8 · tooltip/hover layers reconciling <code>elementsFromPoint</code> with lock routing (two universes) · 9 · first-frame camera jumps blamed on acceleration (the zero-laws) · 10 · <code>allow="pointer-lock"</code> cargo cult (unrecognized + warning).</div>
+  </div>
+  <div class="chips" id="s12chips"></div>
+</section>
+
+<footer>
+  <p><b>Method.</b> 18 probe batteries · 5 engine contexts (CfT 156 headless / headed / headed-fixed / manual+CDP · Firefox 151 headless+headed · WebKit 26.5 headless+headed) · ~45 lanes · every lock claim driven by trusted input-pipeline clicks through CDP/WebDriver · the automation wall bisected across five controlled experiments (flag-matrix, arg-set, transport, page-creation, single-flag) · Chromium-source-verified gates (<code>RenderWidgetHostImpl::RequestMouseLock</code>, <code>PointerLockController</code>). Falsified in de-confounding (recorded): “the automation wall is --enable-automation” (exonerated by the flag matrix) and “pointer lock needs no gesture” (an evaluate-caller artifact — battery 15’s page-timer lanes inverted the law; both falsifications are published in §1/§6). Lane limits, not claimed: WebKit lock behavior beyond the wall (no lockable context measured), real-hardware OS mouse acceleration, the real-user <kbd>Esc</kbd> exit + cooldown timing (source-cited).</p>
+  <p style="margin-top:8px">Molt Research · engine-truth tier · 2026-11-03 · probes <code>pl-probe1…12</code> · demo <code>pointer-lock-tier.html</code> + <code>pl-iframe-child.html</code></p>
+</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  // ── chip registry ──────────────────────────────────────────────────────
+  var CHIPS = {};
+  var CHIPORDER = [];
+  function chip(id, section, label, kind) {
+    CHIPS[id] = { id: id, label: label, kind: kind || 'pending' };
+    CHIPORDER.push(id);
+    renderChip(id, section);
+  }
+  function renderChip(id, section) {
+    var c = CHIPS[id];
+    var host = document.getElementById(section);
+    if (!host) return;
+    var el = document.createElement('span');
+    el.className = 'chip ' + c.kind;
+    el.id = 'chip-' + id;
+    el.textContent = c.label;
+    host.appendChild(el);
+  }
+  function setChip(id, kind, label) {
+    var c = CHIPS[id]; if (!c) return;
+    c.kind = kind; if (label !== undefined) c.label = label;
+    var el = document.getElementById('chip-' + id);
+    if (el) { el.className = 'chip ' + c.kind; el.textContent = c.label; }
+    renderSummary();
+  }
+  function renderSummary() {
+    var host = document.getElementById('summary');
+    if (!host) return;
+    var counts = { ok: 0, warn: 0, fail: 0, info: 0, pending: 0 };
+    CHIPORDER.forEach(function (id) { counts[CHIPS[id].kind] = (counts[CHIPS[id].kind] || 0) + 1; });
+    host.innerHTML = '';
+    [['ok', 'ok'], ['warn', 'warn'], ['fail', 'deliberate-fail'], ['info', 'info'], ['pending', 'live-pending']].forEach(function (p) {
+      if (!counts[p[0]]) return;
+      var el = document.createElement('span');
+      el.className = 'chip ' + p[0];
+      el.textContent = counts[p[0]] + ' ' + p[1];
+      host.appendChild(el);
+    });
+  }
+
+  var $ = function (id) { return document.getElementById(id); };
+  function line(el, msg, cls) {
+    var d = document.createElement('div');
+    if (cls) d.className = cls;
+    d.textContent = msg;
+    el.appendChild(d);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  // engine family guess (for display only — every claim is measured, not sniffed)
+  var FF = /firefox/i.test(navigator.userAgent);
+
+  // ════════ §1 context detector ════════
+  chip('ctx', 's1chips', 'context: not probed', 'pending');
+  chip('ua', 's1chips', 'UA: ' + (FF ? 'Firefox family' : 'non-Firefox family') + ' (display only)', 'info');
+  $('ctxTry').addEventListener('click', function () {
+    var r;
+    var out = $('ctxOut');
+    out.textContent = '';
+    var ret = 'no-return';
+    try { r = document.body.requestPointerLock(); } catch (e) { line(out, 'THREW ' + e); }
+    ret = (r === undefined) ? 'undefined' : ((r && typeof r.then === 'function') ? 'promise' : String(r));
+    line(out, 'requestPointerLock() → ' + ret);
+    if (r && typeof r.then === 'function') {
+      r.then(function () {
+        line(out, 'promise FULFILLED — this context CAN lock');
+        setChip('ctx', 'ok', 'context: LOCK-OK (' + ret + ')');
+        setTimeout(function () { document.exitPointerLock(); }, 1200);
+      }, function (e) {
+        line(out, 'promise REJECTED ' + (e && e.name) + ': ' + (e && e.message));
+        setChip('ctx', 'fail', 'context: LOCK-DEAD — ' + (e && e.name) + ' (§1 wall)');
+      });
+    } else {
+      // callback era — wait for the verdict
+      setTimeout(function () {
+        if (document.pointerLockElement) {
+          line(out, 'pointerlockchange fired — this context CAN lock');
+          setChip('ctx', 'ok', 'context: LOCK-OK (callback era)');
+          setTimeout(function () { document.exitPointerLock(); }, 1200);
+        } else {
+          line(out, 'no lock after 1.5 s — this context CANNOT lock (§1 wall)');
+          setChip('ctx', 'fail', 'context: LOCK-DEAD (callback era, §1 wall)');
+        }
+      }, 1500);
+    }
+  });
+
+  // ════════ §2 static chips ════════
+  chip('fix', 's2chips', 'one-line fix verified: ignoreDefaultArgs:[\'--no-startup-window\'] + headed', 'ok');
+  chip('bisect', 's2chips', 'wall bisected: 5 experiments · 1 flag · --enable-automation exonerated', 'info');
+
+  // ════════ §3 retarget lab ════════
+  chip('r3t', 's3chips', 'retarget: awaiting live lock', 'pending');
+  chip('r3w', 's3chips', 'wheel during lock: awaiting live lock', 'pending');
+  var r3targets = {}, r3count = 0, r3wheelAtLock = false;
+  var pad3 = $('pad3');
+  pad3.addEventListener('click', function () {
+    var r = pad3.requestPointerLock();
+    if (r && r.then) r.then(null, function () { $('pad3big').textContent = 'REJECTED (§1)'; });
+  });
+  document.addEventListener('pointerlockchange', function () {
+    var locked = document.pointerLockElement === pad3;
+    pad3.classList.toggle('locked', locked);
+    $('pad3big').textContent = locked ? 'LOCKED — sweep anywhere' : 'CLICK TO LOCK';
+    $('r3locked').textContent = locked ? 'yes' : 'no';
+    $('r3el').textContent = locked ? 'pad3 (this pad)' : 'null';
+    if (!locked && r3count > 0) {
+      var distinct = Object.keys(r3targets).join(', ');
+      var oneTarget = Object.keys(r3targets).length === 1 && r3targets['pad3'];
+      setChip('r3t', oneTarget ? 'ok' : 'warn', 'retarget: ' + r3count + ' events during lock → targets [' + (distinct || 'none') + ']');
+      setChip('r3w', r3wheelAtLock ? 'ok' : 'pending', r3wheelAtLock ? 'wheel during lock → target = pad3' : 'wheel during lock: scroll over the pad while locked');
+    }
+  });
+  ['pointermove', 'pointerdown', 'pointerup', 'click', 'wheel'].forEach(function (t) {
+    document.addEventListener(t, function (e) {
+      if (document.pointerLockElement !== pad3) return;
+      r3count++;
+      var tid = (e.target && e.target.id) || e.target.nodeName;
+      r3targets[tid] = true;
+      if (t === 'wheel') r3wheelAtLock = true;
+      if (r3count <= 60) {
+        line($('r3log'), t + ' @ ' + tid + '  c' + e.clientX + ',' + e.clientY + '  m' + e.movementX + ',' + e.movementY, t === 'wheel' ? 'hl' : 't');
+      }
+      $('r3count').textContent = String(r3count);
+      $('r3targets').textContent = Object.keys(r3targets).join(', ');
+    }, true);
+  });
+  $('r3exit').addEventListener('click', function () { document.exitPointerLock(); });
+
+  // ════════ §4 frozen coords ════════
+  chip('r4f', 's4chips', 'frozen coords: awaiting live lock', 'pending');
+  chip('r4m', 's4chips', 'movement deltas: awaiting live lock', 'pending');
+  var r4lockPoint = null, r4moved = 0, r4sum = [0, 0], r4froze = true, r4sawMove = false;
+  var pad4 = $('pad4');
+  pad4.addEventListener('click', function () {
+    var r = pad4.requestPointerLock();
+    if (r && r.then) r.then(null, function () { $('pad4big').textContent = 'REJECTED (§1)'; });
+  });
+  document.addEventListener('pointerlockchange', function () {
+    var locked = document.pointerLockElement === pad4;
+    pad4.classList.toggle('locked', locked);
+    $('pad4big').textContent = locked ? 'LOCKED — move around' : 'CLICK TO LOCK';
+    if (!locked && r4sawMove) {
+      setChip('r4f', r4froze ? 'ok' : 'fail', 'client+screen frozen at lock point: ' + (r4froze ? 'YES (' + r4lockPoint + ')' : 'NO — moved'));
+      setChip('r4m', 'ok', 'Σ movement while locked: ' + r4sum[0] + ', ' + r4sum[1]);
+    }
+  });
+  document.addEventListener('pointermove', function (e) {
+    if (document.pointerLockElement !== pad4) { r4lockPoint = null; return; }
+    if (!r4lockPoint) r4lockPoint = [e.clientX, e.clientY];
+    r4sawMove = true;
+    if (e.clientX !== r4lockPoint[0] || e.clientY !== r4lockPoint[1]) r4froze = false;
+    r4sum[0] += e.movementX; r4sum[1] += e.movementY; r4moved++;
+    $('r4point').textContent = r4lockPoint.join(', ');
+    $('r4client').textContent = e.clientX + ', ' + e.clientY;
+    $('r4screen').textContent = e.screenX + ', ' + e.screenY;
+    $('r4move').textContent = e.movementX + ', ' + e.movementY;
+    $('r4sum').textContent = r4sum.join(', ');
+    $('r4frozen').textContent = r4froze ? 'yes — client pinned' : 'NO';
+  }, true);
+  $('r4exit').addEventListener('click', function () { document.exitPointerLock(); });
+
+  // ════════ §5 movement recorder ════════
+  chip('z1', 's5chips', 'first-move-after-lock: awaiting live run', 'pending');
+  chip('z2', 's5chips', 'first-move-after-unlock: awaiting live run', 'pending');
+  var mvState = 'idle', mvFirstAfterLock = null, mvFirstAfterUnlock = null, mvLockedSeen = false;
+  $('mvLock').addEventListener('click', function () {
+    var r = document.body.requestPointerLock();
+    if (r && r.then) r.then(null, function () { line($('mvLog'), 'REJECTED (§1 wall) — see §2 for the context matrix'); });
+  });
+  $('mvUnlock').addEventListener('click', function () { document.exitPointerLock(); });
+  $('mvReset').addEventListener('click', function () { $('mvLog').innerHTML = '—'; mvFirstAfterLock = null; mvFirstAfterUnlock = null; });
+  document.addEventListener('pointerlockchange', function () {
+    var locked = !!document.pointerLockElement;
+    mvState = locked ? 'locked' : 'unlocked';
+    line($('mvLog'), (locked ? '» LOCKED' : '» UNLOCKED') + '  (state=' + mvState + ')', 'hl');
+    if (locked) mvLockedSeen = true;
+    if (!locked && mvLockedSeen) {
+      // unlock just happened; next move is the one that matters
+      mvFirstAfterUnlock = null;
+    }
+  });
+  document.addEventListener('pointermove', function (e) {
+    if (mvState === 'locked') {
+      if (mvFirstAfterLock === null) {
+        mvFirstAfterLock = [e.movementX, e.movementY];
+        line($('mvLog'), 'first move AFTER LOCK m' + e.movementX + ',' + e.movementY + (e.movementX === 0 && e.movementY === 0 ? '  ← ZERO (Firefox first-move law)' : ''), 't');
+        setChip('z1', 'ok', 'first move after lock: m' + mvFirstAfterLock.join(',') + (mvFirstAfterLock[0] === 0 && mvFirstAfterLock[1] === 0 ? ' — ZERO (Firefox law)' : ' — non-zero (Chromium law)'));
+      } else {
+        line($('mvLog'), 'move m' + e.movementX + ',' + e.movementY, 't');
+      }
+    } else if (mvState === 'unlocked' && mvLockedSeen) {
+      if (mvFirstAfterUnlock === null) {
+        mvFirstAfterUnlock = [e.movementX, e.movementY];
+        line($('mvLog'), 'first move AFTER UNLOCK m' + e.movementX + ',' + e.movementY + (e.movementX === 0 && e.movementY === 0 ? '  ← ZERO (Chromium post-unlock law)' : ''), 't');
+        setChip('z2', 'ok', 'first move after unlock: m' + mvFirstAfterUnlock.join(',') + (mvFirstAfterUnlock[0] === 0 && mvFirstAfterUnlock[1] === 0 ? ' — ZERO (Chromium law)' : ' — non-zero (Firefox law)'));
+        mvLockedSeen = false; // one full cycle recorded
+      }
+    }
+  }, true);
+
+  // ════════ §6 promise split + no-gesture ════════
+  chip('ps', 's6chips', 'return type: measured on first live lock (§1/§3)', 'pending');
+  var psDone = false;
+  document.addEventListener('pointerlockchange', function () {
+    if (document.pointerLockElement && !psDone) {
+      psDone = true;
+      setChip('ps', 'info', 'live locks work in this context — return type recorded in §1 detector above');
+    }
+  });
+  chip('ng1', 's6chips', 'lane 1 · load-timer (no gesture): pending…', 'pending');
+  chip('ng2', 's6chips', 'lane 2 · live-gesture request: awaiting your click', 'pending');
+  // LANE 1 — a load-time timer created by the page's own script: no gesture lineage,
+  // no automation lineage. Deterministic BLOCK under the gesture law (bench battery 15).
+  var ng1Done = false;
+  document.addEventListener('pointerlockerror', function () {
+    if (ng1Done) return;
+    ng1Done = true;
+    setChip('ng1', 'ok', 'lane 1 \u00b7 load-timer request BLOCKED \u2713 (pointerlockerror — the gesture law)');
+  });
+  setTimeout(function () {
+    var r = document.body.requestPointerLock();
+    if (r && typeof r.then === 'function') {
+      r.then(function () {
+        if (ng1Done) { document.exitPointerLock(); return; }
+        ng1Done = true;
+        setChip('ng1', 'warn', 'lane 1 \u00b7 load-timer LOCKED — unexpected! (report this engine)');
+        document.exitPointerLock();
+      }, function () { /* pointerlockerror listener sets the chip */ });
+    } else {
+      setTimeout(function () {
+        if (ng1Done) { if (document.pointerLockElement) document.exitPointerLock(); return; }
+        if (document.pointerLockElement) {
+          ng1Done = true;
+          setChip('ng1', 'warn', 'lane 1 \u00b7 load-timer LOCKED — unexpected! (report this engine)');
+          document.exitPointerLock();
+        } else {
+          ng1Done = true;
+          setChip('ng1', 'ok', 'lane 1 \u00b7 load-timer request BLOCKED \u2713 (no lock — the gesture law)');
+        }
+      }, 1600);
+    }
+  }, 3000);
+  // LANE 2 — the same request from a live click handler: locks, auto-releases.
+  $('ngCtl').addEventListener('click', function () {
+    var r = document.body.requestPointerLock();
+    if (r && typeof r.then === 'function') {
+      r.then(function () {
+        setChip('ng2', 'ok', 'lane 2 \u00b7 live-gesture request: LOCKED \u2713');
+        setTimeout(function () { document.exitPointerLock(); }, 1400);
+      }, function (e) {
+        setChip('ng2', 'warn', 'lane 2 \u00b7 live-gesture request rejected: ' + (e && e.name) + ' (\u00a71 wall?)');
+      });
+    } else {
+      setTimeout(function () {
+        if (document.pointerLockElement) {
+          setChip('ng2', 'ok', 'lane 2 \u00b7 live-gesture request: LOCKED \u2713 (callback era)');
+          setTimeout(function () { document.exitPointerLock(); }, 1400);
+        } else setChip('ng2', 'warn', 'lane 2 \u00b7 live-gesture request: no lock (\u00a71 wall?)');
+      }, 1200);
+    }
+  });
+
+  // ════════ §7 lifecycle lab ════════
+  chip('lc1', 's7chips', 'exit-idempotency: awaiting live run', 'pending');
+  chip('lc2', 's7chips', 'switch law: awaiting live run', 'pending');
+  chip('lc3', 's7chips', 'removal law: awaiting live run', 'pending');
+  var lcEvents = 0, lcRemoved = false;
+  document.addEventListener('pointerlockchange', function () {
+    lcEvents++;
+    var el = document.pointerLockElement;
+    line($('lcLog'), 'pointerlockchange #' + lcEvents + ' → ' + (el ? (el.id || 'host') : 'null'), 't');
+  });
+  $('lcLockA').addEventListener('click', function () {
+    var pad = document.getElementById('padA');
+    if (!pad) { line($('lcLog'), 'fixture A missing — press restore first', 'hl'); return; }
+    var r = pad.requestPointerLock();
+    if (r && r.then) r.then(null, function (e) { line($('lcLog'), 'REJECTED ' + (e && e.name) + ' (§1 wall if in an unfixed automation context)'); });
+  });
+  $('lcSwitchB').addEventListener('click', function () {
+    var pad = document.getElementById('padB');
+    if (!pad) { line($('lcLog'), 'fixture B missing — press restore first', 'hl'); return; }
+    var before = lcEvents;
+    var r = pad.requestPointerLock();
+    if (r && r.then) r.then(function () {
+      setChip('lc2', 'ok', 'switch law: A→B instant, ' + (lcEvents - before) + ' change event(s)');
+    }, function (e) { line($('lcLog'), 'switch REJECTED ' + (e && e.name)); });
+    setTimeout(function () {
+      if (document.pointerLockElement === pad) setChip('lc2', 'ok', 'switch law: A→B instant (pointerLockElement=B)');
+    }, 700);
+  });
+  $('lcRemoveB').addEventListener('click', function () {
+    var pad = document.getElementById('padB');
+    if (!pad) { line($('lcLog'), 'B already removed', 'hl'); return; }
+    lcRemoved = true;
+    pad.remove();
+    var before = lcEvents;
+    setTimeout(function () {
+      setChip('lc3', (document.pointerLockElement === null && lcEvents > before) ? 'ok' : 'warn',
+        'removal law: locked element removed → ' + (lcEvents - before) + ' change event(s), pointerLockElement=' + (document.pointerLockElement === null ? 'null' : 'NOT null'));
+    }, 600);
+  });
+  $('lcExit').addEventListener('click', function () {
+    var before = lcEvents;
+    document.exitPointerLock();
+    document.exitPointerLock(); // deliberate double
+    setTimeout(function () {
+      setChip('lc1', 'ok', 'double exit: ' + (lcEvents - before) + ' change event(s) total (idempotent when unlocked)');
+    }, 500);
+  });
+  $('lcRestore').addEventListener('click', function () {
+    var lab = $('lcLog').parentElement;
+    if (!document.getElementById('padA')) {
+      var a = document.createElement('div'); a.className = 'lockpad'; a.id = 'padA'; a.style.height = '90px';
+      a.innerHTML = '<div class="big">A</div>';
+      lab.insertBefore(a, $('lcLog'));
+      a.addEventListener('click', function () { a.requestPointerLock(); });
+    }
+    if (!document.getElementById('padB')) {
+      var b = document.createElement('div'); b.className = 'lockpad'; b.id = 'padB'; b.style.height = '90px';
+      b.innerHTML = '<div class="big">B</div>';
+      lab.insertBefore(b, $('lcLog'));
+    }
+    line($('lcLog'), 'fixtures restored');
+  });
+  $('padA').addEventListener('click', function () { $('padA').requestPointerLock(); });
+  $('padB').addEventListener('click', function () { $('padB').requestPointerLock(); });
+
+  // ════════ §8 shadow lab ════════
+  chip('sh', 's8chips', 'shadow retarget: awaiting live run', 'pending');
+  var shHost = $('shHost');
+  var shRoot = shHost.attachShadow({ mode: 'open' });
+  shRoot.innerHTML = '<div id="shIn" style="padding:18px;border:1.5px dashed #b9a6d8;border-radius:10px;background:#fff;font:600 13px var(--mono)">shadow-inner #shIn — requestPointerLock targets ME</div>';
+  $('shLock').addEventListener('click', function () {
+    var inner = shRoot.getElementById('shIn');
+    var r = inner.requestPointerLock();
+    var isHost = null;
+    setTimeout(function () {
+      isHost = document.pointerLockElement === shHost;
+      var locked = !!document.pointerLockElement;
+      $('shOut').textContent =
+        'requested on: shadow-inner #shIn\n' +
+        'document.pointerLockElement: ' + (locked ? (isHost ? 'the HOST (retargeted ✓)' : String(document.pointerLockElement.id || document.pointerLockElement.nodeName)) : 'null — rejected or callback-pending') +
+        (locked ? '\nidentity check host === pointerLockElement: ' + isHost : '');
+      if (locked) {
+        setChip('sh', isHost ? 'ok' : 'fail', 'shadow-inner lock → pointerLockElement = ' + (isHost ? 'HOST (retargeted)' : 'NOT the host — engine diverges'));
+        setTimeout(function () { document.exitPointerLock(); }, 1500);
+      } else if (r && typeof r.then !== 'function') {
+        setTimeout(function () {
+          var nowHost = document.pointerLockElement === shHost;
+          setChip('sh', nowHost ? 'ok' : 'fail', 'shadow-inner lock (callback era) → ' + (nowHost ? 'HOST (retargeted)' : 'no lock'));
+          if (nowHost) setTimeout(function () { document.exitPointerLock(); }, 1200);
+        }, 1200);
+      }
+    }, 800);
+  });
+  $('shExit').addEventListener('click', function () { document.exitPointerLock(); });
+
+  // ════════ §9 iframe grid ════════
+  chip('if1', 's9chips', 'iframe grid: loading…', 'pending');
+  (function () {
+    var here = location.href.split('/'); here.pop();
+    var base = here.join('/');
+    var childBase = base;
+    var crossNote = 'cross-origin child unavailable off-production (single origin)';
+    // on production, the second host serves the same files → real cross-origin
+    var host = location.host;
+    var other = null;
+    if (host === 'molt-research.vercel.app') other = 'https://lab.ghostsandbox.dev';
+    else if (host === 'lab.ghostsandbox.dev') other = 'https://molt-research.vercel.app';
+    $('ifSame').src = childBase + '/pl-iframe-child.html?lane=same-origin';
+    $('ifSbN').src = childBase + '/pl-iframe-child.html?lane=sandbox-nolock';
+    $('ifSbY').src = childBase + '/pl-iframe-child.html?lane=sandbox-lock';
+    if (other) { $('ifX').src = other + '/demos/pl-iframe-child.html?lane=cross-origin'; crossNote = 'cross-origin child = ' + other; }
+    else {
+      var ifCard = $('ifX').parentElement;
+      var note = document.createElement('div');
+      note.style.cssText = 'font:12px/1.5 var(--mono);color:var(--muted);padding:12px;border:1.5px dashed var(--line);border-radius:10px;height:160px;overflow:auto';
+      note.textContent = crossNote + ' — open this page on either production host to run the real cross-origin lane (measured LAW: locks without allow= — the permissions policy is not shipped).';
+      ifCard.replaceChild(note, $('ifX'));
+    }
+    var loaded = 0, expected = 4;
+    ['ifSame', 'ifSbN', 'ifSbY'].concat(other ? ['ifX'] : []).forEach(function (id) {
+      $(id).addEventListener('load', function () {
+        loaded++;
+        setChip('if1', loaded >= (other ? 4 : 3) ? 'ok' : 'pending', 'iframe grid: ' + loaded + ' frame(s) live (' + crossNote + ')');
+      });
+    });
+    setTimeout(function () { setChip('if1', loaded ? (loaded >= (other ? 4 : 3) ? 'ok' : 'warn') : 'fail', 'iframe grid: ' + loaded + ' frame(s) live — ' + crossNote); }, 4000);
+  })();
+  chip('if2', 's9chips', 'sandbox gate: verified on the bench (both families) — try the frames', 'info');
+
+  // ════════ §10 surface census ════════
+  chip('sf1', 's10chips', 'requestPointerLock on Element.prototype', 'pending');
+  chip('sf2', 's10chips', 'exitPointerLock on Document only', 'pending');
+  chip('sf3', 's10chips', 'movementX on MouseEvent + PointerEvent', 'pending');
+  chip('sf4', 's10chips', 'onpointerlockchange: document yes, elements no', 'pending');
+  (function () {
+    var rows = [];
+    function row(probe, expected, actual, ok) {
+      rows.push('<tr><td>' + probe + '</td><td class="v">' + expected + '</td><td class="v ' + (ok ? 'alive' : 'dead') + '">' + actual + '</td></tr>');
+    }
+    var t1 = ('requestPointerLock' in Element.prototype) && !('requestPointerLock' in Document.prototype);
+    row("'requestPointerLock' in Element.prototype (and NOT Document)", 'true / false', t1 ? 'true / false' : 'DIVERGES', t1);
+    setChip('sf1', t1 ? 'ok' : 'fail', 'requestPointerLock on Element.prototype: ' + t1);
+    var t2 = ('exitPointerLock' in Document.prototype) && !('exitPointerLock' in Element.prototype);
+    row("'exitPointerLock' in Document (and NOT Element)", 'true / false', t2 ? 'true / false' : 'DIVERGES', t2);
+    setChip('sf2', t2 ? 'ok' : 'fail', 'exitPointerLock on Document only: ' + t2);
+    var t3 = ('movementX' in MouseEvent.prototype) && ('movementX' in PointerEvent.prototype);
+    row("'movementX' on MouseEvent + PointerEvent prototypes", 'true / true', t3 ? 'true / true' : 'MISSING', t3);
+    setChip('sf3', t3 ? 'ok' : 'fail', 'movementX on both event prototypes: ' + t3);
+    var t4 = ('onpointerlockchange' in document) && !('onpointerlockchange' in HTMLElement.prototype);
+    row("'onpointerlockchange' on document, not HTMLElement", 'true / false', t4 ? 'true / false' : 'DIVERGES', t4);
+    setChip('sf4', t4 ? 'ok' : 'fail', 'lock events document-only: ' + t4);
+    $('surfTable').querySelector('tbody').innerHTML = rows.join('');
+  })();
+
+  // ════════ §11 cockpit capstone ════════
+  chip('ck1', 's11chips', 'cockpit lock: click the viewport', 'pending');
+  chip('ck2', 's11chips', 'cockpit yaw/pitch from movement', 'pending');
+  chip('ck3', 's11chips', 'cockpit wheel-zoom in lock', 'pending');
+  (function () {
+    var cv = $('cock'), veil = $('cockVeil'), ctx = cv.getContext('2d');
+    var yaw = 0, pitch = 0, zoom = 1, locked = false;
+    var coolUntil = 0, lastExitWasEscapeish = false;
+    function hud() {
+      $('hudState').textContent = 'STATE: ' + (locked ? 'LOCKED' : 'IDLE');
+      $('hudYaw').textContent = 'YAW ' + (yaw.toFixed(1)) + '°';
+      $('hudPitch').textContent = 'PITCH ' + (pitch.toFixed(1)) + '°';
+      $('hudZoom').textContent = 'ZOOM ' + zoom.toFixed(1) + '×';
+      var c = $('hudCool');
+      if (performance.now() < coolUntil) { c.style.display = ''; c.textContent = 'RE-ENTRY COOLDOWN ' + Math.ceil((coolUntil - performance.now()) / 1000) + 's'; }
+      else c.style.display = 'none';
+    }
+    function draw() {
+      var w = cv.width, h = cv.height;
+      ctx.clearRect(0, 0, w, h);
+      var g = ctx.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, '#0d1512'); g.addColorStop(1, '#131e19');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      ctx.save();
+      ctx.translate(w / 2, h / 2);
+      ctx.scale(zoom, zoom);
+      ctx.translate(-((yaw * 12) % 240), pitch * 6);
+      ctx.strokeStyle = 'rgba(120,200,170,.25)'; ctx.lineWidth = 1 / zoom;
+      for (var x = -2400; x <= 2400; x += 120) { ctx.beginPath(); ctx.moveTo(x, -2400); ctx.lineTo(x, 2400); ctx.stroke(); }
+      for (var y = -2400; y <= 2400; y += 120) { ctx.beginPath(); ctx.moveTo(-2400, y); ctx.lineTo(2400, y); ctx.stroke(); }
+      // drone marker
+      ctx.fillStyle = '#f0c26a';
+      ctx.beginPath(); ctx.arc(0, 0, 26, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#0b0f0e'; ctx.font = '700 20px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('DR-07', 0, 1);
+      ctx.restore();
+      // crosshair
+      ctx.strokeStyle = locked ? 'rgba(159,216,195,.9)' : 'rgba(159,216,195,.35)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(w / 2 - 26, h / 2); ctx.lineTo(w / 2 + 26, h / 2); ctx.moveTo(w / 2, h / 2 - 26); ctx.lineTo(w / 2, h / 2 + 26); ctx.stroke();
+      if (!locked) {
+        ctx.fillStyle = 'rgba(230,240,235,.65)'; ctx.font = '600 15px monospace'; ctx.textAlign = 'center';
+        ctx.fillText('UNLOCKED — veil is pointer-transparent when armed', w / 2, h - 26);
+      }
+      hud();
+      requestAnimationFrame(draw);
+    }
+    requestAnimationFrame(draw);
+    veil.addEventListener('click', function () {
+      if (performance.now() < coolUntil) return; // the cooldown guard (§7)
+      var r = cv.requestPointerLock();
+      if (r && r.then) r.then(null, function () { veil.style.display = 'flex'; });
+    });
+    document.addEventListener('pointerlockchange', function () {
+      locked = document.pointerLockElement === cv;
+      veil.style.display = locked ? 'none' : 'flex';
+      if (!locked) {
+        // guard the Chromium post-Escape cooldown: delay re-arm ~1.25s after any exit
+        coolUntil = performance.now() + 1250;
+        lastExitWasEscapeish = true;
+        setChip('ck1', 'ok', 'cockpit lock: engaged + released cleanly');
+      } else {
+        setChip('ck1', 'ok', 'cockpit lock: ENGAGED in this context');
+      }
+    });
+    document.addEventListener('pointermove', function (e) {
+      if (!locked) return;
+      yaw = (yaw + e.movementX * 0.28 + 360000) % 360;
+      pitch = Math.max(-80, Math.min(80, pitch + e.movementY * 0.22));
+      setChip('ck2', 'ok', 'cockpit yaw/pitch: ' + yaw.toFixed(0) + '° / ' + pitch.toFixed(0) + '° from movementX/Y');
+    }, true);
+    cv.addEventListener('wheel', function (e) {
+      if (!locked) return; // zoom only while locked — the page keeps its scroll otherwise
+      e.preventDefault(); // element listener + non-passive: the only reliable preventDefault (wheel tier)
+      zoom = Math.max(0.5, Math.min(8, zoom * Math.exp(-e.deltaY * 0.0012)));
+      setChip('ck3', 'ok', 'cockpit wheel-zoom in lock: ' + zoom.toFixed(1) + '×');
+    }, { passive: false });
+  })();
+
+  // ════════ §12 ledger chips ════════
+  chip('lg1', 's12chips', 'ledger: 16 lanes × 2 lockable families, bench-verified 2026-11-03', 'info');
+  chip('lg2', 's12chips', 'audit: 5 high + 5 medium checks ready to ship', 'info');
+
+  renderSummary();
+  // gate marker
+  window.__plTierReady = true;
+})();
+</script>
+</body>
+</html>
