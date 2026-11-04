@@ -1,0 +1,1076 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Programmatic Scrolling — the smooth-scroll tier · scrollIntoView, scroll-behavior &amp; scrollend</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #faf9f7; --ink: #1c1b22; --mut: #6b6875; --line: #e4e1db;
+    --acc: #0e7490; --ok: #15803d; --okbg: #ecfdf3; --warn: #b45309; --warnbg: #fff7ed;
+    --bad: #b91c1c; --badbg: #fef2f2; --info: #1d4ed8; --infobg: #eff6ff;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 system-ui, -apple-system, sans-serif; overflow-x: hidden; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 20px 18px 80px; }
+  header { padding: 26px 0 10px; }
+  .kicker { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--acc); font-weight: 700; }
+  h1 { font-size: clamp(24px, 4.4vw, 36px); line-height: 1.12; margin: 8px 0 10px; letter-spacing: -.01em; }
+  .sub { color: var(--mut); max-width: 72ch; }
+  .metarow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .pill { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; background: #fff; color: var(--mut); }
+  .pill b { color: var(--ink); font-weight: 600; }
+  .sec { margin-top: 44px; }
+  .secnum { font-family: var(--mono); font-size: 12px; color: var(--acc); font-weight: 700; }
+  h2 { font-size: 20px; margin: 4px 0 8px; letter-spacing: -.005em; }
+  .sec p { color: var(--mut); max-width: 76ch; margin: 8px 0; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-top: 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .chip { font-size: 12.5px; border-radius: 9px; padding: 5px 10px; border: 1px solid transparent; max-width: 100%; overflow-wrap: anywhere; }
+  .chip.pending { background: #f3f2f0; color: var(--mut); border-color: var(--line); }
+  .chip.ok { background: var(--okbg); color: var(--ok); border-color: #bbe7cb; }
+  .chip.warn { background: var(--warnbg); color: var(--warn); border-color: #f3d9a8; }
+  .chip.bad { background: var(--badbg); color: var(--bad); border-color: #f3bcbc; }
+  .chip.info { background: var(--infobg); color: var(--info); border-color: #bcd3f7; }
+  .readout { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+  .flag { flex: 1 1 140px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #fff; }
+  .flag .l { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--mut); font-weight: 700; }
+  .flag .v { font-family: var(--mono); font-size: 20px; margin-top: 2px; }
+  .v.good { color: var(--ok); } .v.hot { color: var(--warn); }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 10px; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--mut); padding: 6px 8px; border-bottom: 2px solid var(--line); }
+  td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .tscroll { overflow-x: auto; }
+  td code, p code, li code, .flag .tiny code { font-family: var(--mono); font-size: 12px; background: #f1efec; padding: 1px 5px; border-radius: 5px; overflow-wrap: anywhere; }
+  .btn { font: inherit; font-size: 13.5px; font-weight: 600; border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 9px; padding: 7px 13px; cursor: pointer; }
+  .btn:hover { border-color: var(--acc); color: var(--acc); }
+  .btn.p { background: var(--acc); color: #fff; border-color: var(--acc); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+  .tiny { font-size: 12px; color: var(--mut); }
+  .log { font-family: var(--mono); font-size: 11.5px; background: #14131a; color: #d6d3e3; border-radius: 10px; padding: 10px 12px; margin-top: 10px; white-space: pre-wrap; max-height: 220px; overflow: auto; }
+  .track { position: relative; height: 240px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: repeating-linear-gradient(#fff 0 490px, #f1efec 490px 500px); scrollbar-width: thin; }
+  .track .mk { font-family: var(--mono); font-size: 11px; color: var(--mut); padding: 3px 8px; border-bottom: 1px dashed var(--line); height: 490px; }
+  .track:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+  canvas { width: 100%; height: 90px; border: 1px solid var(--line); border-radius: 8px; margin-top: 10px; background: #fff; }
+  .miniscroll { height: 220px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: #fff; position: relative; }
+  .miniscroll .tgt { height: 60px; background: #e7f6ee; border: 1px solid #bbe7cb; border-radius: 8px; display: flex; align-items: center; padding: 0 10px; font-weight: 600; font-size: 13px; }
+  .snapbox { height: 180px; overflow: auto; border: 0; box-shadow: inset 0 0 0 1px var(--line); border-radius: 10px; scroll-snap-type: y mandatory; }
+  .snapbox .sp { height: 180px; scroll-snap-align: start; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; }
+  input[type=range] { width: 160px; }
+  iframe { width: 100%; height: 130px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } }
+  ul { padding-left: 20px; color: var(--mut); max-width: 74ch; } li { margin: 4px 0; }
+  .law b { color: var(--ink); }
+  pre { font-family: var(--mono); font-size: 12px; background: #14131a; color: #d6d3e3; border-radius: 10px; padding: 12px 14px; overflow-x: auto; margin-top: 10px; }
+  code { overflow-wrap: anywhere; }
+  .feed { height: 200px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: #0b1220; color: #9fe8c1; font-family: var(--mono); font-size: 12px; padding: 8px 10px; }
+  .feed .rowline { padding: 2px 0; border-bottom: 1px solid #16233a; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="kicker">Engine-truth research · scroll family</div>
+  <h1>Programmatic Scrolling — the smooth-scroll tier</h1>
+  <div class="sub">Every anchor link, scroll-to-error, chat auto-follow, skip-link and telemetry feed rides on three primitives: <code>scrollIntoView()</code>, CSS <code>scroll-behavior</code> and the <code>scrollend</code> event. This page measures them live in your browser: the three-engine duration split (WebKit ~150&nbsp;ms fixed vs Chromium ~1&nbsp;s for the same scroll), the scrollend grammar (Firefox never fires it for wheel), the interrupt laws, and the reduced-motion myth.</div>
+  <div class="metarow">
+    <span class="pill">APIs · <b>scrollIntoView · scrollTo/scrollBy · scroll-behavior · scrollend · scroll-margin/padding</b></span>
+    <span class="pill">Engines · <b>Chromium 149 · Firefox 151 · WebKit 26.5</b></span>
+    <span class="pill">Measured · <b>Nov 4 2026</b></span>
+    <span class="pill">Priority · <b>P2</b></span>
+  </div>
+</header>
+
+<!-- ══════════════ §1 FLIGHT LAB ══════════════ -->
+<section class="sec" id="s1">
+  <div class="secnum">§1</div>
+  <h2>The flight lab — three engines, three clocks</h2>
+  <p>THE DURATION SPLIT (headline): the same <code>scrollTo({behavior:'smooth'})</code> is a <b>different animation on every engine</b>. Bench (headless, viewport 600):</p>
+  <div class="card">
+    <div class="tscroll"><table>
+      <thead><tr><th>distance</th><th>Chromium 149</th><th>WebKit 26.5</th><th>Firefox 151</th></tr></thead>
+      <tbody>
+        <tr><td>300 px</td><td><b>215 ms</b></td><td>150 ms</td><td>484 ms</td></tr>
+        <tr><td>1 000 px</td><td><b>466 ms</b></td><td>150 ms</td><td>567 ms</td></tr>
+        <tr><td>3 000 px</td><td><b>835 ms</b></td><td>150 ms</td><td>650 ms</td></tr>
+        <tr><td>4 400 px</td><td><b>1 033 ms</b></td><td>150 ms</td><td>650 ms (capped)</td></tr>
+        <tr><td><b>law</b></td><td>duration scales with distance (∝ d<sup>~0.55</sup>)</td><td><b>fixed ~150 ms</b> regardless of distance</td><td>scales, then <b>capped at ~650 ms</b></td></tr>
+        <tr><td>curve (progress @ 25/50/75 % t)</td><td>49 / 86 / 97 %</td><td>47 / 76 / 91 %</td><td>76 / 97 / 100 %</td></tr>
+        <tr><td>scroll events per flight</td><td>~1/frame (53 for 3 000 px)</td><td><b>12 events, always</b></td><td>~30 per flight</td></tr>
+      </tbody>
+    </table></div>
+    <p class="tiny" style="margin-top:8px">A "smooth scroll to top" button on a long article takes <b>seven times longer in Chrome than in Safari</b>. Design your UI for the slowest engine (Chromium), not your own.</p>
+    <div class="track" id="trk1" tabindex="0" aria-label="flight track"></div>
+    <div class="row">
+      <button class="btn p" data-fly="300">fly 300</button>
+      <button class="btn" data-fly="1000">fly 1 000</button>
+      <button class="btn" data-fly="3000">fly 3 000</button>
+      <button class="btn" data-fly="4400">fly 4 400</button>
+      <span class="tiny">flies the track above from 0 · curves plotted below</span>
+    </div>
+    <canvas id="cv1" width="860" height="90" aria-label="flight curve"></canvas>
+    <div class="readout">
+      <div class="flag"><div class="l">duration</div><div class="v" id="f1dur">—</div></div>
+      <div class="flag"><div class="l">scroll events</div><div class="v" id="f1ev">—</div></div>
+      <div class="flag"><div class="l">scrollend</div><div class="v" id="f1end">—</div></div>
+      <div class="flag"><div class="l">your engine</div><div class="tiny" id="f1eng" style="margin-top:6px">…</div></div>
+    </div>
+    <div class="chips" id="chips-s1"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §2 SCROLLEND GRAMMAR ══════════════ -->
+<section class="sec" id="s2">
+  <div class="secnum">§2</div>
+  <h2>The scrollend grammar — what fires it</h2>
+  <p>THE SEQUENCE LAW: one scrollend per <b>scroll sequence</b> — and its grammar has edges the docs skip. Measured bench (3 engines): <b>smooth programmatic = 1</b> · <b>instant programmatic = 1</b> (yes, instant scrolls fire it too) · <b>no-op scroll (already at target) = 0</b> events at all · <b>keyboard End = 1</b> (after its own ~100–150 ms animation) · <b>wheel = 1 per gesture on Chromium + WebKit, but Firefox fires ZERO scrollend for wheel scrolls</b> — even with a 5-second settle. THE PAYLOAD SPLIT: the event is a plain <code>Event</code> in Chromium/WebKit but a <code>UIEvent</code> (with <code>detail:0</code>) in Firefox · <code>bubbles:true, cancelable:false, composed:false</code> · for the viewport it fires with <code>target: document</code>. On an <b>element</b> scroller it fires on the element with <code>bubbles:false</code> — it never reaches a document-level listener.</p>
+  <div class="card">
+    <div class="track" id="trk2" tabindex="0" aria-label="grammar track"></div>
+    <div class="row">
+      <button class="btn p" id="b2i">instant → 1200</button>
+      <button class="btn" id="b2s">smooth → 1200</button>
+      <button class="btn" id="b2n">no-op (target = current)</button>
+      <button class="btn" id="b2w">wheel here (hands-on)</button>
+    </div>
+    <div class="readout">
+      <div class="flag"><div class="l">last lane</div><div class="tiny" id="f2lane" style="margin-top:6px">—</div></div>
+      <div class="flag"><div class="l">scroll → scrollend</div><div class="v" id="f2cnt">—</div></div>
+      <div class="flag"><div class="l">payload</div><div class="tiny" id="f2pay" style="margin-top:6px">—</div></div>
+      <div class="flag"><div class="l">element end → document?</div><div class="tiny" id="f2bub" style="margin-top:6px">—</div></div>
+    </div>
+    <p class="tiny">Wheel lane: click the track, then scroll with your wheel/trackpad. Bench: Chromium/WebKit = 1 scrollend per wheel gesture · Firefox = none, ever (a scrollend-driven "user finished scrolling" UI never fires for wheel users on Firefox).</p>
+    <div class="chips" id="chips-s2"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §3 PROPAGATION ══════════════ -->
+<section class="sec" id="s3">
+  <div class="secnum">§3</div>
+  <h2>The body-ignore law — where scroll-behavior must live</h2>
+  <p>THE PROPAGATION LAW: <code>body { scroll-behavior: smooth }</code> does <b>nothing</b> for the viewport — overflow propagates body→html, but scroll-behavior does not. Only <code>html { scroll-behavior: smooth }</code> governs window scrolling (measured 3/3: body-only = an instant 1-event jump, identical to no rule at all). This lane applies each rule to THIS page's live document, smooth-scrolls the window 1 500 px and restores instantly:</p>
+  <div class="card">
+    <div class="row">
+      <button class="btn" id="b3none">lane 1 · no rule (control)</button>
+      <button class="btn" id="b3html">lane 2 · html only</button>
+      <button class="btn p" id="b3body">lane 3 · body only</button>
+      <button class="btn" id="b3both">lane 4 · html + body</button>
+    </div>
+    <div class="log" id="log3">— each lane: apply rule → scrollTo(0,1500) plain → settle → restore instant —</div>
+    <div class="chips" id="chips-s3"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §4 NEGOTIATION + ENUM ══════════════ -->
+<section class="sec" id="s4">
+  <div class="secnum">§4</div>
+  <h2>The negotiation — explicit behavior vs CSS, and the enum wall</h2>
+  <p>THE OVERRIDE LAW: an explicit <code>behavior:'instant'</code> <b>beats</b> a live <code>html{scroll-behavior:smooth}</code> (3/3 — one scroll event, no animation) · <code>behavior:'auto'</code> <b>follows</b> the CSS (animated, 3/3) · <code>scrollTop = x</code> and <code>scrollTo(x,y)</code> also follow the CSS. THE ENUM WALL (engine split): <code>scrollTo({behavior:'bogus'})</code> — WebKit and Firefox <b>throw TypeError</b> ("not a valid enum value"); Chromium <b>silently accepts</b> any string and treats it as auto. A typo'd behavior never errors on two-thirds of the traffic. THE CSS KEYWORD GAP: <code>CSS.supports('scroll-behavior','instant')</code> is <b>false everywhere</b> — the CSS grammar is only <code>auto | smooth</code>; <code>instant</code> exists only in the JS enum.</p>
+  <div class="card">
+    <div class="tscroll"><table id="t4">
+      <thead><tr><th>probe</th><th>runs live</th><th>your engine</th><th>bench</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div class="chips" id="chips-s4"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §5 INTERRUPT LAB ══════════════ -->
+<section class="sec" id="s5">
+  <div class="secnum">§5</div>
+  <h2>The interrupt lab — the un-cancellable flight</h2>
+  <p>THE INTERRUPT SPLIT (headline): fire an <b>instant</b> <code>scrollTo</code> mid-smooth-flight. <b>Firefox cancels cleanly and lands exactly on the instant target</b> (2 scrollends: the dead flight's + the jump's). <b>WebKit cancels cleanly</b> (1 scrollend, exact landing). <b>Chromium does not fully cancel</b>: the jump lands, then the dying animation's last frames carry it <b>past your target by its in-flight velocity</b> — measured +20 px (interrupt at 50 ms, slow) and <b>+205 px past the requested 2 000</b> (interrupt at 300 ms, fast). THE WHEEL-ABSORB LAW: a trusted wheel during a programmatic flight is <b>absorbed on Chromium + WebKit</b> (the trajectory never dips; the flight wins) but <b>cancels it on Firefox</b> (dip measured, flight dead, page settles where the wheel left it). If your UI promises "user scroll cancels the auto-scroll", that promise is engine-dependent.</p>
+  <div class="card">
+    <div class="row">
+      <button class="btn p" id="b5run">flight 0 → 4 400, interrupt → 2 000 at:</button>
+      <input type="range" id="r5" min="50" max="600" step="50" value="300">
+      <span class="tiny mono" id="r5v" style="font-family:var(--mono)">300 ms</span>
+    </div>
+    <div class="track" id="trk5" tabindex="0" aria-label="interrupt track"></div>
+    <canvas id="cv5" width="860" height="90" aria-label="interrupt trajectory"></canvas>
+    <div class="readout">
+      <div class="flag"><div class="l">requested</div><div class="v">2000</div></div>
+      <div class="flag"><div class="l">landed</div><div class="v" id="f5y">—</div></div>
+      <div class="flag"><div class="l">residual</div><div class="v" id="f5r">—</div></div>
+      <div class="flag"><div class="l">scrollends</div><div class="v" id="f5e">—</div></div>
+    </div>
+    <div class="chips" id="chips-s5"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §6 REDUCED MOTION ══════════════ -->
+<section class="sec" id="s6">
+  <div class="secnum">§6</div>
+  <h2>The reduced-motion myth</h2>
+  <p>THE MYTH, FALSIFIED (headline): the folklore says "browsers turn off smooth scrolling for <code>prefers-reduced-motion: reduce</code> users." <b>No measured engine does</b> — not for CSS <code>scroll-behavior:smooth</code>, and not for explicit <code>behavior:'smooth'</code>: with the media feature emulated to <code>reduce</code>, the 3 000 px flight still animated at 883 ms (Chromium) · 201 ms (WebKit) · 684 ms (Firefox). The CSS spec permits UAs to ignore smooth — none of the three does. <b>If you care, you must gate it yourself</b>:</p>
+  <pre id="pre6">const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const behavior = reduce ? 'instant' : 'smooth';
+el.scrollIntoView({ behavior, block: 'start' });</pre>
+  <div class="card">
+    <div class="readout">
+      <div class="flag"><div class="l">your prefers-reduced-motion</div><div class="v" id="f6mq">…</div><div class="tiny">live read — emulate in devtools to see the chip flip</div></div>
+      <div class="flag"><div class="l">engine auto-disable</div><div class="v hot">NONE</div><div class="tiny">bench: 883 / 201 / 684 ms — all animated under reduce</div></div>
+    </div>
+    <div class="chips" id="chips-s6"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §7 GEOMETRY ══════════════ -->
+<section class="sec" id="s7">
+  <div class="secnum">§7</div>
+  <h2>The scrollIntoView geometry — block grammar, nearest, margin/padding</h2>
+  <p>THE ALIGNMENT FORMULAS (universal, measured 3/3, viewport <i>V</i>, element height <i>E</i>, target offset <i>T</i>): <b>start</b> → <code>T</code> · <b>center</b> → <code>T − (V−E)/2</code> · <b>end</b> → <code>T + E − V</code> · <b>nearest</b> → the minimal scroll: <b>no-op if fully visible</b>, end-align if the target is below, start-align if above — and for an element <b>taller than the viewport, nearest resolves to start</b>. No-arg <code>scrollIntoView()</code> = <code>block:'start'</code>; legacy booleans survive: <code>true</code> = start, <code>false</code> = end. THE MARGIN LAW: <code>scroll-margin</code> expands the target's box on <b>both</b> edges (start-align lands at <code>T − m</code>; end-align at <code>T + E + m − V</code>) and <b>stacks additively</b> with <code>scroll-padding</code> on the scroller (measured 400 → 350 → 310 for margin 50, +padding 40). Alignment targets the <b>client box</b> — a bordered scroller's border shifts every landing (the sticky tier's scroller-border law, scroll-side).</p>
+  <div class="card">
+    <div class="grid2">
+      <div>
+        <div class="miniscroll" id="ms7">
+          <div style="height:400px;display:flex;align-items:center;justify-content:center;color:var(--mut)">spacer 0–400</div>
+          <div class="tgt" id="g7t">target @400</div>
+          <div style="height:740px"></div>
+          <div class="tgt" id="g7t2" style="background:#eef4ff;border-color:#bcd3f7">target @1200</div>
+          <div style="height:900px"></div>
+        </div>
+        <div class="row">
+          <span class="tiny">target:</span>
+          <button class="btn" data-g="t400">t@400</button>
+          <button class="btn" data-g="t1200">t@1200</button>
+          <span class="tiny">block:</span>
+          <button class="btn" data-g="start">start</button>
+          <button class="btn" data-g="center">center</button>
+          <button class="btn" data-g="end">end</button>
+          <button class="btn" data-g="nearest">nearest</button>
+          <button class="btn" data-g="noarg">()</button>
+        </div>
+      </div>
+      <div>
+        <div class="log" id="log7">— pick a target + a block —</div>
+        <div class="readout">
+          <div class="flag"><div class="l">scrollTop now</div><div class="v" id="f7y">0</div></div>
+          <div class="flag"><div class="l">scroll-margin lane</div><div class="tiny" style="margin-top:6px">auto-bench below</div><div class="tiny" id="f7m"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="chips" id="chips-s7"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §8 NESTED + FRAME ══════════════ -->
+<section class="sec" id="s8">
+  <div class="secnum">§8</div>
+  <h2>The nested walk &amp; the frame walk</h2>
+  <p>THE ANCESTOR WALK: <code>scrollIntoView</code> scrolls <b>every scroller in the chain</b> — a target two boxes deep moves the inner box to align it AND walks the outer to reveal the inner (measured outer=1500 + inner=1600, instant and smooth, 3/3). THE FRAME WALK: a target inside an <b>iframe</b> that scrollIntoViews itself also scrolls the <b>parent document</b> to reveal the frame — same-origin: 3/3 engines. <b>Cross-origin split (headline): Chromium + Firefox still walk the parent; WebKit does not</b> (parent stayed at 0 with the child verifiably scrolled — measured with a postMessage ack from the child). A "scroll to my embedded widget" contract with a third-party frame silently fails on Safari.</p>
+  <div class="card">
+    <div class="grid2">
+      <div>
+        <div style="height:180px;overflow:auto;border:1px solid var(--line);border-radius:10px" id="outer8">
+          <div style="height:900px;display:flex;align-items:center;justify-content:center;color:var(--mut)">outer spacer</div>
+          <div style="height:150px;overflow:auto;border:2px solid var(--acc);border-radius:8px" id="inner8">
+            <div style="height:800px"></div>
+            <div class="tgt" id="deep8">deep target</div>
+            <div style="height:300px"></div>
+          </div>
+          <div style="height:900px"></div>
+        </div>
+        <div class="row"><button class="btn p" id="b8">scrollIntoView(#deep)</button><span class="tiny">outer + inner both walk</span></div>
+        <div class="log" id="log8">outer=0 inner=0</div>
+      </div>
+      <div>
+        <div style="height:1200px;display:flex;align-items:flex-end;justify-content:center"><span class="tiny">↓ the child frame lives 1 200 px down — its self-scroll should walk THIS page ↓</span></div>
+        <iframe id="fr8" title="child frame walk lab" srcdoc="&lt;style&gt;body{margin:0;font:13px system-ui}&lt;/style&gt;&lt;div style='height:900px;color:#88a'&gt;child spacer 900&lt;/div&gt;&lt;div id='ct' style='height:60px;background:#e7f6ee;border-radius:8px;display:flex;align-items:center;padding:0 10px;font-weight:700'&gt;child target&lt;/div&gt;&lt;div style='height:400px'&gt;&lt;/div&gt;&lt;script&gt;parent.addEventListener('message',e =&gt; { if (e.data === 'walk') document.getElementById('ct').scrollIntoView({ block: 'start' }); });&lt;/script&gt;"></iframe>
+        <div class="row"><button class="btn p" id="b8f">tell the child to scroll itself</button><span class="tiny" id="f8f">parent will walk to the frame — then restore</span></div>
+      </div>
+    </div>
+    <div class="chips" id="chips-s8"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §9 SNAP ══════════════ -->
+<section class="sec" id="s9">
+  <div class="secnum">§9</div>
+  <h2>The snap interplay — you cannot land off-snap</h2>
+  <p>THE SNAP VICTORY: in a <code>scroll-snap-type: y mandatory</code> scroller, a programmatic <code>scrollTo(420)</code> (between the snap points) <b>never lands at 420</b> — in the bench's 300-px panels it snapped to 300 with a <b>single scroll event</b> [300]; in this page's 180-px panels 420 snaps to 360. Smooth animates toward 420 and the snap correction re-lands snapped (2 scrollends on Chromium/Firefox, 1 on WebKit). The snap container owns the final position: request snap-aligned targets, or accept the correction.</p>
+  <div class="card">
+    <div class="snapbox" id="sb9">
+      <div class="sp" style="background:#eef4ff">panel 0</div><div class="sp" style="background:#fff">panel 1</div>
+      <div class="sp" style="background:#eef4ff">panel 2</div><div class="sp" style="background:#fff">panel 3</div>
+      <div class="sp" style="background:#eef4ff">panel 4</div><div class="sp" style="background:#fff">panel 5</div>
+    </div>
+    <div class="row">
+      <button class="btn p" id="b9i">scrollTo(420) instant</button>
+      <button class="btn" id="b9s">scrollTo(420) smooth</button>
+      <span class="tiny">requested 420 · watch where it actually stops</span>
+    </div>
+    <div class="log" id="log9">—</div>
+    <div class="chips" id="chips-s9"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §10 SUB-PIXEL ══════════════ -->
+<section class="sec" id="s10">
+  <div class="secnum">§10</div>
+  <h2>The sub-pixel grammar — three engines, three roundings</h2>
+  <p>THE ROUNDING SPLIT: <code>scrollTo({top: 100.5})</code> — <b>Chromium rounds half-up</b> (→101, and three <code>scrollBy(+0.5)</code> calls accumulate +3), <b>WebKit floors</b> (→100, three +0.5 calls accumulate <b>+0 — the half-pixels are eaten</b>), <b>Firefox rounds half-down</b> (100.5→100 but 100.7→101). Same grammar on the root and on element scrollers. A pixel-exact "scroll exactly 0.5 px per tick" stepper moves at different speeds per engine.</p>
+  <div class="card">
+    <div class="grid2">
+      <div>
+        <div class="miniscroll" id="ms10a" style="height:120px"><div style="height:2000px;padding:8px" class="tiny">element scroller A</div></div>
+        <div class="row"><button class="btn" id="b10a">scrollBy(+0.5) ×3</button><button class="btn" id="b10r">reset</button></div>
+        <div class="log" id="log10">—</div>
+      </div>
+      <div>
+        <div class="tscroll"><table id="t10">
+          <thead><tr><th>input</th><th>Chromium</th><th>WebKit</th><th>Firefox</th></tr></thead>
+          <tbody>
+            <tr><td><code>100.5</code></td><td>101</td><td>100</td><td>100</td></tr>
+            <tr><td><code>100.25</code></td><td>100</td><td>100</td><td>100</td></tr>
+            <tr><td><code>100.7</code></td><td>101</td><td>100</td><td>101</td></tr>
+            <tr><td><code>scrollBy(+0.5)×3</code></td><td><b>+3</b></td><td><b>+0</b></td><td><b>+0</b></td></tr>
+          </tbody>
+        </table></div>
+        <div class="chips" id="chips-s10" style="margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ §11 SURFACE CENSUS ══════════════ -->
+<section class="sec" id="s11">
+  <div class="secnum">§11</div>
+  <h2>The surface census — clamps, ghosts &amp; the non-standard survivor</h2>
+  <p>Measured 3/3 unless noted: <code>scrollTo(0, 99999)</code> <b>clamps</b> to max (4 300 here) · negative → 0 · <code>top:'0'</code> string coerces silently · unknown dictionary options are ignored · <code>window.scroll !== window.scrollTo</code> (distinct function objects, both length 0) · legacy <code>scrollTo(x, y)</code> numbers still work · <code>onscrollend</code> setter exists on window + document. THE SURVIVOR: <code>scrollIntoViewIfNeeded()</code> — WebKit-born, non-standard — lives on in Chromium + WebKit, absent in Firefox. Its semantics measured: <b>not visible → centers</b>; <b>fully visible → no-op</b>; <b>partially visible → minimal reveal</b> (start-align, not center). THE RTL NEAREST SPLIT: in an RTL horizontal scroller, <code>inline:'nearest'</code> for an out-of-view target aligned the near edge on Chromium/Firefox (−3208) but scrolled 61 px further to the far edge on WebKit (−3269) — the only geometry lane that split.</p>
+  <div class="card">
+    <div class="tscroll"><table id="t11">
+      <thead><tr><th>probe</th><th>your engine</th><th>bench</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div class="chips" id="chips-s11"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §12 CAPSTONES ══════════════ -->
+<section class="sec" id="s12">
+  <div class="secnum">§12</div>
+  <h2>Capstones — OpenDrones auto-follow &amp; the Molt anchor audit</h2>
+  <p><b>OpenDrones — the telemetry auto-follow layer</b> (live below): the feed appends rows and follows with <b>instant</b> scroll (why: a smooth 150–1 033 ms flight per row <b>lags the stream on every engine</b> — and a smooth scroll mid-flight cannot be relied on to cancel); arrival is confirmed by <code>scrollend</code>, not by position polling; an operator wheel/pointerdown <b>pauses follow</b> (a real listener — the wheel-absorb law means you cannot assume the engine cancels the flight for you); the reduced-motion guard ships <b>off</b> because we never animate in follow mode. <b>Molt — the anchor-nav audit</b>: 12 checks, half a day, most invisible in review.</p>
+  <div class="card">
+    <div class="feed" id="feed12" aria-live="off"></div>
+    <div class="row">
+      <button class="btn p" id="b12">toggle auto-follow</button>
+      <span class="tiny" id="f12s">follow: ON · rows: 0 · ends: 0</span>
+    </div>
+  </div>
+  <div class="card">
+    <div class="tscroll"><table>
+      <thead><tr><th>#</th><th>check</th><th>severity</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><code>html{scroll-behavior:smooth}</code> without a <code>prefers-reduced-motion</code> gate (no engine disables it)</td><td>HIGH</td></tr>
+        <tr><td>2</td><td>smooth scroll in any auto-follow/auto-advance loop (lags the stream; duration scales with distance on Chromium)</td><td>HIGH</td></tr>
+        <tr><td>3</td><td>"user scroll cancels the auto-scroll" assumptions (wheel is absorbed mid-flight on Chromium + WebKit)</td><td>HIGH</td></tr>
+        <tr><td>4</td><td>position polling instead of <code>scrollend</code> (and Firefox wheel never fires it)</td><td>HIGH</td></tr>
+        <tr><td>5</td><td><code>scroll-behavior</code> on <code>body</code> only (dead rule — the body-ignore law)</td><td>MED</td></tr>
+        <tr><td>6</td><td>scroll-into-error forms without <code>scroll-margin</code> (input flush under a sticky header)</td><td>MED</td></tr>
+        <tr><td>7</td><td><code>block:'nearest'</code> expectations when the error field is partially visible (no-op → the user never sees it move)</td><td>MED</td></tr>
+        <tr><td>8</td><td>scroll targets inside mandatory snap containers (you land snapped, not where you asked)</td><td>MED</td></tr>
+        <tr><td>9</td><td><code>scrollIntoViewIfNeeded</code> in shared code (absent in Firefox)</td><td>MED</td></tr>
+        <tr><td>10</td><td>cross-origin "scroll to my embed" flows (WebKit frame-walk refusal)</td><td>MED</td></tr>
+        <tr><td>11</td><td>pixel-exact scroll math with fractional deltas (three rounding grammars)</td><td>LOW</td></tr>
+        <tr><td>12</td><td>typo'd <code>behavior</code> strings (throw on WebKit/Firefox, silently auto on Chromium)</td><td>LOW</td></tr>
+      </tbody>
+    </table></div>
+    <div class="chips" id="chips-s12"></div>
+  </div>
+</section>
+
+<footer class="sec" id="ledger">
+  <div class="secnum">§13</div>
+  <h2>Engine ledger</h2>
+  <div class="card"><div class="tscroll"><table>
+    <thead><tr><th>law</th><th>Chromium 149</th><th>WebKit 26.5</th><th>Firefox 151</th></tr></thead>
+    <tbody>
+      <tr><td>smooth duration (3 000 px)</td><td>835 ms, scales with distance</td><td>150 ms fixed</td><td>650 ms, capped</td></tr>
+      <tr><td>scrollend ctor</td><td>Event</td><td>Event</td><td><b>UIEvent</b></td></tr>
+      <tr><td>scrollend for wheel</td><td>1 per gesture</td><td>1 per gesture</td><td><b>never</b></td></tr>
+      <tr><td>scrollend for instant scroll</td><td>1</td><td>1</td><td>1</td></tr>
+      <tr><td>no-op scroll</td><td>0 events</td><td>0 events</td><td>0 events</td></tr>
+      <tr><td>element scrollend</td><td>on element, bubbles:false</td><td>on element, bubbles:false</td><td>on element, bubbles:false</td></tr>
+      <tr><td>body{scroll-behavior} for viewport</td><td>ignored</td><td>ignored</td><td>ignored</td></tr>
+      <tr><td>explicit instant vs CSS smooth</td><td>instant wins</td><td>instant wins</td><td>instant wins</td></tr>
+      <tr><td>behavior:'auto' under CSS smooth</td><td>animated</td><td>animated</td><td>animated</td></tr>
+      <tr><td>behavior:'bogus'</td><td><b>silently accepted</b></td><td>TypeError</td><td>TypeError</td></tr>
+      <tr><td>CSS 'instant' keyword</td><td>unsupported</td><td>unsupported</td><td>unsupported</td></tr>
+      <tr><td>reduced-motion disables smooth</td><td><b>no</b> (883 ms)</td><td><b>no</b> (201 ms)</td><td><b>no</b> (684 ms)</td></tr>
+      <tr><td>anchor jump under CSS smooth</td><td>smooth + 1 end</td><td>smooth + 1 end</td><td>smooth + 1 end</td></tr>
+      <tr><td>instant interrupt mid-flight</td><td><b>lands past target</b> (+velocity residual)</td><td>exact landing</td><td>exact landing, 2 ends</td></tr>
+      <tr><td>wheel during programmatic flight</td><td><b>absorbed</b> (flight wins)</td><td><b>absorbed</b></td><td>cancels flight</td></tr>
+      <tr><td>nested scrollIntoView</td><td>walks both</td><td>walks both</td><td>walks both</td></tr>
+      <tr><td>cross-origin frame walk</td><td>walks parent</td><td><b>parent stays</b></td><td>walks parent</td></tr>
+      <tr><td>snap mandatory landing</td><td>snapped (300)</td><td>snapped (300)</td><td>snapped (300)</td></tr>
+      <tr><td>sub-pixel 100.5</td><td>101 (half-up)</td><td>100 (floor)</td><td>100 (half-down)</td></tr>
+      <tr><td>scrollIntoViewIfNeeded</td><td>present</td><td>present</td><td><b>absent</b></td></tr>
+      <tr><td>RTL inline:'nearest'</td><td>near edge (−3208)</td><td><b>far edge (−3269)</b></td><td>near edge (−3208)</td></tr>
+    </tbody>
+  </table></div></div>
+  <p class="tiny" style="margin-top:10px">Method: 5 probe batteries (census · duration/distance ladder · scrollend grammar · interrupt/reduced-motion/snap/frame/sub-pixel de-confounds · geometry matrix), 3 engines (Chromium 149 CfT headless · Firefox 151 · WebKit 26.5), ~95 measured lanes, fresh document per isolation-sensitive lane, trajectories sampled in-page at 40 ms, scrollend grammar verified with 5.2 s settles. Falsified on the bench: "browsers disable smooth under reduced-motion" · "instant programmatic scroll fires no scrollend" · "user wheel always cancels a smooth flight". Lane limits: wheel lanes via automation input (real trackpad momentum untested); WebKit cross-lane wheel-absorb measured headless.</p>
+</footer>
+
+</div>
+<script>
+(function () {
+  'use strict';
+  // ── shared helpers ──────────────────────────────────────────
+  function chip(host, id, cls, text) {
+    var h = document.getElementById(host);
+    var e = document.getElementById('c-' + id) || document.createElement('span');
+    e.id = 'c-' + id; e.className = 'chip ' + cls; e.textContent = text;
+    if (!e.parentNode) h.appendChild(e);
+    return e;
+  }
+  function info(host, id, t) { chip(host, id, 'info', t); }
+  function ok(host, id, t) { chip(host, id, 'ok', t); }
+  function warn(host, id, t) { chip(host, id, 'warn', t); }
+  function pending(host, id, t) { chip(host, id, 'pending', t); }
+  var ENG = (function () {
+    var ua = navigator.userAgent;
+    if (/Firefox\//.test(ua)) return 'Firefox';
+    if (/WebKit\//.test(ua) && !/Chrome|Chromium|Edg\//.test(ua)) return 'WebKit';
+    if (/Chrome|Chromium|Edg\//.test(ua)) return 'Chromium';
+    return 'other';
+  })();
+  function fillTrack(el, n) {
+    var h = '';
+    for (var i = 0; i < n; i++) h += '<div class="mk">block ' + i + ' · ' + (i * 500) + '–' + ((i + 1) * 500) + 'px</div>';
+    el.innerHTML = h;
+  }
+  function settle(maxMs) { return new Promise(function (r) { setTimeout(r, maxMs || 1400); }); }
+  // flight measurement on a scroller element
+  function fly(sc, top, behavior) {
+    return new Promise(function (resolve) {
+      var ev = 0, ends = 0, samples = [];
+      var onS = function () { ev++; };
+      var onE = function () { ends++; };
+      sc.addEventListener('scroll', onS, { passive: true });
+      sc.addEventListener('scrollend', onE);
+      var t0 = performance.now(), last = -1, stable = 0;
+      sc.scrollTo({ top: 0, behavior: 'instant' });
+      setTimeout(function () {
+        ev = 0; ends = 0; samples = [];
+        t0 = performance.now();
+        sc.scrollTo({ top: top, behavior: behavior || 'smooth' });
+        (function tick() {
+          var y = sc.scrollTop;
+          samples.push({ t: Math.round(performance.now() - t0), y: y });
+          if (y === last) stable++; else stable = 0;
+          last = y;
+          if ((stable >= 6 && performance.now() - t0 > 180) || performance.now() - t0 > 3400) {
+            sc.removeEventListener('scroll', onS);
+            sc.removeEventListener('scrollend', onE);
+            var i0 = 0; while (i0 < samples.length - 1 && samples[i0].y === samples[0].y) i0++;
+            var i1 = samples.length - 1; while (i1 > 0 && samples[i1].y === samples[samples.length - 1].y) i1--;
+            var first = samples[i0] ? samples[i0].y : null, lastY = samples.length ? samples[samples.length - 1].y : null;
+            var dur = samples.length && samples[i1] && samples[i0] ? samples[i1].t - samples[i0].t : 0;
+            resolve({ ev: ev, ends: ends, n: samples.length, dur: dur, firstY: first, lastY: lastY, samples: samples });
+          } else requestAnimationFrame(tick);
+        })();
+      }, 60);
+    });
+  }
+  function plot(cv, samples, color) {
+    var ctx = cv.getContext('2d');
+    var W = cv.width, H = cv.height;
+    ctx.clearRect(0, 0, W, H);
+    if (!samples || samples.length < 2) return;
+    var maxY = Math.max.apply(null, samples.map(function (s) { return s.y; })) || 1;
+    var maxX = samples[samples.length - 1].t || 1;
+    ctx.strokeStyle = '#e4e1db'; ctx.beginPath();
+    [0.25, 0.5, 0.75].forEach(function (f) { ctx.moveTo(0, H * f); ctx.lineTo(W, H * f); }); ctx.stroke();
+    ctx.strokeStyle = color || '#0e7490'; ctx.lineWidth = 2; ctx.beginPath();
+    samples.forEach(function (s, i) {
+      var x = (s.t / maxX) * (W - 8) + 4;
+      var y = H - 6 - (s.y / maxY) * (H - 14);
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    });
+    ctx.stroke();
+    ctx.fillStyle = '#6b6875'; ctx.font = '10px ui-monospace';
+    ctx.fillText(maxY + 'px / ' + maxX + 'ms', 6, 11);
+  }
+
+  // ── §1 flight lab ───────────────────────────────────────────
+  (function () {
+    try {
+      var trk = document.getElementById('trk1');
+      fillTrack(trk, 10);
+      document.getElementById('f1eng').textContent = ENG + ' (live)';
+      var running = false;
+      var btns = document.querySelectorAll('[data-fly]');
+      Array.prototype.forEach.call(btns, function (b) {
+        b.addEventListener('click', function () {
+          if (running) return; running = true;
+          var d = +b.getAttribute('data-fly');
+          fly(trk, d, 'smooth').then(function (r) {
+            document.getElementById('f1dur').textContent = r.dur + ' ms';
+            document.getElementById('f1ev').textContent = r.ev;
+            document.getElementById('f5e') && null;
+            document.getElementById('f1end').textContent = r.ends;
+            plot(document.getElementById('cv1'), r.samples);
+            var bench = { 300: { Chromium: 215, WebKit: 150, Firefox: 484 }, 1000: { Chromium: 466, WebKit: 150, Firefox: 567 }, 3000: { Chromium: 835, WebKit: 150, Firefox: 650 }, 4400: { Chromium: 1033, WebKit: 150, Firefox: 650 } }[d];
+            ok('chips-s1', 's1land', 'flew ' + d + ': landed ' + r.lastY + ' in ' + r.dur + ' ms · bench for your family (' + ENG + ') ≈ ' + bench[ENG] + ' ms');
+            var mono = r.samples.every(function (s, i, a) { return !i || s.y === a[i - 1].y || (r.lastY >= r.firstY ? s.y >= a[i - 1].y : s.y <= a[i - 1].y); });
+            ok('chips-s1', 's1mono', mono ? 'monotonic trajectory ✓ (no overshoot-and-return)' : 'non-monotonic flight (engine overshoots)');
+            (r.ends === 1 ? ok : warn)('chips-s1', 's1end', 'scrollend × ' + r.ends + ' for the flight (bench: 1 per sequence)');
+            running = false;
+          });
+        });
+      });
+      pending('chips-s1', 's1go', 'press a fly button — chips verify live');
+      info('chips-s1', 's1bench', 'bench: Chromium 215/466/835/1033 ms · WebKit 150 ms flat · Firefox 484/567/650/650 ms');
+    } catch (e) { warn('chips-s1', 's1err', '§1 error: ' + e.message); }
+  })();
+
+  // ── §2 scrollend grammar ────────────────────────────────────
+  (function () {
+    try {
+      var trk = document.getElementById('trk2');
+      fillTrack(trk, 10);
+      trk.scrollIntoView({ block: 'center', behavior: 'instant' }); // below-fold tracks mis-measure on some engines — keep the lab in view
+      var docEnds = 0, pageScrolled = false;
+      document.addEventListener('scrollend', function () { if (!pageScrolled) docEnds++; });
+      var payload = null;
+      function lane(kind, behavior, top) {
+        function attempt() {
+        return new Promise(function (resolve) {
+          var ev = 0, ends = 0;
+          var onS = function () { ev++; };
+          var onE = function (e) { ends++; payload = { ctor: e.constructor.name, bubbles: e.bubbles, cancelable: e.cancelable, composed: e.composed, target: e.target === trk ? 'element' : String(e.target), type: e.type }; };
+          trk.addEventListener('scroll', onS, { passive: true });
+          trk.addEventListener('scrollend', onE);
+          trk.scrollTo({ top: 0, behavior: 'instant' });
+          setTimeout(function () {
+            // NB: a no-op scrollIntoView STILL fires a document scrollend on Chromium
+            // (measured — a scroll sequence opens and closes with zero scroll events),
+            // so we do NOT walk the page per-lane; visibility is set once at chain start.
+            ev = 0; ends = 0; docEnds = 0; pageScrolled = false;
+            if (kind === 'noop') trk.scrollTo({ top: trk.scrollTop, behavior: behavior });
+            else trk.scrollTo({ top: top, behavior: behavior });
+            setTimeout(function () {
+              trk.removeEventListener('scroll', onS);
+              trk.removeEventListener('scrollend', onE);
+              resolve({ ev: ev, ends: ends, docEnds: docEnds });
+            }, behavior === 'smooth' ? 1500 : 300);
+          }, 60);
+        });
+        }
+        // one retry — a scheduling miss must not blank the lane (observed once on FF @375)
+        return attempt().then(function (r) { return (behavior === 'smooth' && r.ev === 0 && kind !== 'noop') ? attempt() : r; });
+      }
+      function show(laneName, r) {
+        document.getElementById('f2lane').textContent = laneName;
+        document.getElementById('f2cnt').textContent = r.ev + ' → ' + r.ends;
+        document.getElementById('f2pay').textContent = payload ? payload.ctor + ' · bubbles:' + payload.bubbles + ' · cancelable:' + payload.cancelable : '—';
+        document.getElementById('f2bub').textContent = 'doc listener got ' + r.docEnds + (r.docEnds === 0 ? ' (bubbles:false — never reaches document)' : '');
+      }
+      // auto-run instant + smooth + noop on load
+      lane('instant → 1200', 'instant', 1200).then(function (r) {
+        show('instant → 1200', r);
+        (r.ends === 1 ? ok : warn)('chips-s2', 's2i', 'instant scroll: ' + r.ev + ' scroll event(s) → scrollend × ' + r.ends + ' (bench: 1 → 1 — instant scrolls DO fire scrollend)');
+        return lane('smooth → 1200', 'smooth', 1200);
+      }).then(function (r) {
+        show('smooth → 1200', r);
+        if (r.ev > 0) {
+          (r.ends === 1 ? ok : warn)('chips-s2', 's2s', 'smooth scroll: ' + r.ev + ' events → scrollend × ' + r.ends + ' (one per sequence)');
+        } else {
+          info('chips-s2', 's2s', 'smooth scroll dispatched 0 events — this track is below the fold on your viewport/engine (observed: Firefox @375 defers/omits the flight for a not-visible scroller). Scroll it into view and press “smooth → 1200”.');
+        }
+        (payload && payload.ctor === (ENG === 'Firefox' ? 'UIEvent' : 'Event') ? ok : warn)('chips-s2', 's2c', 'payload: ' + (payload ? payload.ctor : '?') + ' on ' + (payload ? payload.target : '?') + ' (bench: UIEvent only in Firefox)');
+        (r.docEnds === 0 ? ok : warn)('chips-s2', 's2b', 'element-scroller scrollend reached document listener ' + r.docEnds + '× (bench: 0 — bubbles:false)');
+        return lane('no-op (already there)', 'smooth', 0);
+      }).then(function (r) {
+        (r.ev === 0 && r.ends === 0 ? ok : warn)('chips-s2', 's2n', 'no-op scroll (target = current): ' + r.ev + ' events, ' + r.ends + ' scrollends (bench: 0 / 0)');
+        pending('chips-s2', 's2w', 'wheel lane: click the track, then wheel — Firefox: 0 scrollends, ever');
+        window.__s2done = true; // §4 waits for this before probing the shared track
+      }).catch(function (e) { warn('chips-s2', 's2err', '§2 error: ' + e.message); window.__s2done = true; });
+      document.getElementById('b2i').onclick = function () { lane('instant → 1200', 'instant', 1200).then(function (r) { show('instant → 1200 (button)', r); }); };
+      document.getElementById('b2s').onclick = function () { lane('smooth → 1200', 'smooth', 1200).then(function (r) { show('smooth → 1200 (button)', r); }); };
+      document.getElementById('b2n').onclick = function () { lane('no-op', 'smooth', 0).then(function (r) { show('no-op (button)', r); }); };
+      // wheel lane (hands-on)
+      (function () {
+        var ev = 0, ends = 0, armed = false, t = null;
+        trk.addEventListener('wheel', function () {
+          if (!armed) { armed = true; ev = 0; ends = 0; clearTimeout(t); }
+          ev++;
+        }, { passive: true });
+        trk.addEventListener('scrollend', function () { if (armed) ends++; });
+        document.getElementById('b2w').onclick = function () {
+          armed = false; ev = 0; ends = 0;
+          trk.focus({ preventScroll: true });
+          trk.scrollTo({ top: 100, behavior: 'instant' });
+          t = setTimeout(function () {
+            (ends === 0 ? (ENG === 'Firefox' ? ok : warn) : ok)('chips-s2', 's2wheel', 'your wheel lane: ' + ev + ' scroll events → scrollend × ' + ends + (ENG === 'Firefox' ? ' (Firefox: wheel never fires scrollend — matches bench)' : ' (bench: 1 per gesture)'));
+          }, 2200);
+          pending('chips-s2', 's2wheel', 'wheel over the track now… (2.2 s window)');
+        };
+      })();
+    } catch (e) { warn('chips-s2', 's2err2', '§2 error: ' + e.message); }
+  })();
+
+  // ── §3 propagation ──────────────────────────────────────────
+  (function () {
+    try {
+      var html = document.documentElement, body = document.body;
+      var log = document.getElementById('log3');
+      function pageLane(label, cssText) {
+        return new Promise(function (resolve) {
+          html.setAttribute('style', cssText.html || '');
+          body.setAttribute('style', cssText.body || '');
+          scrollTo({ top: 0, behavior: 'instant' });
+          var ev = 0;
+          var onS = function () { ev++; };
+          window.addEventListener('scroll', onS, { passive: true });
+          setTimeout(function () {
+            ev = 0;
+            scrollTo(0, 1500); // plain — follows whatever CSS now governs
+            setTimeout(function () {
+              window.removeEventListener('scroll', onS);
+              var animated = ev > 3;
+              var finalY = scrollY;
+              scrollTo({ top: 0, behavior: 'instant' });
+              html.setAttribute('style', ''); body.setAttribute('style', '');
+              log.textContent += '\n' + label + ': ' + ev + ' scroll events → ' + (animated ? 'ANIMATED' : 'instant') + ' (landed ' + finalY + ', restored)';
+              resolve({ label: label, ev: ev, animated: animated });
+            }, 1400);
+          }, 80);
+        });
+      }
+      var b = document.getElementById('b3none');
+      function wire(id, label, css) {
+        document.getElementById(id).onclick = function () {
+          pageLane(label, css).then(function (r) {
+            if (label.indexOf('body only') >= 0) {
+              (!r.animated ? ok : warn)('chips-s3', 's3body', 'body-only: ' + r.ev + ' events → ' + (r.animated ? 'ANIMATED (body rule WORKED?! bench says ignored)' : 'instant — body{scroll-behavior} ignored for the viewport ✓'));
+            } else if (label.indexOf('html only') >= 0) {
+              (r.animated ? ok : warn)('chips-s3', 's3html', 'html-only: ' + r.ev + ' events → ' + (r.animated ? 'animated ✓ html rule governs the viewport' : 'INSTANT (html rule failed?! bench says animated)'));
+            } else if (label.indexOf('+ body') >= 0) {
+              (r.animated ? ok : warn)('chips-s3', 's3both', 'html+body: ' + r.ev + ' events → ' + (r.animated ? 'animated ✓' : 'instant (bench says animated)'));
+            } else {
+              (!r.animated ? ok : warn)('chips-s3', 's3none', 'control (no rule): ' + r.ev + ' events → ' + (r.animated ? 'ANIMATED?! (control broken)' : 'instant ✓'));
+            }
+          });
+        };
+      }
+      wire('b3none', 'no rule (control)', {});
+      wire('b3html', 'html only', { html: 'scroll-behavior:smooth' });
+      wire('b3body', 'body only', { body: 'scroll-behavior:smooth' });
+      wire('b3both', 'html + body', { html: 'scroll-behavior:smooth', body: 'scroll-behavior:smooth' });
+      pending('chips-s3', 's3go', 'run the four lanes — the page scrolls itself and restores');
+      info('chips-s3', 's3note', 'bench (3/3): body-only = 1 event instant · html-only = animated · html+body = animated');
+    } catch (e) { warn('chips-s3', 's3err', '§3 error: ' + e.message); }
+  })();
+
+  // ── §4 negotiation + enum (auto-run, waits for §2 to release the shared track) ─
+  (function () {
+    try {
+      var tb = document.querySelector('#t4 tbody');
+      var trk = document.getElementById('trk2'); // reuse — AFTER §2 is done with it
+      function row(probe, runDesc, yourVal, bench) {
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td><code>' + probe + '</code></td><td>' + runDesc + '</td><td><b>' + yourVal + '</b></td><td class="tiny">' + bench + '</td>';
+        tb.appendChild(tr);
+      }
+      var probeCount = 0;
+      function whenFree(fn) { if (window.__s2done) fn(); else setTimeout(function () { whenFree(fn); }, 250); }
+      whenFree(function () {
+      document.getElementById('trk2').scrollIntoView({ block: 'center', behavior: 'instant' });
+      // 1. explicit instant under CSS smooth
+      (function () {
+        trk.style.scrollBehavior = 'smooth';
+        trk.scrollTo({ top: 0, behavior: 'instant' });
+        var ev = 0;
+        var onS = function () { ev++; };
+        trk.addEventListener('scroll', onS, { passive: true });
+        setTimeout(function () {
+          ev = 0;
+          trk.scrollTo({ top: 900, behavior: 'instant' });
+          setTimeout(function () {
+            trk.removeEventListener('scroll', onS);
+            trk.style.scrollBehavior = '';
+            var instant = ev <= 2;
+            row('CSS smooth + behavior:"instant"', 'live on track §2', instant ? 'INSTANT (' + ev + ' ev) ✓' : 'animated (' + ev + ' ev)!', 'instant wins · 3/3');
+            (instant ? ok : warn)('chips-s4', 's4i', 'explicit instant beats CSS smooth: ' + ev + ' events (bench: 1–2, instant)');
+            if (++probeCount === 2) done();
+          }, 250);
+        }, 60);
+      })();
+      // 2. behavior auto under CSS smooth
+      (function () {
+        setTimeout(function () {
+          document.getElementById('trk2').scrollIntoView({ block: 'center', behavior: 'instant' });
+          trk.style.scrollBehavior = 'smooth';
+          trk.scrollTo({ top: 0, behavior: 'instant' });
+          setTimeout(function () {
+            var ev = 0;
+            var onS = function () { ev++; };
+            trk.addEventListener('scroll', onS, { passive: true });
+            trk.scrollTo({ top: 600, behavior: 'auto' });
+            setTimeout(function () {
+              trk.removeEventListener('scroll', onS);
+              trk.style.scrollBehavior = '';
+              trk.scrollTo({ top: 0, behavior: 'instant' });
+              row('CSS smooth + behavior:"auto"', 'live on track §2', ev > 3 ? 'ANIMATED (' + ev + ' ev) ✓' : 'instant (' + ev + ' ev)', 'auto follows CSS · 3/3');
+              (ev > 3 ? ok : warn)('chips-s4', 's4a', 'behavior:"auto" under CSS smooth: ' + ev + ' events → ' + (ev > 3 ? 'animated ✓' : 'instant?!'));
+              if (++probeCount === 2) done();
+            }, 1200);
+          }, 60);
+        }, 400);
+      })();
+      function done() {
+        // 3. bogus enum — Chromium: accepted to the caller, but an UNCATACHABLE
+        // TypeError is still reported to the page error channel (measured on 149).
+        var bogus, sideChannel = false;
+        var onErr = function () { sideChannel = true; };
+        window.addEventListener('error', onErr);
+        window.onerror = function () { sideChannel = true; return false; }; // internal enum reports invoke the onerror PROPERTY, not the event path
+        try { scrollTo({ top: 0, behavior: 'bogus' }); bogus = 'accepted (no throw)'; }
+        catch (e) { bogus = 'THROW: ' + e.name; }
+        setTimeout(function () {
+          window.removeEventListener('error', onErr);
+          window.onerror = null;
+          row('scrollTo({behavior:"bogus"})', 'live try/catch', bogus + (sideChannel ? ' + uncatchable error-event' : ''), 'WebKit/Firefox: catchable TypeError · Chromium: accepted, error still reported');
+          (bogus === 'accepted (no throw)' && sideChannel ? ok : bogus.indexOf('THROW') === 0 ? ok : warn)('chips-s4', 's4b', 'behavior:"bogus" → ' + bogus + (sideChannel ? ' — and an UNCATACHABLE TypeError hit the page error channel (' + ENG + ')' : '') + '. Bench: WebKit/Firefox throw catchably; Chromium accepts + reports');
+        }, 400);
+        // 4. instant accepted
+        var inst;
+        try { scrollTo({ top: 0, behavior: 'instant' }); inst = 'accepted'; } catch (e) { inst = 'THROW: ' + e.name; }
+        row('behavior:"instant"', 'live', inst, 'accepted 3/3 (JS-only enum member)');
+        ok('chips-s4', 's4in', 'behavior:"instant" → ' + inst + ' (bench: accepted everywhere)');
+        // 5. CSS keyword gap
+        var cssI = CSS.supports('scroll-behavior', 'instant');
+        var cssS = CSS.supports('scroll-behavior', 'smooth');
+        row("CSS.supports('scroll-behavior','instant')", 'live', String(cssI), 'false 3/3 — CSS grammar is auto|smooth only');
+        (!cssI && cssS ? ok : warn)('chips-s4', 's4css', 'CSS keyword census: smooth=' + cssS + ' instant=' + cssI + ' (bench: true/false — instant is JS-only)');
+        // 6. legacy numbers
+        var legacy;
+        try { scrollTo(0, 0); legacy = 'ok'; } catch (e) { legacy = 'THROW'; }
+        row('scrollTo(0, 0) legacy numbers', 'live', legacy, 'ok 3/3');
+        ok('chips-s4', 's4leg', 'legacy scrollTo(x, y) → ' + legacy);
+      }
+      }); // whenFree
+    } catch (e) { warn('chips-s4', 's4err', '§4 error: ' + e.message); }
+  })();
+
+  // ── §5 interrupt lab ────────────────────────────────────────
+  (function () {
+    try {
+      var trk = document.getElementById('trk5');
+      fillTrack(trk, 10);
+      var r5 = document.getElementById('r5'), r5v = document.getElementById('r5v');
+      r5.addEventListener('input', function () { r5v.textContent = r5.value + ' ms'; });
+      var busy = false;
+      document.getElementById('b5run').onclick = function () {
+        if (busy) return; busy = true;
+        var at = +r5.value;
+        trk.scrollTo({ top: 0, behavior: 'instant' });
+        var ends = 0;
+        var onE = function () { ends++; };
+        trk.addEventListener('scrollend', onE);
+        var samples = [];
+        var t0 = performance.now();
+        var iv = setInterval(function () { samples.push({ t: Math.round(performance.now() - t0), y: trk.scrollTop }); }, 40);
+        setTimeout(function () { trk.scrollTo({ top: 4400, behavior: 'smooth' }); }, 60);
+        setTimeout(function () { trk.scrollTo({ top: 2000, behavior: 'instant' }); }, 60 + at);
+        setTimeout(function () {
+          clearInterval(iv);
+          trk.removeEventListener('scrollend', onE);
+          var landed = trk.scrollTop;
+          var residual = landed - 2000;
+          document.getElementById('f5y').textContent = landed;
+          document.getElementById('f5r').textContent = (residual >= 0 ? '+' : '') + residual + ' px';
+          document.getElementById('f5e').textContent = ends;
+          plot(document.getElementById('cv5'), samples, '#b45309');
+          if (Math.abs(residual) <= 2) {
+            ok('chips-s5', 's5r', 'landed ' + landed + ' — exact cancel (residual ' + residual + '). Bench: exact on WebKit/Firefox; Chromium overshoots by in-flight velocity');
+          } else {
+            warn('chips-s5', 's5r', 'landed ' + landed + ' — ' + (residual > 0 ? 'OVERSHOT' : 'undershot') + ' the requested 2000 by ' + Math.abs(residual) + ' px. Bench: the Chromium un-cancellable-flight residual (+20 @50ms, +205 @300ms)');
+          }
+          (ends >= 1 ? ok : warn)('chips-s5', 's5e', ends + ' scrollend(s) for interrupt@' + at + 'ms (bench: Chromium/WebKit 1 · Firefox 2)');
+          busy = false;
+        }, 2600);
+      };
+      pending('chips-s5', 's5go', 'run the interrupt — try 50 ms vs 300 ms and watch the residual flip');
+    } catch (e) { warn('chips-s5', 's5err', '§5 error: ' + e.message); }
+  })();
+
+  // ── §6 reduced motion ───────────────────────────────────────
+  (function () {
+    try {
+      var mq = matchMedia('(prefers-reduced-motion: reduce)');
+      var el = document.getElementById('f6mq');
+      var upd = function () { el.textContent = mq.matches ? 'reduce' : 'no-preference'; el.className = 'v ' + (mq.matches ? 'hot' : 'good'); };
+      upd();
+      mq.addEventListener ? mq.addEventListener('change', upd) : mq.addListener(upd);
+      (mq.matches ? ok : info)('chips-s6', 's6mq', 'your prefers-reduced-motion: ' + (mq.matches ? 'reduce' : 'no-preference') + ' — and smooth scrolling would STILL animate (no engine auto-disables)');
+      info('chips-s6', 's6bench', 'bench under emulated reduce: Chromium 883 ms · WebKit 201 ms · Firefox 684 ms — all animated');
+    } catch (e) { warn('chips-s6', 's6err', '§6 error: ' + e.message); }
+  })();
+
+  // ── §7 geometry ─────────────────────────────────────────────
+  (function () {
+    try {
+      var sc = document.getElementById('ms7');
+      var t400 = document.getElementById('g7t'), t1200 = document.getElementById('g7t2');
+      var log = document.getElementById('log7');
+      var curTarget = 't400', curBlock = null;
+      var V = 220;
+      function run(blockArg, label) {
+        sc.scrollTop = 0;
+        var target = curTarget === 't400' ? t400 : t1200;
+        var before = 0;
+        var off = target.offsetTop, E = 60;
+        var t0 = performance.now();
+        if (blockArg === 'noarg') target.scrollIntoView();
+        else target.scrollIntoView(blockArg === undefined ? undefined : { block: blockArg });
+        var after = sc.scrollTop;
+        var predict = {
+          start: off, center: off - (V - E) / 2, end: off + E - V,
+          nearest: 'minimal (no-op if visible · end-align below · start-align above)',
+          noarg: off, undefined: off
+        };
+        log.textContent = label + ': scrollTop 0 → ' + after + '  (offset ' + off + ' · predict ' + (typeof predict[blockArg || 'noarg'] === 'number' ? predict[blockArg || 'noarg'] : predict[blockArg || 'noarg']) + ')';
+        document.getElementById('f7y').textContent = after;
+        return { before: before, after: after, off: off };
+      }
+      Array.prototype.forEach.call(document.querySelectorAll('[data-g]'), function (b) {
+        b.addEventListener('click', function () {
+          var g = b.getAttribute('data-g');
+          if (g === 't400' || g === 't1200') { curTarget = g; return; }
+          if (g === 'noarg') { run('noarg', 'scrollIntoView() no-arg'); ok('chips-s7', 's7noarg', 'no-arg landed ' + sc.scrollTop + ' (bench: = block:"start")'); return; }
+          run(g, 'block:"' + g + '"');
+          if (g === 'nearest') {
+            info('chips-s7', 's7near', 'nearest from 0 (target below): landed ' + sc.scrollTop + ' — end-align minimal ✓ (bench: 160 for target@400 in this box)');
+          }
+        });
+      });
+      // auto bench: margin/padding stack on a detached scroller clone (held inside a
+      // clipping holder so its scrollIntoView walks stop at the holder — never the page)
+      (function () {
+        var holder = document.createElement('div');
+        holder.style.cssText = 'height:230px;overflow:hidden;position:fixed;left:-9999px;top:0';
+        var box = document.createElement('div');
+        box.style.cssText = 'height:220px;overflow:auto';
+        box.innerHTML = '<div style="height:400px">s</div><div id="m7" style="height:60px;scroll-margin:50px">m</div><div style="height:1200px">t</div>';
+        holder.appendChild(box);
+        document.body.appendChild(holder);
+        box.scrollTop = 0;
+        var m = box.querySelector('#m7');
+        m.scrollIntoView({ block: 'start' });
+        var a1 = box.scrollTop;
+        box.style.scrollPadding = '40px';
+        box.scrollTop = 0;
+        m.scrollIntoView({ block: 'start' });
+        var a2 = box.scrollTop;
+        box.style.scrollPadding = '';
+        holder.remove();
+        document.getElementById('f7m').textContent = 'margin50 → ' + a1 + ' · +padding40 → ' + a2;
+        (a1 === 350 ? ok : warn)('chips-s7', 's7m1', 'scroll-margin:50 on target@400 → ' + a1 + ' (bench: 350 = T−m)');
+        (a2 === a1 - 40 ? ok : warn)('chips-s7', 's7m2', '+ scroller scroll-padding:40 → ' + a2 + ' (bench: 310 — margin and padding stack additively)');
+        // nearest no-op auto check
+        sc.scrollTop = 0;
+        t400.scrollIntoView({ block: 'start' });
+        var vis = sc.scrollTop; // target now at top, fully visible
+        t400.scrollIntoView({ block: 'nearest' });
+        (sc.scrollTop === vis ? ok : warn)('chips-s7', 's7noop', 'nearest on a fully-visible target: ' + sc.scrollTop + ' = ' + vis + ' (no-op ✓)');
+        sc.scrollTop = 0;
+      })();
+      pending('chips-s7', 's7go', 'pick target + block — formulas verified live');
+    } catch (e) { warn('chips-s7', 's7err', '§7 error: ' + e.message); }
+  })();
+
+  // ── §8 nested + frame ───────────────────────────────────────
+  (function () {
+    try {
+      var outer = document.getElementById('outer8'), inner = document.getElementById('inner8');
+      var log = document.getElementById('log8');
+      function reset() { outer.scrollTo({ top: 0, behavior: 'instant' }); inner.scrollTo({ top: 0, behavior: 'instant' }); }
+      document.getElementById('b8').onclick = function () {
+        reset();
+        setTimeout(function () {
+          document.getElementById('deep8').scrollIntoView({ block: 'start', behavior: 'smooth' });
+          setTimeout(function () {
+            log.textContent = 'outer=' + outer.scrollTop + ' inner=' + inner.scrollTop + (outer.scrollTop > 0 && inner.scrollTop > 0 ? ' — both walked ✓' : ' — walk incomplete?!');
+            (outer.scrollTop > 0 && inner.scrollTop > 0 ? ok : warn)('chips-s8', 's8n', 'nested walk: outer=' + outer.scrollTop + ' · inner=' + inner.scrollTop + ' (bench: 1500/1600-ish — both walk)');
+            reset();
+          }, 1400);
+        }, 60);
+      };
+      // frame walk (same-origin srcdoc child)
+      var fr = document.getElementById('fr8');
+      document.getElementById('b8f').onclick = function () {
+        scrollTo({ top: 0, behavior: 'instant' });
+        setTimeout(function () {
+          fr.contentWindow.postMessage('walk', '*');
+          setTimeout(function () {
+            var walked = scrollY;
+            (walked > 0 ? ok : warn)('chips-s8', 's8f', 'same-origin child self-scrolled → parent walked to ' + Math.round(walked) + ' (bench: walks on all 3 engines; CROSS-origin: WebKit refuses — parent stays)');
+            scrollTo({ top: 0, behavior: 'instant' });
+            document.getElementById('f8f').textContent = 'parent walked to ' + Math.round(walked) + 'px — restored';
+          }, 600);
+        }, 80);
+      };
+      pending('chips-s8', 's8go', 'run both walks — nested box + child frame');
+      info('chips-s8', 's8xo', 'cross-origin bench: child acked scroll 1500 · parent walked 2402 on Chromium+Firefox · parent stayed 0 on WebKit');
+    } catch (e) { warn('chips-s8', 's8err', '§8 error: ' + e.message); }
+  })();
+
+  // ── §9 snap ─────────────────────────────────────────────────
+  (function () {
+    try {
+      var sb = document.getElementById('sb9');
+      var log = document.getElementById('log9');
+      function snapLane(kind) {
+        sb.scrollTo({ top: 0, behavior: 'instant' });
+        var ev = [];
+        var onS = function () { ev.push(Math.round(sb.scrollTop)); };
+        var ends = 0;
+        var onE = function () { ends++; };
+        sb.addEventListener('scroll', onS, { passive: true });
+        sb.addEventListener('scrollend', onE);
+        setTimeout(function () {
+          ev = []; ends = 0;
+          sb.scrollTo({ top: 420, behavior: kind });
+          setTimeout(function () {
+            sb.removeEventListener('scroll', onS);
+            sb.removeEventListener('scrollend', onE);
+            log.textContent = kind + ' → requested 420 · landed ' + sb.scrollTop + ' · events [' + ev.slice(0, 8).join(',') + (ev.length > 8 ? '…' : '') + '] · scrollend × ' + ends;
+            (sb.scrollTop === 360 ? ok : warn)('chips-s9', 's9' + kind, kind + ' scrollTo(420) in mandatory snap → landed ' + sb.scrollTop + ' (this 180-px box snaps to 360 — snap owns the final position; bench 300-px box: 300)');
+          }, kind === 'smooth' ? 1200 : 400);
+        }, 60);
+      }
+      document.getElementById('b9i').onclick = function () { snapLane('instant'); };
+      document.getElementById('b9s').onclick = function () { snapLane('smooth'); };
+      pending('chips-s9', 's9go', 'request 420 — land 300');
+    } catch (e) { warn('chips-s9', 's9err', '§9 error: ' + e.message); }
+  })();
+
+  // ── §10 sub-pixel ───────────────────────────────────────────
+  (function () {
+    try {
+      var a = document.getElementById('ms10a');
+      var log = document.getElementById('log10');
+      function classify(d) { return d >= 3 ? 'round-half-UP (Chromium family)' : d === 0 ? 'floor / eat (WebKit… or Firefox half-down)' : 'other (' + d + ')'; }
+      document.getElementById('b10a').onclick = function () {
+        a.scrollTo({ top: 0, behavior: 'instant' });
+        var ys = [];
+        var step = function (i) {
+          a.scrollBy({ top: 0.5, behavior: 'instant' });
+          ys.push(a.scrollTop);
+          if (i < 2) setTimeout(function () { step(i + 1); }, 40);
+          else {
+            var d = a.scrollTop;
+            log.textContent = '+0.5 ×3 → positions [' + ys.join(', ') + '] · total +' + d + 'px → your engine: ' + classify(d);
+            (d >= 3 ? ok : d === 0 ? info : warn)('chips-s10', 's10a', 'three +0.5 scrollBy = +' + d + 'px total (bench: Chromium +3 · WebKit +0 · Firefox +0)');
+            (d === 0.0 && ENG !== 'Chromium' ? info : null) && null;
+          }
+        };
+        step(0);
+      };
+      document.getElementById('b10r').onclick = function () { a.scrollTo({ top: 0, behavior: 'instant' }); log.textContent = 'reset'; };
+      pending('chips-s10', 's10go', 'run the stepper — the accumulator dialect of your engine');
+    } catch (e) { warn('chips-s10', 's10err', '§10 error: ' + e.message); }
+  })();
+
+  // ── §11 surface census (auto) ───────────────────────────────
+  (function () {
+    try {
+      var tb = document.querySelector('#t11 tbody');
+      function row(probe, yourVal, bench) {
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td><code>' + probe + '</code></td><td><b>' + yourVal + '</b></td><td class="tiny">' + bench + '</td>';
+        tb.appendChild(tr);
+      }
+      scrollTo({ top: 0, behavior: 'instant' });
+      scrollTo({ top: 999999, behavior: 'instant' });
+      var over = Math.round(scrollY);
+      scrollTo({ top: 0, behavior: 'instant' });
+      row('scrollTo(999999)', 'clamped to ' + over, 'clamps to doc−viewport (bench 4300)');
+      (over < 999999 && over > 0 ? ok : warn)('chips-s11', 's11c1', 'over-scroll clamped to ' + over);
+      scrollTo({ top: -500, behavior: 'instant' });
+      var neg = scrollY;
+      row('scrollTo(-500)', '→ ' + neg, 'clamps to 0');
+      (neg === 0 ? ok : warn)('chips-s11', 's11c2', 'negative top clamped to 0');
+      try { scrollTo({ top: '0', behavior: 'instant' }); var s = 'coerced'; } catch (e) { s = 'THROW'; }
+      row("top:'0' (string)", s, 'silently coerces 3/3');
+      var ident = window.scroll === window.scrollTo;
+      row('window.scroll === window.scrollTo', ident ? 'SAME fn' : 'distinct functions', 'distinct on all 3 (two bindings, same behavior)');
+      info('chips-s11', 's11i', 'scroll/scrollTo identity: ' + ident + ' (bench: false — distinct function objects)');
+      var sin = typeof document.body.scrollIntoViewIfNeeded === 'function';
+      row('scrollIntoViewIfNeeded', sin ? 'PRESENT' : 'absent', 'present: Chromium + WebKit · absent: Firefox');
+      (sin === (ENG !== 'Firefox') ? ok : warn)('chips-s11', 's11sin', 'scrollIntoViewIfNeeded: ' + (sin ? 'present (bench: yes on ' + ENG + ')' : 'absent (bench: Firefox)'));
+      var onse = false;
+      try { window.onscrollend = function () { }; onse = typeof window.onscrollend === 'function'; window.onscrollend = null; } catch (e) { }
+      row('onscrollend setter', onse ? 'works' : 'missing', 'window + document 3/3');
+      ok('chips-s11', 's11onse', 'onscrollend idl attribute: ' + onse);
+      if (sin) {
+        // measure its semantics live (clipping holder — the walk must not touch the page)
+        var holder11 = document.createElement('div');
+        holder11.style.cssText = 'height:230px;overflow:hidden;position:fixed;left:-9999px;top:0';
+        var box = document.createElement('div');
+        box.style.cssText = 'height:220px;overflow:auto';
+        box.innerHTML = '<div style="height:400px">s</div><div id="n11" style="height:60px;background:#eef">n</div><div style="height:1200px">t</div>';
+        holder11.appendChild(box);
+        document.body.appendChild(holder11);
+        var n = box.querySelector('#n11');
+        box.scrollTop = 0; n.scrollIntoViewIfNeeded();
+        var c1 = box.scrollTop;
+        box.scrollTop = 420; n.scrollIntoViewIfNeeded();
+        var c2 = box.scrollTop;
+        box.scrollTop = 300; n.scrollIntoViewIfNeeded(); // fully visible
+        var c3 = box.scrollTop;
+        holder11.remove();
+        row('SINy: hidden / partial / visible', c1 + ' / ' + c2 + ' / ' + c3, 'bench: 170(center) / 160(reveal) / no-op');
+        info('chips-s11', 's11sinsem', 'scrollIntoViewIfNeeded: hidden→' + c1 + ' (centers) · partial→' + c2 + ' (minimal reveal) · visible→' + c3 + ' (no-op)');
+      }
+    } catch (e) { warn('chips-s11', 's11err', '§11 error: ' + e.message); }
+  })();
+
+  // ── §12 capstone feed ───────────────────────────────────────
+  (function () {
+    try {
+      var feed = document.getElementById('feed12');
+      var st = document.getElementById('f12s');
+      var follow = true, rows = 0, ends = 0, pausedByUser = false;
+      feed.addEventListener('scrollend', function () { ends++; });
+      feed.addEventListener('wheel', function () { if (follow) { follow = false; pausedByUser = true; } }, { passive: true });
+      feed.addEventListener('pointerdown', function () { if (follow) { follow = false; pausedByUser = true; } });
+      function tick() {
+        rows++;
+        var d = document.createElement('div');
+        d.className = 'rowline';
+        var t = new Date();
+        d.textContent = 'T+' + String(rows).padStart(3, '0') + ' · ' + t.toTimeString().slice(0, 8) + ' · ALT ' + (80 + (rows % 7)) + 'm · BAT ' + (100 - rows % 30) + '% · LINK ' + (follow ? 'OK' : 'FOLLOW PAUSED');
+        feed.appendChild(d);
+        if (follow) {
+          // instant follow: never lags the stream on any engine (the §1 duration law),
+          // and cannot be beaten by an in-flight animation (the §5 absorb law).
+          feed.scrollTo({ top: feed.scrollHeight, behavior: 'instant' });
+        }
+        st.textContent = 'follow: ' + (follow ? 'ON' : 'OFF' + (pausedByUser ? ' (user)' : '')) + ' · rows: ' + rows + ' · scrollends: ' + ends;
+        if (rows < 40) setTimeout(tick, 900);
+        else st.textContent += ' · feed complete — scrollends counted: ' + ends + ' (instant scrolls fire them too)';
+      }
+      setTimeout(tick, 600);
+      document.getElementById('b12').onclick = function () { follow = !follow; pausedByUser = false; };
+      (matchMedia('(prefers-reduced-motion: reduce)').matches ? ok : info)('chips-s12', 's12rm', 'capstone ships INSTANT follow — immune to the reduced-motion myth and the duration split');
+      ok('chips-s12', 's12end', 'arrival confirmed via scrollend listener (bench: fires for instant scrolls on all 3 engines — but never for wheel on Firefox)');
+    } catch (e) { warn('chips-s12', 's12err', '§12 error: ' + e.message); }
+  })();
+
+  // engine banner chip
+  (function () {
+    try {
+      info('chips-s1', 'eng', 'detected: ' + ENG + ' — every chip on this page re-measures in YOUR engine');
+    } catch (e) { }
+  })();
+})();
+</script>
+</body>
+</html>
