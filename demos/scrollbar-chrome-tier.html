@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSS Scrollbars — the chrome tier: scrollbar-width/color vs ::-webkit-scrollbar, scrollbar-gutter &amp; the 100vw overflow</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --ink:#161513; --muted:#6d675f; --line:#e6e1d9;
+    --accent:#0e6b5c; --accent-soft:#e9f5f2; --ok:#1c6b47; --ok-soft:#eaf6ef;
+    --warn:#8a6100; --warn-soft:#fdf6e3; --fail:#a32b1c; --fail-soft:#fdeceb;
+    --info:#2a5a8a; --info-soft:#ecf3fa; --radius:14px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 24px 96px}
+  header{margin-bottom:28px}
+  .kicker{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  h1{font-size:clamp(26px,4vw,36px);line-height:1.14;letter-spacing:-.022em;margin:0 0 12px;font-weight:680}
+  .lede{font-size:15.5px;color:#403b35;margin:0 0 10px;max-width:66ch}
+  .meta{font:13px/1.5 var(--mono);color:var(--muted);margin-top:18px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px;margin-bottom:24px}
+  h2{font-size:21px;line-height:1.3;margin:0 0 6px;letter-spacing:-.012em;font-weight:660}
+  h3{font-size:15px;margin:22px 0 8px;font-weight:640}
+  .sub{color:var(--muted);font-size:14.5px;margin:0 0 18px;max-width:70ch}
+  code,kbd{font-family:var(--mono);font-size:.885em;background:#f3efe9;padding:.12em .38em;border-radius:5px;border:1px solid #e8e2d8;overflow-wrap:anywhere}
+  .law{border-left:3px solid var(--accent);padding:12px 0 12px 16px;margin:16px 0;background:linear-gradient(90deg,var(--accent-soft),transparent 70%);border-radius:0 8px 8px 0}
+  .law b{color:var(--accent)}
+  .law.bad{border-color:var(--fail);background:linear-gradient(90deg,var(--fail-soft),transparent 70%)}
+  .law.bad b{color:var(--fail)}
+  .law.warn{border-color:var(--warn);background:linear-gradient(90deg,var(--warn-soft),transparent 70%)}
+  .law.warn b{color:var(--warn)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+  .chip{font:600 12px/1.35 var(--mono);padding:6px 10px;border-radius:999px;border:1px solid;white-space:normal;overflow-wrap:anywhere;max-width:100%}
+  .chip.ok{color:var(--ok);border-color:#b9dfca;background:var(--ok-soft)}
+  .chip.warn{color:var(--warn);border-color:#ecd9a3;background:var(--warn-soft)}
+  .chip.fail{color:var(--fail);border-color:#f0c2bc;background:var(--fail-soft)}
+  .chip.info{color:var(--info);border-color:#bfd6ee;background:var(--info-soft)}
+  .chip.pending{color:var(--muted);border-color:var(--line);background:#f6f4f1}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font:600 11.5px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:#faf8f5}
+  td.v{font-family:var(--mono);font-size:12.5px}
+  .tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;background:#fff}
+  .tscroll table{margin:0}
+  button{font:600 14px/1 inherit;padding:11px 17px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;letter-spacing:.01em}
+  button:hover{background:#0a554a}
+  button.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
+  button.ghost:hover{background:#f6f4f1}
+  button.mini{font:600 12px/1 var(--mono);padding:8px 11px;border-radius:8px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}
+  pre{background:#171512;color:#f3efe9;padding:16px 18px;border-radius:12px;overflow-x:auto;font:12.5px/1.55 var(--mono);margin:14px 0}
+  pre b{color:#8fd6c4;font-weight:600}
+  .lab{border:1px dashed var(--line);border-radius:12px;padding:16px;margin:14px 0;background:#fdfcfa}
+  .lab .out{font:12.5px/1.5 var(--mono);background:#171512;color:#f3efe9;padding:12px 14px;border-radius:10px;overflow-x:auto;white-space:pre;margin-top:10px;min-height:20px}
+  .pill{display:inline-block;font:600 11px/1 var(--mono);padding:4px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);margin-left:8px;vertical-align:2px}
+  /* ── scrollbar lab fixtures ── */
+  .slab{height:120px;width:100%;max-width:340px;min-width:0;padding:0;border:1.5px solid #b9b2a6;border-radius:10px;background:#fff;overflow:scroll}
+  .slab .fill{width:600px;height:80px;background:linear-gradient(90deg,#e9f5f2,#f4f1eb)}
+  .slab.noflow .fill{width:150px}
+  .slab.wkb24::-webkit-scrollbar{width:24px;height:24px}
+  .slab.wkb24::-webkit-scrollbar-thumb{background:#0e6b5c;border-radius:8px}
+  .slab.wkb24::-webkit-scrollbar-track{background:#e9f5f2}
+  .slab.thin{scrollbar-width:thin}
+  .slab.sw-none{scrollbar-width:none}
+  .slab.gut{scrollbar-gutter:stable}
+  .slab.both{scrollbar-gutter:stable both-edges}
+  .slab.hidden{overflow:hidden}
+  .slab.auto{overflow:auto}
+  .lane{display:grid;grid-template-columns:minmax(150px,200px) minmax(110px,1fr);gap:10px;align-items:start;margin:10px 0}
+  .lane>*{min-width:0}
+  .lane .cap{font:600 11.5px/1.4 var(--mono);color:var(--muted);padding-top:4px}
+  .lane .cap em{font-style:normal;color:var(--ink)}
+  .lane .num{font-family:var(--mono);font-size:12.5px}
+  .hudgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:12px 0}
+  .hud{border:1.5px solid var(--line);border-radius:14px;padding:14px;background:linear-gradient(160deg,#101614,#1c2420);color:#e8efe9}
+  .hud h4{margin:0 0 10px;font:700 12px/1 var(--mono);letter-spacing:.1em;color:#9fd8c3}
+  .hud .feed{height:150px;overflow:auto;border-radius:10px;background:#0c110f;border:1px solid #26332d}
+  .hud .feed.stable{scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#2f6b5c #0c110f}
+  .hud .feed .r{display:flex;justify-content:space-between;gap:8px;font:11.5px/1.5 var(--mono);padding:5px 9px;border-bottom:1px solid #1a231f;color:#cfe4d8}
+  .hud .feed .r b{color:#9fd8c3}
+  .hud .wline{font:11.5px/1.6 var(--mono);color:#8fb8a5;margin-top:8px}
+  .hud .wline b{color:#e8efe9}
+  iframe.mini{width:100%;max-width:360px;height:150px;border:1.5px solid #b9b2a6;border-radius:10px;background:#fff}
+  footer{margin-top:36px;color:var(--muted);font-size:13px}
+  .toc{columns:2;column-gap:28px;font-size:14px;margin:6px 0 0;padding:0;list-style:none}
+  .toc li{margin:3px 0;break-inside:avoid}
+  .toc a{color:var(--accent);text-decoration:none}
+  @media (max-width:640px){ .toc{columns:1} section{padding:18px} .lane{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="kicker">Molt Research · Engine-Truth Tier · 2026-11-05</div>
+  <h1>CSS Scrollbars — the chrome tier</h1>
+  <p class="lede"><code>scrollbar-width</code> · <code>scrollbar-color</code> · <code>scrollbar-gutter</code> · the <code>::-webkit-scrollbar</code> family — measured live across three engines. The headline laws: <b>the mutual-exclusion triangle</b> (one styled <code>::-webkit-scrollbar</code> rule silently disables the standard properties, and <code>scrollbar-width ≠ auto</code> silently disables the pseudo-elements — <em>bidirectional</em>), <b>the forced-classic split</b> (a styled pseudo-bar occupies real layout on WebKit, renders overlay on Chromium), <b>the would-be gutter law</b> (Chromium reserves gutter space <em>even when the scrollbar is overlay and takes no layout</em>), <b>the Firefox computed-value wall</b>, and <b>the Safari color void</b>.</p>
+  <div class="chips" id="summary"></div>
+  <p class="meta">Engines benched: Chrome for Testing (headless, overlay mode) · Firefox 151 · WebKit 26.5 — every law re-measured live in <em>your</em> engine on load.</p>
+  <ul class="toc">
+    <li><a href="#s1">§1 Mode detector: overlay vs classic</a></li>
+    <li><a href="#s2">§2 The support census</a></li>
+    <li><a href="#s3">§3 Measured widths + the none trap</a></li>
+    <li><a href="#s4">§4 The mutual-exclusion triangle</a></li>
+    <li><a href="#s5">§5 The forced-classic split + stale parts</a></li>
+    <li><a href="#s6">§6 The grammar + inheritance split</a></li>
+    <li><a href="#s7">§7 The Firefox computed-value wall</a></li>
+    <li><a href="#s8">§8 scrollbar-gutter: the asymmetry family</a></li>
+    <li><a href="#s9">§9 RTL + both-edges geometry</a></li>
+    <li><a href="#s10">§10 The 100vw law</a></li>
+    <li><a href="#s11">§11 Shadow DOM + root propagation</a></li>
+    <li><a href="#s12">§12 Capstones: cockpit HUD + client audit</a></li>
+    <li><a href="#s13">§13 Engine ledger + method</a></li>
+  </ul>
+</header>
+
+<!-- ══════════════════ §1 MODE DETECTOR ══════════════════ -->
+<section id="s1">
+  <h2>§1 The mode detector — overlay vs classic, measured on your engine</h2>
+  <p class="sub">Every scrollbar-geometry law forks on one question: does the scrollbar occupy layout? macOS overlay scrollbars float (zero layout); Windows/Linux classic bars consume 15–17px. The detector: force the viewport to be scrollable and compare <code>innerWidth − documentElement.clientWidth</code>. Runs inside the child frame below so this page never shifts.</p>
+  <div class="law"><b>THE OVERLAY DETECTOR.</b> <code>innerWidth − documentElement.clientWidth</code> (with <code>html{overflow-y:scroll}</code>) is <b>0 under overlay scrollbars</b> and <b>≈15–17 under classic</b>. Every width/gutter number below is interpreted through this lens — the same browser reports different geometry per OS setting.</div>
+  <iframe class="mini" id="vwf" title="viewport mode + 100vw lab"></iframe>
+  <div class="chips" id="c-mode"></div>
+</section>
+
+<!-- ══════════════════ §2 SUPPORT CENSUS ══════════════════ -->
+<section id="s2">
+  <h2>§2 The support census — three engines, four verdicts</h2>
+  <p class="sub"><code>scrollbar-width</code> is Baseline 2024 (Chromium 121+, Firefox 64+, Safari 18.2+). <code>scrollbar-color</code>: Chromium + Firefox only — <b>Safari ships the width and not the color</b>. Live:</p>
+  <div class="tscroll"><table id="t-sup"><thead><tr><th>Feature</th><th>Chromium</th><th>Firefox</th><th>WebKit (Safari)</th><th>Your engine</th></tr></thead><tbody></tbody></table></div>
+  <div class="law warn"><b>THE SAFARI COLOR VOID.</b> WebKit 26.5 supports <code>scrollbar-width</code> (thin/none/auto) but has <b>no <code>scrollbar-color</code> at all</b> — <code>CSS.supports('scrollbar-color','auto')</code> is <code>false</code> and the computed property is undefined. Branded thumb colors reach Chrome + Firefox only; Safari gets shape but never color (unless you fall back to <code>::-webkit-scrollbar-thumb</code> — which then triggers §4's exclusion on the others).</div>
+  <div class="chips" id="c-sup"></div>
+</section>
+
+<!-- ══════════════════ §3 WIDTHS + NONE TRAP ══════════════════ -->
+<section id="s3">
+  <h2>§3 Measured widths — and <code>none</code> still scrolls</h2>
+  <p class="sub">Three live scrollers (<code>overflow:scroll</code>) with default, thin and none widths. The readout is the scrollbar's <em>layout consumption</em>: <code>offsetWidth − clientWidth</code>. On an overlay-mode bench the default and thin read 0 — the bar floats. Under classic (Windows, or a visitor with "always show" on) the same lanes read ~15 / ~11.</p>
+  <div class="lane"><div class="cap"><em>auto</em> — default bar</div><div><div class="slab" id="w-auto"><div class="fill"></div></div><div class="num" id="n-auto"></div></div></div>
+  <div class="lane"><div class="cap"><em>thin</em></div><div><div class="slab thin" id="w-thin"><div class="fill"></div></div><div class="num" id="n-thin"></div></div></div>
+  <div class="lane"><div="cap"><em>none</em></div><div><div class="slab sw-none" id="w-none"><div class="fill"></div></div><div class="num" id="n-none"></div></div></div>
+  <div class="law"><b>THE NONE TRAP.</b> <code>scrollbar-width: none</code> removes every pixel of the bar — and the box <b>remains fully scrollable</b> (wheel, trackpad, keyboard, <code>scrollLeft</code>). Live: the none lane was programmatically scrolled before you read it. Hiding the bar is not disabling the scroller — and gives scroll users zero affordance (WCAG 2.1.1 / 2.5.5 exposure).</div>
+  <div class="chips" id="c-width"></div>
+</section>
+
+<!-- ══════════════════ §4 MUTUAL EXCLUSION ══════════════════ -->
+<section id="s4">
+  <h2>§4 The mutual-exclusion triangle</h2>
+  <p class="sub">The standard properties and the <code>::-webkit-scrollbar</code> pseudo-elements are <b>one-way-at-a-time</b>, and the disarm works in <em>both</em> directions. The lanes below are live: each box carries a 24px styled pseudo-bar, and then one standard property.</p>
+  <div class="lane"><div class="cap">styled <em>::-webkit-scrollbar 24px</em>, nothing else</div><div><div class="slab wkb24"><div class="fill"></div></div><div class="num" data-x="excl-w"></div></div></div>
+  <div class="lane"><div class="cap">+ <em>scrollbar-width:auto</em></div><div><div class="slab wkb24" style="scrollbar-width:auto"><div class="fill"></div></div><div class="num" data-x="excl-a"></div></div></div>
+  <div class="lane"><div class="cap">+ <em>scrollbar-width:thin</em> → pseudo-elements OFF</div><div><div class="slab wkb24" style="scrollbar-width:thin"><div class="fill"></div></div><div class="num" data-x="excl-t"></div></div></div>
+  <div class="lane"><div class="cap">+ <em>scrollbar-width:none</em> → pseudo-elements OFF</div><div><div class="slab wkb24" style="scrollbar-width:none"><div class="fill"></div></div><div class="num" data-x="excl-n"></div></div></div>
+  <div class="law bad"><b>THE EXCLUSION TRIANGLE (headline).</b> (1) Any styled <code>::-webkit-scrollbar</code> rule ⇒ the standard <code>scrollbar-width</code>/<code>scrollbar-color</code> are ignored for that element (MDN-documented; the classic silent killer — your modern properties die because a 2013-era rule still matches). (2) The inversion, less known: <b>computed <code>scrollbar-width</code> ≠ <code>auto</code> ⇒ the pseudo-elements are ignored</b> — set <code>thin</code> anywhere and your 24px custom bar is gone (measured: WebKit 24→0). (3) Restoring <code>scrollbar-width:auto</code> restores the pseudo-styling. One element can never show both systems.</div>
+  <div class="law warn"><b>THE GLOBAL-RULE LAW.</b> The exclusion is <em>per element</em>, so a single global <code>*::-webkit-scrollbar{...}</code> (or one on <code>body</code> inheriting nothing but matching everything via descendant selectors) disables the standard properties <b>site-wide</b>, and a single <code>scrollbar-width</code> utility class on one panel disables that panel's custom bar. Audit both directions — each looks like the other's bug.</div>
+  <div class="chips" id="c-excl"></div>
+</section>
+
+<!-- ══════════════════ §5 FORCED-CLASSIC + STALE PARTS ══════════════════ -->
+<section id="s5">
+  <h2>§5 The forced-classic split — and the stale-parts instability</h2>
+  <p class="sub">What does a styled pseudo-bar do to layout? Live twin lanes: the styled box vs an unstyled box, same content. Then flip a runtime switch.</p>
+  <div class="row">
+    <div><div class="slab" id="f-plain"><div class="fill"></div></div><div class="num" data-x="fc-plain"></div></div>
+    <div><div class="slab wkb24" id="f-wkb"><div class="fill"></div></div><div class="num" data-x="fc-wkb"></div></div>
+  </div>
+  <div class="law"><b>THE FORCED-CLASSIC SPLIT (headline).</b> A <code>::-webkit-scrollbar{width:N}</code> rule forces a <b>classic layout bar</b> on WebKit: the 24px rule measurably consumes 24px of box width, even on an overlay-mode OS. On Chromium (overlay mode) the same rule renders an <b>overlay</b> styled bar — 0px of layout. Firefox never applies the pseudo-elements at all. Same CSS, three geometry answers.</div>
+  <div class="lab">
+    <div class="row"><button class="mini ghost" id="b-flip">flip scrollbar-width: auto → thin → auto</button><span class="num" id="n-flip" style="font-family:var(--mono);font-size:12.5px"></span></div>
+    <div class="out" id="o-flip">press the button…</div>
+  </div>
+  <div class="law warn"><b>THE STALE-PARTS INSTABILITY (WebKit, runtime).</b> Flipping <code>scrollbar-width</code> at runtime should re-arm the exclusion — and on the bench it did under one probe generation (24→0) and stayed stale under another (24→24, double-rAF + 400ms settled), with static vs JS-injected stylesheets and inline-vs-absent initial values all implicated. <b>Runtime switching between the two scrollbar systems is not a contract on WebKit</b> — swap classes on a full re-layout and verify, never animate a property flip.</div>
+  <div class="chips" id="c-fc"></div>
+</section>
+
+<!-- ══════════════════ §6 GRAMMAR + INHERITANCE ══════════════════ -->
+<section id="s6">
+  <h2>§6 The grammar — two colors or nothing — and the inheritance split</h2>
+  <p class="sub"><code>scrollbar-color</code> accepts exactly <code>auto</code> or <b>two</b> colors. One color, <code>dark</code>, <code>light</code> — invalid everywhere, computed falls back to <code>auto</code>. <code>scrollbar-width</code> accepts exactly <code>auto | thin | none</code> — lengths are refused (<code>14px</code> unsupported in all three engines; size via the pseudo-elements or not at all).</p>
+  <div class="tscroll"><table id="t-gram"><thead><tr><th>Declaration</th><th>Parses?</th><th>Computed (your engine)</th></tr></thead><tbody>
+    <tr><td><code>scrollbar-color: red blue</code></td><td class="v" id="g-2c-p"></td><td class="v" id="g-2c"></td></tr>
+    <tr><td><code>scrollbar-color: red</code> (one color)</td><td class="v" id="g-1c-p"></td><td class="v" id="g-1c"></td></tr>
+    <tr><td><code>scrollbar-color: dark</code></td><td class="v" id="g-dk-p"></td><td class="v" id="g-dk"></td></tr>
+    <tr><td><code>scrollbar-color: light</code></td><td class="v" id="g-lt-p"></td><td class="v" id="g-lt"></td></tr>
+    <tr><td><code>scrollbar-width: 14px</code></td><td class="v" id="g-w14-p"></td><td class="v" id="g-w14"></td></tr>
+    <tr><td><code>overflow: overlay</code> (legacy)</td><td class="v" id="g-ov-p"></td><td class="v" id="g-ov"></td></tr>
+  </tbody></table></div>
+  <div class="law"><b>THE INHERITANCE SPLIT.</b> <code>scrollbar-color</code> <b>inherits</b> (set it on <code>:root</code> and every scroller on the page — including inside open shadow roots — gets the pair); <code>scrollbar-width</code> <b>does not</b> (each scroller must opt in; measured: thin parent, <code>auto</code> child). Design systems: theme colors globally, sizes per-component.</div>
+  <div class="law"><b>THE OVERLAY-ALIAS GHOST.</b> <code>overflow: overlay</code> — the old Chromium-only value — still <b>parses in all three engines</b> and computes to <code>auto</code>. It is dead weight in 2026 stylesheets: delete it and use <code>scrollbar-width</code>/<code>gutter</code> on purpose.</div>
+  <div class="chips" id="c-gram"></div>
+</section>
+
+<!-- ══════════════════ §7 FF COMPUTED WALL ══════════════════ -->
+<section id="s7">
+  <h2>§7 The Firefox computed-value wall</h2>
+  <p class="sub">A live <code>scrollbar-width: thin</code> scroller, read back through <code>getComputedStyle</code>:</p>
+  <div class="lab"><div class="out" id="o-computed">reading…</div></div>
+  <div class="law bad"><b>THE FIREFOX COMPUTED-VALUE WALL.</b> Firefox 151 returns <code>"none"</code> for <code>getComputedStyle(el).scrollbarWidth</code> on <b>every</b> element — bare, <code>auto</code>, <code>thin</code>, <code>none</code> — while <code>CSS.supports</code> and the actual layout obey the property. Chromium and WebKit serialize correctly (<code>auto|thin|none</code>). Any feature-detection or state-read via computed style lies on Firefox — use <code>CSS.supports</code> + your own source of truth.</div>
+  <div class="chips" id="c-comp"></div>
+</section>
+
+<!-- ══════════════════ §8 GUTTER ASYMMETRY ══════════════════ -->
+<section id="s8">
+  <h2>§8 scrollbar-gutter — the asymmetry family</h2>
+  <p class="sub">Pairs of live lanes: same overflow state, with and without <code>scrollbar-gutter: stable</code>. The number is the reserved space (clientWidth difference). The counter-intuitive rows: <b>auto that doesn't overflow still reserves</b>, and <b>overflow:hidden reserves too</b>.</p>
+  <div class="tscroll"><table id="t-gut"><thead><tr><th>Lane (overflow · state)</th><th>Chromium bench</th><th>WebKit bench</th><th>Your engine (live)</th></tr></thead><tbody>
+    <tr><td><code>auto</code> · overflowing</td><td class="v">15 (styled 24)</td><td class="v">0</td><td class="v" id="gt-a-ov"></td></tr>
+    <tr><td><code>auto</code> · <b>not</b> overflowing</td><td class="v">15 (styled 24)</td><td class="v">0</td><td class="v" id="gt-a-nov"></td></tr>
+    <tr><td><code>scroll</code></td><td class="v">15 · thin 11</td><td class="v">0</td><td class="v" id="gt-sc"></td></tr>
+    <tr><td><code>hidden</code></td><td class="v">15 (styled 24)</td><td class="v">0</td><td class="v" id="gt-hd"></td></tr>
+    <tr><td><code>visible</code></td><td class="v">0 — never</td><td class="v">0</td><td class="v" id="gt-vi"></td></tr>
+    <tr><td><code>scroll</code> + <code>width:none</code></td><td class="v">0 — killed</td><td class="v">0</td><td class="v" id="gt-nn"></td></tr>
+  </tbody></table></div>
+  <div class="law"><b>THE WOULD-BE GUTTER LAW (headline, Chromium).</b> Chromium reserves the <b>would-be scrollbar width</b> — default 15, <code>thin</code> 11, styled-pseudo 24, <code>both-edges</code> exactly 2× (48) — <em>even on an overlay-mode OS where the actual bar takes zero layout</em>. WebKit reserves nothing under overlay (the spec's answer). Firefox reserved nothing on this bench either (overlay; classic-mode Firefox on Windows does reserve). "Will scrollbar-gutter do anything on macOS Chrome?" — yes, 15px. "On Safari?" — no.</div>
+  <div class="law warn"><b>THE ASYMMETRY FAMILY.</b> <code>stable</code> reserves for <code>auto</code> (overflowing or not!), <code>scroll</code>, and even <code>hidden</code> — never for <code>visible</code>, and <code>scrollbar-width:none</code> kills the gutter (no bar can ever exist ⇒ nothing to reserve). The folklore "gutter only matters when the scrollbar shows" is false on Chromium: the reservation is unconditional (per overflow-type).</div>
+  <div class="chips" id="c-gut"></div>
+</section>
+
+<!-- ══════════════════ §9 RTL + BOTH-EDGES ══════════════════ -->
+<section id="s9">
+  <h2>§9 The gutter lives at inline-end — RTL mirrors it</h2>
+  <p class="sub">Live LTR and RTL lanes with a full-width child; the readout is the child's offset from each edge of its scrollport. The gutter (and any classic bar) sits at <b>inline-end</b>: right in LTR, <b>left in RTL</b>.</p>
+  <div class="row">
+    <div style="flex:1;min-width:220px"><div class="num" style="margin-bottom:4px">dir=ltr</div><div class="slab gut" id="r-ltr" style="overflow:scroll"><div style="width:100%;height:60px;background:linear-gradient(90deg,#e9f5f2,#f4f1eb)"></div></div><div class="num" id="n-ltr"></div></div>
+    <div style="flex:1;min-width:220px"><div class="num" style="margin-bottom:4px">dir=rtl</div><div class="slab gut" id="r-rtl" style="overflow:scroll;direction:rtl"><div style="width:100%;height:60px;background:linear-gradient(270deg,#e9f5f2,#f4f1eb)"></div></div><div class="num" id="n-rtl"></div></div>
+  </div>
+  <div class="law"><b>THE INLINE-END LAW.</b> Measured: LTR — 0px at the left edge, the gutter width at the right; RTL — mirrored exactly (left offset = gutter, right 0). <code>stable both-edges</code> reserves both sides symmetrically (measured 2× exactly: 30 default / 48 styled). Centered layouts stop knocking when the bar appears — but only where the gutter reserves at all (§8).</div>
+  <div class="chips" id="c-rtl"></div>
+</section>
+
+<!-- ══════════════════ §10 100VW ══════════════════ -->
+<section id="s10">
+  <h2>§10 The 100vw law — the overflow nobody writes on purpose</h2>
+  <p class="sub"><code>100vw</code> is the <em>viewport</em> width <b>including</b> any classic scrollbar. The child frame (§1) is also measuring this: a <code>100vw</code> bar vs a <code>100%</code> bar inside a forced-scrollable document.</p>
+  <div class="lab"><div class="out" id="o-vw">waiting for child frame…</div></div>
+  <div class="law bad"><b>THE 100VW LAW.</b> Under a <b>classic</b> viewport scrollbar, <code>width:100vw</code> is wider than the visible content area by exactly the bar width ⇒ guaranteed horizontal overflow on every full-bleed hero that uses it. Under overlay scrollbars it is exactly <code>100%</code> — the bug hides on every macOS dev machine and ships to every Windows visitor. Fixes: <code>100%</code>, or reserve with <code>scrollbar-gutter: stable</code> on the root where supported. (Headless lane limit: all three engines run overlay viewports headless, so the child shows the overlay face — the classic face is the documented Windows behavior, live-checkable in any Windows browser.)</div>
+  <div class="chips" id="c-vw"></div>
+</section>
+
+<!-- ══════════════════ §11 SHADOW + ROOT ══════════════════ -->
+<section id="s11">
+  <h2>§11 Shadow DOM inheritance + the root-propagation rule</h2>
+  <p class="sub">A live open shadow root whose host carries <code>scrollbar-color</code> + <code>scrollbar-width: thin</code>; the inner scroller is read through the shadow root.</p>
+  <div class="lab"><div class="out" id="o-shadow">reading…</div></div>
+  <div class="law"><b>THE SHADOW-PASSTHROUGH.</b> Inherited <code>scrollbar-color</code> crosses the shadow boundary (the inner scroller reads the host's pair — Chromium + Firefox), while <code>scrollbar-width</code> (non-inherited) stops at the host. Component libraries can theme scrollbar <em>colors</em> from outside a component and must set <em>width</em> inside it.</div>
+  <div class="law"><b>THE ROOT-PROPAGATION RULE.</b> <code>scrollbar-width</code>/<code>scrollbar-color</code> set on <code>html</code> style the <b>viewport's</b> scrollbars (UA rule); set on <code>body</code> only, they style body's own boxes — the viewport keeps platform bars (measured: body-only rules leave the viewport untouched). Like <code>overflow</code>, the propagation is html→viewport, and a body-only rule is the classic "why didn't it work" ticket.</div>
+  <div class="chips" id="c-shadow"></div>
+</section>
+
+<!-- ══════════════════ §12 CAPSTONES ══════════════════ -->
+<section id="s12">
+  <h2>§12 Capstones — the cockpit HUD &amp; the client audit</h2>
+  <h3>OpenDrones — the no-reflow telemetry pane</h3>
+  <p class="sub">Two identical telemetry feeds. The top one ships the cockpit recipe: <code>scrollbar-gutter: stable</code> + <code>scrollbar-width: thin</code> + a themed color pair. The bottom one is the naive pane. Press <b>stream rows</b>: rows arrive until both panes overflow — the content-box width of the stable pane must not move; the naive pane's content box narrows by the appearing bar (classic mode) or shifts on engines that reserve nothing.</p>
+  <div class="hudgrid">
+    <div class="hud">
+      <h4>STABLE FEED · gutter+thin</h4>
+      <div class="feed stable" id="feed-a"><div class="r"><b>T+00</b><span>link up · 3 sats</span></div><div class="r"><b>T+01</b><span>alt 12.4 m</span></div></div>
+      <div class="wline">content width: <b id="wa">–</b> · delta after stream: <b id="da">–</b></div>
+    </div>
+    <div class="hud">
+      <h4>NAIVE FEED · no gutter</h4>
+      <div class="feed" id="feed-b"><div class="r"><b>T+00</b><span>link up · 3 sats</span></div><div class="r"><b>T+01</b><span>alt 12.4 m</span></div></div>
+      <div class="wline">content width: <b id="wb">–</b> · delta after stream: <b id="db">–</b></div>
+    </div>
+  </div>
+  <div class="row"><button class="mini" id="b-stream">stream 14 rows</button><span class="num" id="n-stream" style="font-family:var(--mono);font-size:12.5px"></span></div>
+  <div class="law ok"><b>THE COCKPIT RULE.</b> HUD scrollers get <code>scrollbar-gutter: stable</code> (no reflow when a stream starts overflowing — measured delta 0 across the row flood on the stable pane), <code>scrollbar-width: thin</code> (bars, not chrome), a themed <code>scrollbar-color</code> pair for dark cockpits (Chromium/Firefox; Safari gets shape-only), and map canvases keep <code>overflow: hidden</code> (a gutter on a hidden box still reserves on Chromium — §8 — so opt out deliberately where you don't want it).</div>
+  <h3>Molt — the 12-check branded-scrollbar audit (half a day)</h3>
+  <div class="tscroll"><table id="t-audit"><thead><tr><th>#</th><th>Check</th><th>Why it breaks</th></tr></thead><tbody>
+    <tr><td class="v">1</td><td>Any <code>::-webkit-scrollbar</code> rule matching an element that also sets <code>scrollbar-width/color</code></td><td>Exclusion triangle §4 — the modern props silently die (or the custom bar dies)</td></tr>
+    <tr><td class="v">2</td><td>Global <code>*::-webkit-scrollbar</code> / <code>body::-webkit-scrollbar</code> rules in a design system</td><td>Site-wide standard-property kill (the global-rule law §4)</td></tr>
+    <tr><td class="v">3</td><td><code>scrollbar-color</code> as the only brand channel</td><td>Safari color void §2 — half the styling never ships</td></tr>
+    <tr><td class="v">4</td><td><code>scrollbar-color: var(--brand)</code> — one value</td><td>Grammar §6 — one color is invalid, computed auto, silent no-op</td></tr>
+    <tr><td class="v">5</td><td><code>scrollbar-width: 8px</code>-style lengths</td><td>Refused everywhere — only auto|thin|none</td></tr>
+    <tr><td class="v">6</td><td>Computed-style reads of <code>scrollbarWidth</code> for state/telemetry</td><td>Firefox wall §7 — always "none"</td></tr>
+    <tr><td class="v">7</td><td><code>gutter: stable</code> assumed to reserve only when overflowing</td><td>Asymmetry §8 — reserves for non-overflowing auto and hidden too (Chromium)</td></tr>
+    <tr><td class="v">8</td><td><code>gutter: stable</code> assumed cross-engine on macOS Safari</td><td>WebKit reserves nothing under overlay — the shift it was bought for still happens</td></tr>
+    <tr><td class="v">9</td><td><code>width: 100vw</code> heroes / marquees</td><td>100vw law §10 — guaranteed h-overflow under classic bars (Windows)</td></tr>
+    <tr><td class="v">10</td><td>Viewport scrollbar styles set on <code>body</code></td><td>Root-propagation §11 — html-only reaches the viewport</td></tr>
+    <tr><td class="v">11</td><td><code>scrollbar-width: none</code> on feeds/tooltips without a scroll affordance</td><td>None trap §3 — scrollable but invisible; keyboard/wheel-only scroll, WCAG exposure</td></tr>
+    <tr><td class="v">12</td><td>Runtime theme swaps flipping between standard and pseudo styling</td><td>Stale-parts instability §5 — WebKit may not re-arm the exclusion</td></tr>
+  </tbody></table></div>
+  <div class="chips" id="c-cap"></div>
+</section>
+
+<!-- ══════════════════ §13 LEDGER ══════════════════ -->
+<section id="s13">
+  <h2>§13 Engine ledger, method &amp; lane limits</h2>
+  <div class="tscroll"><table id="t-led"><thead><tr><th>Lane</th><th>CfT (overlay bench)</th><th>Firefox 151</th><th>WebKit 26.5</th></tr></thead><tbody>
+    <tr><td>scrollbar-width / color support</td><td class="v">both</td><td class="v">both</td><td class="v">width only</td></tr>
+    <tr><td>default bar layout consumption (overlay bench)</td><td class="v">0</td><td class="v">0</td><td class="v">0</td></tr>
+    <tr><td>styled ::-webkit-scrollbar 24px → layout</td><td class="v">0 (overlay render)</td><td class="v">— (never applied)</td><td class="v">24 (forced classic)</td></tr>
+    <tr><td>width≠auto kills pseudo-styling</td><td class="v">docs (layout-invisible)</td><td class="v">n/a</td><td class="v">24→0 measured</td></tr>
+    <tr><td>gutter: stable reservation</td><td class="v">15 · thin 11 · styled 24 · both 48</td><td class="v">0 (overlay bench)</td><td class="v">0</td></tr>
+    <tr><td>gutter with hidden / non-overflowing auto</td><td class="v">reserves (15/24)</td><td class="v">0</td><td class="v">0</td></tr>
+    <tr><td>computed scrollbarWidth reads</td><td class="v">correct</td><td class="v">"none" always</td><td class="v">correct</td></tr>
+    <tr><td>scrollbar-color inheritance (incl. shadow)</td><td class="v">inherits</td><td class="v">inherits</td><td class="v">n/a (no support)</td></tr>
+    <tr><td>scrollbar-width inheritance</td><td class="v">none</td><td class="v">none</td><td class="v">none</td></tr>
+    <tr><td>headless viewport bar reservation (html overflow-y:scroll)</td><td class="v">0</td><td class="v">0</td><td class="v">0</td></tr>
+  </tbody></table></div>
+  <h3>Method</h3>
+  <p class="sub">4 probe batteries (~90 lanes) over one plain-HTTP loopback origin: surface census + grammar/serialization · width/exclusion matrices (layout deltas = <code>offsetWidth − clientWidth</code>, zero borders/padding on fixtures) · gutter arithmetic pairs (clientWidth diffs vs <code>auto</code> baselines, isolated per lane, re-appended fresh) · runtime-flip 2×2 (static vs injected stylesheet × inline-auto vs absent) · viewport/100vw lanes in a listener-first child frame. Chromium overlay-vs-classic de-confound via <code>--disable-features=OverlayScrollbar,FluentOverlayScrollbar</code> (no geometry change — the overlay-mode readings stood).</p>
+  <h3>Lane limits</h3>
+  <p class="sub">Bench runs overlay-mode macOS headless: default/thin <em>layout</em> widths, Firefox/WebKit gutter reservations, viewport propagation geometry, and the classic face of the 100vw law are the documented classic-mode behaviors (MDN/spec) plus live-checkable lanes here — Windows classic-mode numbers (15–17px) are not benched. Thumb <em>colors</em> are paint, not layout — unverifiable headless; the exclusion is verified through geometry where it produces any, and through MDN's documented contract where it doesn't (Chromium color lane). Real-Safari headed = human-hand lane.</p>
+  <div class="chips" id="c-led"></div>
+</section>
+
+<footer>
+  <p>Part of the Molt Studios engine-truth series — 441-entry catalog, this is the scrollbar tier's first dedicated entry. Pairs: VisualViewport (the viewport face) · RTL &amp; Logical (inline-end geometry) · position: sticky (the scrollport client-box) · Wheel tier (the scroller) · CSS content-visibility (auto-overflow triggers). Live-probed 2026-11-05 · <a href="../index.html" style="color:var(--accent)">research hub</a>.</p>
+</footer>
+</div>
+<script>
+(function () {
+  'use strict';
+  var errs = 0; window.__demoErrorCount = function(){ return errs; };
+  window.addEventListener('error', function(){ errs++; });
+  window.addEventListener('unhandledrejection', function(){ errs++; });
+
+  // ── chip registry (register BEFORE any resolver runs) ──
+  var REG = {};
+  function chip(hostId, id) {
+    var host = document.getElementById(hostId);
+    if (!host) return { set: function(){} };
+    var el = document.createElement('span');
+    el.className = 'chip pending'; el.id = id;
+    host.appendChild(el);
+    REG[id] = el;
+    return { set: function (cls, text) { el.className = 'chip ' + cls; el.textContent = text; } };
+  }
+  function fmt(n){ return (Math.round(n*100)/100) + 'px'; }
+  function sbDelta(el){ return +( (el.offsetWidth - el.clientWidth).toFixed(2) ); }
+  function sbHeight(el){ return +( (el.offsetHeight - el.clientHeight).toFixed(2) ); }
+  var ENGINE = (navigator.userAgent.indexOf('Firefox') > -1) ? 'Firefox'
+             : (navigator.userAgent.indexOf('Chrome') > -1) ? 'Chromium'
+             : 'WebKit (Safari)';
+
+  // ═══ §1 + §10 child frame: mode detector + 100vw (listener FIRST) ═══
+  var modeChip = chip('c-mode','m-det'), ovChip = chip('c-mode','m-ov'), vwChip = chip('c-vw','vw-law');
+  window.addEventListener('message', function onVW(e) {
+    if (!e.data || !e.data.sbmode) return;
+    window.removeEventListener('message', onVW);
+    var d = e.data;
+    var classic = d.viewportGutter > 0;
+    modeChip.set(classic ? 'warn' : 'info', 'viewport mode: ' + (classic ? 'CLASSIC — bar takes ' + fmt(d.viewportGutter) : 'OVERLAY — bar takes 0px layout'));
+    ovChip.set('ok', 'innerWidth−clientWidth = ' + fmt(d.viewportGutter) + ' under html{overflow-y:scroll}');
+    document.getElementById('o-vw').textContent =
+      'child viewport: innerWidth ' + d.inner + ' · clientWidth ' + d.client + ' · bar width ' + fmt(d.viewportGutter) + '\n' +
+      'width:100vw bar → ' + fmt(d.aWidth) + ' · width:100% bar → ' + fmt(d.bWidth) + '\n' +
+      'document h-overflow from the 100vw bar: ' + fmt(d.hOverflow) +
+      (classic ? '  ← THE BUG IS LIVE HERE' : '  (overlay face — see the law)');
+    vwChip.set(classic ? 'fail' : 'ok', classic ? '100vw overflows by ' + fmt(d.hOverflow) + ' — the classic-face bug, live' : '100vw == 100% (' + fmt(d.aWidth) + ') under overlay — the bug hides');
+  });
+  document.getElementById('vwf').srcdoc = [
+    '<!doctype html><html><head><style>html{overflow-y:scroll}body{margin:0}',
+    '#a{width:100vw;height:34px;background:#e8b9b0}#b{width:100%;height:34px;background:#cfe4d8}',
+    '</style></head><body><div id="a"></div><div id="b"></div>',
+    '<script>var de=document.documentElement;',
+    'parent.postMessage({sbmode:1,inner:innerWidth,client:de.clientWidth,',
+    'viewportGutter:innerWidth-de.clientWidth,',
+    'hOverflow:de.scrollWidth-de.clientWidth,',
+    'aWidth:document.getElementById("a").getBoundingClientRect().width,',
+    'bWidth:document.getElementById("b").getBoundingClientRect().width},"*");',
+    '<\/script></body></html>'
+  ].join('');
+
+  // ═══ §2 support census ═══
+  var SUP = [
+    ['scrollbar-width: thin', ['121+','64+','18.2+'], CSS.supports('scrollbar-width','thin')],
+    ['scrollbar-width: none', ['121+','64+','18.2+'], CSS.supports('scrollbar-width','none')],
+    ['scrollbar-color: two colors', ['121+','64+','✗'], CSS.supports('scrollbar-color','red blue')],
+    ['scrollbar-gutter: stable', ['94+','97+','26.x?'], CSS.supports('scrollbar-gutter','stable')],
+    ['selector(::-webkit-scrollbar)', ['✓','✗','✓'], CSS.supports('selector(::-webkit-scrollbar)')]
+  ];
+  var tb = document.querySelector('#t-sup tbody');
+  SUP.forEach(function (r) {
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td><code>' + r[0] + '</code></td><td class="v">' + r[1][0] + '</td><td class="v">' + r[1][1] + '</td><td class="v">' + r[1][2] + '</td><td class="v">' + (r[2] ? '✓ parses' : '✗') + '</td>';
+    tb.appendChild(tr);
+  });
+  chip('c-sup','s-w').set(CSS.supports('scrollbar-width','thin') ? 'ok' : 'fail', 'scrollbar-width: ' + (CSS.supports('scrollbar-width','thin') ? 'supported here' : 'UNSUPPORTED here'));
+  chip('c-sup','s-c').set(CSS.supports('scrollbar-color','red blue') ? 'ok' : 'warn', 'scrollbar-color: ' + (CSS.supports('scrollbar-color','red blue') ? 'supported here' : 'ABSENT — ' + ENGINE + ' is in the color void'));
+  chip('c-sup','s-g').set(CSS.supports('scrollbar-gutter','stable') ? 'ok' : 'warn', 'scrollbar-gutter: ' + (CSS.supports('scrollbar-gutter','stable') ? 'parses here' : 'not parsed'));
+
+  // ═══ §3 widths ═══
+  var wAuto = document.getElementById('w-auto'), wThin = document.getElementById('w-thin'), wNone = document.getElementById('w-none');
+  wNone.scrollLeft = 80; // prove scrollability under none
+  document.getElementById('n-auto').textContent = 'layout bar: ' + fmt(sbDelta(wAuto));
+  document.getElementById('n-thin').textContent = 'layout bar: ' + fmt(sbDelta(wThin));
+  document.getElementById('n-none').textContent = 'layout bar: ' + fmt(sbDelta(wNone)) + ' · scrollLeft after programmatic scroll: ' + wNone.scrollLeft;
+  chip('c-width','w-none').set(wNone.scrollLeft > 0 ? 'warn' : 'ok', 'none-still-scrolls: scrollLeft=' + wNone.scrollLeft + ' — bar hidden, scroller alive');
+
+  // ═══ §4 exclusion (layout-measured) ═══
+  var exEls = document.querySelectorAll('[data-x^="excl-"]');
+  var exVals = {};
+  exEls.forEach(function (n) { exVals[n.getAttribute('data-x')] = sbDelta(n); n.textContent = 'layout bar: ' + fmt(sbDelta(n)); });
+  (function(){
+    var c = chip('c-excl','x-inv');
+    // the inversion proof: styled bar + thin must NOT measure the 24px styled width
+    if (exVals['excl-t'] === 0) c.set('ok','inversion live: thin killed the 24px pseudo-bar (24-style → ' + fmt(exVals['excl-t']) + ' layout)');
+    else c.set('warn','thin + pseudo-bar measures ' + fmt(exVals['excl-t']) + ' — ' + ENGINE + ' keeps the pseudo-bar in layout (see forced-classic §5)');
+    var c2 = chip('c-excl','x-none');
+    c2.set(exVals['excl-n'] === 0 ? 'ok' : 'warn', 'none + pseudo-bar: ' + fmt(exVals['excl-n']) + ' (0 ⇒ pseudo-styling disarmed)');
+  })();
+
+  // ═══ §5 forced-classic + flip lab ═══
+  var fP = document.getElementById('f-plain'), fW = document.getElementById('f-wkb');
+  document.querySelector('[data-x="fc-plain"]').textContent = 'unstyled: ' + fmt(sbDelta(fP)) + ' × ' + fmt(sbHeight(fP));
+  document.querySelector('[data-x="fc-wkb"]').textContent = 'styled 24px: ' + fmt(sbDelta(fW)) + ' × ' + fmt(sbHeight(fW));
+  chip('c-fc','fc-split').set(sbDelta(fW) > 0 ? 'warn' : 'info', sbDelta(fW) > 0 ? ENGINE + ' forces CLASSIC layout: styled bar consumes ' + fmt(sbDelta(fW)) : ENGINE + ' renders the styled bar OVERLAY: 0px layout (WebKit would read 24)');
+  var flipEl = document.getElementById('f-wkb'), flipOut = document.getElementById('o-flip'), flipN = document.getElementById('n-flip');
+  document.getElementById('b-flip').addEventListener('click', function () {
+    var seq = ['auto → ' + fmt(sbDelta(flipEl))];
+    flipEl.style.scrollbarWidth = 'thin';
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){
+      seq.push('thin → ' + fmt(sbDelta(flipEl)));
+      flipEl.style.scrollbarWidth = 'auto';
+      requestAnimationFrame(function(){ requestAnimationFrame(function(){
+        seq.push('back to auto → ' + fmt(sbDelta(flipEl)));
+        flipOut.textContent = seq.join('\n');
+        chip('c-fc','fc-flip').set('info', 'runtime flip on your engine: ' + seq.join(' | ') + ' — WebKit bench went BOTH ways across probe generations (stale-parts instability)');
+      });});
+    });});
+  });
+  if (!REG['fc-flip']) chip('c-fc','fc-flip').set('info','runtime flip: press the button (WebKit bench went both ways — stale-parts instability)');
+
+  // ═══ §6 grammar ═══
+  var probe = document.createElement('div');
+  probe.style.cssText = 'position:absolute;left:-9999px;top:0;overflow:scroll;width:100px;height:50px';
+  document.body.appendChild(probe);
+  function gram(prop, val, pid, cid) {
+    var p = CSS.supports(prop, val);
+    probe.style.setProperty(prop, '');
+    probe.style.setProperty(prop, val);
+    var cv = getComputedStyle(probe).getPropertyValue(prop) || '(undefined)';
+    document.getElementById(pid).textContent = p ? '✓' : '✗';
+    document.getElementById(cid).textContent = cv;
+  }
+  gram('scrollbar-color','red blue','g-2c-p','g-2c');
+  gram('scrollbar-color','red','g-1c-p','g-1c');
+  gram('scrollbar-color','dark','g-dk-p','g-dk');
+  gram('scrollbar-color','light','g-lt-p','g-lt');
+  gram('scrollbar-width','14px','g-w14-p','g-w14');
+  gram('overflow','overlay','g-ov-p','g-ov');
+  chip('c-gram','gr-1').set(CSS.supports('scrollbar-color','red') ? 'fail' : 'ok', CSS.supports('scrollbar-color','red') ? 'one color parses?!' : 'one-color scrollbar-color: invalid everywhere ✓');
+  chip('c-gram','gr-ov').set('info','overflow:overlay parses ' + (CSS.supports('overflow','overlay') ? 'everywhere — legacy alias, computes to auto' : 'nowhere here'));
+
+  // ═══ §7 firefox computed wall ═══
+  var ct = document.createElement('div');
+  ct.style.cssText = 'position:absolute;left:-9999px;top:0;overflow:scroll;scrollbar-width:thin;width:100px;height:50px';
+  document.body.appendChild(ct);
+  var ctv = getComputedStyle(ct).scrollbarWidth;
+  document.getElementById('o-computed').textContent = 'declared: scrollbar-width: thin\ncomputed: ' + JSON.stringify(ctv) + '\nengine: ' + ENGINE;
+  chip('c-comp','ff-wall').set(ctv === 'none' ? 'fail' : 'ok', ctv === 'none' ? 'COMPUTED WALL LIVE: declared thin, computed reads "none" (' + ENGINE + ')' : 'computed serializes honestly: ' + ctv);
+
+  // ═══ §8 gutter pairs ═══
+  function gutterLive(overflow, overflowing) {
+    var a = document.createElement('div'); a.className = 'slab noflow'; a.style.overflow = overflow; a.style.scrollbarGutter = 'stable';
+    var b = document.createElement('div'); b.className = 'slab noflow'; b.style.overflow = overflow;
+    if (overflowing) { a.classList.remove('noflow'); b.classList.remove('noflow'); }
+    a.style.position = b.style.position = 'absolute'; a.style.left = b.style.left = '-9999px'; a.style.top = '0';
+    document.body.appendChild(a); document.body.appendChild(b);
+    var g = b.clientWidth - a.clientWidth;
+    a.remove(); b.remove();
+    return g;
+  }
+  document.getElementById('gt-a-ov').textContent = fmt(gutterLive('auto', true));
+  document.getElementById('gt-a-nov').textContent = fmt(gutterLive('auto', false));
+  document.getElementById('gt-sc').textContent = fmt(gutterLive('scroll', false));
+  document.getElementById('gt-hd').textContent = fmt(gutterLive('hidden', false));
+  document.getElementById('gt-vi').textContent = fmt(gutterLive('visible', false));
+  document.getElementById('gt-nn').textContent = fmt((function(){
+    var a = document.createElement('div'); a.className='slab noflow'; a.style.cssText='overflow:scroll;scrollbar-gutter:stable;scrollbar-width:none;position:absolute;left:-9999px;top:0';
+    var b = document.createElement('div'); b.className='slab noflow'; b.style.cssText='overflow:scroll;position:absolute;left:-9999px;top:0';
+    document.body.appendChild(a); document.body.appendChild(b);
+    var g = b.clientWidth - a.clientWidth; a.remove(); b.remove(); return g;
+  })());
+  var gutAny = gutterLive('scroll', false);
+  chip('c-gut','gt-live').set(gutAny > 0 ? 'warn' : 'info', gutAny > 0 ? ENGINE + ' reserves ' + fmt(gutAny) + ' even with no scrollbar showing (the would-be gutter law)' : ENGINE + ' reserves 0 under overlay — the would-be gutter is Chromium-only on this bench');
+
+  // ═══ §9 RTL geometry ═══
+  function edgeOff(el) {
+    var cr = el.getBoundingClientRect(), rr = el.firstChild.getBoundingClientRect();
+    return { left: +(cr.left - rr.left).toFixed(2), right: +(rr.right - cr.right).toFixed(2) };
+  }
+  var eo = edgeOff(document.getElementById('r-ltr')), ro = edgeOff(document.getElementById('r-rtl'));
+  document.getElementById('n-ltr').textContent = 'child offsets — left ' + fmt(eo.left) + ' · right ' + fmt(eo.right) + ' (gutter at inline-end)';
+  document.getElementById('n-rtl').textContent = 'child offsets — left ' + fmt(ro.left) + ' · right ' + fmt(ro.right) + ' (mirrored)';
+  chip('c-rtl','rtl-mirror').set('ok', 'LTR right=' + fmt(eo.right) + '/left=' + fmt(eo.left) + ' · RTL left=' + fmt(ro.left) + '/right=' + fmt(ro.right));
+
+  // ═══ §11 shadow + root ═══
+  (function(){
+    var h = document.createElement('div');
+    h.style.cssText = 'scrollbar-color: rgb(1 2 3) rgb(4 5 6); scrollbar-width: thin;';
+    var sr = h.attachShadow({ mode: 'open' });
+    sr.innerHTML = '<div style="overflow:scroll;width:200px;height:80px"><div style="width:600px;height:60px"></div></div>';
+    document.body.appendChild(h);
+    var inner = sr.querySelector('div');
+    var out = document.getElementById('o-shadow');
+    out.textContent = 'host: scrollbar-color rgb(1 2 3) rgb(4 5 6) · scrollbar-width thin\n' +
+      'inner scroller (through the shadow root):\n' +
+      '  computed scrollbar-color: ' + (getComputedStyle(inner).scrollbarColor || '(undefined)') + '\n' +
+      '  computed scrollbar-width: ' + (getComputedStyle(inner).scrollbarWidth || '(undefined)') + '  ← non-inherited (Firefox: wall §7)';
+    var ic = getComputedStyle(inner).scrollbarColor;
+    chip('c-shadow','sh-color').set(ic && ic.indexOf('1') > -1 ? 'ok' : 'info', ic && ic.indexOf('1') > -1 ? 'color crossed the shadow boundary ✓' : 'scrollbar-color: ' + (ic || 'absent') + ' on ' + ENGINE);
+    chip('c-shadow','sh-width').set('info', 'width stops at the host (non-inherited) — set it inside components');
+    h.remove();
+  })();
+
+  // ═══ §12 stream capstone ═══
+  var fa = document.getElementById('feed-a'), fb = document.getElementById('feed-b');
+  function cw(el){ return el.clientWidth; }
+  var wA0 = cw(fa), wB0 = cw(fb);
+  document.getElementById('wa').textContent = fmt(wA0);
+  document.getElementById('wb').textContent = fmt(wB0);
+  document.getElementById('b-stream').addEventListener('click', function () {
+    for (var i = 0; i < 14; i++) {
+      var ra = document.createElement('div'); ra.className = 'r';
+      ra.innerHTML = '<b>T+' + String(2+i).padStart(2,'0') + '</b><span>alt ' + (11 + i*0.4).toFixed(1) + ' m · bat ' + (96 - i) + '%</span>';
+      fa.appendChild(ra);
+      var rb = ra.cloneNode(true); fb.appendChild(rb);
+    }
+    var dA = cw(fa) - wA0, dB = cw(fb) - wB0;
+    document.getElementById('da').textContent = fmt(dA);
+    document.getElementById('db').textContent = fmt(dB);
+    document.getElementById('n-stream').textContent = 'stable pane Δ ' + fmt(dA) + ' · naive pane Δ ' + fmt(dB);
+    chip('c-cap','cap-stable').set(dA === 0 ? 'ok' : 'warn', dA === 0 ? 'stable feed: content width never moved across the overflow flip ✓' : 'stable feed moved ' + fmt(dA) + ' — ' + ENGINE + ' reserves nothing (WebKit/Firefox overlay lane)');
+    chip('c-cap','cap-naive').set(dB === 0 ? 'info' : 'warn', 'naive feed: ' + (dB === 0 ? 'no shift here (overlay bar / no reservation)' : 'content box narrowed ' + fmt(dB) + ' when the bar appeared — the shift the gutter kills'));
+  });
+  if (!REG['cap-stable']) chip('c-cap','cap-stable').set('info','press "stream 14 rows" to run the no-reflow race');
+
+  // ═══ summary header ═══
+  chip('summary','sum-1').set('info', ENGINE + ' · live laws on load');
+  chip('summary','sum-2').set('ok', 'exclusion triangle — bidirectional');
+  chip('summary','sum-3').set('warn', 'would-be gutter — Chromium-only reservation');
+  chip('summary','sum-4').set('fail', '100vw + classic bars = h-overflow');
+})();
+</script>
+</body>
+</html>
