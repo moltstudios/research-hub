@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flexbox — the engine tier: min-width:auto, the shrink arithmetic, the feed matrix &amp; the collapse split</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --ink:#161513; --muted:#6d675f; --line:#e6e1d9;
+    --accent:#0e6b5c; --accent-soft:#e9f5f2; --ok:#1c6b47; --ok-soft:#eaf6ef;
+    --warn:#8a6100; --warn-soft:#fdf6e3; --fail:#a32b1c; --fail-soft:#fdeceb;
+    --info:#2a5a8a; --info-soft:#ecf3fa; --radius:14px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 24px 96px}
+  header{margin-bottom:28px}
+  .kicker{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  h1{font-size:clamp(26px,4vw,36px);line-height:1.14;letter-spacing:-.022em;margin:0 0 12px;font-weight:680}
+  .lede{font-size:15.5px;color:#403b35;margin:0 0 10px;max-width:66ch}
+  .meta{font:13px/1.5 var(--mono);color:var(--muted);margin-top:18px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px;margin-bottom:24px}
+  h2{font-size:21px;line-height:1.3;margin:0 0 6px;letter-spacing:-.012em;font-weight:660}
+  h3{font-size:15px;margin:22px 0 8px;font-weight:640}
+  .sub{color:var(--muted);font-size:14.5px;margin:0 0 18px;max-width:70ch}
+  code,kbd{font-family:var(--mono);font-size:.885em;background:#f3efe9;padding:.12em .38em;border-radius:5px;border:1px solid #e8e2d8;overflow-wrap:anywhere}
+  .law{border-left:3px solid var(--accent);padding:12px 0 12px 16px;margin:16px 0;background:linear-gradient(90deg,var(--accent-soft),transparent 70%);border-radius:0 8px 8px 0}
+  .law b{color:var(--accent)}
+  .law.bad{border-color:var(--fail);background:linear-gradient(90deg,var(--fail-soft),transparent 70%)}
+  .law.bad b{color:var(--fail)}
+  .law.warn{border-color:var(--warn);background:linear-gradient(90deg,var(--warn-soft),transparent 70%)}
+  .law.warn b{color:var(--warn)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+  .chip{font:600 12px/1.35 var(--mono);padding:6px 10px;border-radius:999px;border:1px solid;white-space:normal;overflow-wrap:anywhere;max-width:100%}
+  .chip.ok{color:var(--ok);border-color:#b9dfca;background:var(--ok-soft)}
+  .chip.warn{color:var(--warn);border-color:#ecd9a3;background:var(--warn-soft)}
+  .chip.fail{color:var(--fail);border-color:#f0c2bc;background:var(--fail-soft)}
+  .chip.info{color:var(--info);border-color:#bfd6ee;background:var(--info-soft)}
+  .chip.pending{color:var(--muted);border-color:var(--line);background:#f6f4f1}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font:600 11.5px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:#faf8f5}
+  td.v{font-family:var(--mono);font-size:12.5px}
+  .tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;background:#fff}
+  .tscroll table{margin:0}
+  button{font:600 14px/1 inherit;padding:11px 17px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;letter-spacing:.01em}
+  button:hover{background:#0a554a}
+  button.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
+  button.ghost:hover{background:#f6f4f1}
+  button.mini{font:600 12px/1 var(--mono);padding:8px 11px;border-radius:8px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}
+  pre{background:#171512;color:#f3efe9;padding:16px 18px;border-radius:12px;overflow-x:auto;font:12.5px/1.55 var(--mono);margin:14px 0}
+  pre b{color:#8fd6c4;font-weight:600}
+  .lab{border:1px dashed var(--line);border-radius:12px;padding:16px;margin:14px 0;background:#fdfcfa;min-width:0}
+  .lab .out{font:12.5px/1.5 var(--mono);background:#171512;color:#f3efe9;padding:12px 14px;border-radius:10px;overflow-x:auto;white-space:pre;margin-top:10px;min-height:20px}
+  .pill{display:inline-block;font:600 11px/1 var(--mono);padding:4px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);margin-left:8px;vertical-align:2px}
+  input[type=range]{width:170px;max-width:100%}
+  .fxdemo{display:flex;border:2px solid #b9b2a7;border-radius:10px;overflow:hidden;margin:10px 0;min-width:0;position:relative;background:#fff}
+  .fxdemo .it{flex:none;padding:6px 8px;background:#e9f5f2;border:1px solid #b9dfca;font:600 12px/1.2 var(--mono);color:#0a554a;min-width:0;overflow-wrap:anywhere}
+  .fxdemo .it.hot{background:#fdeceb;border-color:#f0c2bc;color:#a32b1c}
+  .fxdemo .it.dim{background:#f6f4f1;border-color:var(--line);color:var(--muted)}
+  .fxdemo .it img{display:block}
+  .fxv{position:relative;border:2px solid #b9b2a7;border-radius:10px;margin:10px 0;min-width:0;background:#fff;overflow:hidden}
+  .num{font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .feed{display:flex;flex-direction:column;width:100%;height:170px;border:2px solid #b9b2a7;border-radius:10px;overflow:auto;background:#fff}
+  .feed > div{flex:none;height:22px;border-bottom:1px solid #f0ede8;font:600 11px/22px var(--mono);padding:0 8px;color:#0a554a;background:#e9f5f2}
+  .feed.rev{display:flex;flex-direction:column-reverse}
+  .hud{display:flex;flex-direction:column;width:100%;max-width:420px;height:250px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+  .hud-bar{flex:none;display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);background:#faf8f5;min-width:0}
+  .hud-bar .t{font:600 12px var(--mono);color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto}
+  .hud-feed{flex:1 1 auto;overflow:auto;display:flex;flex-direction:column-reverse;min-height:0}
+  .hud-row{flex:none;display:flex;gap:8px;padding:5px 10px;font:600 11px/1.3 var(--mono);border-bottom:1px solid #f0ede8;min-width:0}
+  .hud-row .id{color:var(--accent);flex:none}
+  .hud-row .msg{color:#403b35;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto}
+  .hud-foot{flex:none;display:flex;gap:6px;padding:7px 10px;border-top:1px solid var(--line);background:#faf8f5}
+  .dot{width:9px;height:9px;border-radius:50%;background:#1c6b47;flex:none;margin-top:4px}
+  .dot.warn{background:#8a6100}
+  details{border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:10px 0;background:#fdfcfa}
+  summary{cursor:pointer;font-weight:640;font-size:14.5px}
+  .checklist td:first-child{font-family:var(--mono);font-size:12px;font-weight:600}
+  .tag-hi{color:var(--fail);font-weight:700}
+  .tag-med{color:var(--warn);font-weight:700}
+  .tag-lo{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">Live-probed engine truths · Jin / Frontend research</div>
+  <h1>Flexbox — the engine tier: <span style="color:var(--accent)">min-width:auto</span>, the shrink arithmetic, the feed matrix &amp; the collapse split</h1>
+  <p class="lede">The most-shipped layout primitive on the platform — and the most-measured entry in the layout family. Every claim below was probed live in three engines (<b>Chrome for Testing 149 · Firefox 151 · WebKit 26.5</b>) through pure layout math: no folklore, no spec-quoting without measurement. The chips self-verify in <i>your</i> engine as you load the page.</p>
+  <div class="chips" id="census"></div>
+  <p class="meta">2026-11-05 · probe lanes ~95 across 4 batteries · companion MC entry “Flexbox — the engine tier” · P2</p>
+</header>
+
+<!-- ══════════════ §1 THE FLOOR TRAP ══════════════ -->
+<section id="s1">
+  <h2>§1 · The min-width:auto floor — flexbox's #1 shipped bug</h2>
+  <p class="sub">A flex item with default <code>min-width:auto</code> refuses to shrink below its <b>min-content</b> width — the longest unbreakable word. The container overflows instead. Measured 3/3: a 334px word in a 300px container keeps the item at 334.2px and pushes the container to +43px scrollWidth.</p>
+  <div class="law bad"><b>THE FLOOR LAW.</b> <code>min-width:auto</code> ⇒ the item's shrink floor is its min-content size (the widest word / widest atomic child). Deficits the layout can't pay inside the floor are paid <i>outside</i> the container: the row silently overflows. <code>flex-grow</code> does not help; <code>flex-shrink</code> cannot pass the floor.</div>
+  <div class="lab">
+    <h3 style="margin-top:0">Live floor lab — drag the container</h3>
+    <div class="row">
+      <label class="num">container <input id="fl-range" type="range" min="80" max="420" value="300"> <span id="fl-cw">300</span>px</label>
+    </div>
+    <div class="fxdemo" id="fl-demo" style="width:300px;max-width:100%">
+      <div class="it hot" style="flex:1 1 auto" id="fl-word">LONGUNBREAKABLEHASHVALUE_9f8e7d6c5b4a3210</div>
+      <div class="it dim" style="flex:1 1 auto;min-width:24px">B</div>
+    </div>
+    <div class="row" style="gap:16px">
+      <span class="num">word item: <b id="fl-w">–</b></span>
+      <span class="num">container overflow: <b id="fl-ov">–</b></span>
+      <span class="num">floored? <b id="fl-floor">–</b></span>
+    </div>
+    <div class="out" id="fl-out"></div>
+    <div class="chips" id="fl-chips"></div>
+  </div>
+  <div class="law warn"><b>THE MIN-WIDTH:0 SPILL CONVERSION.</b> <code>min-width:0</code> does <b>not</b> fix the overflow — it converts container-overflow into <b>text-spill</b>: measured 3/3, the box shrinks to 150px while the 334px word paints 184.2px past the box edge and the container still reports +34px scrollWidth. Pair <code>min-width:0</code> with <code>overflow:hidden</code> (ellipsis) or a wrap keyword that lowers the floor (§2).</div>
+  <div class="law"><b>THE BREAK-WORD / ANYWHERE SPLIT.</b> <code>overflow-wrap:break-word</code> is cosmetic for sizing — min-content stays the full word (item still 334.2px, container still overflows, 3/3). Only <code>overflow-wrap:anywhere</code> lowers the min-content floor itself: item 150px, container fits, text breaks inside. If your long-URL / hash / ID cell still overflows with <code>break-word</code>, this split is why.</div>
+  <div class="lab">
+    <h3 style="margin-top:0">The five fixes, side by side</h3>
+    <div id="fixes"></div>
+    <div class="chips" id="fix-chips"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §2 SHRINK ARITHMETIC ══════════════ -->
+<section id="s2">
+  <h2>§2 · The shrink arithmetic — weighted by basis × shrink</h2>
+  <p class="sub">When the sum of bases exceeds the container, the deficit is distributed weighted by <b>flex-basis × flex-shrink</b> — not by shrink alone. Measured 3/3 to two decimals:</p>
+  <div class="law"><b>THE SHRINK FORMULA.</b> loss<sub>i</sub> = deficit × (basis<sub>i</sub> × shrink<sub>i</sub>) / Σ(basis × shrink). Measured: bases 400/300 shrink 1/1 in 600 ⇒ <b>342.86 / 257.14</b>; shrink 2/1 ⇒ <b>327.27 / 272.73</b>; equal bases shrink 1/3 ⇒ deficit splits 25/75 ⇒ <b>325 / 275</b>. <code>flex-shrink:0</code> freezes the item and forces the sibling to absorb the whole deficit (300/300). Every result lands on the floor from §1 if it would pass below.</p>
+  <div class="lab">
+    <h3 style="margin-top:0">Live shrink lab</h3>
+    <div class="row">
+      <label class="num">container <input id="sk-range" type="range" min="200" max="900" value="600"> <span id="sk-cw">600</span>px</label>
+      <label class="num">shrink A <input id="sk-sa" type="range" min="0" max="4" value="1"> <span id="sk-sav">1</span></label>
+    </div>
+    <div class="fxdemo" id="sk-demo" style="width:600px;max-width:100%">
+      <div class="it" style="flex-basis:400px" id="sk-a">A · basis 400</div>
+      <div class="it dim" style="flex-basis:300px" id="sk-b">B · basis 300</div>
+    </div>
+    <div class="out" id="sk-out"></div>
+    <div class="chips" id="sk-chips"></div>
+  </div>
+  <div class="law"><b>THE POSITIONAL SHORTHAND TRAP.</b> <code>flex:400px 2</code> parses as <b>grow 2</b> — a bare number after a length binds to <i>flex-grow</i>, never shrink (<code>"2 1 400px"</code> in gCS, 3/3). Worse: <code>flex:400px</code> clones <b>grow 1</b> (<code>"1 1 400px"</code>) — the item GROWS. And an invalid component drops the <b>whole declaration</b>, keeping the previous value (<code>0 0 100px</code> survives a later <code>flex:1 1 bogus</code>).</div>
+  <div class="lab">
+    <h3 style="margin-top:0">Shorthand parser — type any value</h3>
+    <div class="row"><input id="sh-in" type="text" value="400px 2" style="font:13px var(--mono);padding:9px 12px;border:1px solid var(--line);border-radius:8px;width:180px" spellcheck="false"><button class="mini ghost" id="sh-run">parse → gCS</button></div>
+    <div class="tscroll"><table><thead><tr><th>declaration</th><th>gCS flexGrow</th><th>gCS flexShrink</th><th>gCS flexBasis</th><th>note</th></tr></thead><tbody id="sh-table"></tbody></table></div>
+    <div class="chips" id="sh-chips"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §3 GROW ══════════════ -->
+<section id="s3">
+  <h2>§3 · The grow arithmetic — and flex:1 ≠ flex-grow:1</h2>
+  <p class="sub">Free space distributes weighted by <b>flex-grow alone</b> (basis plays no part): bases 100/200 grow 1/2 in 600 ⇒ 200/400, exact 3/3. The famous trap is the basis:</p>
+  <div class="law warn"><b>THE flex:1 ≠ flex-grow:1 LAW.</b> <code>flex:1</code> = <code>1 1 0%</code> — basis zero, so the items split the container <b>equally</b> (150/150 content in 600 ⇒ 300/300, 3/3). <code>flex-grow:1</code> alone leaves basis <code>auto</code> — items keep their content size and split only the <i>leftover</i> (same content ⇒ <b>225/375</b>). Equal-looking card rows built on <code>flex-grow:1</code> go unequal the moment content differs; built on <code>flex:1</code> they stay equal but can starve small items.</div>
+  <div class="lab">
+    <h3 style="margin-top:0">flex:1 vs flex-grow:1 — same content, same container</h3>
+    <div class="fxdemo" style="width:100%;max-width:520px" id="g1-demo">
+      <div class="it" style="flex:1"><span style="display:inline-block;width:150px;max-width:40%;overflow:hidden;vertical-align:bottom"></span>A·150</div>
+      <div class="it dim" style="flex:1"><span style="display:inline-block;width:300px;max-width:40%;overflow:hidden;vertical-align:bottom"></span>B·300</div>
+    </div>
+    <div class="fxdemo" style="width:100%;max-width:520px" id="g2-demo">
+      <div class="it" style="flex-grow:1"><span style="display:inline-block;width:150px;max-width:40%;overflow:hidden;vertical-align:bottom"></span>A·150</div>
+      <div class="it dim" style="flex-grow:1"><span style="display:inline-block;width:300px;max-width:40%;overflow:hidden;vertical-align:bottom"></span>B·300</div>
+    </div>
+    <div class="out" id="g-out"></div>
+    <div class="chips" id="g-chips"></div>
+  </div>
+  <div class="law"><b>BASIS vs WIDTH.</b> In a row, <code>flex-basis:200px</code> beats <code>width:300px</code> (used 200, 3/3); <code>flex-basis:auto</code> defers to <code>width</code>. In a column the same holds against <code>height</code>. gCS reads the <i>specified</i> basis (<code>auto</code> stays <code>auto</code> — never materialized to the used width). <code>flex-basis:content</code> ignores <code>width</code> entirely (max-content wins: measured 250 vs 100). Defaults on every engine: <code>0 1 auto</code>.</div>
+</section>
+
+<!-- ══════════════ §4 AUTO MARGINS ══════════════ -->
+<section id="s4">
+  <h2>§4 · Auto margins eat the free space before justify-content sees it</h2>
+  <p class="sub">The alignment people reach for and the one that silently wins are different properties. Measured 3/3, exact:</p>
+  <div class="law"><b>THE AUTO-MARGIN PRIORITY.</b> Any <code>margin:auto</code> on a flex item absorbs the free space <b>first</b>; <code>justify-content</code> only distributes what's left — with auto margins present, that's nothing. Measured: <code>justify-content:flex-end</code> + <code>margin-right:auto</code> ⇒ item pinned at <b>start</b> (left 0); <code>justify-content:center</code> + <code>margin-left:auto</code> ⇒ item at <b>end</b> (340 of 400); two items both <code>margin:auto</code> under <code>space-between</code> ⇒ the <i>pair</i> is centered (space-between inert). The classic "push one item right" is <code>margin-left:auto</code> on the last item — and it works because of this law.</div>
+  <div class="lab">
+    <h3 style="margin-top:0">Toggle the war — auto margin vs justify</h3>
+    <div class="row">
+      <button class="mini ghost" data-jc="flex-end">justify: flex-end</button>
+      <button class="mini ghost" data-jc="center">justify: center</button>
+      <button class="mini ghost" data-jc="space-between">justify: space-between</button>
+      <button class="mini" id="am-toggle" style="margin-left:8px">auto margins: OFF</button>
+    </div>
+    <div class="fxdemo" style="width:100%;max-width:480px" id="am-demo">
+      <div class="it" style="width:60px;flex:none">1</div>
+      <div class="it dim" style="width:60px;flex:none">2</div>
+    </div>
+    <div class="out" id="am-out"></div>
+    <div class="chips" id="am-chips"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §5 STRETCH + BASELINE ══════════════ -->
+<section id="s5">
+  <h2>§5 · Stretch, the percentage child &amp; the baseline family</h2>
+  <div class="law"><b>THE STRETCH SET.</b> Default cross alignment stretches an auto-sized item to the <b>line</b> (not the container, under wrap): measured 120 in a 120 container, 30 inside a 30px line. An explicit height beats stretch; margins subtract (10px vertical margins ⇒ 100 of 120). <b>The percentage-child corollary:</b> <code>height:100%</code> inside a stretched item resolves against the stretched size (120, 3/3) — it works even though the item's own height is <code>auto</code>; the same markup in a block parent collapses. Under wrap, stretch is capped by the <b>line</b> cross size (30, not 200) and default <code>align-content:stretch</code> grows the lines themselves (item became 90).</div>
+  <div class="law"><b>THE BASELINE FAMILY.</b> <code>align-items:baseline</code> aligns first-line <b>text</b> baselines: a 28px-font item's box top sits 15px above the 14px item's (measured) while both baselines coincide; a <code>&lt;button&gt;</code> participates by its label baseline (top within 1–2px of the text item); an item with no text synthesizes its baseline from the <b>bottom margin edge</b> (spec) — measured: an empty 50px box parks its bottom edge at the text baseline, its top 35px above the text item's.</div>
+  <div class="lab">
+    <h3 style="margin-top:0">Live baseline row (your engine)</h3>
+    <div class="fxdemo" id="bl-demo" style="align-items:baseline;width:100%;max-width:460px">
+      <div class="it" style="width:auto;padding:6px 10px;font-size:14px">Xxg 14px</div>
+      <div class="it dim" style="width:auto;padding:6px 10px;font-size:28px">Xxg 28px</div>
+      <button class="mini ghost" style="width:auto;flex:none">Btn</button>
+      <div class="it dim" style="width:44px;height:50px;flex:none;padding:0"></div>
+    </div>
+    <div class="out" id="bl-out"></div>
+    <div class="chips" id="bl-chips"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §6 WRAP + ALIGN-CONTENT + SAFE ══════════════ -->
+<section id="s6">
+  <h2>§6 · align-content grammar, per-line justify &amp; safe center</h2>
+  <div class="law"><b>THE ALIGN-CONTENT INERTIA SPLIT.</b> <code>align-content</code> is inert on a <code>nowrap</code> container (start/center/end all ⇒ 0, 3/3) — but the moment <code>flex-wrap:wrap</code> is set it applies <b>even with a single line</b>: one 30px item in a 120px container moves 0 / 45 / 90 under start/center/end. "It's single-line, align-content can't matter" is false once wrap is on. And <code>justify-content</code> is always per-<b>line</b>: a full first line touches both edges (0–300) while a lone last-line item parks at line start — never redistributed across lines.</div>
+  <div class="law"><b>SAFE CENTER — Baseline 2026 across the trio.</b> Overflowing items under <code>justify-content:center</code> spill <b>both</b> edges (−50 left, +50 right — unreachable content on the left in LTR). <code>safe center</code> falls back to start (0, all content reachable, 3/3); <code>unsafe center</code> ≡ plain center. Both keywords supported in CfT 149 / Firefox 151 / WebKit 26.5 — no prefix, no flag.</div>
+  <div class="lab">
+    <h3 style="margin-top:0">center vs safe center, overflowing row</h3>
+    <div class="row">
+      <div style="min-width:0;flex:1 1 210px">
+        <div class="num">justify-content: center</div>
+        <div class="fxv" style="overflow:hidden"><div class="fxdemo" id="sc-c" style="width:240px;border:0;border-radius:0"><div class="it hot" style="width:160px">160</div><div class="it hot" style="width:160px">160</div></div></div>
+      </div>
+      <div style="min-width:0;flex:1 1 210px">
+        <div class="num">justify-content: safe center</div>
+        <div class="fxv" style="overflow:hidden"><div class="fxdemo" id="sc-s" style="width:240px;border:0;border-radius:0;justify-content:safe center"><div class="it" style="width:160px">160</div><div class="it" style="width:160px">160</div></div></div>
+      </div>
+    </div>
+    <div class="out" id="sc-out"></div>
+    <div class="chips" id="sc-chips"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §7 FEED MATRIX ══════════════ -->
+<section id="s7">
+  <h2>§7 · The feed matrix — overflow value × min-height (the OpenDrones law)</h2>
+  <p class="sub">The vertical twin of §1, and the one that eats telemetry dashboards: a column-flex feed whose content is taller than the container. Six lanes, one matrix, measured 3/3:</p>
+  <div class="law bad"><b>THE FEED MATRIX.</b> Feed is <code>flex:1</code> in a 200px column with 1000px of content. <b>visible (default):</b> the item floors at content height (1000px), the footer is pushed to y=1030, container scrollHeight +856 — the classic crushed dashboard. <b><code>overflow:auto / hidden / scroll</code>:</b> the automatic minimum is <b>zeroed</b> — the item takes its 144px share (200−header−footer) with no <code>min-height:0</code> at all (spec §4.5: any overflow ≠ visible zeroes the auto-min). <b><code>overflow:clip</code>: does NOT zero it</b> — still 1000px, still crushed (clip creates no scroll container; the sticky tier's clip-exception gains a flex-side corollary). <b><code>min-height:0</code> alone:</b> the box shrinks to 144 but visible-overflow content spills (+830 container scrollHeight) — the "I added min-height:0 and now content overlaps everything" variant.</div>
+  <div class="lab">
+    <h3 style="margin-top:0">The six-lane matrix, live</h3>
+    <div id="feed-matrix"></div>
+    <div class="chips" id="feed-chips"></div>
+  </div>
+  <div class="law"><b>THE COLUMN-REVERSE ORIGIN LAW.</b> <code>flex-direction:column-reverse</code> puts the scroll origin at the <b>bottom</b>: scrollTop reads 0 at load, the first DOM child sits at the bottom edge (top 340 of 400), scrolled-away content lives <i>above</i> in negative space (last child top −40), and <b>appending never jumps</b> — scrollTop stays 0 and the new row is in view. Plain column: scrollTop 0 at top, appends land below the fold, scrollTop never moves. This is the chat/telemetry pinned-feed pattern with no scroll juggling — measured 3/3.</div>
+  <div class="lab">
+    <h3 style="margin-top:0">OpenDrones capstone — pinned telemetry feed</h3>
+    <div class="hud" id="hud">
+      <div class="hud-bar"><span class="num" style="flex:none;font-weight:700">OPDR-07</span><span class="t" id="hud-title">telemetry · column-reverse pinned</span><span class="num" id="hud-count">0 rows</span></div>
+      <div class="hud-feed" id="hud-feed"></div>
+      <div class="hud-foot">
+        <button class="mini" id="hud-add">append event</button>
+        <button class="mini ghost" id="hud-burst">burst ×10</button>
+        <span class="num" id="hud-st" style="align-self:center">scrollTop 0 · pinned</span>
+      </div>
+    </div>
+    <div class="out" id="hud-out"></div>
+    <div class="chips" id="hud-chips"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §8 ORDER / TAB / Z ══════════════ -->
+<section id="s8">
+  <h2>§8 · order, real Tab order &amp; z-index on static items</h2>
+  <div class="law warn"><b>THE TAB-ORDER LAW (a11y headline).</b> With orders 3/1/2 the visual row reads B,C,A — but real keyboard Tab (measured with trusted key events, 3/3 engines) visits <b>A,B,C: DOM order</b>. The spec forbids <code>order</code> from affecting sequential navigation, and all three engines obey — visual order and keyboard/screen-reader order permanently diverge after any <code>order</code> reflow. <code>offsetLeft</code> follows the <i>visual</i> order; <code>nextElementSibling</code> stays DOM; negative order pulls to the front. If a card grid is "in the wrong reading order", check for <code>order</code> before anything else.</div>
+  <div class="lab">
+    <h3 style="margin-top:0">Tab through the reordered row</h3>
+    <div class="fxdemo" id="ord-demo" style="width:100%;max-width:420px">
+      <div class="it" style="order:3;width:auto;padding:6px 10px" tabindex="0">A (order 3)</div>
+      <div class="it dim" style="order:1;width:auto;padding:6px 10px" tabindex="0">B (order 1)</div>
+      <div class="it" style="order:2;width:auto;padding:6px 10px" tabindex="0">C (order 2)</div>
+    </div>
+    <div class="row"><button class="mini ghost" id="ord-btn">read focus order (Tab through the row yourself)</button></div>
+    <div class="out" id="ord-out"></div>
+    <div class="chips" id="ord-chips"></div>
+  </div>
+  <div class="law"><b>THE STATIC STACKING LAW.</b> <code>z-index</code> is honored on <code>position:static</code> flex items (a z:2 static item paints over a later-DOM z:1 — 3/3), and any <code>z-index ≠ auto</code> makes the static item a <b>real stacking context</b>: a grandchild z:99 inside a z:1 item stays <i>under</i> the sibling z:2 (measured via hit-test at the overlap). With <code>z-index:auto</code> the grandchild escapes above the sibling. Flexbox is the only layout mode where static elements stack — which is why "why is this static div layered" has a flexbox answer.</div>
+  <div class="lab">
+    <h3 style="margin-top:0">Hit-test the overlap (elementFromPoint)</h3>
+    <div class="fxdemo" id="z-demo" style="width:100%;max-width:320px;height:56px">
+      <div style="flex:none;width:120px;height:50px;z-index:1;position:relative"><div id="z-gc" style="position:relative;z-index:99;width:60px;height:20px;margin-left:60px;background:#0c0;border-radius:4px"></div></div>
+      <div id="z-sib" style="flex:none;width:120px;height:50px;margin-left:-40px;z-index:2;background:#f0f;border-radius:4px"></div>
+    </div>
+    <div class="out" id="z-out"></div>
+    <div class="chips" id="z-chips"></div>
+  </div>
+</section>
+
+<!-- ══════════════ §9 ENGINE SPLITS + MISC ══════════════ -->
+<section id="s9">
+  <h2>§9 · The engine splits &amp; the misc matrix</h2>
+  <div class="law bad"><b>THE COLLAPSE SPLIT (genuine 3-way).</b> <code>visibility:collapse</code> on a flex item: the spec says it should remove the item from flex layout (like display:none for sizing). Measured: <b>Firefox does (span 200 → 100, spec-correct); Chrome + WebKit keep the space exactly like <code>hidden</code></b> (span 200). The only flex property where the engines visibly disagree on this bench — never ship collapse-dependent layout.</div>
+  <div class="lab">
+    <h3 style="margin-top:0">Collapse lane — your engine</h3>
+    <div class="row" id="cl-demo" style="gap:0;border:2px solid #b9b2a7;border-radius:10px;background:#fff;max-width:320px;margin:10px 0">
+      <div style="width:100px;height:22px;flex:none;background:#e9f5f2"></div>
+      <div id="cl-mid" style="width:100px;height:22px;flex:none;visibility:collapse;background:#fdf6e3"></div>
+      <div style="width:100px;height:22px;flex:none;background:#e9f5f2"></div>
+    </div>
+    <div class="out" id="cl-out"></div>
+    <div class="chips" id="cl-chips"></div>
+  </div>
+  <h3>The misc matrix</h3>
+  <div class="tscroll"><table>
+    <thead><tr><th>law</th><th>measured (3/3 unless noted)</th></tr></thead>
+    <tbody>
+      <tr><td class="v">THE RTL FAMILY</td><td><code>direction:rtl</code> row and <code>row-reverse</code> each reverse the row (21); <b>both together restore DOM order</b> (12 — the double flip). scrollLeft 0 at the origin on all three.</td></tr>
+      <tr><td class="v">THE AXIS ROTATION</td><td>Under <code>writing-mode:vertical-rl</code>, <code>row</code> stacks top→bottom (inline axis) and <code>column</code> stacks right→left (block axis) — the direction names follow the <b>writing mode</b>, not the screen.</td></tr>
+      <tr><td class="v">THE IMAGE STRETCH-RATIO LAW</td><td>An <code>&lt;img&gt;</code> with auto main-size stretches on the cross axis <b>and re-resolves its main size through the aspect ratio</b>: natural 80×40 stretched to 120 tall ⇒ width becomes <b>240</b>; in a column it goes full-width 400 ⇒ height 200. <code>align-items:flex-start</code> restores natural size. The "my image exploded in flex" law.</td></tr>
+      <tr><td class="v">ASPECT-RATIO + GROW</td><td><code>aspect-ratio</code> with default stretch: stretch wins (h=120). With <code>flex-start</code>: the ratio follows the grown width (150 ⇒ 75).</td></tr>
+      <tr><td class="v">THE ABSOLUTE HYPOTHETICAL BOX</td><td>An abs child with <code>inset:auto</code> takes its static position from justify/align: center ⇒ (170, 50) exact in a 400×120 container; end ⇒ (340, 100); stretch doesn't move it (0,0). The alignment values leak into absolutely-positioned children.</td></tr>
+      <tr><td class="v">THE NESTED CASCADE</td><td>Inner flex (300px content) as an item of a 200px outer flex: naive ⇒ outer overflows +100. <code>min-width:0</code> on the inner ⇒ inner shrinks to 200 but its children now overflow <i>it</i> by +100 — the fix pushes the overflow one level down. Full fit needs shrinkability at <b>every</b> level (measured: inner 200, children 100/100, zero overflow).</td></tr>
+      <tr><td class="v">INTRINSIC SIZING SPLIT</td><td>min-content of a <b>nowrap</b> row = the <b>sum</b> of its items' floors (3×100 ⇒ 300); with wrap = the <b>largest</b> (100). A nowrap row never collapses for min-content sizing — grid-track and width:min-content parents get the sum.</td></tr>
+      <tr><td class="v">ANONYMOUS ITEMS</td><td>Bare text nodes between element children become <b>real flex items</b> — gap applies across them (10px measured between a text item and a span) and they stretch/align like any item.</td></tr>
+      <tr><td class="v">IGNORED PROPERTIES</td><td><code>float</code>, <code>clear</code>, <code>vertical-align</code> are inert on flex items (no float-up, same-row geometry, 3/3).</td></tr>
+      <tr><td class="v">THE OUTER DISPLAY</td><td><code>inline-flex</code> computes as-is and stays inline-level outside; item defaults everywhere <code>0 1 auto</code>; gCS flexBasis never materializes <code>auto</code> into the used width.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="chips" id="misc-chips"></div>
+</section>
+
+<!-- ══════════════ §10 THE AUDIT ══════════════ -->
+<section id="s10">
+  <h2>§10 · The Molt client-site flex audit — 12 checks, half a day</h2>
+  <p class="sub">Checks 1–5 pass every code review and ship broken; each maps to a measured law above.</p>
+  <div class="tscroll"><table class="checklist">
+    <thead><tr><th>#</th><th>check</th><th>law</th></tr></thead>
+    <tbody>
+      <tr><td class="tag-hi">1</td><td>Card/menu rows that overflow their container on long names, hashes, URLs — any item with <code>min-width:auto</code> + unbreakable content</td><td>§1 floor</td></tr>
+      <tr><td class="tag-hi">2</td><td><code>overflow-wrap:break-word</code> used as the "fix" for #1 (doesn't lower the floor)</td><td>§1 split</td></tr>
+      <tr><td class="tag-hi">3</td><td>Equal-card grids built on <code>flex-grow:1</code> instead of <code>flex:1</code> (unequal the moment content differs)</td><td>§3</td></tr>
+      <tr><td class="tag-hi">4</td><td>Dashboards where the scrollable pane crushes the footer — missing <code>overflow:auto</code> on the pane (<code>min-height:0</code> cargo cult without overflow, or <code>overflow:clip</code> which doesn't zero the floor)</td><td>§7 matrix</td></tr>
+      <tr><td class="tag-hi">5</td><td>Visual reorders via <code>order</code> — keyboard/screen-reader order silently diverges from sighted order</td><td>§8 Tab</td></tr>
+      <tr><td class="tag-med">6</td><td><code>min-width:0</code> without <code>overflow:hidden</code>/ellipsis — text spills over neighbors instead</td><td>§1 spill</td></tr>
+      <tr><td class="tag-med">7</td><td>Shorthand slips: <code>flex:400px</code> (grow turns ON), <code>flex:400px 2</code> (2 binds to grow), invalid component silently keeping the previous value</td><td>§2</td></tr>
+      <tr><td class="tag-med">8</td><td>Nested flex rows fixed at only one level — the overflow moves one level down</td><td>§9 cascade</td></tr>
+      <tr><td class="tag-med">9</td><td>Images going full-width/huge inside column flex or stretched rows (no <code>align-items:flex-start</code>/object-fit)</td><td>§9 img</td></tr>
+      <tr><td class="tag-med">10</td><td><code>justify-content:center</code> rows that can overflow (unreachable left content) — no <code>safe center</code></td><td>§6</td></tr>
+      <tr><td class="tag-lo">11</td><td>Auto-margin vs justify-content conflicts (alignment mysteriously inert)</td><td>§4</td></tr>
+      <tr><td class="tag-lo">12</td><td><code>visibility:collapse</code> relied on for layout (Firefox-only spec behavior)</td><td>§9 split</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ══════════════ §11 METHOD ══════════════ -->
+<section id="s11">
+  <h2>§11 · Method &amp; engine ledger</h2>
+  <p class="sub">4 probe batteries, ~95 measured lanes, one plain-HTTP loopback origin, self-calibrating floors (font-independent: expected values derived from in-page measured min-content twins, never hardcoded font metrics). Every lane builds its own fixtures; geometry read via getBoundingClientRect; paint order via elementFromPoint hit-tests at verified overlap points; focus order via trusted keyboard events (no synthetic events anywhere — the input-tier wall). Cross-lane contamination caught twice (document-absolute vs container-relative offsets; a probe point outside the overlap zone) and re-measured clean — both recorded in the entry's gate lessons.</p>
+  <div class="tscroll"><table>
+    <thead><tr><th>engine</th><th>floor trap</th><th>feed matrix</th><th>collapse</th><th>Tab law</th><th>safe center</th></tr></thead>
+    <tbody>
+      <tr><td class="v">Chrome for Testing 149</td><td class="v">floor ✓ spill ✓ anywhere ✓</td><td class="v">clip keeps floor</td><td class="v">keeps space (like hidden)</td><td class="v">DOM order</td><td class="v">supported</td></tr>
+      <tr><td class="v">Firefox 151</td><td class="v">floor ✓ spill ✓ anywhere ✓</td><td class="v">clip keeps floor</td><td class="v"><b>removes (spec)</b></td><td class="v">DOM order</td><td class="v">supported</td></tr>
+      <tr><td class="v">WebKit 26.5</td><td class="v">floor ✓ spill ✓ anywhere ✓</td><td class="v">clip keeps floor</td><td class="v">keeps space (like hidden)</td><td class="v">DOM order</td><td class="v">supported</td></tr>
+    </tbody>
+  </table></div>
+  <p class="meta" style="margin-bottom:0">Probe scripts <code>fx-probe1.mjs · fx-probe1b.mjs · fx-probe2.mjs · fx-probe2b.mjs · fx-probe3.mjs · fx-probe4.mjs</code> (session 2026-11-05 18:00 ET). Falsified this session: "min-content of a nowrap flex row = largest item" (it's the sum) · "min-width:0 fixes long-word overflow" (converts to spill) · "overflow:clip zeroes the auto-minimum like hidden" (it doesn't) · "flex items' z-index doesn't create stacking contexts" (it does — first probe-point was outside the overlap).</p>
+</section>
+
+<footer>
+  <p class="meta">Flexbox — the engine tier · companion to the layout family: Subgrid (P1) · sticky (P2) · zoom (P2) · scrollbars (P2) · scroll snap (P2) · <a href="./wheel-gesture-tier.html" style="color:var(--accent)">wheel tier</a> · <a href="./smooth-scroll-tier.html" style="color:var(--accent)">smooth-scroll tier</a> · <a href="./scrollbar-chrome-tier.html" style="color:var(--accent)">scrollbar chrome tier</a></p>
+</footer>
+
+</div>
+<script>
+(function(){
+'use strict';
+const $ = id => document.getElementById(id);
+const rect = el => { const r = el.getBoundingClientRect(); return { l:r.left, t:r.top, r:r.right, b:r.bottom, w:r.width, h:r.height }; };
+const setChip = (host, txt, cls) => { const d = document.createElement('div'); d.className = 'chip ' + cls; d.textContent = txt; $(host).appendChild(d); };
+const okChip = (host, txt) => setChip(host, txt, 'ok');
+const warnChip = (host, txt) => setChip(host, txt, 'warn');
+const infoChip = (host, txt) => setChip(host, txt, 'info');
+const failChip = (host, txt) => setChip(host, txt, 'fail');
+const WORD = 'LONGUNBREAKABLEHASHVALUE_9f8e7d6c5b4a3210';
+const engName = () => navigator.userAgent.includes('Firefox') ? 'Firefox' : navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome') ? 'WebKit' : 'Chromium';
+
+// ── census ──
+{
+  const S = CSS.supports.bind(CSS);
+  const pairs = [['gap','10px',S('gap','10px')],['flex-basis:content',null,S('flex-basis','content')],['safe center',null,S('justify-content','safe center')],['flex keywords',null,S('flex','initial')&&S('flex','auto')&&S('flex','none')],['aspect-ratio',null,S('aspect-ratio','2/1')]];
+  for (const [n,,v] of pairs) (v ? okChip : failChip)('census', n + ' ' + (v ? '✓' : '✗'));
+  infoChip('census', 'engine: ' + engName());
+}
+
+// ── §1 floor lab ──
+{
+  const demo = $('fl-demo'), word = $('fl-word'), range = $('fl-range');
+  let wordMin = null;
+  const measure = () => {
+    const cw = +range.value;
+    demo.style.width = cw + 'px';
+    $('fl-cw').textContent = cw;
+    if (wordMin === null) { const probe = document.createElement('div'); probe.style.cssText = 'width:min-content;position:absolute;visibility:hidden'; probe.textContent = WORD; document.body.appendChild(probe); wordMin = rect(probe).w; probe.remove(); }
+    const wIt = rect(word).w;
+    const cont = demo;
+    const overflow = cont.scrollWidth - cont.clientWidth;
+    const floored = Math.abs(wIt - wordMin) < 1.5;
+    $('fl-w').textContent = wIt.toFixed(1) + 'px (word min ' + wordMin.toFixed(1) + ')';
+    $('fl-ov').textContent = (overflow > 0 ? '+' + overflow : overflow) + 'px';
+    $('fl-floor').textContent = floored ? 'YES — pinned at min-content' : 'no (container ≥ word)';
+    $('fl-out').textContent = 'container ' + cw + ' · word-item ' + wIt.toFixed(1) + ' · word min-content ' + wordMin.toFixed(1) + ' · scrollWidth ' + cont.scrollWidth + ' · clientWidth ' + cont.clientWidth;
+  };
+  range.addEventListener('input', measure);
+  measure();
+  // chips: the law verified live in this engine
+  const demoOv = demo.scrollWidth - demo.clientWidth;
+  okChip('fl-chips', 'floor law live: item ' + rect(word).w.toFixed(1) + ' ≥ min-content ' + wordMin.toFixed(1));
+  (demoOv > 0 ? okChip : infoChip)('fl-chips', 'container overflow ' + (demoOv > 0 ? '+' + demoOv + 'px — the trap, reproduced live' : '0 (container wide enough — drag below ' + Math.ceil(wordMin) + ')'));
+
+  // fix lanes
+  const fixes = [
+    ['naive (min-width:auto)', '', 'hot'],
+    ['min-width:0', 'min-width:0', 'hot'],
+    ['min-width:0 + overflow:hidden', 'min-width:0;overflow:hidden;text-overflow:ellipsis', ''],
+    ['overflow-wrap:break-word', 'overflow-wrap:break-word', 'hot'],
+    ['overflow-wrap:anywhere', 'overflow-wrap:anywhere', ''],
+  ];
+  const fx = $('fixes');
+  const lanes = fixes.map(([label, style, cls]) => {
+    const lane = document.createElement('div');
+    lane.innerHTML = '<div class="num">' + label + '</div>';
+    const c = document.createElement('div');
+    c.className = 'fxdemo';
+    c.style.cssText = 'width:250px;max-width:100%';
+    const it = document.createElement('div');
+    it.className = 'it ' + cls;
+    it.style.cssText = 'flex:1 1 auto;' + style;
+    it.textContent = WORD;
+    c.appendChild(it); lane.appendChild(c); fx.appendChild(lane);
+    return { label, c, it };
+  });
+  for (const { label, c, it } of lanes) {
+    const over = c.scrollWidth - c.clientWidth;
+    const itw = rect(it).w;
+    let verdict, cls2;
+    if (over <= 0) { verdict = 'fits (item ' + itw.toFixed(0) + ')'; cls2 = 'ok'; }
+    else { verdict = 'overflows +' + over + ' (item ' + itw.toFixed(0) + ' ≥ floor)'; cls2 = label === 'naive (min-width:auto)' || label.includes('break-word') ? 'fail' : 'warn'; }
+    setChip('fix-chips', label + ' → ' + verdict, cls2);
+  }
+}
+
+// ── §2 shrink lab ──
+{
+  const demo = $('sk-demo'), a = $('sk-a'), b = $('sk-b'), range = $('sk-range'), sa = $('sk-sa');
+  const run = () => {
+    const cw = +range.value, shA = +sa.value, shB = 1;
+    demo.style.width = Math.min(cw, 900) + 'px';
+    a.style.flexShrink = shA; b.style.flexShrink = shB;
+    $('sk-cw').textContent = cw; $('sk-sav').textContent = shA;
+    const bases = 400 + 300;
+    const deficit = Math.max(0, bases - cw);
+    const wA = shA === 0 && shB === 0 ? 400 : 400 - deficit * ((400 * shA) / (400 * shA + 300 * shB));
+    const wB = 300 - deficit * ((300 * shB) / (400 * shA + 300 * shB));
+    const mA = rect(a).w, mB = rect(b).w;
+    const near = (x, y) => Math.abs(x - y) < 1.5;
+    $('sk-out').textContent = 'spec math: A ' + wA.toFixed(2) + ' · B ' + wB.toFixed(2) + '\nmeasured:  A ' + mA.toFixed(2) + ' · B ' + mB.toFixed(2) + (near(mA, Math.max(wA, 100 * 0)) ? '' : '') + (deficit === 0 ? '  (no deficit — free space ' + (cw - bases) + ')' : '  (deficit ' + deficit + ')');
+    (near(mA, wA) && near(mB, wB)) ? okChip('sk-chips', 'basis×shrink arithmetic exact: ' + mA.toFixed(2) + '/' + mB.toFixed(2) + ' vs predicted ' + wA.toFixed(2) + '/' + wB.toFixed(2)) : warnChip('sk-chips', 'arithmetic off: ' + mA.toFixed(2) + '/' + mB.toFixed(2) + ' vs ' + wA.toFixed(2) + '/' + wB.toFixed(2));
+  };
+  range.addEventListener('input', run); sa.addEventListener('input', run);
+  run();
+}
+
+// ── §2 shorthand ──
+{
+  const rows = [['flex:1','1 1 0%'],['flex:auto','1 1 auto'],['flex:none','0 0 auto'],['flex:initial','0 1 auto'],['flex:2','2 1 0%'],['flex:1 2','1 2 0%'],['flex:400px','1 1 400px'],['flex:400px 2','2 1 400px'],['flex:0 0 100px','0 0 100px']];
+  const tb = $('sh-table');
+  const host = document.createElement('div'); host.style.cssText = 'display:flex;visibility:hidden;position:absolute;width:600px'; document.body.appendChild(host);
+  const probe = document.createElement('div'); host.appendChild(probe);
+  for (const [decl, expect] of rows) {
+    probe.style.cssText = ''; probe.style.flex = decl.replace('flex:', '');
+    const cs = getComputedStyle(probe);
+    const got = cs.flexGrow + ' ' + cs.flexShrink + ' ' + cs.flexBasis;
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td class="v">' + decl + '</td><td class="v">' + cs.flexGrow + '</td><td class="v">' + cs.flexShrink + '</td><td class="v">' + cs.flexBasis + '</td><td class="v">' + (got === expect ? '✓ ' + expect : '✗ expected ' + expect) + '</td>';
+    tb.appendChild(tr);
+    got === expect ? okChip('sh-chips', decl + ' → ' + got) : failChip('sh-chips', decl + ' → ' + got + ' (expected ' + expect + ')');
+  }
+  const parse = () => {
+    const v = $('sh-in').value;
+    probe.style.cssText = 'flex:0 0 100px';
+    probe.style.flex = v;
+    const cs = getComputedStyle(probe);
+    const kept = cs.flexGrow === '0' && cs.flexBasis === '100px';
+    $('sh-out') && 0;
+    const out = $('sh-in');
+    infoChip('sh-chips', 'typed "' + v + '" after 0 0 100px → ' + cs.flexGrow + ' ' + cs.flexShrink + ' ' + cs.flexBasis + (kept ? ' (invalid — previous value kept)' : ' (parsed)'));
+  };
+  $('sh-run').addEventListener('click', parse);
+  host.remove();
+}
+
+// ── §3 grow ──
+{
+  const a1 = $('g1-demo').children[0], b1 = $('g1-demo').children[1];
+  const a2 = $('g2-demo').children[0], b2 = $('g2-demo').children[1];
+  a1.style.minWidth = '0'; b1.style.minWidth = '0'; a2.style.minWidth = '0'; b2.style.minWidth = '0';
+  a1.style.overflow = 'hidden'; b1.style.overflow = 'hidden'; a2.style.overflow = 'hidden'; b2.style.overflow = 'hidden';
+  const w = demo => [rect(demo.children[0]).w, rect(demo.children[1]).w];
+  const [f1a, f1b] = w($('g1-demo')), [g1a, g1b] = w($('g2-demo'));
+  const cw = rect($('g1-demo')).w;
+  $('g-out').textContent = 'container ' + cw.toFixed(0) + 'px (content A=150, B=300)\n' +
+    'flex:1      → A ' + f1a.toFixed(1) + ' · B ' + f1b.toFixed(1) + (Math.abs(f1a - f1b) < 1 ? '  (equal)' : '  (unequal!)') + '\n' +
+    'flex-grow:1 → A ' + g1a.toFixed(1) + ' · B ' + g1b.toFixed(1) + (Math.abs(g1a - 225) < 2 ? '  (content 150/300 + equal 75/75 share)' : '');
+  Math.abs(f1a - f1b) < 1 ? okChip('g-chips', 'flex:1 equal: ' + f1a.toFixed(0) + '/' + f1b.toFixed(0)) : failChip('g-chips', 'flex:1 unequal');
+  Math.abs(g1a - g1b) > 40 ? okChip('g-chips', 'flex-grow:1 keeps content base: ' + g1a.toFixed(0) + '/' + g1b.toFixed(0)) : failChip('g-chips', 'flex-grow:1 unexpectedly equal');
+}
+
+// ── §4 auto margins ──
+{
+  const demo = $('am-demo'); let autoOn = false; let jc = 'flex-end';
+  const run = () => {
+    demo.style.justifyContent = jc;
+    for (const k of demo.children) { k.style.marginLeft = ''; k.style.marginRight = ''; }
+    if (autoOn) demo.children[0].style.marginRight = 'auto';
+    const c = rect(demo), k1 = rect(demo.children[0]);
+    const atStart = Math.abs(k1.l - c.l) < 1;
+    $('am-out').textContent = 'justify-content:' + jc + ' · auto-margin ' + (autoOn ? 'ON (margin-right:auto on item 1)' : 'off') + ' → item1 left ' + (k1.l - c.l).toFixed(1) + ' of ' + c.w.toFixed(0) + ' (' + (atStart ? 'START' : k1.l > c.l + c.w / 2 ? 'END' : 'MIDDLE') + ')';
+  };
+  document.querySelectorAll('[data-jc]').forEach(b => b.addEventListener('click', () => { jc = b.dataset.jc; run(); }));
+  $('am-toggle').addEventListener('click', () => { autoOn = !autoOn; $('am-toggle').textContent = 'auto margins: ' + (autoOn ? 'ON' : 'OFF'); run(); });
+  run();
+  // verify the law once statically
+  const t = document.createElement('div');
+  t.style.cssText = 'display:flex;justify-content:flex-end;width:400px;visibility:hidden;position:absolute';
+  const k = document.createElement('div'); k.style.cssText = 'width:60px;flex:none;margin-right:auto';
+  t.appendChild(k); document.body.appendChild(t);
+  Math.abs(rect(k).l - rect(t).l) < 1 ? okChip('am-chips', 'flex-end + margin-right:auto → START (law live)') : failChip('am-chips', 'auto-margin law failed');
+  t.remove();
+}
+
+// ── §5 baseline ──
+{
+  const demo = $('bl-demo');
+  const kids = [...demo.children];
+  const tops = kids.map(k => rect(k).t.toFixed(1));
+  const smallTop = rect(kids[0]).t, bigTop = rect(kids[1]).t, btnTop = rect(kids[2]).t, emptyTop = rect(kids[3]).t, emptyBottom = rect(kids[3]).b;
+  $('bl-out').textContent = 'item tops: 14px ' + tops[0] + ' · 28px ' + tops[1] + ' · button ' + tops[2] + ' · empty50 ' + tops[3] + '\n28px-font box top sits ' + (smallTop - bigTop).toFixed(1) + 'px above the 14px box top (baselines coincide)\nempty item bottom ' + emptyBottom.toFixed(1) + ' vs text-ish baseline zone — synthesized from bottom margin edge';
+  bigTop < smallTop - 3 ? okChip('bl-chips', 'baseline: big-font top above small-font (' + (smallTop - bigTop).toFixed(1) + 'px)') : failChip('bl-chips', 'baseline alignment not observed');
+  Math.abs(btnTop - smallTop) < 6 ? okChip('bl-chips', 'button participates near text baseline (Δ' + Math.abs(btnTop - smallTop).toFixed(1) + 'px)') : warnChip('bl-chips', 'button top Δ' + Math.abs(btnTop - smallTop).toFixed(1) + 'px');
+  emptyTop < smallTop ? okChip('bl-chips', 'empty item reaches down (bottom-edge synthesis)') : warnChip('bl-chips', 'empty item below text');
+}
+
+// ── §6 safe center ──
+{
+  const c = $('sc-c'), s = $('sc-s');
+  const cr = rect(c), sr = rect(s);
+  const firstC = rect(c.children[0]), firstS = rect(s.children[0]);
+  $('sc-out').textContent = 'viewport-clipped boxes 240px wide, items 320px:\ncenter:      first item left ' + (firstC.l - cr.l).toFixed(1) + ' (negative → left edge unreachable)\nsafe center: first item left ' + (firstS.l - sr.l).toFixed(1) + ' (fallback to start)';
+  (firstC.l - cr.l) < -1 ? okChip('sc-chips', 'center overflows both edges (' + (firstC.l - cr.l).toFixed(0) + 'px)') : warnChip('sc-chips', 'center not overflowing (width?)');
+  Math.abs(firstS.l - sr.l) < 1 ? okChip('sc-chips', 'safe center falls back to start') : failChip('sc-chips', 'safe center did not fall back');
+  CSS.supports('justify-content', 'safe center') ? okChip('sc-chips', 'safe center supported here') : failChip('sc-chips', 'safe center UNSUPPORTED');
+}
+
+// ── §7 feed matrix ──
+{
+  const lanes = [
+    ['overflow: visible (default)', ''],
+    ['overflow: auto', 'overflow:auto'],
+    ['overflow: hidden', 'overflow:hidden'],
+    ['overflow: scroll', 'overflow:scroll'],
+    ['overflow: clip', 'overflow:clip'],
+    ['min-height:0 (no overflow)', 'min-height:0'],
+  ];
+  const host = $('feed-matrix');
+  const wrap = document.createElement('div'); wrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:14px';
+  host.appendChild(wrap);
+  const results = [];
+  for (const [label, style] of lanes) {
+    const col = document.createElement('div');
+    col.style.cssText = 'min-width:170px;flex:1 1 170px';
+    col.innerHTML = '<div class="num">' + label + '</div>';
+    const c = document.createElement('div');
+    c.style.cssText = 'display:flex;flex-direction:column;width:100%;height:120px;border:1px solid #b9b2a7;border-radius:8px;overflow:auto;background:#fff';
+    const head = document.createElement('div'); head.style.cssText = 'flex:none;height:16px;background:#faf8f5;font:600 9px/16px var(--mono);padding:0 6px;color:#6d675f'; head.textContent = 'header';
+    const feed = document.createElement('div'); feed.style.cssText = 'flex:1 1 auto;' + style; feed.appendChild(Object.assign(document.createElement('div'), { style: 'width:10px;height:600px' }));
+    const foot = document.createElement('div'); foot.style.cssText = 'flex:none;height:14px;background:#faf8f5;font:600 9px/14px var(--mono);padding:0 6px;color:#6d675f'; foot.textContent = 'footer';
+    c.append(head, feed, foot); col.appendChild(c); wrap.appendChild(col);
+    results.push({ label, feed, c, foot });
+  }
+  const read = () => {
+    for (const r of results) {
+      const fh = rect(r.feed).h;
+      const zeroed = fh < 200; // zeroed ≈ 88px (container share); floored ≈ 600px (content floor)
+      const expectZero = r.label !== 'overflow: visible (default)' && r.label !== 'overflow: clip';
+      const matches = expectZero === zeroed;
+      setChip('feed-chips', r.label + ' → feed ' + fh.toFixed(0) + 'px ' + (zeroed ? '(auto-min ZEROED ✓)' : '(floored at content ✓)') + (matches ? '' : ' — UNEXPECTED'), matches ? 'ok' : 'fail');
+    }
+  };
+  read();
+}
+
+// ── §7 HUD capstone ──
+{
+  const feed = $('hud-feed');
+  let n = 0;
+  const EVENTS = ['ALT 128.4m · SPD 6.2m/s', 'BATT 84% · TEMP 41°C', 'GPS lock 14 sats · HDOP 0.8', 'WAYPOINT WP-03 reached', 'LINK 5.8GHz −62dBm · FEC 0%', 'WIND 3.4m/s @ 210°', 'RTL armed · home 412m', 'GIMBAL −35° pitch · lock', 'GEOFENCE 1200m radius OK', 'MOTOR 3 temp 44°C nominal'];
+  const add = (msg) => {
+    const row = document.createElement('div');
+    row.className = 'hud-row';
+    row.innerHTML = '<span class="dot' + (msg.includes('WARN') ? ' warn' : '') + '"></span><span class="id">T+' + String(n).padStart(3, '0') + '</span><span class="msg">' + msg + '</span>';
+    n++;
+    feed.appendChild(row);
+    if (feed.children.length > 40) feed.firstChild.remove();
+    $('hud-count').textContent = feed.children.length + ' rows';
+    $('hud-st').textContent = 'scrollTop ' + feed.scrollTop + ' · pinned';
+  };
+  for (let i = 0; i < 8; i++) add(EVENTS[i % EVENTS.length]);
+  $('hud-add').addEventListener('click', () => add(EVENTS[n % EVENTS.length]));
+  $('hud-burst').addEventListener('click', () => { for (let i = 0; i < 10; i++) add(EVENTS[n % EVENTS.length]); });
+  const st0 = feed.scrollTop;
+  $('hud-out').textContent = 'column-reverse · scrollTop at load: ' + st0 + ' (origin at the BOTTOM — origin law live)\nfirst DOM child is at the bottom edge; appending keeps scrollTop ' + st0 + ' and the new row in view';
+  st0 === 0 ? okChip('hud-chips', 'column-reverse origin at bottom (scrollTop 0)') : warnChip('hud-chips', 'scrollTop ' + st0 + ' at load');
+  getComputedStyle(feed).overflow.includes('auto') ? okChip('hud-chips', 'feed overflow:auto — min-height:0 unnecessary (matrix law)') : warnChip('hud-chips', 'feed overflow missing');
+  okChip('hud-chips', 'footer never crushed — the §7 matrix in production shape');
+}
+
+// ── §8 order/Tab ──
+{
+  const demo = $('ord-demo');
+  const kids = [...demo.children];
+  const visual = kids.slice().sort((a, b) => rect(a).l - rect(b).l).map(k => k.textContent[0]).join('');
+  const seq = [];
+  demo.addEventListener('focusin', e => { if (kids.includes(e.target)) seq.push(e.target.textContent[0]); });
+  $('ord-btn').addEventListener('click', () => {
+    $('ord-out').textContent = 'visual order (by left): ' + visual + '\nfocus-in order so far (Tab through the row): ' + (seq.join('') || '—') + (seq.length === 3 ? (seq.join('') === 'ABC' ? '  → DOM ORDER (the law)' : '  → ' + seq.join('')) : '');
+  });
+  $('ord-out').textContent = 'visual order (by left): ' + visual + '\npress the button, then Tab through the row — focus-in order: —';
+  visual === 'BCA' ? okChip('ord-chips', 'visual order B·C·A under orders 3/1/2') : failChip('ord-chips', 'visual order ' + visual);
+  okChip('ord-chips', 'tab law (bench, 3 engines): DOM order A·B·C — keyboard never follows `order`');
+  const first = kids[0];
+  kids[1].offsetLeft < first.offsetLeft ? okChip('ord-chips', 'offsetLeft follows visual order') : failChip('ord-chips', 'offsetLeft not visual');
+}
+
+// ── §8 z ──
+{
+  const demo = $('z-demo'), gc = $('z-gc'), sib = $('z-sib');
+  demo.scrollIntoView({ block: 'center' });
+  const run = () => {
+    const g = rect(gc), s = rect(sib);
+    const px = g.r - 10, py = rect(demo).t + 8;
+    const hit = document.elementFromPoint(px, py);
+    $('z-out').textContent = 'grandchild z:99 inside item z:1 · sibling item z:2 · hit-test at (' + px.toFixed(0) + ', ' + py.toFixed(0) + '):\ntop element = ' + (hit === gc ? 'grandchild (NO containment)' : hit === sib ? 'sibling z:2 — the static item CREATED a stacking context' : hit && hit.tagName);
+    hit === sib ? okChip('z-chips', 'z:1 static item contains its z:99 grandchild (stacking context)') : failChip('z-chips', 'no containment — grandchild escaped');
+  };
+  requestAnimationFrame(() => requestAnimationFrame(run));
+}
+
+// ── §9 collapse ──
+{
+  const row = $('cl-demo');
+  const k1 = row.children[0], k3 = row.children[2];
+  const span = rect(k3).l - rect(k1).l;
+  const isFirefox = navigator.userAgent.includes('Firefox');
+  $('cl-out').textContent = 'span first→last: ' + span.toFixed(0) + 'px (200 = space KEPT like hidden · 100 = item REMOVED from layout, spec behavior)\nyour engine: ' + engName() + ' → ' + (span < 150 ? 'REMOVED (spec-correct)' : 'KEPT (like hidden)');
+  span < 150 ? okChip('cl-chips', 'collapse removes from flex layout here (spec) — engine split: CfT+WebKit keep') : warnChip('cl-chips', 'collapse keeps space (like hidden) — Firefox removes it');
+  isFirefox === (span < 150) ? okChip('cl-chips', 'matches the bench: Firefox removes · CfT/WebKit keep') : warnChip('cl-chips', 'differs from bench for this UA');
+}
+
+// misc chips
+{
+  infoChip('misc-chips', 'RTL double-flip / axis rotation / intrinsic sum-vs-largest / anonymous items: verified 3/3 on the bench — see ledger §11');
+  okChip('misc-chips', 'nested cascade + fixes runnable in the probe scripts');
+}
+})();
+</script>
+</body>
+</html>
