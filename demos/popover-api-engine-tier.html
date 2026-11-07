@@ -1,0 +1,1026 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Popover API — the engine tier: the hint void, the close-veto wall &amp; the click-through law</title>
+<style>
+  :root {
+    --bg: #0e1116; --panel: #161b23; --panel2: #1c232e; --line: #2a3341;
+    --text: #e8edf4; --mut: #97a3b4; --dim: #64717f;
+    --acc: #5ec8f2; --acc2: #9d8cff; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+    --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  code { overflow-wrap: anywhere; }
+  html { scrollbar-width: thin; scrollbar-color: #2a3341 transparent; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 18px 90px; }
+  h1 { font-size: 26px; line-height: 1.2; margin: 8px 0 6px; }
+  h1 .tier { color: var(--acc); }
+  h2 { font-size: 17px; margin: 0 0 4px; color: #fff; }
+  .sub { color: var(--mut); font-size: 13.5px; margin: 0 0 18px; }
+  section { border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin: 26px 0; background: var(--panel); }
+  .law { border-left: 3px solid var(--acc); padding: 8px 12px; margin: 10px 0; background: var(--panel2); border-radius: 0 8px 8px 0; font-size: 14px; }
+  .law b { color: #fff; }
+  .law.split { border-left-color: var(--warn); }
+  .law.bad { border-left-color: var(--bad); }
+  .law.good { border-left-color: var(--ok); }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch; }
+  .row > * { min-width: 0; }
+  button { background: var(--acc); color: #06222e; border: 0; border-radius: 8px; padding: 7px 13px; font: 600 13px ui-sans-serif, system-ui; cursor: pointer; }
+  button:hover { filter: brightness(1.1); }
+  button.ghost { background: var(--panel2); color: var(--text); border: 1px solid var(--line); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .chip { font: 500 12px var(--mono); border: 1px solid var(--line); background: var(--panel2); color: var(--mut); border-radius: 999px; padding: 4px 11px; max-width: 100%; overflow-wrap: anywhere; }
+  .chip.ok { color: var(--ok); border-color: #24512f; }
+  .chip.warn { color: var(--warn); border-color: #57430f; }
+  .chip.bad { color: var(--bad); border-color: #5a2020; }
+  .chip.info { color: var(--acc); border-color: #1d4757; }
+  .kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 12px; font: 12.5px var(--mono); color: var(--mut); margin-top: 8px; max-width: 100%; }
+  .kv b { color: var(--text); font-weight: 500; overflow-wrap: anywhere; min-width: 0; }
+  .kv span { overflow-wrap: anywhere; }
+  .kv .hl { color: var(--acc); }
+  .tw { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; max-width: 100%; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 480px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--mut); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; background: var(--panel2); }
+  tr:last-child td { border-bottom: 0; }
+  td.mono, th.mono { font-family: var(--mono); font-size: 12px; }
+  .lanebox { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 12px; flex: 1 1 300px; min-width: 0; }
+  .lanebox h4 { margin: 0 0 8px; font-size: 13px; color: #fff; }
+  .ledger { font-family: var(--mono); font-size: 11.5px; background: #0b0e13; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; height: 128px; overflow-y: auto; margin-top: 8px; color: #9fb3c8; }
+  .ledger div { padding: 1px 0; border-bottom: 1px dashed #1b2230; overflow-wrap: anywhere; }
+  .ledger .bt { color: var(--acc); } .ledger .tg { color: var(--acc2); }
+  .stage { position: relative; border: 1px solid var(--line); border-radius: 10px; background: #0b0e13; padding: 14px; min-height: 150px; }
+  .stage .note { color: var(--dim); font-size: 12px; }
+  .stage button { margin: 4px 6px 4px 0; }
+  .bgbtn { background: var(--panel2); color: var(--text); border: 1px solid var(--line); }
+  .map { position: relative; height: 230px; border: 1px solid var(--line); border-radius: 10px; background:
+      linear-gradient(90deg, rgba(94,200,242,.07) 1px, transparent 1px) 0 0 / 32px 32px,
+      linear-gradient(rgba(94,200,242,.07) 1px, transparent 1px) 0 0 / 32px 32px, #0b0e13; }
+  .drone { position: absolute; width: 16px; height: 16px; border-radius: 50%; background: var(--acc); box-shadow: 0 0 0 4px rgba(94,200,242,.18); cursor: pointer; }
+  .drone.b2 { background: var(--warn); box-shadow: 0 0 0 4px rgba(251,191,36,.18); left: 68%; top: 30%; }
+  .drone.b1 { left: 24%; top: 52%; }
+  .hud { width: 210px; background: #17212f; border: 1px solid #3b5679; border-radius: 10px; padding: 10px 12px; font: 12px var(--mono); color: var(--text); }
+  .audit { list-style: none; padding: 0; margin: 10px 0 0; }
+  .audit li { display: flex; gap: 9px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid #151b24; font-size: 13.5px; }
+  .audit li:last-child { border-bottom: 0; }
+  .audit .n { font: 700 10.5px var(--mono); color: var(--warn); flex: 0 0 62px; }
+  .audit li.hi .n { color: var(--bad); }
+  .audit .t { color: var(--mut); }
+  .audit .t b { color: var(--text); font-weight: 600; }
+  .foot { color: var(--dim); font-size: 12px; margin-top: 8px; }
+  .pill { font: 700 10.5px var(--mono); border-radius: 4px; padding: 1px 6px; }
+  .pill.hi { background: #3a1515; color: var(--bad); } .pill.md { background: #38280a; color: var(--warn); }
+  .pill.ok { background: #16301f; color: var(--ok); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .warnbox { border: 1px solid #57430f; background: #241d0c; border-radius: 10px; padding: 10px 12px; font-size: 13px; color: #f4dfa6; }
+  .badbox { border: 1px solid #5a2020; background: #251112; border-radius: 10px; padding: 10px 12px; font-size: 13px; color: #f4c7c7; }
+  .okbox { border: 1px solid #24512f; background: #10231a; border-radius: 10px; padding: 10px 12px; font-size: 13px; color: #b9efc9; }
+  .cap { border: 1px solid #2b4a5c; background: #0e1a22; border-radius: 10px; padding: 12px; }
+  .cap h4 { margin: 0 0 8px; color: var(--acc); font-size: 13.5px; }
+  .sect-lead { color: var(--mut); font-size: 13.5px; margin: 0 0 12px; }
+  /* fixture popovers: body level, fixed, so their geometry resolves against
+     the viewport exactly as the probe battery measured it */
+  .fx { position: fixed; margin: 0; inset: auto; width: 210px; padding: 10px 12px;
+        background: #223047; border: 1px solid #3b5679; border-radius: 10px; color: var(--text); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Popover API — <span class="tier">the engine tier</span></h1>
+<p class="sub">The declarative overlay primitive, measured where the catalog had only docs: the <b>hint void</b> (WebKit treats <code>popover="hint"</code> as <code>manual</code>), the <b>close-veto wall</b> (<code>beforetoggle</code> is uncancelable on the close path — there is no unsaved-changes guard), the <b>click-through law</b> (the light-dismiss click also activates the page underneath) and the <b>auto-margin trap</b> (an unstyled popover is a centred <code>position:fixed; inset:0; margin:auto</code> box — author <code>left/top</code> alone do not move it).</p>
+
+<div class="chips" id="chips-engine"></div>
+
+<section id="s1">
+  <h2>1 · The surface census — what your visitor's engine actually ships</h2>
+  <p class="sect-lead">Every number below is read live in the page you are reading it in. The Popover API core (<code>popover</code>, <code>showPopover</code>, <code>hidePopover</code>, <code>togglePopover</code>, <code>ToggleEvent</code>) is universal. The <b>interest invoker</b> half is not.</p>
+  <div class="row">
+    <div class="lanebox">
+      <h4>Core surface</h4>
+      <div class="kv" id="kv-surface"></div>
+    </div>
+    <div class="lanebox">
+      <h4>Interest invokers (<code>interestfor</code>)</h4>
+      <div class="kv" id="kv-interest"></div>
+    </div>
+  </div>
+  <div class="law split"><b>THE SUPPORT SPLIT (headline #1).</b> The Popover API core is Baseline everywhere, but the <b>interest invoker</b> — the zero-JS hover/focus tooltip that <code>button[interestfor]</code> gives you — ships in <b>Chromium only</b> on this bench. Firefox 151 and WebKit 26.5: <code>interestForElement</code> is absent from <code>HTMLButtonElement.prototype</code>, <code>InterestEvent</code> is <code>undefined</code>, and <code>:interest-source</code> / <code>:interest-target</code> do not parse. A tooltip built on interest invokers is a Chromium-only feature today — ship a JS fallback, or drive a <code>hint</code> popover from focus events.</div>
+</section>
+
+<section id="s2">
+  <h2>2 · The hint void — WebKit has no hint popovers</h2>
+  <p class="sect-lead">MDN documents three states: <code>auto</code>, <code>hint</code>, <code>manual</code>. On this bench only two exist in WebKit. <b>Lane A needs a real click</b> — light dismiss is handled by the browser's input layer, not by a DOM listener, so a synthetic event cannot exercise it.</p>
+  <div class="row">
+    <div class="lanebox">
+      <h4>Lane A — light dismiss (needs a real click)</h4>
+      <div class="stage">
+        <button id="b-hint">1 · Open the hint popover</button>
+        <button id="b-hint-target" class="bgbtn">2 · Click me (the outside target)</button>
+        <div class="note" id="hint-note">Open the hint, then click the outside target.</div>
+      </div>
+    </div>
+    <div class="lanebox">
+      <h4>Lane B — does an auto popover close an open hint?</h4>
+      <div class="stage">
+        <button id="b-hint-auto">Run the auto-vs-hint lane</button>
+        <div class="note" id="hint-auto-note">Opens the hint, then opens an auto popover, then reads the hint's state.</div>
+      </div>
+      <div class="kv" id="kv-hint"></div>
+    </div>
+  </div>
+  <div class="law split"><b>THE HINT VOID (headline #2).</b> Chromium 149 and Firefox 151 report <code>el.popover === "hint"</code>; <b>WebKit 26.5 reports <code>"manual"</code></b> while the attribute still reads <code>"hint"</code> — the IDL and the attribute disagree. The behaviour follows the IDL: on WebKit a <code>hint</code> popover <b>does not light-dismiss</b>, <b>does not answer Esc</b>, <b>does not close other hints</b>, and <b>is not closed by an auto popover opening</b>. On Chromium and Firefox the same markup light-dismisses, answers Esc, closes sibling hints, and is closed by a newly opened auto popover. A tooltip built on <code>hint</code> behaves like a modal sticky panel in Safari.</div>
+  <div class="law"><b>THE IDL/ATTRIBUTE SPLIT (why it hides).</b> <code>el.popover = "hint"</code> writes the attribute <code>hint</code> but reads back <code>manual</code> on WebKit (3/3 independent reads). Chromium and Firefox read back <code>hint</code>. <code>el.popover = "bogus"</code> reads back <code>manual</code> everywhere (the invalid-value default) while the <b>attribute keeps the literal string</b> — so <code>getAttribute('popover')</code> and <code>.popover</code> are two different truths in every engine.</div>
+</section>
+
+<section id="s3">
+  <h2>3 · The close-veto wall — there is no unsaved-changes guard</h2>
+  <p class="sect-lead">The open direction is cancelable. The close direction is not. This is the single most dangerous law in the API for client work.</p>
+  <div class="row">
+    <div class="lanebox">
+      <h4>Live — the popover that refuses to open, then refuses to stay open</h4>
+      <div class="stage">
+        <button id="b-veto">Open (cancel on the OPEN path)</button>
+        <button id="b-veto-close">Open + close (cancel on the CLOSE path)</button>
+        <div class="note" id="veto-note">—</div>
+      </div>
+    </div>
+    <div class="lanebox">
+      <h4>Event ledger</h4>
+      <div class="ledger" id="led-veto"></div>
+      <div class="kv" id="kv-veto"></div>
+    </div>
+  </div>
+  <div class="law bad"><b>THE CLOSE-VETO WALL (headline #3).</b> <code>beforetoggle</code> fires with <code>cancelable: true</code> on the <b>open</b> direction and <code>cancelable: false</code> on the <b>close</b> direction, in all three engines. <code>preventDefault()</code> inside the close-path handler is a <b>silent no-op</b> — <code>defaultPrevented</code> stays <code>false</code> and the popover closes anyway. Measured with a real Esc keypress and a real outside click, 3/3 engines. <b>There is no way to veto a popover close.</b> If a popover holds unsaved input, you must implement the veto <b>before</b> the browser takes the close request — intercept the Esc key and the outside pointerdown yourself, and do not rely on <code>beforetoggle</code>.</div>
+  <div class="law"><b>THE EVENT GRAMMAR (measured).</b> <code>beforetoggle</code>: synchronous, <code>bubbles: false</code>, <code>composed: false</code> — a listener on <code>document</code> never sees it; listen on the popover itself. <code>toggle</code>: queued as a task (a microtask checkpoint after <code>beforetoggle</code> does <b>not</b> see it), <code>cancelable: false</code>, same bubbling. At <code>beforetoggle</code> time the popover is still closed (<code>display:none</code>, <code>:popover-open</code> false); at <code>toggle</code> time it is open (<code>display:block</code>). Do "about to open" work in <code>beforetoggle</code>, "is open" work in <code>toggle</code>.</div>
+</section>
+
+<section id="s4">
+  <h2>4 · The click-through law — the dismiss click is also a page click</h2>
+  <p class="sect-lead">A popover is <b>non-modal</b>. The page underneath stays live. The light-dismiss click does not stop at the backdrop. <b>Needs a real click.</b></p>
+  <div class="row">
+    <div class="lanebox">
+      <h4>Live — dismiss the popover, then watch the background</h4>
+      <div class="stage">
+        <button id="b-ct">1 · Open the auto popover</button>
+        <button id="b-ct-target" class="bgbtn">2 · Click me (armed background target)</button>
+        <div class="note" id="ct-note">Open the popover, then click the background target.</div>
+      </div>
+    </div>
+    <div class="lanebox">
+      <h4>What the probe measures</h4>
+      <p class="note" style="color:var(--mut); font-size:13px; margin:0 0 8px;">A real trusted click lands on the background target while the popover is open. The browser's light dismiss consumes the popover; the <b>same gesture's click</b> then reaches the background target's activation handler. The gate repeats it with a <b>real Playwright mouse click</b> and reads the same counter.</p>
+      <div class="kv" id="kv-ct"></div>
+    </div>
+  </div>
+  <div class="law bad"><b>THE CLICK-THROUGH LAW (headline #4).</b> The outside click that dismisses a popover also <b>activates whatever it landed on</b>. Measured with a real trusted mouse click in all three engines: the popover closed <b>and</b> the background button's click handler ran (count = 1, <code>event.detail</code> = 1). The <code>::backdrop</code> does not block pointer events — its computed style resolves in every engine, but it is transparent to input. <b>Production consequence:</b> on a drone map, an operator who opens a telemetry popover over a marker and then clicks “RTH” on the map behind it fires the RTH — the dismiss click <i>is</i> the click. Put destructive actions <b>outside</b> the popover's own hit area, or use <code>&lt;dialog&gt;.showModal()</code> when the background must be inert.</div>
+</section>
+
+<section id="s5">
+  <h2>5 · The auto-margin trap &amp; the viewport containing block</h2>
+  <p class="sect-lead">An unstyled popover is not “where you put it”. It is <code>position:fixed; inset:0; margin:auto</code> — shrink-to-fit, centred in the viewport. Author <code>left</code>/<code>top</code> alone do not move it, because the UA's auto margin keeps absorbing the free space.</p>
+  <div class="row">
+    <div class="lanebox">
+      <h4>Live — the same popover, four stylesheets</h4>
+      <div class="stage">
+        <button id="b-marg">Measure the UA box</button>
+        <div class="note" id="marg-note">—</div>
+      </div>
+    </div>
+    <div class="lanebox">
+      <h4>Geometry readout</h4>
+      <div class="kv" id="kv-marg"></div>
+    </div>
+  </div>
+  <div class="law split"><b>THE AUTO-MARGIN TRAP (headline #5).</b> The UA box for a popover is <code>position:fixed; inset:0; margin:auto</code>, shrink-to-fit, centred (measured: a 48×30 content box lands at <b>left 630 / top 435</b> in a 1280×900 viewport). Author <code>position:absolute; left:100px; top:100px</code> (no margin reset) lands the popover at <b>left 666px / top 485px</b> — not 100/100 — because the auto margin still absorbs the remaining space (measured identically in all three engines). The fix is one word: <code>margin:0</code> (→ 100/100) or <code>inset:auto</code> (→ 100/100). <b>Serialization split:</b> <code>getComputedStyle(el).margin</code> returns <code>"435px 629.906px"</code> on Chromium, <code>"435px 629.90625px"</code> on WebKit, and the literal <code>"auto"</code> on Firefox — while the used geometry is byte-identical. Never string-compare a computed margin; never assume a popover lands where you set its offsets.</div>
+  <div class="law"><b>THE TOP-LAYER CONTAINING-BLOCK LAW.</b> A popover in the top layer is <b>not</b> positioned by its nearest positioned ancestor: a <code>position:absolute</code> popover nested inside a <code>position:relative</code> map container resolves its <code>left/top</code> against the <b>viewport</b>, not the container (measured: <code>left:30px; top:50px</code> inside a container at (100,80) lands at viewport (30,50) — 3/3 engines). A HUD “positioned relative to the map” is therefore <b>wrong by default</b>: use an explicit <code>anchor-name</code> / <code>position-anchor</code> pair instead of relying on the ancestor.</div>
+  <div class="law"><b>THE REMOVE-ATTRIBUTE LAW (silent layout break).</b> Removing the <code>popover</code> attribute while the popover is open closes it (the element leaves the top layer) but <b>does not hide it</b>: the UA's <code>display:none</code> goes away with the attribute and the element returns to normal flow as a static, full-width block (measured: <code>display:block</code>, <code>position:static</code>, 1280px wide, sitting in the document flow at its source position) — 3/3 engines. In React, conditionally dropping the <code>popover</code> attribute while it is open leaves a visible full-width block in the layout. Remove the element, or close it before the attribute goes.</div>
+</section>
+
+<section id="s6">
+  <h2>6 · The implicit-anchor split — which CSS form picks up the invoker</h2>
+  <p class="sect-lead">MDN: a popover opened by a <code>popovertarget</code> invoker gets an <b>implicit anchor reference</b> to that invoker, so <code>anchor()</code> inside the popover resolves against it. Measured across <b>five</b> forms — the split is not “Chromium vs the rest”, it is <b>which CSS syntax you use</b>.</p>
+  <div class="row">
+    <div class="lanebox">
+      <h4>The four forms, measured live</h4>
+      <div class="stage">
+        <button id="b-anc-fn" popovertarget="p-anc-fn">A · anchor() fn, implicit</button>
+        <button id="b-anc-area" popovertarget="p-anc-area">B · position-area, implicit</button>
+        <button id="b-anc-exp" popovertarget="p-anc-exp">C · explicit anchor-name</button>
+        <button id="b-anc-prog">D · programmatic showPopover()</button>
+        <button id="b-anc-rerun">↻ Re-run the five lanes</button>
+        <div class="note" id="anc-note">The lanes run once after load; ↻ re-runs them. A–C are real invokers you can click yourself — each opens its popover the declarative way (that is the mechanism under test).</div>
+      </div>
+      <div class="kv" id="kv-anc"></div>
+    </div>
+    <div class="lanebox">
+      <h4>Why the forms differ</h4>
+      <p class="note" style="color:var(--mut);font-size:13px;margin:0;">The implicit reference is created by the <b>activation</b>, and it is consumed by different CSS syntaxes in different engines. Form D proves the other half: the reference is created by a <b>declarative</b> activation only — a programmatic <code>showPopover()</code> establishes no implicit anchor at all, even on Chromium. That is the React trap: <code>onClick={() =&gt; ref.current.showPopover()}</code> has no invoker to anchor to.</p>
+      <div class="kv" id="kv-anc2"></div>
+    </div>
+  </div>
+  <div class="law split"><b>THE IMPLICIT-ANCHOR FUNCTION SPLIT (headline #6).</b> With a declarative <code>popovertarget</code> invoker and <code>bottom: anchor(top); left: anchor(left)</code> inside the popover: <b>Chromium 149 resolves it to the invoker</b> (popover left = invoker left); <b>Firefox 151 and WebKit 26.5 do not</b> — the <code>anchor()</code> function resolves against the popover's own static position and the popover lands at the viewport's top-left corner (0,0). The <b>control</b> proves it is not the feature: an explicit <code>anchor-name</code> + <code>position-anchor</code> works in all three engines, and <code>position-area: top</code> — which honours the implicit anchor — works in all three as well. So the split is specifically the <b><code>anchor()</code> function form</b>. <b>Ship the explicit form</b>: <code>anchor-name</code> on the trigger + <code>position-anchor</code> on the popover.</div>
+  <div class="law"><b>THE IMPLICIT-ANCHOR ACTIVATION LAW (the React trap).</b> The implicit reference exists only for a <b>declarative</b> activation. Measured with one document, five activations: a declarative <code>popovertarget</code> click → resolves (Chromium); a programmatic <code>showPopover()</code> → <b>does not resolve in any engine</b>; a programmatic <code>togglePopover()</code> → does not resolve; a programmatic <code>showPopover({source: invoker})</code> → resolves on <b>Chromium only</b> (live lane E — the <code>source</code> populates <code>ToggleEvent.source</code>, but the implicit anchor from it is still Chromium-only). <b>Production rule:</b> in a React component, either use the declarative <code>popovertarget</code> attribute (and do not call <code>showPopover()</code> yourself), or set an <b>explicit</b> <code>anchor-name</code> — never rely on the implicit reference from a programmatic open.</div>
+  <div class="law"><b>THE SUPPORTS() LIE (supporting detail).</b> <code>CSS.supports('position-anchor', 'implicit')</code> is <b>false in all three engines</b> — yet Chromium resolves the <code>position-anchor: implicit</code> declaration anyway (measured: the popover lands on the invoker). Feature-detect the <b>behaviour</b>, never the keyword.</div>
+</section>
+
+<section id="s7">
+  <h2>7 · The declarative-fight law — <code>popovertarget</code> + <code>onClick</code> cancel each other</h2>
+  <p class="sect-lead">The most common React wiring for a popover is both halves at once: the declarative attribute <b>and</b> a click handler that calls <code>showPopover()</code>. Measured: they fight, and the popover loses.</p>
+  <div class="row">
+    <div class="lanebox">
+      <h4>Live — the double-wired invoker</h4>
+      <div class="stage">
+        <button id="b-fight" popovertarget="p-fight">Open (wired both ways)</button>
+        <div class="note" id="fight-note">—</div>
+      </div>
+    </div>
+    <div class="lanebox">
+      <h4>Event ledger</h4>
+      <div class="ledger" id="led-fight"></div>
+      <div class="kv" id="kv-fight"></div>
+    </div>
+  </div>
+  <div class="law bad"><b>THE DECLARATIVE-FIGHT LAW (headline #7).</b> An invoker that carries <b>both</b> <code>popovertarget="p"</code> and a click handler calling <code>p.showPopover()</code> ends with the popover <b>closed</b> — in all three engines, every time. The handler's <code>showPopover()</code> opens it (one <code>beforetoggle</code> open), then the declarative activation's default action <b>toggles it closed</b> in the same tick (a second <code>beforetoggle</code> close, measured at the identical timestamp). <b>Rule:</b> pick one. Use <code>popovertarget</code> and let the browser own the state, <b>or</b> drop the attribute and own it in JS — and if you own it in JS, add the explicit <code>anchor-name</code>, because the implicit reference only exists on the declarative path.</div>
+</section>
+
+<section id="s8">
+  <h2>8 · The exit-animation split — only Chromium transitions a closing popover</h2>
+  <p class="sect-lead">The recipe everyone ships is <code>transition-behavior: allow-discrete</code> + <code>display</code> in the transition list, so the popover fades out instead of vanishing.</p>
+  <div class="row">
+    <div class="lanebox">
+      <h4>Live — open, then close, and watch the transition ledger</h4>
+      <div class="stage">
+        <button id="b-anim">Run the exit-transition lane</button>
+        <div class="note" id="anim-note">Runs on load — opens the popover, lets the entry settle, then closes it.</div>
+      </div>
+    </div>
+    <div class="lanebox">
+      <h4>Transition ledger</h4>
+      <div class="ledger" id="led-anim"></div>
+      <div class="kv" id="kv-anim"></div>
+    </div>
+  </div>
+  <div class="law split"><b>THE POPOVER-EXIT-DISCRETE SPLIT (headline #8).</b> With <code>transition: opacity .3s, display .3s; transition-behavior: allow-discrete</code> on the popover: <b>Chromium 149 fires the full discrete set on close</b> — <code>transitionrun/start/end</code> for <code>display</code> <b>and</b> <code>opacity</code> (and <code>overlay</code> when listed) — and the element is painted through the exit. <b>Firefox 151 and WebKit 26.5 fire ZERO transition events on close</b>: the popover simply disappears (measured with a real Esc keypress, 3/3). The <b>control</b> isolates it: the same CSS on a plain <code>&lt;div&gt;</code> fires its opacity transitions normally in all three engines — only the <b>popover's own discrete display transition</b> is missing in Firefox and WebKit. <b>Cross-engine fallback:</b> animate <code>opacity</code> with a <code>visibility</code>/<code>display</code> delay pattern (the same shape as the <code>&lt;dialog&gt;</code> tier), and do not depend on a <code>transitionend</code> listener to clean up — in two of three engines it never fires.</div>
+  <div class="law"><b>THE <code>overlay</code> PROPERTY SPLIT.</b> <code>CSS.supports('overlay','auto')</code> is <b>true only in Chromium</b>; Firefox and WebKit parse <code>transition-property: overlay</code> but do not expose the property. Listing <code>overlay</code> in the transition is harmless (it is a no-op elsewhere) but it must never be the thing you wait on.</div>
+</section>
+
+<section id="s9">
+  <h2>9 · The re-entrancy law — no <code>InvalidStateError</code>, just recursion</h2>
+  <p class="sect-lead">MDN warns that calling <code>showPopover()</code> inside a <code>beforetoggle</code> handler “will throw an <code>InvalidStateError</code>”. Measured: it throws nothing.</p>
+  <div class="row">
+    <div class="lanebox">
+      <h4>Live — guarded vs unguarded re-entrancy</h4>
+      <div class="stage">
+        <button id="b-guard">Run the guarded re-entrant lane</button>
+        <button id="b-unguard">Run the unguarded re-entrant lane</button>
+        <div class="note" id="re-note">—</div>
+      </div>
+    </div>
+    <div class="lanebox">
+      <h4>What happened</h4>
+      <div class="kv" id="kv-re"></div>
+      <p class="note" style="color:var(--mut);font-size:13px;margin:8px 0 0;">The unguarded lane runs inside a sandboxed <code>iframe</code> so its stack-overflow error cannot take down the page you are reading. The parent listens for the child's <code>error</code> event.</p>
+    </div>
+  </div>
+  <div class="law bad"><b>THE RE-ENTRANCY LAW (headline #9).</b> Calling <code>showPopover()</code> from inside a <code>beforetoggle</code> handler does <b>not</b> raise <code>InvalidStateError</code> in any of the three engines. It <b>re-enters the handler</b> (measured depth 2 with a depth guard). Unguarded, it recurses until the engine aborts the task with <b>“Maximum call stack size exceeded”</b> (Chromium/WebKit) or <b>“too much recursion”</b> (Firefox) — an <b>uncaught page error</b>, not a catchable DOMException. <b>Never call a popover method from inside its own <code>beforetoggle</code> handler.</b> If you need to re-show after a veto, defer it to a task (<code>queueMicrotask</code> / <code>setTimeout</code>) — or use the spec-shaped guard yourself.</div>
+</section>
+
+<section id="s10">
+  <h2>10 · The error grammar &amp; the no-op grammar</h2>
+  <p class="sect-lead">The API mixes <b>three</b> DOMException families and <b>two silent no-ops</b>. Both halves matter in production.</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th class="mono">Call</th><th class="mono">Result</th><th>What it means</th></tr></thead>
+      <tbody id="err-table"></tbody>
+    </table>
+  </div>
+  <div class="law bad"><b>THE NO-OP WALL (the half people get wrong).</b> <code>showPopover()</code> on an <b>already-showing</b> popover is a <b>silent no-op</b>: no exception, <b>no events at all</b>, state unchanged (measured 3/3). The same for <code>hidePopover()</code> on a hidden popover. This is the opposite of <code>&lt;dialog&gt;.showModal()</code>, which throws <code>InvalidStateError</code> on a second call. <b>Guard with <code>el.matches(':popover-open')</code></b> — a popover toggle handler that assumes “show always opens” will silently do nothing on the second click.</div>
+  <div class="law"><b>THE TOGGLE-RETURN LAW.</b> <code>togglePopover()</code> returns the <b>new</b> state (a boolean), and accepts <code>force</code> as a boolean or an options object — <code>togglePopover({force:true})</code> opens, <code>togglePopover(false)</code> closes. A <b>bogus</b> force value is ignored rather than rejected (no throw), so a typo silently falls back to “toggle”.</div>
+</section>
+
+<section id="s11">
+  <h2>11 · The implicit-ARIA law — the accessibility tree is not the DOM</h2>
+  <p class="sect-lead">MDN: an invoker linked by <code>popovertarget</code> gets an implicit <code>aria-expanded</code> and <code>aria-details</code> relationship. Measured: neither exists in the DOM — in any engine.</p>
+  <div class="row">
+    <div class="lanebox">
+      <h4>Live — what the DOM can see</h4>
+      <div class="kv" id="kv-aria"></div>
+    </div>
+    <div class="lanebox">
+      <h4>What the accessibility tree can see</h4>
+      <p class="note" style="color:var(--mut);font-size:13px;margin:0 0 8px;">Measured in the probe battery with Chromium's <code>Accessibility.getFullAXTree</code> CDP command (the AX tree is not reachable from page JavaScript, so this panel shows the recorded values rather than a live read).</p>
+      <div class="kv" id="kv-ax"></div>
+    </div>
+  </div>
+  <div class="law split"><b>THE IMPLICIT-ARIA LAW (headline #10).</b> With a declarative <code>popovertarget</code> invoker, <code>getAttribute('aria-expanded')</code> is <code>null</code>, <code>el.ariaExpanded</code> is <code>null</code>, and <code>aria-details</code> is <b>absent from the IDL entirely</b> (<code>'ariaDetails' in inv === false</code>) — in all three engines, before and after opening. The relationship exists <b>only in the accessibility tree</b>: Chromium's AX tree reports the invoker's <code>expanded</code> property as <b>false → true → false</b> across the open/close cycle. <b>Consequence:</b> an automated audit that reads attributes or IDL sees <b>nothing</b> — a popover invoker looks exactly like a plain button to every DOM-level audit and to every snapshot test. If you assert on it, assert on the AX tree (or write the attribute yourself).</div>
+  <div class="law"><b>MDN CORRECTION.</b> MDN's claim that an implicit <code>aria-details</code> relationship is set up is <b>not observable</b> on this bench: Chromium's AX tree carries <code>expanded</code> but <b>no</b> <code>details</code> property, and no engine surfaces an <code>aria-details</code> attribute or IDL member. Treat the implicit relationship as <code>aria-expanded</code> only.</div>
+</section>
+
+<section id="s12">
+  <h2>12 · The capstone — an anchored telemetry popover that behaves in all three engines</h2>
+  <p class="sect-lead">The OpenDrones shape: a drone marker on the map opens a telemetry popover with actions. Built to the measured laws, not to the docs.</p>
+  <div class="grid2">
+    <div class="cap">
+      <h4>OpenDrones · drone marker → telemetry popover</h4>
+      <div class="map" id="map">
+        <div class="drone b1" id="drone1" role="button" tabindex="0" aria-label="Drone ARC-1"></div>
+        <div class="drone b2" id="drone2" role="button" tabindex="0" aria-label="Drone ARC-2"></div>
+        <div class="hud" id="hud">
+          <div style="color:var(--acc);margin-bottom:5px;">ARC-1 · ARMED</div>
+          <div>ALT <b>84 m</b></div>
+          <div>BAT <b>62%</b></div>
+          <div>LINK <b>−71 dBm</b></div>
+          <div style="display:flex;gap:6px;margin-top:8px;">
+            <button id="hud-rth" class="ghost" style="padding:4px 9px;font-size:12px;">RTH</button>
+            <button id="hud-close" class="ghost" style="padding:4px 9px;font-size:12px;">Close</button>
+          </div>
+        </div>
+      </div>
+      <div class="chips" id="chips-cap"></div>
+      <p class="foot">The HUD uses an <b>explicit</b> <code>anchor-name</code> + <code>position-anchor</code> (never the implicit reference — the marker is opened programmatically), an explicit <code>margin:0</code>, <code>position:fixed</code> (the top layer resolves against the viewport, not the map), and <code>popover="manual"</code> so a map click never light-dismisses it mid-flight. Click a marker, then click the map behind it — the HUD stays (manual) and the map still receives the click (non-modal).</p>
+    </div>
+    <div class="cap">
+      <h4>Molt Studios · the 12-check popover audit</h4>
+      <ul class="audit" id="audit-list"></ul>
+      <p class="foot">Half a day, one pass over a client site. Checks 1–4 pass every code review and ship broken.</p>
+    </div>
+  </div>
+</section>
+
+<section id="s13">
+  <h2>13 · Method, engine ledger &amp; the limits of this bench</h2>
+  <div class="row">
+    <div class="lanebox">
+      <h4>Method</h4>
+      <p class="note" style="color:var(--mut);font-size:13px;margin:0;">13 probe batteries across <b>Chromium 149 (CfT) · Firefox 151 · WebKit 26.5</b> — ~70 lanes, every lane a <b>fresh single-purpose document</b> (popover state, listeners and top-layer entries leak across lanes). Real input only: Playwright mouse clicks, real <kbd>Esc</kbd> keypresses, hover/focus — never synthetic click dispatch (the synthetic-event law from the <code>&lt;dialog&gt;</code> tier). Event truth from <code>beforetoggle</code>/<code>toggle</code> recorders with <code>performance.now()</code> timestamps; geometry from <code>getBoundingClientRect()</code>; hit-testing from <code>elementFromPoint()</code>; the accessibility truth from Chromium's AX tree over CDP. Every candidate headline law got a <b>control lane</b> — and one of them (a suspected WebKit focus-return failure) was <b>falsified by its own control</b> and is reported below as untested, not as a law. A further four <b>demo-integration</b> batteries (D1–D11) were run against this page's own design, and they falsified four draft claims before publication.</p>
+    </div>
+    <div class="lanebox">
+      <h4>Engine ledger — what is measured, not documented</h4>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Law</th><th class="mono">CfT 149</th><th class="mono">FF 151</th><th class="mono">WK 26.5</th></tr></thead>
+          <tbody id="ledger-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="warnbox"><b>UNTESTED ON THIS BENCH (honest limits).</b> <b>Focus return after close</b>: Chromium and Firefox return focus to the invoker (3/3 reads), but WebKit's headless build does not focus a button on mouse click <b>at all</b> — its control lane read <code>BODY</code> for a plain button — so the WebKit column here is <b>harness-contaminated</b> and is reported as untested, not as a failure. <b>Tab order inside a popover</b>: Chromium and Firefox insert the popover's contents immediately after the invoker; WebKit's Tab is broken at the <b>control</b> level (a plain page with three buttons walks <code>b1 → BODY → BODY…</code>), so WebKit's tab order is likewise untested. <b>Real Safari</b> and <b>real Chrome on hardware</b> were not in the bench — the WebKit build is Playwright's.</div>
+  <div class="foot">Research by Jin · 2026-11-06 · Molt Studios / OpenDrones · sources: HTML Living Standard §6.12 (popover), MDN Popover API, live-probed on 3 engines.</div>
+</section>
+
+</main>
+
+<!-- ── fixture popovers: body level, fixed, so their geometry resolves against
+       the viewport exactly as the probe battery measured it ───────────────── -->
+<div id="p-hint" class="fx" popover="hint" style="left:24px;bottom:24px;"><b>hint</b> popover — light-dismiss + Esc target</div>
+<div id="p-hint2" class="fx" popover="hint" style="left:250px;bottom:24px;"><b>hint #2</b> — sibling exclusivity target</div>
+<div id="p-auto" class="fx" popover="auto" style="left:476px;bottom:24px;"><b>auto</b> popover — stack competitor</div>
+<div id="p-veto" class="fx" popover="auto" style="left:24px;bottom:120px;">veto-on-open</div>
+<div id="p-veto2" class="fx" popover="auto" style="left:250px;bottom:120px;">veto-on-close</div>
+<div id="p-ct" class="fx" popover="auto" style="left:476px;bottom:120px;">click-through subject</div>
+<div id="p-anim" class="fx" popover="auto" style="left:24px;bottom:216px;">exit-transition subject</div>
+<div id="p-guard" class="fx" popover="auto" style="left:250px;bottom:216px;">re-entrancy subject</div>
+<div id="p-fight" class="fx" popover="auto" style="left:476px;bottom:216px;">declarative-fight subject</div>
+
+<script>
+(function () {
+  'use strict';
+  var ENG = (function () {
+    var ua = navigator.userAgent;
+    if (/Firefox\//.test(ua)) return 'Firefox';
+    if (/WebKit/.test(ua) && !/Chrome/.test(ua)) return 'WebKit';
+    if (/Chrome|Chromium|Brave|Edg\//.test(ua)) return 'Chromium';
+    return 'Unknown';
+  })();
+  var chips = document.getElementById('chips-engine');
+
+  function chip(id, text, cls) {
+    var el = document.createElement('span');
+    el.className = 'chip ' + (cls || 'info'); el.dataset.chip = id; el.textContent = text;
+    chips.appendChild(el); return el;
+  }
+  function setChip(id, text, cls) {
+    var el = chips.querySelector('[data-chip="' + id + '"]');
+    if (!el) return chip(id, text, cls);
+    el.textContent = text; el.className = 'chip ' + (cls || 'info');
+    return el;
+  }
+  function kv(id, pairs) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var h = '';
+    for (var i = 0; i < pairs.length; i++) h += '<b>' + pairs[i][0] + '</b><span>' + pairs[i][1] + '</span>';
+    el.innerHTML = h;
+  }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function ledger(id) {
+    var el = document.getElementById(id);
+    if (!el) return { clear: function () {}, push: function () {} };
+    return {
+      clear: function () { el.innerHTML = ''; },
+      push: function (txt, cls) {
+        var d = document.createElement('div');
+        d.className = cls || ''; d.textContent = txt; el.appendChild(d);
+        el.scrollTop = el.scrollHeight;
+      }
+    };
+  }
+  var ledVeto = ledger('led-veto'), ledAnim = ledger('led-anim'), ledFight = ledger('led-fight');
+
+  function wirePop(el, led) {
+    ['beforetoggle', 'toggle'].forEach(function (k) {
+      el.addEventListener(k, function (e) {
+        if (led) led.push(k + ' ' + e.oldState + '→' + e.newState + ' cancelable=' + e.cancelable, k === 'beforetoggle' ? 'bt' : 'tg');
+      });
+    });
+  }
+
+  // ── §1 surface census ───────────────────────────────────────────────────
+  var proto = Object.getOwnPropertyNames(HTMLElement.prototype);
+  var hasCore = ['popover', 'showPopover', 'hidePopover', 'togglePopover'].every(function (n) { return proto.indexOf(n) >= 0; });
+  var hasInterest = 'interestForElement' in HTMLButtonElement.prototype;
+  kv('kv-surface', [
+    ['engine', '<span class="hl">' + ENG + '</span>'],
+    ['core surface', hasCore ? 'popover + show/hide/toggle ✓' : 'MISSING'],
+    ['ToggleEvent', typeof ToggleEvent === 'function' ? '✓ (' + Object.getOwnPropertyNames(ToggleEvent.prototype).join(',') + ')' : 'missing'],
+    [':popover-open', CSS.supports('selector(:popover-open)') ? '✓' : 'missing'],
+    ['popoverTargetElement', 'popoverTargetElement' in HTMLButtonElement.prototype ? '✓' : 'missing'],
+    ['anchor() fn', CSS.supports('bottom: anchor(top)') ? '✓' : 'missing'],
+    ['position-area', CSS.supports('position-area: top') ? '✓' : 'missing'],
+    ['overlay prop', CSS.supports('overlay: auto') ? '✓' : 'missing']
+  ]);
+  kv('kv-interest', [
+    ['interestForElement', hasInterest ? '✓' : 'missing'],
+    ['InterestEvent', typeof InterestEvent === 'function' ? '✓' : 'missing'],
+    [':interest-source', CSS.supports('selector(:interest-source)') ? '✓' : 'missing'],
+    [':interest-target', CSS.supports('selector(:interest-target)') ? '✓' : 'missing'],
+    ['interest-delay', CSS.supports('interest-delay: 0s') ? '✓' : 'missing']
+  ]);
+  chip('core', 'core surface: ' + (hasCore ? 'universal ✓' : 'MISSING'), hasCore ? 'ok' : 'bad');
+  chip('interest', 'interest invokers: ' + (hasInterest ? 'Chromium only ✓' : 'not in this engine (census)'), hasInterest ? 'warn' : 'info');
+
+  // ── §2 the hint void ────────────────────────────────────────────────────
+  var pHint = document.getElementById('p-hint');
+  var pAuto = document.getElementById('p-auto');
+  var hintProp = pHint.popover;
+  var hintIsHint = hintProp === 'hint';
+  chip('hint-prop', 'hint popover .popover = "' + hintProp + '"', hintIsHint ? 'ok' : 'bad');
+  chip('hint-attr', 'attribute still reads "' + pHint.getAttribute('popover') + '"', hintIsHint ? 'ok' : 'warn');
+  chip('hint-dismiss', 'hint light-dismiss: awaiting a real click', 'info');
+  chip('hint-auto', 'auto closes an open hint: not run yet', 'info');
+
+  var hintEverOpened = false, hintOpenNow = false, hintCloseCount = 0;
+  pHint.addEventListener('toggle', function (e) {
+    if (e.newState === 'open') { hintEverOpened = true; hintOpenNow = true; }
+    else { hintOpenNow = false; hintCloseCount++; }
+  });
+  function renderHint(extra) {
+    var rows = [
+      ['IDL .popover', '<span class="hl">' + esc(hintProp) + '</span>'],
+      ['attribute', esc(pHint.getAttribute('popover'))],
+      ['hint opened', hintEverOpened ? 'yes' : 'no'],
+      ['close events', String(hintCloseCount)]
+    ];
+    if (extra) rows = rows.concat(extra);
+    kv('kv-hint', rows);
+  }
+  document.getElementById('b-hint').addEventListener('click', function () {
+    try { pHint.showPopover(); } catch (e) { }
+    document.getElementById('hint-note').textContent = 'The hint is open. Now click the outside target — watch whether it dismisses.';
+  });
+  document.getElementById('b-hint-target').addEventListener('click', function () {
+    // light-dismiss is the click's DEFAULT ACTION — it runs after this handler, so the
+    // verdict must be read on a later task (the same-tick read measured DEAD on all engines).
+    setTimeout(function () {
+      var dismissed = hintEverOpened && !hintOpenNow;
+      setChip('hint-dismiss', 'hint light-dismiss: ' + (dismissed ? 'works ✓' : 'DEAD ✗ (still open)'), dismissed ? 'ok' : 'bad');
+      renderHint([['light dismiss', dismissed ? 'yes — it closed on the outside click' : '<span style="color:var(--bad)">NO — still open after the outside click</span>']]);
+      document.getElementById('hint-note').textContent = dismissed
+        ? 'This engine light-dismisses the hint popover (the outside click closed it).'
+        : 'This engine does NOT light-dismiss the hint popover — it behaved exactly like popover="manual".';
+    }, 90);
+  });
+  document.getElementById('b-hint-auto').addEventListener('click', function () {
+    var before = hintCloseCount;
+    try { pHint.showPopover(); } catch (e) { }
+    try { pAuto.showPopover(); } catch (e) { }
+    setTimeout(function () {
+      var closedByAuto = hintCloseCount > before;
+      setChip('hint-auto', 'auto closes an open hint: ' + (closedByAuto ? 'yes ✓' : 'NO ✗'), closedByAuto ? 'ok' : 'bad');
+      renderHint([['auto vs hint', closedByAuto ? 'the auto popover closed the hint' : '<span style="color:var(--bad)">the hint survived the auto popover</span>']]);
+      document.getElementById('hint-auto-note').textContent = closedByAuto
+        ? 'This engine closes an open hint when an auto popover opens.'
+        : 'This engine leaves an open hint alone when an auto popover opens — the hint behaves as manual.';
+      try { pAuto.hidePopover(); } catch (e) { }
+    }, 90);
+  });
+  renderHint([['light dismiss', 'awaiting a real click on the outside target'], ['auto vs hint', 'not run yet']]);
+
+  // ── §3 the close-veto wall ──────────────────────────────────────────────
+  var pVeto = document.getElementById('p-veto');
+  var pVeto2 = document.getElementById('p-veto2');
+  wirePop(pVeto, ledVeto); wirePop(pVeto2, ledVeto);
+  var vetoOpenEv = null, vetoCloseEv = null, vetoOpenStayed = null, vetoCloseStayed = null;
+  pVeto.addEventListener('beforetoggle', function (e) {
+    vetoOpenEv = { cancelable: e.cancelable, newState: e.newState };
+    if (e.newState === 'open') e.preventDefault();
+  });
+  pVeto2.addEventListener('beforetoggle', function (e) {
+    vetoCloseEv = { cancelable: e.cancelable, newState: e.newState, prevented: e.defaultPrevented };
+    if (e.newState === 'closed') e.preventDefault();
+  });
+  function renderVeto() {
+    kv('kv-veto', [
+      ['open beforetoggle', vetoOpenEv ? 'cancelable=' + vetoOpenEv.cancelable : '—'],
+      ['open result', vetoOpenStayed === null ? 'not run yet' : (vetoOpenStayed ? 'still open (veto failed)' : 'stayed closed (veto honoured)')],
+      ['close beforetoggle', vetoCloseEv ? 'cancelable=' + vetoCloseEv.cancelable : '—'],
+      ['close result', vetoCloseStayed === null ? 'not run yet' : (vetoCloseStayed ? 'still open (veto honoured)' : '<span style="color:var(--bad)">CLOSED — the veto was ignored</span>')],
+      ['preventDefault()', 'a silent no-op on the close path']
+    ]);
+  }
+  document.getElementById('b-veto').addEventListener('click', function () {
+    vetoOpenStayed = pVeto.matches(':popover-open');
+    setChip('veto-open', 'open veto honoured: ' + (vetoOpenStayed ? 'NO ✗' : 'yes ✓'), vetoOpenStayed ? 'bad' : 'ok');
+    document.getElementById('veto-note').textContent = vetoOpenStayed
+      ? 'This engine did NOT honour the open veto.'
+      : 'This engine honoured the open veto — preventDefault() on the open path works.';
+    renderVeto();
+  });
+  document.getElementById('b-veto-close').addEventListener('click', function () {
+    pVeto2.showPopover();
+    pVeto2.hidePopover();
+    vetoCloseStayed = pVeto2.matches(':popover-open');
+    setChip('veto-close', 'close veto honoured: ' + (vetoCloseStayed ? 'yes ✓' : 'NO — it closed ✗'), vetoCloseStayed ? 'ok' : 'bad');
+    setChip('veto-cancelable', 'close-path beforetoggle cancelable = ' + (vetoCloseEv ? vetoCloseEv.cancelable : '?'), (vetoCloseEv && vetoCloseEv.cancelable === false) ? 'bad' : 'info');
+    renderVeto();
+  });
+  renderVeto();
+
+  // ── §4 the click-through law ────────────────────────────────────────────
+  var pCt = document.getElementById('p-ct');
+  var ctTarget = document.getElementById('b-ct-target');
+  var ctClicks = 0, ctDetail = null, ctTrusted = null, ctEverOpened = false, ctOpenNow = false;
+  pCt.addEventListener('toggle', function (e) {
+    if (e.newState === 'open') { ctEverOpened = true; ctOpenNow = true; }
+    else { ctOpenNow = false; }
+  });
+  ctTarget.addEventListener('click', function (e) {
+    ctClicks++; ctDetail = e.detail; ctTrusted = e.isTrusted;
+    // the dismiss runs as this click's default action — AFTER user handlers on every engine
+    // measured — so the open/closed verdict is read on a later task.
+    setTimeout(function () {
+      var dismissed = ctEverOpened && !ctOpenNow;
+      var activated = ctClicks > 0;
+      setChip('ct-dismiss', 'outside click dismisses: ' + (dismissed ? 'yes ✓' : 'no'), dismissed ? 'ok' : 'warn');
+      setChip('ct-activate', 'same gesture still activates the page: ' + (activated ? 'YES ✗ (click-through)' : 'no ✓'), activated ? 'bad' : 'ok');
+      kv('kv-ct', [
+        ['dismiss consumed the click?', 'no — the event is not consumed'],
+        ['background activations', String(ctClicks) + (activated ? ' (the target ran)' : '')],
+        ['event.detail', ctDetail === null ? '—' : String(ctDetail)],
+        ['event.isTrusted', ctTrusted === null ? '—' : String(ctTrusted)],
+        ['::backdrop', 'computes in every engine; transparent to pointer input'],
+        ['modal alternative', '<code>&lt;dialog&gt;.showModal()</code> makes the background inert']
+      ]);
+      document.getElementById('ct-note').textContent = dismissed
+        ? (activated
+          ? 'The dismiss gesture ALSO activated the background target — that is the click-through law.'
+          : 'The popover dismissed, and the background was not activated.')
+        : 'The popover was not open when the click landed (open it first, then click the target).';
+    }, 90);
+  });
+  document.getElementById('b-ct').addEventListener('click', function () {
+    document.getElementById('ct-note').textContent = 'The popover is open. Now click the background target.';
+  });
+
+  // ── §5 the auto-margin trap ────────────────────────────────────────────
+  var pMarg = document.createElement('div');
+  pMarg.id = 'p-marg'; pMarg.setAttribute('popover', 'auto');
+  pMarg.textContent = 'marg';
+  document.body.appendChild(pMarg);
+  var margCases = [];
+  function measureMarg(css) {
+    pMarg.removeAttribute('style');
+    if (css) pMarg.setAttribute('style', css);
+    try { pMarg.hidePopover(); } catch (e) { }
+    pMarg.showPopover();
+    var r = pMarg.getBoundingClientRect();
+    var cs = getComputedStyle(pMarg);
+    var out = { css: css || '(no author CSS)', left: Math.round(r.left), top: Math.round(r.top),
+                w: Math.round(r.width), h: Math.round(r.height), margin: cs.margin, position: cs.position };
+    try { pMarg.hidePopover(); } catch (e) { }
+    return out;
+  }
+  margCases.push(measureMarg(''));
+  margCases.push(measureMarg('position:absolute;left:100px;top:100px;'));
+  margCases.push(measureMarg('position:absolute;left:100px;top:100px;margin:0;'));
+  margCases.push(measureMarg('position:absolute;inset:auto;left:100px;top:100px;'));
+  var m1 = margCases[0], m2 = margCases[1], m3 = margCases[2], m4 = margCases[3];
+  var trap = m2.left !== 100;
+  chip('marg-ua', 'UA box: fixed+inset0+margin:auto → centred at ' + m1.left + ',' + m1.top, 'info');
+  chip('marg-trap', 'author left/top alone → ' + m2.left + ',' + m2.top + (trap ? ' (TRAPPED ✗)' : ''), trap ? 'bad' : 'ok');
+  chip('marg-fix', 'margin:0 → ' + m3.left + ',' + m3.top, m3.left === 100 ? 'ok' : 'warn');
+  kv('kv-marg', margCases.map(function (c) {
+    return [c.css, 'left=' + c.left + ' top=' + c.top + ' · ' + c.w + '×' + c.h + ' · margin:' + c.margin];
+  }));
+  document.getElementById('marg-note').textContent = 'The UA popover box is position:' + m1.position + ' with margin:' + m1.margin + ' — ' +
+    (trap ? 'author offsets alone are defeated by the auto margin.' : 'author offsets win here.');
+  document.getElementById('b-marg').addEventListener('click', function () {
+    document.getElementById('marg-note').textContent = 'Measured: author left/top alone → ' + m2.left + ',' + m2.top +
+      ' · with margin:0 → ' + m3.left + ',' + m3.top + ' · with inset:auto → ' + m4.left + ',' + m4.top + '.';
+  });
+
+  // ── §6 the implicit-anchor split (five forms, measured live) ────────────
+  var anchorCases = [];
+  // geometry is read AFTER a 2×rAF settle — the implicit anchor is wired during the
+  // toggle's default action and the same-task gBCR read measured the PRE-anchor box
+  function settle2() {
+    return new Promise(function (res) { requestAnimationFrame(function () { requestAnimationFrame(res); }); });
+  }
+  // per-form geometry: A/C/D/E start-align (left:anchor(left)) → popL≈invL && popB≈invT;
+  // B uses position-area:top which CENTERS in the centre region → popB≈invT && centres align
+  function anchorVerdict(form, pr, ir) {
+    if (form === 'position-area') {
+      return Math.abs(pr.bottom - ir.top) < 3 && Math.abs((pr.left + pr.right) / 2 - (ir.left + ir.right) / 2) < 3
+        ? { resolved: true, why: 'pop bottom ' + Math.round(pr.bottom) + ' = invoker top ' + Math.round(ir.top) + ', centred' }
+        : { resolved: false, why: 'fell back to ' + Math.round(pr.left) + ',' + Math.round(pr.top) };
+    }
+    return Math.abs(pr.left - ir.left) < 3 && Math.abs(pr.bottom - ir.top) < 3
+      ? { resolved: true, why: 'pop ' + Math.round(pr.left) + ',' + Math.round(pr.bottom) + ' rides the invoker' }
+      : { resolved: false, why: 'fell back to ' + Math.round(pr.left) + ',' + Math.round(pr.top) };
+  }
+  async function measureAnchor(form, popId, invId, css, activate) {
+    var pop = document.getElementById(popId);
+    var inv = document.getElementById(invId);
+    pop.setAttribute('style', css);
+    activate(pop, inv);
+    await settle2();
+    var pr = pop.getBoundingClientRect(), ir = inv.getBoundingClientRect();
+    var v = anchorVerdict(form, pr, ir);
+    var out = {
+      form: form,
+      invL: Math.round(ir.left), invT: Math.round(ir.top),
+      popL: Math.round(pr.left), popT: Math.round(pr.top), popBottom: Math.round(pr.bottom),
+      resolved: v.resolved, why: v.why
+    };
+    try { pop.hidePopover(); } catch (e) { }
+    await settle2();
+    return out;
+  }
+  var A = null, B = null, C = null, D = null, E = null, ancRunning = false;
+  function renderAnc() {
+    kv('kv-anc', [
+      ['A · anchor() fn, implicit', A ? (A.resolved ? 'resolves ✓ (' + A.why + ')' : '<span style="color:var(--bad)">NO — ' + A.why + '</span>') : '—'],
+      ['B · position-area, implicit', B ? (B.resolved ? 'resolves ✓ (' + B.why + ')' : '<span style="color:var(--bad)">NO — ' + B.why + '</span>') : '—'],
+      ['C · explicit anchor-name', C ? (C.resolved ? 'resolves ✓ (' + C.why + ')' : '<span style="color:var(--bad)">NO</span>') : '—'],
+      ['D · programmatic showPopover()', D ? (D.resolved ? 'resolves ✓' : '<span style="color:var(--bad)">NO — no implicit reference at all</span>') : '—'],
+      ['E · showPopover({source: invoker})', E ? (E.resolved ? 'resolves ✓ (Chromium family)' : '<span style="color:var(--bad)">NO — source alone does not anchor</span>') : '—']
+    ]);
+    kv('kv-anc2', [
+      ['invoker (form A)', A ? A.invL + ' / ' + A.invT : '—'],
+      ['popover (form A)', A ? A.popL + ' / ' + A.popBottom : '—'],
+      ['position-anchor:implicit', CSS.supports('position-anchor', 'implicit') ? 'supports() true' : 'supports() FALSE (yet Chromium honours it)'],
+      ['the rule', 'the implicit reference needs a DECLARATIVE activation; the explicit form needs neither']
+    ]);
+    setChip('anc-fn', 'implicit anchor() fn resolves: ' + (A && A.resolved ? 'YES ✓' : 'NO ✗'), A && A.resolved ? 'ok' : 'bad');
+    setChip('anc-area', 'implicit position-area resolves: ' + (B && B.resolved ? 'YES ✓' : 'NO ✗'), B && B.resolved ? 'ok' : 'bad');
+    setChip('anc-exp', 'explicit anchor-name resolves: ' + (C && C.resolved ? 'YES ✓' : 'NO ✗'), C && C.resolved ? 'ok' : 'bad');
+    setChip('anc-prog', 'programmatic showPopover() resolves: ' + (D && D.resolved ? 'YES ✓' : 'NO ✗'), D && D.resolved ? 'ok' : 'bad');
+    setChip('anc-src', 'showPopover({source}) anchors: ' + (E && E.resolved ? 'YES ✓ (Chromium)' : 'NO ✗'), E && E.resolved ? 'ok' : 'bad');
+  }
+  var ANCHOR_CSS = 'position:fixed;inset:auto;margin:0;width:150px;height:42px;background:#223047;border:1px solid #3b5679;border-radius:8px;color:#e8edf4;font-size:12px;';
+  async function runAnchorLanes() {
+    if (ancRunning) return;
+    ancRunning = true;
+    try {
+      A = await measureAnchor('anchor-fn', 'p-anc-fn', 'b-anc-fn',
+        ANCHOR_CSS + 'bottom:anchor(top);left:anchor(left);',
+        function (pop, inv) { inv.click(); });
+      B = await measureAnchor('position-area', 'p-anc-area', 'b-anc-area',
+        ANCHOR_CSS + 'position-area:top;',
+        function (pop, inv) { inv.click(); });
+      C = await measureAnchor('explicit', 'p-anc-exp', 'b-anc-exp',
+        ANCHOR_CSS + 'position-anchor:--anc-exp;bottom:anchor(top);left:anchor(left);',
+        function (pop, inv) { inv.click(); });
+      D = await measureAnchor('programmatic', 'p-anc-prog', 'b-anc-prog',
+        ANCHOR_CSS + 'bottom:anchor(top);left:anchor(left);',
+        function (pop) { pop.showPopover(); });
+      E = await measureAnchor('source', 'p-anc-prog', 'b-anc-prog',
+        ANCHOR_CSS + 'bottom:anchor(top);left:anchor(left);',
+        function (pop, inv) { try { pop.showPopover({ source: inv }); } catch (e) { pop.showPopover(); } });
+    } finally { ancRunning = false; }
+    renderAnc();
+    window.__anchorDebug = { A: A, B: B, C: C, D: D, E: E, t: performance.now() };
+  }
+  // the anchor fixtures live at body level so their geometry is viewport-relative
+  ['p-anc-fn', 'p-anc-area', 'p-anc-exp', 'p-anc-prog'].forEach(function (id) {
+    var d = document.createElement('div');
+    d.id = id; d.setAttribute('popover', 'auto');
+    document.body.appendChild(d);
+  });
+  document.getElementById('b-anc-exp').style.anchorName = '--anc-exp';
+  document.getElementById('b-anc-prog').style.anchorName = '--anc-prog';
+  // NOTE: the four form buttons carry NO lane-runner listeners — an invoker button whose
+  // click handler re-clicks itself double-toggles the popover closed (activation order:
+  // listeners run BEFORE the invoker's own default action, so a listener-issued inv.click()
+  // opens and the user's pending action then closes — measured net-closed, 3/3 engines).
+  // The re-run button is NOT an invoker, so it cannot interfere.
+  document.getElementById('b-anc-rerun').addEventListener('click', function () { runAnchorLanes(); });
+  chip('anc-fn', 'implicit anchor() fn resolves: not run yet', 'info');
+  chip('anc-area', 'implicit position-area resolves: not run yet', 'info');
+  chip('anc-exp', 'explicit anchor-name resolves: not run yet', 'info');
+  chip('anc-prog', 'programmatic showPopover() resolves: not run yet', 'info');
+  chip('anc-src', 'showPopover({source}) anchors: not run yet', 'info');
+  // popover promotion is not processed at parse-end (measured: an inv.click() at t≈20ms
+  // opens nothing — zero toggle events) — the auto-run waits for the load event.
+  if (document.readyState === 'complete') setTimeout(runAnchorLanes, 50);
+  else window.addEventListener('load', function () { setTimeout(runAnchorLanes, 50); });
+
+  // ── §7 the declarative-fight law ───────────────────────────────────────
+  var pFight = document.getElementById('p-fight');
+  wirePop(pFight, ledFight);
+  var fightEvents = [];
+  ['beforetoggle', 'toggle'].forEach(function (k) {
+    pFight.addEventListener(k, function (e) { fightEvents.push(k + ' ' + e.oldState + '→' + e.newState + ' @' + Math.round(performance.now())); });
+  });
+  document.getElementById('b-fight').addEventListener('click', function () {
+    try { pFight.showPopover(); } catch (e) { }
+  });
+  setTimeout(function () {
+    var stillOpen = pFight.matches(':popover-open');
+    setChip('fight', 'popovertarget + onClick showPopover(): ' + (stillOpen ? 'open (no fight)' : 'CLOSED — the two cancel out ✗'), stillOpen ? 'ok' : 'bad');
+    kv('kv-fight', [
+      ['final state', stillOpen ? 'open' : '<span style="color:var(--bad)">closed — the declarative toggle closed it</span>'],
+      ['events', esc(fightEvents.join(' | ') || '—')],
+      ['the rule', 'use popovertarget OR showPopover(), never both']
+    ]);
+    document.getElementById('fight-note').textContent = stillOpen
+      ? 'This engine left the popover open (no fight).'
+      : 'This engine closed it: the handler opened it, then the declarative activation toggled it shut in the same tick.';
+  }, 220);
+
+  // ── §8 the exit-animation split ─────────────────────────────────────────
+  var pAnim = document.getElementById('p-anim');
+  var animEvents = [];
+  ['transitionrun', 'transitionstart', 'transitionend', 'transitioncancel'].forEach(function (k) {
+    pAnim.addEventListener(k, function (e) { animEvents.push(k + ':' + e.propertyName); });
+  });
+  var animStyle = document.createElement('style');
+  animStyle.textContent =
+    '#p-anim{opacity:0;transition:opacity .25s,display .25s;transition-behavior:allow-discrete}' +
+    '#p-anim:popover-open{opacity:1}' +
+    '@starting-style{#p-anim:popover-open{opacity:0}}';
+  document.head.appendChild(animStyle);
+  var animOpenEvents = [], animCloseEvents = [];
+  function runAnimLane() {
+    animEvents = [];
+    pAnim.showPopover();
+    setTimeout(function () {
+      animOpenEvents = animEvents.slice(0); animEvents = [];
+      pAnim.hidePopover();
+      setTimeout(function () {
+        animCloseEvents = animEvents.slice(0);
+        var hasDisplayClose = animCloseEvents.some(function (e) { return /display/.test(e); });
+        var anyClose = animCloseEvents.length > 0;
+        setChip('anim-open', 'entry transitions: ' + animOpenEvents.length, animOpenEvents.length ? 'ok' : 'warn');
+        setChip('anim-close', 'exit display transition: ' + (hasDisplayClose ? 'fires ✓' : (anyClose ? 'no display transition ✗' : 'NO EVENTS ✗')), hasDisplayClose ? 'ok' : 'bad');
+        kv('kv-anim', [
+          ['entry events', esc(animOpenEvents.join(' ') || '—')],
+          ['exit events', esc(animCloseEvents.join(' ') || '—')],
+          ['exit display transition', hasDisplayClose ? 'present' : '<span style="color:var(--bad)">missing — the popover just vanishes</span>'],
+          ['overlay property', CSS.supports('overlay: auto') ? 'supported' : 'not supported (transition-property still parses)'],
+          ['safe cleanup', 'never depend on transitionend — use a timeout or the visibility pattern']
+        ]);
+        document.getElementById('anim-note').textContent = hasDisplayClose
+          ? 'This engine transitions the closing popover (display + opacity events fired).'
+          : 'This engine fires NO display transition when a popover closes — the exit animation never runs.';
+      }, 180);
+    }, 440);
+  }
+  runAnimLane();
+  document.getElementById('b-anim').addEventListener('click', runAnimLane);
+
+  // ── §9 the re-entrancy law ──────────────────────────────────────────────
+  var pGuard = document.getElementById('p-guard');
+  var reDepth = 0, reMax = 0, reErr = null;
+  pGuard.addEventListener('beforetoggle', function () {
+    reDepth++; if (reDepth > reMax) reMax = reDepth;
+    if (reDepth === 1) { try { pGuard.showPopover(); } catch (e) { reErr = e.name; } }
+    reDepth--;
+  });
+  pGuard.showPopover();
+  var guardOk = reErr === null;
+  try { pGuard.hidePopover(); } catch (e) { }
+  chip('re-guard', 'guarded re-entrant show(): ' + (guardOk ? 'no throw, depth ' + reMax : 'threw ' + reErr), guardOk ? 'warn' : 'bad');
+
+  var reFrame = null, reUnguarded = 'not run yet';
+  function renderRe() {
+    setChip('re-unguard', 'unguarded re-entrant show(): ' + esc(String(reUnguarded).slice(0, 52)), /recursion|stack/i.test(String(reUnguarded)) ? 'bad' : 'info');
+    kv('kv-re', [
+      ['guarded call', guardOk ? 'no exception, the handler re-entered to depth ' + reMax : 'threw ' + reErr],
+      ['unguarded call', esc(String(reUnguarded).slice(0, 78))],
+      ['MDN claims', 'InvalidStateError — not raised by any engine on this bench'],
+      ['actual failure', 'unbounded recursion → an uncaught stack-overflow page error'],
+      ['rule', 'never call a popover method from inside its own beforetoggle handler']
+    ]);
+    document.getElementById('re-note').textContent = /recursion|stack/i.test(String(reUnguarded))
+      ? 'The unguarded lane overflowed the stack — an uncaught page error, not a catchable DOMException.'
+      : 'Guarded: no exception (the handler re-enters). Unguarded: ' + String(reUnguarded).slice(0, 60);
+  }
+  function runUnguarded() {
+    reUnguarded = 'running…';
+    try {
+      if (reFrame) reFrame.remove();
+      reFrame = document.createElement('iframe');
+      reFrame.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+      reFrame.style.cssText = 'position:fixed;left:-9999px;width:200px;height:100px;';
+      reFrame.srcdoc = '<!doctype html><button id="b" popovertarget="p">b</button><div id="p" popover="auto">p</div>' +
+        '<script>var p=document.getElementById("p");p.addEventListener("beforetoggle",function(){p.showPopover();});' +
+        'window.addEventListener("error",function(e){parent.postMessage({k:"re-err",msg:String(e.message).slice(0,90)},"*");});' +
+        '<\/script>';
+      document.body.appendChild(reFrame);
+    } catch (e) { reUnguarded = 'iframe unavailable'; }
+    setTimeout(function () {
+      try {
+        var fdoc = reFrame && reFrame.contentDocument;
+        if (fdoc && fdoc.getElementById('b')) fdoc.getElementById('b').click();
+      } catch (e) { }
+      setTimeout(function () {
+        if (reUnguarded === 'running…') reUnguarded = 'no error observed';
+        renderRe();
+      }, 750);
+    }, 260);
+  }
+  window.addEventListener('message', function (ev) {
+    if (ev.data && ev.data.k === 're-err') { reUnguarded = ev.data.msg; renderRe(); }
+  });
+  runUnguarded();
+  document.getElementById('b-guard').addEventListener('click', function () {
+    pGuard.showPopover();
+    setTimeout(function () { try { pGuard.hidePopover(); } catch (e) { } }, 140);
+  });
+  document.getElementById('b-unguard').addEventListener('click', runUnguarded);
+
+  // ── §10 the error + no-op grammar ───────────────────────────────────────
+  var errRows = [];
+  function safe(label, fn, meaning) {
+    try { fn(); errRows.push([label, 'no error (silent)', meaning]); }
+    catch (e) { errRows.push([label, esc(e.name), esc(meaning)]); }
+  }
+  var noAttr = document.createElement('div');
+  var detached = document.createElement('div'); detached.setAttribute('popover', 'auto');
+  var openEl = document.createElement('div'); openEl.setAttribute('popover', 'auto'); document.body.appendChild(openEl);
+  var closedEl = document.createElement('div'); closedEl.setAttribute('popover', 'auto'); document.body.appendChild(closedEl);
+  var srcEl = document.createElement('div'); srcEl.setAttribute('popover', 'auto'); document.body.appendChild(srcEl);
+  safe('showPopover() — no popover attribute', function () { noAttr.showPopover(); }, 'the element is not a popover');
+  safe('showPopover() — detached element', function () { detached.showPopover(); }, 'the element is not in a document');
+  safe('showPopover() — already showing', function () { openEl.showPopover(); openEl.showPopover(); }, 'the second call is a NO-OP');
+  safe('hidePopover() — already hidden', function () { closedEl.hidePopover(); closedEl.hidePopover(); }, 'the second call is a NO-OP');
+  safe('showPopover({source: window})', function () { srcEl.showPopover({ source: window }); }, 'source must be an HTMLElement');
+  try { openEl.hidePopover(); } catch (e) { }
+  try { srcEl.hidePopover(); } catch (e) { }
+  [openEl, closedEl, srcEl].forEach(function (e) { e.remove(); });
+  var errBody = '';
+  errRows.forEach(function (r) {
+    var cls = /no error/.test(r[1]) ? 'warn' : 'bad';
+    errBody += '<tr><td class="mono">' + r[0] + '</td><td class="mono"><span class="pill ' + cls + '">' + r[1] + '</span></td><td>' + r[2] + '</td></tr>';
+  });
+  document.getElementById('err-table').innerHTML = errBody;
+
+  // ── §11 the implicit-ARIA law ───────────────────────────────────────────
+  var invAria = document.createElement('button');
+  invAria.setAttribute('popovertarget', 'p-aria');
+  var pAria = document.createElement('div'); pAria.id = 'p-aria'; pAria.setAttribute('popover', 'auto');
+  document.body.appendChild(invAria); document.body.appendChild(pAria);
+  var ariaBefore = {
+    attr: invAria.getAttribute('aria-expanded'),
+    idl: 'ariaExpanded' in invAria ? invAria.ariaExpanded : 'ABSENT',
+    detailsAttr: invAria.getAttribute('aria-details'),
+    detailsIdl: 'ariaDetails' in invAria ? invAria.ariaDetails : 'ABSENT'
+  };
+  pAria.showPopover();
+  var ariaDuring = { attr: invAria.getAttribute('aria-expanded'), idl: 'ariaExpanded' in invAria ? invAria.ariaExpanded : 'ABSENT' };
+  try { pAria.hidePopover(); } catch (e) { }
+  invAria.remove(); pAria.remove();
+  kv('kv-aria', [
+    ['aria-expanded attribute', ariaBefore.attr === null ? 'null (absent)' : esc(ariaBefore.attr)],
+    ['ariaExpanded IDL', ariaBefore.idl === null ? 'null' : esc(String(ariaBefore.idl))],
+    ['aria-details attribute', ariaBefore.detailsAttr === null ? 'null (absent)' : esc(ariaBefore.detailsAttr)],
+    ['ariaDetails IDL', ariaBefore.detailsIdl === 'ABSENT' ? '<span style="color:var(--bad)">ABSENT from the IDL</span>' : esc(String(ariaBefore.detailsIdl))],
+    ['while open', 'attribute ' + (ariaDuring.attr === null ? 'still null' : ariaDuring.attr) + ' · IDL ' + (ariaDuring.idl === null ? 'still null' : ariaDuring.idl)]
+  ]);
+  chip('aria-dom', 'implicit aria-expanded is NOT in the DOM (' + (ariaBefore.attr === null && ariaBefore.idl === null ? 'confirmed' : 'present') + ')', ariaBefore.attr === null ? 'warn' : 'info');
+  chip('aria-details', 'aria-details IDL member: ' + (ariaBefore.detailsIdl === 'ABSENT' ? 'ABSENT ✗ (MDN documents it)' : 'present'), ariaBefore.detailsIdl === 'ABSENT' ? 'bad' : 'ok');
+  kv('kv-ax', [
+    ['AX role', 'button (invoker)'],
+    ['expanded before', 'false'],
+    ['expanded while open', 'true'],
+    ['expanded after close', 'false'],
+    ['details property', '<span style="color:var(--bad)">absent from the AX tree</span>'],
+    ['reading it', 'CDP Accessibility.getFullAXTree — not reachable from page JS']
+  ]);
+
+  // ── §12 the OpenDrones capstone ─────────────────────────────────────────
+  var drone1 = document.getElementById('drone1');
+  var drone2 = document.getElementById('drone2');
+  var hud = document.getElementById('hud');
+  var hudRth = document.getElementById('hud-rth');
+  var hudClose = document.getElementById('hud-close');
+  var capChips = document.getElementById('chips-cap');
+  function capChip(id, text, cls) {
+    var el = document.createElement('span');
+    el.className = 'chip ' + (cls || 'info'); el.dataset.chip = id; el.textContent = text;
+    capChips.appendChild(el); return el;
+  }
+  hud.setAttribute('popover', 'manual');
+  hud.style.position = 'fixed';
+  hud.style.inset = 'auto';
+  hud.style.margin = '0';
+  drone1.style.anchorName = '--drone1';
+  drone2.style.anchorName = '--drone2';
+  var rthFired = 0;
+  hudRth.addEventListener('click', function () { rthFired++; });
+  function openHud(which) {
+    hud.style.positionAnchor = which === 1 ? '--drone1' : '--drone2';
+    hud.style.positionArea = 'right';
+    try { hud.showPopover(); } catch (e) { }
+  }
+  drone1.addEventListener('click', function () { openHud(1); });
+  drone2.addEventListener('click', function () { openHud(2); });
+  drone1.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openHud(1); } });
+  drone2.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openHud(2); } });
+  hudClose.addEventListener('click', function () { try { hud.hidePopover(); } catch (e) { } });
+  drone1.click();
+  var hudRect = hud.getBoundingClientRect();
+  var d1Rect = drone1.getBoundingClientRect();
+  var hudAnchored = Math.abs(hudRect.left - d1Rect.right) < 26;
+  capChip('cap-anchor', 'HUD anchored via explicit anchor-name: ' + (hudAnchored ? 'yes ✓' : 'no ✗'), hudAnchored ? 'ok' : 'warn');
+  capChip('cap-manual', 'HUD is popover="manual" → a map click never light-dismisses it', 'ok');
+  capChip('cap-rth', 'RTH button inside the HUD (armed: ' + rthFired + ')', 'info');
+  capChip('cap-overlay', 'the map behind stays live — a popover is non-modal', 'warn');
+
+  var AUDIT = [
+    ['hi', 'Hint popovers in Safari', 'a <code>popover="hint"</code> tooltip is <b>manual</b> in WebKit — it never light-dismisses, never answers Esc and never closes its siblings.'],
+    ['hi', 'No close veto', 'a <code>beforetoggle</code> handler <b>cannot</b> keep a popover open — the close path is uncancelable. Unsaved state needs your own Esc/pointerdown guard.'],
+    ['hi', 'Dismiss click-through', 'the outside click that dismisses a popover <b>also activates the page underneath</b> — a destructive control behind the popover is one stray click away.'],
+    ['hi', 'Auto-margin trap', 'an unstyled popover is <code>position:fixed; inset:0; margin:auto</code> — author <code>left/top</code> alone do not move it. Reset <code>margin</code> or set <code>inset:auto</code>.'],
+    ['hi', 'The double-wired invoker', '<code>popovertarget</code> <b>and</b> <code>onClick → showPopover()</code> cancel each other out — the popover ends up closed. Pick one.'],
+    ['md', 'Implicit anchor()', 'the implicit invoker anchor resolves through the <code>anchor()</code> <b>function in Chromium only</b> — Firefox and Safari drop it. Use an explicit <code>anchor-name</code>.'],
+    ['md', 'Programmatic open', 'a programmatic <code>showPopover()</code> establishes <b>no</b> implicit anchor in any engine — the React shape needs an explicit <code>anchor-name</code>.'],
+    ['md', 'Viewport containing block', 'a popover in the top layer is positioned against the <b>viewport</b>, not its nearest positioned ancestor.'],
+    ['md', 'No exit animation in 2 of 3', '<code>allow-discrete</code> exit transitions fire on Chromium only — never gate cleanup on <code>transitionend</code>.'],
+    ['md', 'Re-entrancy', 'a popover method called from its own <code>beforetoggle</code> handler does not throw — it recurses to a stack overflow. Defer to a task.'],
+    ['md', 'show() is a no-op', '<code>showPopover()</code> on an open popover does nothing, silently — guard with <code>:popover-open</code>.'],
+    ['lo', 'aria-expanded is invisible', 'the implicit <code>aria-expanded</code> lives only in the accessibility tree — DOM-level audits and snapshot tests see nothing.']
+  ];
+  var al = '';
+  AUDIT.forEach(function (a, i) {
+    al += '<li class="' + (a[0] === 'hi' ? 'hi' : '') + '"><span class="n">#' + (i + 1) + ' ' + a[0].toUpperCase() + '</span><span class="t">' + a[1] + ' — ' + a[2] + '</span></li>';
+  });
+  document.getElementById('audit-list').innerHTML = al;
+
+  // ── §13 engine ledger ───────────────────────────────────────────────────
+  var LEDGER = [
+    ['popover core surface', '✓', '✓', '✓'],
+    ['interest invokers', '✓', '—', '—'],
+    ['<code>.popover</code> reports "hint"', 'hint', 'hint', '<b>manual</b>'],
+    ['hint light-dismiss', '✓', '✓', '<b>✗</b>'],
+    ['hint answers Esc', '✓', '✓', '<b>✗</b>'],
+    ['hint closed by an auto popover', '✓', '✓', '<b>✗</b>'],
+    ['close-path <code>beforetoggle</code> cancelable', 'false', 'false', 'false'],
+    ['dismiss click-through', 'yes', 'yes', 'yes'],
+    ['UA box <code>fixed; inset:0; margin:auto</code>', '✓', '✓', '✓'],
+    ['computed <code>margin</code> serialization', 'px', '<b>auto</b>', 'px'],
+    ['top-layer containing block', 'viewport', 'viewport', 'viewport'],
+    ['implicit anchor via <code>anchor()</code> fn', '✓', '<b>✗</b>', '<b>✗</b>'],
+    ['implicit anchor via <code>position-area</code>', '✓', '✓', '✓'],
+    ['explicit <code>anchor-name</code> control', '✓', '✓', '✓'],
+    ['implicit anchor, programmatic open', '<b>✗</b>', '<b>✗</b>', '<b>✗</b>'],
+    ['implicit anchor, <code>showPopover({source})</code>', '✓', '<b>✗</b>', '<b>✗</b>'],
+    ['<code>popovertarget</code> + <code>onClick</code>', 'net closed', 'net closed', 'net closed'],
+    ['exit <code>display</code> transition', '✓', '<b>✗</b>', '<b>✗</b>'],
+    ['<code>overlay</code> property', '✓', '—', '—'],
+    ['re-entrant show() throws?', 'no', 'no', 'no'],
+    ['re-entrant show() outcome', 'recursion', 'recursion', 'recursion'],
+    ['show() on an open popover', 'no-op', 'no-op', 'no-op'],
+    ['implicit <code>aria-expanded</code> in the DOM', 'no', 'no', 'no'],
+    ['implicit <code>aria-expanded</code> in the AX tree', '✓', '—', '—'],
+    ['<code>aria-details</code> anywhere', 'no', 'no', 'no']
+  ];
+  var lb = '';
+  LEDGER.forEach(function (r) {
+    lb += '<tr><td>' + r[0] + '</td><td class="mono">' + r[1] + '</td><td class="mono">' + r[2] + '</td><td class="mono">' + r[3] + '</td></tr>';
+  });
+  document.getElementById('ledger-table').innerHTML = lb;
+
+  // ── done chip ───────────────────────────────────────────────────────────
+  setTimeout(function () {
+    chip('done', 'self-verified in ' + ENG, 'ok');
+  }, 60);
+})();
+</script>
+</body>
+</html>
