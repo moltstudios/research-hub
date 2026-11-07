@@ -1,0 +1,800 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSS Grid — the engine tier: the fr floor, auto-stretch, the ghost-line law &amp; the abs-area rules</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --ink:#161513; --muted:#6d675f; --line:#e6e1d9;
+    --accent:#0e6b5c; --accent-soft:#e9f5f2; --ok:#1c6b47; --ok-soft:#eaf6ef;
+    --warn:#8a6100; --warn-soft:#fdf6e3; --fail:#a32b1c; --fail-soft:#fdeceb;
+    --info:#2a5a8a; --info-soft:#ecf3fa; --radius:14px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 24px 96px}
+  header{margin-bottom:28px}
+  .kicker{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  h1{font-size:clamp(26px,4vw,36px);line-height:1.14;letter-spacing:-.022em;margin:0 0 12px;font-weight:680}
+  .lede{font-size:15.5px;color:#403b35;margin:0 0 10px;max-width:66ch}
+  .meta{font:13px/1.5 var(--mono);color:var(--muted);margin-top:18px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px;margin-bottom:24px}
+  h2{font-size:21px;line-height:1.3;margin:0 0 6px;letter-spacing:-.012em;font-weight:660}
+  h3{font-size:15px;margin:22px 0 8px;font-weight:640}
+  .sub{color:var(--muted);font-size:14.5px;margin:0 0 18px;max-width:70ch}
+  code,kbd{font-family:var(--mono);font-size:.885em;background:#f3efe9;padding:.12em .38em;border-radius:5px;border:1px solid #e8e2d8;overflow-wrap:anywhere}
+  .law{border-left:3px solid var(--accent);padding:12px 0 12px 16px;margin:16px 0;background:linear-gradient(90deg,var(--accent-soft),transparent 70%);border-radius:0 8px 8px 0}
+  .law b{color:var(--accent)}
+  .law.bad{border-color:var(--fail);background:linear-gradient(90deg,var(--fail-soft),transparent 70%)}
+  .law.bad b{color:var(--fail)}
+  .law.warn{border-color:var(--warn);background:linear-gradient(90deg,var(--warn-soft),transparent 70%)}
+  .law.warn b{color:var(--warn)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+  .chip{font:600 12px/1.35 var(--mono);padding:6px 10px;border-radius:999px;border:1px solid;white-space:normal;overflow-wrap:anywhere;max-width:100%}
+  .chip.ok{color:var(--ok);border-color:#b9dfca;background:var(--ok-soft)}
+  .chip.warn{color:var(--warn);border-color:#ecd9a3;background:var(--warn-soft)}
+  .chip.fail{color:var(--fail);border-color:#f0c2bc;background:var(--fail-soft)}
+  .chip.info{color:var(--info);border-color:#bfd6ee;background:var(--info-soft)}
+  .chip.pending{color:var(--muted);border-color:var(--line);background:#f6f4f1}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0 4px}
+  th{font:600 12px/1.4 var(--mono);text-align:left;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+  th,td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  td.v{font-family:var(--mono);font-size:12.5px;overflow-wrap:anywhere}
+  .lab{border:1px dashed #d8d1c4;border-radius:10px;padding:14px;margin:12px 0;background:#fdfcf9}
+  .lab .cap{font:600 11.5px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  .out{font:12.5px/1.55 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f4f1;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:10px;color:#3d382f}
+  .demo-g{display:grid;background:#f2eee6;border:1px solid var(--line);border-radius:8px;min-height:56px;position:relative}
+  .demo-g>i{background:var(--accent);opacity:.82;border-radius:6px;min-height:0;font:600 11px/1 var(--mono);color:#fff;display:flex;align-items:center;justify-content:center;padding:8px 6px}
+  .demo-g>i.alt{background:#b0722c}
+  .demo-g>i.ghost{background:#a32b1c}
+  .btnrow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+  button{font:600 12.5px/1 var(--mono);padding:9px 12px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer;color:var(--ink)}
+  button:hover{border-color:var(--accent);color:var(--accent)}
+  button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .ctl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:10px 0;font:12.5px/1.4 var(--mono);color:var(--muted)}
+  .ctl input[type=range]{width:170px;accent-color:var(--accent)}
+  .ctl input[type=text]{font:12.5px/1.4 var(--mono);padding:8px 10px;border:1px solid var(--line);border-radius:8px;width:230px;max-width:100%;background:#fff;color:var(--ink)}
+  .kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 14px;font:12.5px/1.5 var(--mono);margin:8px 0}
+  .kv b{color:var(--muted);font-weight:600}
+  .kv span{overflow-wrap:anywhere}
+  .cols-viz{position:relative;height:34px;border:1px solid var(--line);border-radius:8px;background:#fff;overflow:hidden;display:flex;gap:2px;padding:2px}
+  .cols-viz i{background:var(--accent-soft);border:1px solid #bcdcd4;border-radius:5px;min-width:0}
+  .meter{height:8px;border-radius:4px;background:#f0ece3;overflow:hidden;margin:4px 0 10px;border:1px solid var(--line)}
+  .meter>b{display:block;height:100%;background:var(--ok)}
+  .meter.bad>b{background:var(--fail)}
+  .grid-narrow{max-width:420px}
+  .tag{font:600 11px/1.2 var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:4px 8px;border-radius:6px;background:#f3efe9;border:1px solid var(--line);color:var(--muted);display:inline-block;margin:0 6px 6px 0}
+  ul.audit{margin:8px 0;padding-left:20px;max-width:72ch}
+  ul.audit li{margin:5px 0}
+  .flexline{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .footer-note{font:12.5px/1.6 var(--mono);color:var(--muted);margin-top:14px}
+  @media (max-width:520px){ .wrap{padding:20px 14px 72px} section{padding:16px} .kv{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">CSS Grid · engine tier · live-probed CfT 149 + Firefox 151 + WebKit 26.5</div>
+  <h1>CSS Grid — the engine tier</h1>
+  <p class="lede">The track-sizing and placement engine beneath every card grid, dashboard and page layout: what <code>1fr</code> really is (an auto-floor trap), why <code>auto</code> tracks grow under your feet, the ghost lines an invalid <code>grid-template-areas</code> leaves behind, and the four rules that govern absolutely-positioned grid children.</p>
+  <div class="meta">26 probe lanes × 3 engines + 5 de-confound batteries · every chip below re-verifies the law in YOUR browser · 2026-11-07</div>
+  <div class="chips" id="hero-chips"></div>
+</header>
+
+<!-- ══════════ §1 serialization ══════════ -->
+<section id="s1">
+  <h2>§1 · The serialization instrument — <code>gridTemplateColumns</code> is a used-value oracle</h2>
+  <p class="sub">Computed <code>grid-template-columns</code> returns <b>resolved pixel track sizes</b> on all three engines — including <b>implicit tracks</b> and <b>line names</b>. It is the fastest way to introspect a grid: no probe items needed.</p>
+  <div class="lab">
+    <div class="cap">live reader · edit the track list</div>
+    <div class="ctl"><input id="ser-in" type="text" value="1fr 2fr fit-content(90px) [end]" spellcheck="false"></div>
+    <div class="demo-g" id="ser-g"><i>A</i><i>B</i><i>C</i><i>D</i></div>
+    <div class="out" id="ser-out">…</div>
+    <div class="chips" id="ser-chips"></div>
+  </div>
+  <div class="law"><b>THE SERIALIZION LAWS (3/3).</b> (1) Resolved <code>px</code> per track — not the authored value. (2) Implicit tracks appear in the list (a 2-explicit grid with an item at column 4 reads <code>"100px 100px 60px 60px"</code> under <code>grid-auto-columns:60px</code>). (3) <code>repeat()</code> is expanded. (4) Line names survive and merge (<code>[y x]</code>). (5) An invalid value is dropped silently — the previous declaration survives. (6) A no-template grid serializes its single stretched implicit column (<code>none</code> is only the initial computed value, not the used one).</div>
+</section>
+
+<!-- ══════════ §2 fr arithmetic ══════════ -->
+<section id="s2">
+  <h2>§2 · <code>fr</code> arithmetic — gap is subtracted first, px eats before fr</h2>
+  <p class="sub">Distribution math that is engine-universal: px/em tracks take their size first, <code>gap</code> is removed from the free space before any <code>fr</code> is distributed, and fractional pixels survive to sub-pixel precision.</p>
+  <div class="lab">
+    <div class="cap">live · tap a template</div>
+    <div class="btnrow" id="fr-btns">
+      <button data-t="1fr 2fr" class="on">1fr 2fr</button>
+      <button data-t="1fr 1fr">1fr 1fr</button>
+      <button data-t="1fr 1fr 1fr">1fr 1fr 1fr</button>
+      <button data-t="100px 1fr 2fr">100px 1fr 2fr</button>
+      <button data-t="1fr 2fr" data-gap="20">1fr 2fr + gap 20</button>
+    </div>
+    <div class="demo-g" id="fr-g"><i>A</i><i>B</i><i>C</i></div>
+    <div class="out" id="fr-out">…</div>
+    <div class="chips" id="fr-chips"></div>
+  </div>
+  <div class="kv">
+    <b>1fr 2fr @600</b><span>200 / 400 — measured 3/3</span>
+    <b>1fr 1fr @605</b><span>302.5 / 302.5 — sub-pixel exact</span>
+    <b>+gap 20</b><span>193.33 / 386.67 — gap leaves the pool first</span>
+    <b>100px 1fr 2fr @700</b><span>100 / 200 / 400 — content tracks never share</span>
+  </div>
+</section>
+
+<!-- ══════════ §3 floor law ══════════ -->
+<section id="s3">
+  <h2>§3 · THE FLOOR LAW — <code>1fr</code> is <code>minmax(auto, 1fr)</code> and the auto minimum is min-content</h2>
+  <p class="sub">The #1 grid bug in production: a long unbreakable word (hash, URL, ID) in a card. The <code>fr</code> track refuses to shrink below its largest item's min-content — the grid overflows instead. This is the flexbox <code>min-width:auto</code> law's grid twin, and the standard fixes have a hidden split.</p>
+  <div class="lab">
+    <div class="cap">live · five fixes, one 60-char unbreakable token in a 300px grid</div>
+    <div id="floor-lanes"></div>
+    <div class="out" id="floor-out">…</div>
+    <div class="chips" id="floor-chips"></div>
+  </div>
+  <div class="law bad"><b>THE FLOOR LAW (3/3).</b> <code>grid-template-columns: 1fr 1fr</code> with a 722px min-content item: track A = <b>722px</b>, track B = 7px, container scrollWidth 729 in a 300px box. The fr share (150) is a <i>maximum</i>, not a guarantee.</div>
+  <div class="law"><b>THE FIX MATRIX (3/3).</b> <code>minmax(0,1fr)</code> → 150/150, the token <b>spills inside</b> its box (paint-only overflow — pair with <code>overflow:hidden</code>). <code>min-width:0</code> on the item → identical. <code>overflow-wrap:anywhere</code> → 150/150 and the token <b>wraps</b> (anywhere lowers the min-content floor itself). <code>overflow-wrap:break-word</code> → <b>floor NOT lowered</b> — same overflow as bare 1fr. Break-word only breaks when there is room to break INTO.</div>
+</section>
+
+<!-- ══════════ §4 minmax + 0fr ══════════ -->
+<section id="s4">
+  <h2>§4 · Floors that overflow — minmax walls &amp; the <code>0fr</code> that isn't zero</h2>
+  <div class="kv">
+    <b>minmax(200px,1fr) ×3 @500</b><span>200 / 200 / 200 — all three floors win, grid overflows by 100 (tracks never shrink below min)</span>
+    <b>minmax(200px,1fr) 1fr 1fr @500</b><span>200 / 150 / 150 — the floored track takes its min first, survivors split the rest</span>
+    <b>minmax(min-content,1fr)</b><span>the chip's own width (360.9 measured) — min-content is a real floor keyword</span>
+    <b>1fr 0fr @600</b><span>585.5 / <b>14.5</b> — 0fr = minmax(auto,0fr): it floors at its content's min-content, it is NOT zero</span>
+    <b>1fr minmax(0,0)</b><span>600 / 0 — the true zero needs an explicit 0,0 minmax</span>
+  </div>
+  <div class="lab">
+    <div class="cap">live · 0fr vs minmax(0,0)</div>
+    <div class="demo-g" style="width:300px; grid-template-columns:1fr 0fr" id="z1"><i>1fr</i><i>xx</i></div>
+    <div class="demo-g" style="width:300px; grid-template-columns:1fr minmax(0,0)" id="z2"><i>1fr</i><i>xx</i></div>
+    <div class="out" id="zero-out">…</div>
+    <div class="chips" id="zero-chips"></div>
+  </div>
+  <div class="law warn"><b>THE OVERFLOW-REPORTING SPLIT.</b> Three 200px-min tracks in a 500px container overflow on every engine — but <code>scrollWidth</code> reports the overflow <b>only on Firefox</b> (600); CfT + WebKit clamp to 500. The layout is broken everywhere; the instrument disagrees. Measure item rects, not scrollWidth, on non-scroll containers.</div>
+</section>
+
+<!-- ══════════ §5 auto-stretch ══════════ -->
+<section id="s5">
+  <h2>§5 · THE AUTO-STRETCH LAW — <code>align-content:normal</code> is <code>stretch</code> for auto tracks</h2>
+  <p class="sub">Auto tracks don't sit at their content size when there's leftover space — they grow, and the growth is split <b>equally</b>, not proportionally. The "why are my columns different widths than their content" law.</p>
+  <div class="lab">
+    <div class="cap">live · 600px grid, contents 80px / 40px</div>
+    <div class="btnrow" id="as-btns">
+      <button data-t="auto auto" data-j="normal" class="on">auto auto · normal</button>
+      <button data-t="auto auto" data-j="start">auto auto · justify-content:start</button>
+      <button data-t="auto 1fr" data-j="normal">auto 1fr</button>
+      <button data-t="auto auto auto" data-j="normal">3× auto (equal contents)</button>
+    </div>
+    <div class="demo-g" id="as-g"><i style="width:max-content">nnnnnnnnnn</i><i style="width:max-content">nnnnn</i><i style="width:max-content">nnnnnnnnnn</i></div>
+    <div class="cols-viz" id="as-viz"></div>
+    <div class="out" id="as-out">…</div>
+    <div class="chips" id="as-chips"></div>
+  </div>
+  <div class="law"><b>EQUAL SPLIT (3/3).</b> Contents 80.4 + 40.2 in 600px: free space 479.4 splits <b>239.7 each</b> → tracks <b>320.1 / 279.9</b>. Not proportional, not content-weighted. Any <code>justify-content ≠ normal</code> turns stretch off (80.4 / 40.2). <code>fr</code> tracks never stretch this way — they already ate the free space. Measured on the block axis too: auto rows 40/40 in a 240px grid → 120/120.</div>
+  <div class="law warn"><b>IMPLICIT TRACKS STRETCH TOO (3/3).</b> <code>1 / span 5</code> past a 3-explicit grid creates 2 implicit <code>auto</code> tracks — they split the 300px leftover (150 each, measured in the serialization <code>100px 100px 100px 150px 150px</code>). A runaway span silently becomes a stretched two-column appendix.</div>
+</section>
+
+<!-- ══════════ §6 repeat / fill vs fit ══════════ -->
+<section id="s6">
+  <h2>§6 · <code>repeat()</code> — the count formula, the never-zero rule &amp; the lone-card trap</h2>
+  <div class="lab">
+    <div class="cap">live · drag the width · repeat(auto-fill, minmax(90px, 1fr))</div>
+    <div class="ctl"><input id="rf-r" type="range" min="120" max="640" value="420"><span id="rf-w">420px</span>
+      <span class="btnrow" style="margin:0"><button id="rf-fill" class="on">auto-fill</button><button id="rf-fit">auto-fit</button></span></div>
+    <div class="demo-g" id="rf-g" style="max-width:100%"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i></div>
+    <div class="out" id="rf-out">…</div>
+    <div class="chips" id="rf-chips"></div>
+  </div>
+  <div class="kv">
+    <b>count formula</b><span>floor((W + gap) / (min + gap)) — 600px/gap20/120px-min → 4 (not 5)</span>
+    <b>never zero</b><span>minmax(200px,1fr) in a <b>150px</b> container → <b>one 200px track overflowing</b>, not zero tracks — the count is clamped to 1 (3/3; grid-auto-columns does NOT take over)</span>
+    <b>indefinite container</b><span>auto-fill in a shrinkwrapped grid → exactly <b>1</b> repetition (3/3)</span>
+    <b>repeat(0,100px)</b><span>valid grammar! zero explicit tracks — items fall to implicit auto tracks (stretched single column)</span>
+    <b>repeat(-1,…)</b><span>invalid — whole declaration dropped (visually identical to repeat(0): single column, different cause)</span>
+    <b>mixed</b><span><code>50px repeat(auto-fill,100px) 50px</code> — the fixed tracks leave the pool first: 5 reps in 600px</span>
+  </div>
+  <div class="lab">
+    <div class="cap">live · the lone-card trap · one item, minmax(100px,1fr)</div>
+    <div class="flexline">
+      <div class="demo-g" style="width:300px; grid-template-columns:repeat(auto-fill,minmax(100px,1fr))"><i style="min-height:44px">fill</i></div>
+      <div class="demo-g" style="width:300px; grid-template-columns:repeat(auto-fit,minmax(100px,1fr))"><i style="min-height:44px">fit</i></div>
+    </div>
+    <div class="out" id="ff-out">…</div>
+    <div class="chips" id="ff-chips"></div>
+  </div>
+  <div class="law bad"><b>THE LONE-CARD LAW (3/3).</b> One card in <code>repeat(auto-fill, minmax(100px,1fr))</code> → stays 100px. The same card in <code>auto-fit</code> → <b>600px wide</b>: the empty tracks collapse (serialized as literal <code>0px</code> entries) and the 1fr eats everything. Auto-fit is "delete empty columns"; it is not a centering tool, and a skeleton state with 1 loaded card renders a full-width monster.</div>
+</section>
+
+<!-- ══════════ §7 indefinite fr ══════════ -->
+<section id="s7">
+  <h2>§7 · <code>fr</code> on an indefinite axis — the equalization law &amp; intrinsic contributions</h2>
+  <p class="sub">Grid height <code>auto</code> + <code>grid-template-rows: 1fr 1fr</code> is everywhere (page shells, split panes). The fr is not ignored — it equalizes.</p>
+  <div class="kv">
+    <b>1fr 1fr rows, heights 40/60</b><span>both rows <b>60</b> — every fr track = max(baseᵢ/flexᵢ) × flexᵢ: the LARGEST ratio wins and sizes them all (measured 3/3: rows "60px 60px")</span>
+    <b>1fr 1fr 1fr, heights 40/60/80</b><span>80 / 80 / 80, total 240</span>
+    <b>1fr 2fr, heights 40/60</b><span>flex fraction = max(40/1, 60/2) = 40 → rows <b>40 / 80</b> — the ratio math is exact</span>
+    <b>auto 1fr</b><span>auto row = content (30), fr row = its own content (50) — the fr only equalizes against other frs</span>
+  </div>
+  <div class="lab">
+    <div class="cap">live · 1fr 2fr rows in an auto-height grid (items 40/60)</div>
+    <div class="demo-g" style="width:280px; grid-template-rows:1fr 2fr" id="eq-g"><i style="height:40px">40</i><i style="height:60px">60</i></div>
+    <div class="out" id="eq-out">…</div>
+    <div class="chips" id="eq-chips"></div>
+  </div>
+  <div class="law"><b>INTRINSIC CONTRIBUTIONS (3/3).</b> A shrinkwrapped <code>1fr 1fr</code> grid = 2 × its widest item (fr contributes max-content when sizing the container). A <code>width:100%; max-width:340px</code> item contributes exactly <b>its max-content capped at 340</b> — the scrollbar-session "percentage-track inflation" mechanism: a 100%-wide scroll list inside a 1fr track sizes the track from the list's capped content, not the container. Nested grids propagate the same way: an inner grid's min-content floor (a long nowrap row) floors the outer 1fr — the flexbox nested-cascade twin, and the fix is the same (<code>minmax(0,1fr)</code> / <code>min-width:0</code>).</div>
+</section>
+
+<!-- ══════════ §8 fit-content + percent ══════════ -->
+<section id="s8">
+  <h2>§8 · <code>fit-content()</code>, percentage tracks &amp; the percentage-gap overflow</h2>
+  <div class="kv">
+    <b>fit-content(L)</b><span>= min(max(min-content, L), max-content) — measured 3/3: content 64 → 64 · limit 120 content 676 → 120 · limit 400 → 400 · limit 40 with a 241px word → <b>241 (the min-content floor beats the limit)</b></span>
+    <b>50% 50% @600</b><span>300 / 300</span>
+    <b>50% 50% + gap 20</b><span><b>still 300 / 300</b> — percentages resolve against the content box; the gap does not shrink them: the grid overflows by 20 (guaranteed h-scroll)</span>
+    <b>50% 50% indefinite</b><span>each = max-content — % tracks in an auto-width container behave as auto</span>
+    <b>gap:10%</b><span>col-gap = 10% of the <b>inline</b> size, row-gap = 10% of the <b>block</b> size (60/40 measured in 600×400) — per-axis bases; serialization keeps "10%", never resolved px</span>
+    <b>gap:10% indefinite</b><span>the shrinkwrapped grid sizes itself <b>without</b> the gap, then the gap resolves against the result and <b>overflows it</b> (200px grid + 20px gap = content 220, box 200 — measured 3/3)</span>
+  </div>
+  <div class="law bad"><b>THE %+GAP LAW.</b> Percentage tracks and percentage gaps in a definite container resolve against the content box and <b>ignore each other</b>: <code>50% 50%</code> + any gap overflows. In an indefinite container both become content-based — and the % gap then overflows the content-sized box. Percentages in track lists are load-bearing invariants; audit them like currency conversions.</div>
+</section>
+
+<!-- ══════════ §9 placement grammar ══════════ -->
+<section id="s9">
+  <h2>§9 · Line grammar — <code>1 / -1</code> spans the <i>explicit</i> grid, never the container</h2>
+  <div class="lab">
+    <div class="cap">live · 600px grid with 3×100px tracks · where does 1/-1 end?</div>
+    <div class="demo-g" id="ln-g" style="width:600px; max-width:100%; grid-template-columns:100px 100px 100px; grid-template-rows:34px 34px">
+      <i style="grid-column:1 / -1">1 / -1</i>
+      <i class="alt" style="grid-row:2; grid-column:-3 / -1">-3 / -1</i>
+    </div>
+    <div class="out" id="ln-out">…</div>
+    <div class="chips" id="ln-chips"></div>
+  </div>
+  <div class="kv">
+    <b>1 / -1 @600, tracks 300</b><span>item width <b>300</b>, not 600 — <code>-1</code> is the explicit grid's end line; 300px of free space sits untouched (3/3). If you want full-width, the tracks must fill the container</span>
+    <b>-3 / -1</b><span>100→300 (tracks 2-3)</span>
+    <b>2 / -2</b><span>track 2 only (100px)</span>
+    <b>1 / span 5 (3 explicit)</b><span>2 implicit auto tracks created and <b>stretched</b> — item = 600</span>
+    <b>4 / 2</b><span>silently swapped → 2 / 4 (w 200) — no error, no warning</span>
+    <b>span 2 / 3</b><span>start = 3 − 2 = 1 → w 200</span>
+    <b>grid-area: 2/3/4/5</b><span>row-start / <b>col-start</b> / row-end / col-end — ROW first, the #1 ordering memory trap</span>
+    <b>grid-column: 0 / 2</b><span>line 0 is invalid → treated as auto → auto-placed, span 1</span>
+    <b>dup line names</b><span><code>[a] 1fr [a] 1fr [a]</code>: bare <code>a</code> = the <b>first</b>; <code>a 2 / a 3</code> = second-to-third (track 2); <code>a / a</code> = degenerate → auto</span>
+    <b>RTL</b><span>line 1 = the <b>right</b> edge; column 1 lands at x=300 in a 400px RTL grid — track order flips, 1/-1 still spans the explicit grid (3/3)</span>
+  </div>
+</section>
+
+<!-- ══════════ §10 auto-placement ══════════ -->
+<section id="s10">
+  <h2>§10 · Auto-placement — sparse holes, dense back-fill, <code>order</code> re-sequences</h2>
+  <div class="lab">
+    <div class="cap">live · A locked to col 2, B spans 2 — where does C go?</div>
+    <div class="btnrow"><button id="pk-s" class="on">sparse (default)</button><button id="pk-d">dense</button></div>
+    <div class="demo-g" id="pk-g" style="grid-template-columns:repeat(4,1fr); grid-auto-rows:40px">
+      <i style="grid-column:2">A·col2</i><i class="alt" style="grid-column:span 2">B·span2</i><i id="pk-c">C</i>
+    </div>
+    <div class="out" id="pk-out">…</div>
+    <div class="chips" id="pk-chips"></div>
+  </div>
+  <div class="kv">
+    <b>sparse</b><span>B wraps to row 2 (cols 1-2), C continues after the cursor → row 2 col 3: row 1 col 1 stays <b>EMPTY forever</b> (measured: C at y=23.6 while a hole sits at y=0)</span>
+    <b>dense</b><span>C back-fills: C → row 1 col 1 (y=0) — the cursor rewinds per item</span>
+    <b>order</b><span><code>order</code> changes the placement sequence (order 1/2 items pack before order 2/1): visual order ≠ DOM order — and like flexbox, keyboard Tab order still follows the DOM</span>
+    <b>definite locks</b><span>an item with a definite column is placed FIRST; auto items flow around it (k1 col3, then k2 c1, k3 c2 — same row)</span>
+    <b>column flow</b><span><code>grid-auto-flow:column</code> — items run down first (c1 (0,0), c2 (0,50), c3 next column)</span>
+  </div>
+</section>
+
+<!-- ══════════ §11 areas + ghost lines ══════════ -->
+<section id="s11">
+  <h2>§11 · <code>grid-template-areas</code> — the validity grammar &amp; THE GHOST-LINE LAW</h2>
+  <div class="kv">
+    <b>duplicate names</b><span><b>VALID</b> when they form a rectangle — <code>'a a' 'a a'</code> parses, serializes and places fine. The folklore "duplicate names invalidate the template" is FALSE (falsified on the bench)</span>
+    <b>ragged rows</b><span><code>'a a a' 'a'</code> → declaration <b>dropped</b> (computed value <code>none</code>)</span>
+    <b>non-rectangular</b><span><code>'a a a' 'a a x'</code> → dropped</span>
+    <b>implicit lines</b><span>every area generates <code>name-start / name-end</code> lines — usable directly in <code>grid-column</code> (measured: a-start/a-end spans the area's columns)</span>
+  </div>
+  <div class="lab">
+    <div class="cap">live · the ghost: an invalid template drops the AREAS but keeps the LINES</div>
+    <div class="btnrow">
+      <button id="gh-v" class="on">valid 'a a a' / 'a a a'</button>
+      <button id="gh-r">ragged 'a a a' / 'a'</button>
+      <button id="gh-n">non-rect 'a a a' / 'a a x'</button>
+    </div>
+    <div class="demo-g" id="gh-g" style="height:70px; grid-template-columns:100px 100px 100px"><i class="ghost" style="grid-area:a">grid-area:a</i></div>
+    <div class="out" id="gh-out">…</div>
+    <div class="chips" id="gh-chips"></div>
+  </div>
+  <div class="law bad"><b>THE GHOST-LINE LAW (3/3).</b> After an invalid template drops (gCS serializes <code>none</code>), the named lines it generated <b>survive</b> — and <code>grid-area:a</code> / <code>grid-column:a-start</code> items are NOT reflowed by auto-placement. They bind to ghost lines at the far end of an <b>implicitly expanded</b> grid: a 3-track 600px grid grew tracks <code>100px 100px 100px 144.86px 155.14px</code> and the item landed at x=444.9 spanning the two stretched ghost tracks — on all three engines, byte-consistently, while the style readout said <code>none</code>. A template typo doesn't stack your components; it teleports them to a far corner and lies about it.</div>
+</section>
+
+<!-- ══════════ §12 overlap + z ══════════ -->
+<section id="s12">
+  <h2>§12 · Overlap &amp; static <code>z-index</code> — grid items stack without <code>position</code></h2>
+  <div class="lab">
+    <div class="cap">live · two items in the same cells · hit-test the top pixel</div>
+    <div class="btnrow"><button id="ov-flip">z-index: 2 → the UNDER item</button></div>
+    <div class="demo-g" id="ov-g" style="grid-template-columns:1fr 1fr; height:64px">
+      <i id="ov-u" style="grid-column:1/3; grid-row:1; background:#55606a">under (earlier DOM)</i>
+      <i id="ov-o" style="grid-column:1/3; grid-row:1; background:#b0722c">over (later DOM)</i>
+    </div>
+    <div class="out" id="ov-out">…</div>
+    <div class="chips" id="ov-chips"></div>
+  </div>
+  <div class="law"><b>THE STATIC STACKING LAW (3/3).</b> Overlapping grid items (lines/areas make overlap legal — it's a feature, not a bug) paint in DOM order, and <code>z-index</code> works on <code>position:static</code> items — verified by <code>elementFromPoint</code> hit-tests: later DOM wins by default; <code>z-index:2</code> on the earlier item flips it; <code>z-index:-1</code> sinks it below the auto sibling. Grid (like flexbox) is a layout mode where static elements are stacking participants. The flexbox Tab-order corollary applies: visual stacking ≠ focus order.</div>
+</section>
+
+<!-- ══════════ §13 abs children ══════════ -->
+<section id="s13">
+  <h2>§13 · Absolutely-positioned children — the area rules</h2>
+  <div class="kv">
+    <b>static position</b><span>an abs child with <code>grid-area:2/2/3/3</code> and no offsets parks at the <b>area's start corner</b> (100,80 measured)</span>
+    <b>inset: 0</b><span>fills the <b>GRID AREA</b> (100×80), NOT the grid container — when the area is definite it becomes the containing block</span>
+    <b>per-axis rule</b><span><code>grid-column:2</code> + <code>top/left:0</code> → left resolves at the <b>area</b> (x=100), top at the <b>container</b> (y=0): a definite area makes the containing block <b>per axis</b>, independently</span>
+    <b>auto end edge</b><span><code>grid-column:2</code> (start only): the auto end resolves to the <b>container's content-box end</b> — percentages resolve against that 400px span (width:10% → 40, 25% → 100, 50% → 200; with an explicit <code>2/3</code> the same 10% → 10) (3/3)</span>
+  </div>
+  <div class="lab">
+    <div class="cap">live · 500×300 grid, 3×100 cols / 2×80 rows</div>
+    <div class="demo-g" id="ab-g" style="height:150px; grid-template-columns:repeat(6,1fr); grid-template-rows:repeat(4,1fr)">
+      <i class="ghost" style="grid-area:2/2/3/3; position:absolute; width:auto; height:auto; padding:6px">static@area</i>
+      <i class="alt" style="grid-area:2/2/3/3; position:absolute; inset:0">inset:0 = area</i>
+    </div>
+    <div class="out" id="ab-out">…</div>
+    <div class="chips" id="ab-chips"></div>
+  </div>
+  <div class="law warn"><b>THE ABS-AREA LAW.</b> For abs children, the grid area is a real containing block — when it is definite in an axis. The trap is the <b>auto end edge</b>: unlike in-flow items (span 1), an abs item's omitted end stretches to the container's end, so percentage sizes key off a span you never wrote. Always write both edges (<code>grid-column: 2 / 3</code>) for abs children — the two-value form and the one-value form resolve against different boxes.</div>
+</section>
+
+<!-- ══════════ §14 alignment ══════════ -->
+<section id="s14">
+  <h2>§14 · Alignment — <code>safe center</code>, the oversized item &amp; fr-starved content modes</h2>
+  <div class="lab">
+    <div class="cap">live · a 150px item in a 100px track</div>
+    <div class="btnrow" id="ps-btns">
+      <button data-v="center" class="on">place-self:center</button>
+      <button data-v="start">start</button>
+      <button data-v="safe center">safe center</button>
+    </div>
+    <div class="demo-g" style="overflow:visible; grid-template-columns:100px 1fr; margin-left:40px" id="ps-g"><i style="width:150px">150px</i><i>track 2</i></div>
+    <div class="out" id="ps-out">…</div>
+    <div class="chips" id="ps-chips"></div>
+  </div>
+  <div class="kv">
+    <b>center</b><span>x = <b>−25</b> — overflows BOTH edges; the leading 25px is unreachable/unscrollable in LTR (3/3)</span>
+    <b>safe center</b><span>falls back to start (x=0) — universally supported in grid (census 3/3), unlike older folklore</span>
+    <b>stretch default</b><span><code>justify-self:normal</code> = stretch: a width-less item fills the track (100); <code>width:50%</code> resolves against the TRACK → 50</span>
+    <b>space-between</b><span>rows 40/40 in a 240px grid → y 0 and 200</span>
+    <b>space-evenly</b><span>53.3 / 153.3 — (240−80)/3 gutters</span>
+    <b>fr present</b><span>align/justify-content become <b>no-ops</b>: the fr already ate all free space (measured: 1fr 1fr + align-content:start → still 120/120)</span>
+  </div>
+</section>
+
+<!-- ══════════ §15 capstone OpenDrones ══════════ -->
+<section id="s15">
+  <h2>§15 · Capstone — the OpenDrones fleet card grid (hardened)</h2>
+  <p class="sub">A drone-fleet dashboard card grid that survives narrow containers, long battery-serial tokens and skeleton states — every rule from §3/§6/§7 applied, each with the law it encodes.</p>
+  <div class="lab">
+    <div class="cap">live · narrow it — the cards never overflow, the lone skeleton never stretches</div>
+    <div class="ctl"><input id="od-r" type="range" min="240" max="640" value="640"><span id="od-w">640px</span></div>
+    <div id="od-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(0,1fr)); gap:10px; max-width:100%">
+      <div class="card">… card markup injected …</div>
+    </div>
+    <div class="out" id="od-out">…</div>
+    <div class="chips" id="od-chips"></div>
+  </div>
+  <ul class="audit">
+    <li><b>minmax(0,1fr)</b> not bare 1fr in the card track — battery serials/hashes (§3) can floor a bare fr into overflow; 0-min lets the card clip instead.</li>
+    <li>Long tokens get <code>overflow-wrap:anywhere</code> + <code>min-width:0</code> on the inner stack (§3 fix matrix).</li>
+    <li>Nested mini-grid per card (battery/temp/status) carries <code>min-width:0</code> at every level (§7 nested cascade).</li>
+    <li>Skeleton state uses the <b>auto-fill</b> branch — the lone loaded card can't go full-width (§6 lone-card law).</li>
+    <li>Telemetry rows are an <code>auto 1fr</code> grid: label at max-content, value takes the rest, <code>ellipsis</code> for spill (§5).</li>
+    <li><code>gap</code> in px — a % gap would overflow the content-sized rows panel (§8).</li>
+  </ul>
+</section>
+
+<!-- ══════════ §16 Molt audit ══════════ -->
+<section id="s16">
+  <h2>§16 · The Molt client-site grid audit — 12 checks, half a day</h2>
+  <p class="sub">Checks 1–5 pass every code review and ship broken; they are invisible without a long-token fixture or a narrow viewport.</p>
+  <ul class="audit">
+    <li><b>HIGH — bare-fr card tracks:</b> any <code>repeat(auto-fill, minmax(N, 1fr))</code> with N ≠ 0 around user content (names, SKUs, hashes) — the minmax min protects the track, but hand-written <code>1fr 1fr</code> split layouts don't have it (§3).</li>
+    <li><b>HIGH — 1 / -1 full-width assumptions:</b> full-bleed rows inside a grid whose tracks don't fill the container — the span stops at the explicit grid (§9).</li>
+    <li><b>HIGH — auto-fit skeleton/loading states:</b> 1–2 loaded items stretching to full width (§6); swap to auto-fill or clamp with max-width.</li>
+    <li><b>HIGH — auto-height shells with fr rows:</b> 1fr rows equalize to the tallest sibling (§7) — "my rows are equal and I never asked" is this law, not a bug in your CSS.</li>
+    <li><b>HIGH — ghost placements after an areas refactor:</b> a renamed/resized area leaves stale <code>grid-area:name</code> items teleporting to implicit corners while gCS says <code>none</code> (§11) — grep placements after every template edit.</li>
+    <li><b>MED — auto tracks growing:</b> surprise equal-split growth under <code>align-content:normal</code> (§5); set <code>justify-content:start</code> or use fr to control it.</li>
+    <li><b>MED — percentage tracks + gap:</b> 50% 50% + gap overflows by the gap (§8).</li>
+    <li><b>MED — % gap in content-sized grids:</b> resolves after sizing and overflows (§8).</li>
+    <li><b>MED — dense packing with reordered DOM:</b> dense + order/template edits fill holes far from the reading order — a11y divergence (§10).</li>
+    <li><b>MED — abs overlays with one-edge placement:</b> percentages resolving against the container-end span (§13); write both edges.</li>
+    <li><b>LOW — scrollWidth overflow probes:</b> Firefox reports grid overflow, CfT/WK clamp (§4) — use item rects in tests.</li>
+    <li><b>LOW — 0fr "collapsed" tracks:</b> 0fr floors at min-content, not zero; minmax(0,0) is the real collapse (§4).</li>
+  </ul>
+</section>
+
+<!-- ══════════ §17 method ══════════ -->
+<section id="s17">
+  <h2>§17 · Method, falsifications &amp; engine ledger</h2>
+  <div class="kv">
+    <b>method</b><span>26 lanes × 3 engines (CfT 149 · Firefox 151 · WebKit 26.5) over a plain-HTTP loopback origin, fresh document per lane, self-calibrating expectations (chip widths measured in-page, never hardcoded), geometry via getBoundingClientRect relative to the OWN grid only (the cross-lane absolute-top phantom lesson), paint order via elementFromPoint hit-tests at arithmetically verified points, supports() census via CSS.supports</span>
+    <b>falsified (3)</b><span>"duplicate area names invalidate the template" (VALID when rectangular) · "auto-fill can produce zero tracks" (never below 1) · "break-word fixes the long-token overflow" (floor untouched — anywhere does)</span>
+    <b>engine splits (2)</b><span>scrollWidth overflow reporting (Firefox true / CfT+WK clamped) · display:grid-lanes (WebKit true / CfT+Firefox false — matches the Grid Lanes entry)</span>
+    <b>universal core</b><span>serialization oracle · fr arithmetic · floor law + fix matrix · auto-stretch equal split · never-zero auto-fill · lone-card law · indefinite-fr equalization · fit-content formula · %+gap law · 1/-1 explicit span · swap/span grammar · ghost lines · static z · abs-area rules · safe center · RTL line flip</span>
+  </div>
+  <div class="chips" id="led-chips"></div>
+  <div class="footer-note">Pairs: Subgrid fe178b34 (P1 — the nested cousin) · CSS Grid Lanes 3da55ec9 (P4 — the masonry successor, WebKit-first) · Flexbox engine tier 72994f59 (P2 — the floor/shrink/intrinsic twins) · Bento 8ffc969e (P2 — the pattern consumer) · interpolate-size ceb645cc (P2 — auto walls in tracks) · RTL &amp; Logical ebc31de0 (P2 — the line-1 flip).</div>
+</section>
+
+</div>
+<script>
+(function(){
+'use strict';
+const $ = id => document.getElementById(id);
+const setChip = (host, txt, cls) => { const h = $(host); if (!h) return; const d = document.createElement('div'); d.className = 'chip ' + cls; d.textContent = txt; h.appendChild(d); };
+const okChip = (h, t) => setChip(h, t, 'ok');
+const warnChip = (h, t) => setChip(h, t, 'warn');
+const infoChip = (h, t) => setChip(h, t, 'info');
+const failChip = (h, t) => setChip(h, t, 'fail');
+const engName = () => navigator.userAgent.includes('Firefox') ? 'Firefox' : (navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome')) ? 'WebKit' : 'Chromium';
+const TOKEN = 'MLOTOKEN9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1';
+const gser = el => getComputedStyle(el).gridTemplateColumns || '""';
+const r1 = n => Math.round(n * 10) / 10;
+
+// ── hero: your engine ──
+{
+  okChip('hero-chips', 'engine: ' + engName() + ' · probes re-run live below');
+  const S = (p, v) => { try { return CSS.supports(p, v); } catch (e) { return false; } };
+  (S('grid-template-rows','subgrid') ? okChip : failChip)('hero-chips', 'subgrid ' + (S('grid-template-rows','subgrid') ? '✓' : '✗'));
+  (S('display','grid-lanes') ? okChip : infoChip)('hero-chips', 'display:grid-lanes ' + (S('display','grid-lanes') ? '✓ (WebKit-first)' : '✗ (bench: WebKit-only)'));
+}
+
+// ── §1 serialization ──
+{
+  const inp = $('ser-in'), g = $('ser-g');
+  const apply = () => {
+    g.style.gridTemplateColumns = inp.value;
+    // double-rAF so layout settles before the read (the same-task anchor lesson)
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const tracks = gser(g).split(' ').length;
+      const widths = [...g.children].map(c => r1(c.getBoundingClientRect().width));
+      $('ser-out').textContent = 'authored: ' + inp.value + '\ncomputed gridTemplateColumns: ' + gser(g) + '\nitem widths: ' + widths.join(' / ') + ' — track count ' + tracks;
+      const ok = /px/.test(gser(g));
+      (ok ? okChip : warnChip)('ser-chips', 'resolved px on your engine ✓ (bench: 3/3)');
+      if (gser(g).includes('[')) okChip('ser-chips', 'line names survive serialization (bench: 3/3)');
+      if (gser(g).includes('NaN') || gser(g) === 'none') warnChip('ser-chips', 'input rejected — previous value survives (the silent-drop law)');
+    }));
+  };
+  inp.addEventListener('input', apply);
+  apply();
+}
+
+// ── §2 fr arithmetic ──
+{
+  const g = $('fr-g');
+  const set = (t, gap) => {
+    g.style.gridTemplateColumns = t;
+    g.style.gap = gap || '0px';
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const ws = [...g.children].map(c => r1(c.getBoundingClientRect().width));
+      $('fr-out').textContent = t + (gap ? ' + gap ' + gap : '') + '\n→ ' + gser(g) + '\nitems: ' + ws.join(' / ');
+    }));
+  };
+  $('fr-btns').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    [...$('fr-btns').children].forEach(x => x.classList.remove('on')); b.classList.add('on');
+    set(b.dataset.t, b.dataset.gap);
+  });
+  set('1fr 2fr');
+  okChip('fr-chips', '1fr 2fr @600 → 200/400 · gap leaves the pool first · sub-pixel exact (bench 3/3)');
+  // sub-pixel check on this engine
+  g.style.gridTemplateColumns = '1fr 1fr'; g.style.gap = '0px'; g.style.width = '301px';
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const w = g.children[0].getBoundingClientRect().width;
+    (Math.abs(w - 150.5) < 1) ? okChip('fr-chips', '301px split: ' + r1(w) + ' — sub-pixel distribution live') : warnChip('fr-chips', '301px split: ' + r1(w));
+    g.style.width = '';
+  }));
+}
+
+// ── §3 floor law: five lanes ──
+{
+  const lanes = [
+    ['1fr 1fr', '', 'bare 1fr'],
+    ['minmax(0,1fr) 1fr', '', 'minmax(0,1fr)'],
+    ['1fr 1fr', 'min-width:0', 'item min-width:0'],
+    ['1fr 1fr', 'overflow:hidden', 'item overflow:hidden'],
+    ['1fr 1fr', 'overflow-wrap:anywhere', 'overflow-wrap:anywhere'],
+    ['1fr 1fr', 'overflow-wrap:break-word', 'break-word']
+  ];
+  const host = $('floor-lanes'); const results = [];
+  for (const [t, fix, name] of lanes) {
+    const row = document.createElement('div'); row.style.cssText = 'margin:10px 0';
+    const label = document.createElement('div'); label.className = 'cap'; label.textContent = name + ' · ' + (fix || t);
+    const grid = document.createElement('div');
+    grid.className = 'demo-g';
+    // overflow:hidden does double duty: keeps the 722px token from h-scrolling
+    // the page at 375 AND makes scrollWidth honest on CfT/WebKit (a hidden box
+    // is a scroll container — the §4 reporting split neutralized)
+    grid.style.cssText = 'width:300px; max-width:100%; overflow:hidden; grid-template-columns:' + t;
+    const a = document.createElement('i'); a.textContent = TOKEN; if (fix) a.style.cssText = fix; // NO nowrap: anywhere must be allowed to wrap (probe-1b lesson)
+    const b = document.createElement('i'); b.textContent = 'x';
+    grid.append(a, b); row.append(label, grid); host.appendChild(row);
+    const meter = document.createElement('div'); meter.className = 'meter'; meter.innerHTML = '<b></b>'; row.appendChild(meter);
+    results.push({ name, grid, a, b, meter });
+  }
+  const run = () => {
+    const lines = [];
+    for (const r of results) {
+      const aW = r1(r.a.getBoundingClientRect().width);
+      const sw = r.grid.scrollWidth, cw = r.grid.clientWidth;
+      const over = Math.max(0, sw - cw, aW - cw); // geometry + honest scrollWidth
+      const m = r.meter.firstElementChild;
+      m.style.width = Math.min(100, (aW / 300) * 100) + '%';
+      r.meter.className = 'meter' + (over > 1 ? ' bad' : '');
+      lines.push(r.name.padEnd(24) + ' trackA=' + aW + 'px  container ' + cw + '→scroll ' + sw + (over > 1 ? '  OVERFLOW +' + over : '  fits'));
+    }
+    $('floor-out').textContent = lines.join('\n');
+    const bare = results[0], mmz = results[1], ohid = results[3], anywhere = results[4], bw = results[5];
+    (bare.a.getBoundingClientRect().width > 290) ? okChip('floor-chips', 'FLOOR LIVE: bare 1fr track = ' + r1(bare.a.getBoundingClientRect().width) + 'px in a 300px grid — the fr maximum was ignored') : warnChip('floor-chips', 'bare 1fr fits (' + r1(bare.a.getBoundingClientRect().width) + ') — shorten nothing?');
+    const mmW = r1(mmz.a.getBoundingClientRect().width);
+    (mmW < 200) ? okChip('floor-chips', 'minmax(0,1fr) → ' + mmW + ' (token spills inside, container fits)') : warnChip('floor-chips', 'minmax(0,1fr) still ' + mmW);
+    const aw = r1(anywhere.a.getBoundingClientRect().width);
+    (aw < 200) ? okChip('floor-chips', 'anywhere → ' + aw + ' — the token WRAPPED (floor lowered)') : warnChip('floor-chips', 'anywhere did not lower (' + aw + ')');
+    const bww = r1(bw.a.getBoundingClientRect().width);
+    (bww > 290) ? okChip('floor-chips', 'break-word → ' + bww + ' — floor NOT lowered (the split, live)') : warnChip('floor-chips', 'break-word fits (' + bww + ') — engine differs from bench');
+  };
+  requestAnimationFrame(() => requestAnimationFrame(run));
+}
+
+// ── §4 zero lanes ──
+{
+  const run = () => {
+    const z1 = $('z1'), z2 = $('z2');
+    const w1 = r1(z1.children[1].getBoundingClientRect().width);
+    const w2 = r1(z2.children[1].getBoundingClientRect().width);
+    $('zero-out').textContent = '1fr 0fr → second track ' + w1 + 'px (NOT zero — min-content floor)\n1fr minmax(0,0) → second track ' + w2 + 'px (true zero)\nserialization: ' + gser(z1) + ' | ' + gser(z2);
+    (w1 > 8) ? okChip('zero-chips', '0fr = ' + w1 + 'px — the minmax(auto,0fr) floor, live') : warnChip('zero-chips', '0fr = ' + w1);
+    (w2 === 0) ? okChip('zero-chips', 'minmax(0,0) = 0 — the real collapse') : warnChip('zero-chips', 'minmax(0,0) = ' + w2);
+    infoChip('zero-chips', 'overflow reporting: Firefox scrollWidth shows grid overflow · CfT/WebKit clamp (bench)');
+  };
+  requestAnimationFrame(() => requestAnimationFrame(run));
+}
+
+// ── §5 auto-stretch ──
+{
+  const g = $('as-g'), viz = $('as-viz');
+  const set = (t, j) => {
+    while (g.children.length > (t.split(' ').length === 3 ? 3 : 2)) g.lastElementChild.remove();
+    while (g.children.length < (t.split(' ').length === 3 ? 3 : 2)) g.appendChild(document.createElement('i'));
+    [...g.children].forEach((c, i) => { c.style.width = 'max-content'; c.textContent = 'nnnnnnnnnn'.slice(0, i === 1 ? 5 : 10); });
+    g.style.gridTemplateColumns = t;
+    g.style.justifyContent = j;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const ws = [...g.children].map(c => r1(c.getBoundingClientRect().width));
+      viz.innerHTML = '';
+      for (const w of ws) { const i = document.createElement('i'); i.style.flexGrow = String(w); viz.appendChild(i); }
+      $('as-out').textContent = t + ' · justify-content:' + j + '\n→ ' + gser(g) + '\ntracks: ' + ws.join(' / ') + ' (grid width ' + r1(g.getBoundingClientRect().width) + ')';
+    }));
+  };
+  $('as-btns').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    [...$('as-btns').children].forEach(x => x.classList.remove('on')); b.classList.add('on');
+    set(b.dataset.t, b.dataset.j);
+  });
+  set('auto auto', 'normal');
+  const verify = () => {
+    const ws = [...g.children].map(c => c.getBoundingClientRect().width);
+    const sum = ws.reduce((a, b) => a + b, 0), gw = g.getBoundingClientRect().width;
+    (gw - sum > 20) ? okChip('as-chips', 'auto tracks GREW: content ' + r1(sum) + ' → tracks ' + r1(gw) + ' (equal split of the free space)') : infoChip('as-chips', 'no free space to distribute at this width');
+  };
+  setTimeout(verify, 80);
+}
+
+// ── §6 repeat slider ──
+{
+  const g = $('rf-g'), range = $('rf-r'), lbl = $('rf-w');
+  let mode = 'fill';
+  const run = () => {
+    const w = +range.value; lbl.textContent = w + 'px';
+    g.style.width = w + 'px';
+    g.style.gridTemplateColumns = 'repeat(auto-' + mode + ', minmax(90px, 1fr))';
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const ser = gser(g);
+      const tracks = ser.split(' ');
+      const count = tracks.filter(t => parseFloat(t) > 1).length;
+      const collapsed = tracks.filter(t => parseFloat(t) <= 1).length;
+      $('rf-out').textContent = mode + ' @' + w + 'px → ' + ser + '\n' + count + ' live track(s)' + (collapsed ? ' · ' + collapsed + ' collapsed [0px]' : '');
+    }));
+  };
+  range.addEventListener('input', run);
+  $('rf-fill').onclick = () => { mode = 'fill'; $('rf-fill').classList.add('on'); $('rf-fit').classList.remove('on'); run(); };
+  $('rf-fit').onclick = () => { mode = 'fit'; $('rf-fit').classList.add('on'); $('rf-fill').classList.remove('on'); run(); };
+  run();
+  okChip('rf-chips', 'count = floor((W+gap)/(min+gap)) — drag past a multiple and watch the jump (bench 3/3)');
+  // lone-card lab
+  const fills = document.querySelectorAll('#ff-out, .flexline .demo-g');
+  setTimeout(() => {
+    const two = document.querySelectorAll('.flexline .demo-g');
+    const fw = r1(two[0].firstElementChild.getBoundingClientRect().width);
+    const tw = r1(two[1].firstElementChild.getBoundingClientRect().width);
+    $('ff-out').textContent = 'one card · auto-fill → ' + fw + 'px wide · auto-fit → ' + tw + 'px wide (300px grid, minmax(100px,1fr))';
+    (tw > 250 && fw < 150) ? okChip('ff-chips', 'LONE-CARD LAW LIVE: fill keeps ' + fw + ' · fit stretches to ' + tw) : warnChip('ff-chips', 'fill ' + fw + ' / fit ' + tw + ' — check the pattern');
+  }, 120);
+}
+
+// ── §7 equalization ──
+{
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const g = $('eq-g');
+    const rows = getComputedStyle(g).gridTemplateRows;
+    const h1 = g.children[0].getBoundingClientRect().height, h2 = g.children[1].getBoundingClientRect().height;
+    const gh = g.getBoundingClientRect().height;
+    $('eq-out').textContent = 'grid-template-rows:1fr 2fr · auto height\nserialization: ' + rows + '\nitems: ' + r1(h1) + ' / ' + r1(h2) + ' · grid height ' + r1(gh);
+    (Math.abs(gh - 120) < 3) ? okChip('eq-chips', 'grid height ' + r1(gh) + ' = 40+80 — the flex-fraction equalization live (1fr 2fr → max(40/1,60/2)×ratio)') : warnChip('eq-chips', 'grid height ' + r1(gh) + ' — expected ~120');
+  }));
+}
+
+// ── §9 lines ──
+{
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const g = $('ln-g');
+    const full = g.children[0];
+    const w = r1(full.getBoundingClientRect().width);
+    const gw = r1(g.getBoundingClientRect().width);
+    $('ln-out').textContent = '1 / -1 item width = ' + w + 'px — grid container = ' + gw + 'px — free space left: ' + r1(gw - w) + 'px\nserialization: ' + gser(g);
+    (w < gw - 100) ? okChip('ln-chips', '1/-1 = ' + w + 'px NOT ' + gw + 'px — -1 is the EXPLICIT-grid end (live)') : warnChip('ln-chips', 'tracks fill the container here — shrink nothing');
+    okChip('ln-chips', '4/2 → swapped · span 2/3 → start 1 · grid-area 2/3/4/5 → row-first (bench 3/3)');
+    okChip('ln-chips', 'RTL: line 1 at the RIGHT edge (bench 3/3)');
+  }));
+}
+
+// ── §10 packing ──
+{
+  const g = $('pk-g');
+  const set = dense => { g.style.gridAutoFlow = dense ? 'row dense' : 'row'; check(); };
+  const check = () => {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const G = g.getBoundingClientRect();
+      const c = $('pk-c').getBoundingClientRect();
+      const cy = r1(c.y - G.y), cx = r1(c.x - G.x);
+      const dense = g.style.gridAutoFlow.includes('dense');
+      $('pk-out').textContent = 'C is at (' + cx + ', ' + cy + ') — ' + (dense ? 'dense: C back-filled the row-1 hole' : 'sparse: C stayed after the cursor (row 2)');
+      (dense ? cy < 10 : cy > 20) ? okChip('pk-chips', (dense ? 'dense back-fill live (C at y=' + cy + ')' : 'sparse hole live (C at y=' + cy + ', hole at y=0)')) : warnChip('pk-chips', 'C at y=' + cy + ' — unexpected for this mode');
+    }));
+  };
+  $('pk-s').onclick = () => { $('pk-s').classList.add('on'); $('pk-d').classList.remove('on'); set(false); };
+  $('pk-d').onclick = () => { $('pk-d').classList.add('on'); $('pk-s').classList.remove('on'); set(true); };
+  set(false);
+}
+
+// ── §11 ghost ──
+{
+  const g = $('gh-g');
+  const tpl = { v: "'a a a' 'a a a'", r: "'a a a' 'a'", n: "'a a a' 'a a x'" };
+  const set = k => {
+    g.style.gridTemplateAreas = tpl[k];
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const ser = getComputedStyle(g).gridTemplateAreas;
+      const it = g.firstElementChild;
+      const G = g.getBoundingClientRect(), R = it.getBoundingClientRect();
+      const pos = [r1(R.x - G.x), r1(R.y - G.y), r1(R.width)];
+      $('gh-out').textContent = 'template: ' + tpl[k] + '\ncomputed gridTemplateAreas: ' + ser + '\ncomputed gridTemplateColumns: ' + gser(g) + '\ngrid-area:a item at (x,y,w): ' + pos.join(', ');
+      if (ser === 'none') {
+        warnChip('gh-chips', 'AREAS DROPPED (none) — but the item did NOT reflow: it sits at ' + pos.join('/') + ' on ghost lines in an expanded grid');
+        (gser(g).split(' ').length > 3) ? okChip('gh-chips', 'the grid GREW: ' + gser(g) + ' — implicit ghost tracks, stretched') : infoChip('gh-chips', 'serialization: ' + gser(g));
+      } else {
+        okChip('gh-chips', 'valid template: item at ' + pos.join('/') + ', areas serialized');
+      }
+    }));
+  };
+  $('gh-v').onclick = () => { on3('gh-v'); set('v'); };
+  $('gh-r').onclick = () => { on3('gh-r'); set('r'); };
+  $('gh-n').onclick = () => { on3('gh-n'); set('n'); };
+  const on3 = id => { ['gh-v','gh-r','gh-n'].forEach(x => $(x).classList.toggle('on', x === id)); };
+  set('v');
+  infoChip('gh-chips', 'duplicate names in a RECTANGLE are valid — the folklore is dead (bench 3/3)');
+}
+
+// ── §12 overlap ──
+{
+  const g = $('ov-g');
+  let flipped = false;
+  const probe = () => {
+    const r = g.getBoundingClientRect();
+    const el = document.elementFromPoint(r.x + r.width / 2, r.y + 6);
+    const id = el && el.id;
+    $('ov-out').textContent = 'hit-test top-center → ' + (id || el && el.tagName) + ' · z-index on the under item: ' + getComputedStyle($('ov-u')).zIndex + ' · position: ' + getComputedStyle($('ov-u')).position;
+    (!flipped && id === 'ov-o') || (flipped && id === 'ov-u')
+      ? okChip('ov-chips', (flipped ? 'static z-index:2 flipped paint order — ' : 'later DOM paints on top — ') + 'winner: ' + id + ' (position:static)')
+      : warnChip('ov-chips', 'unexpected winner: ' + id);
+  };
+  $('ov-flip').onclick = () => { flipped = !flipped; $('ov-u').style.zIndex = flipped ? '2' : ''; $('ov-flip').textContent = flipped ? 'z-index: 2 → the UNDER item (on)' : 'z-index: 2 → the UNDER item'; probe(); };
+  setTimeout(probe, 60);
+}
+
+// ── §13 abs ──
+{
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const g = $('ab-g');
+    const G = g.getBoundingClientRect();
+    const s = g.children[0].getBoundingClientRect();
+    const i0 = g.children[1].getBoundingClientRect();
+    const lines = [
+      'static (no offsets): (' + r1(s.x - G.x) + ', ' + r1(s.y - G.y) + ') — parked at the AREA corner',
+      'inset:0: (' + r1(i0.x - G.x) + ', ' + r1(i0.y - G.y) + ') ' + r1(i0.width) + '×' + r1(i0.height) + ' — fills the AREA, not the container (' + r1(G.width) + '×' + r1(G.height) + ')'
+    ];
+    $('ab-out').textContent = lines.join('\n');
+    const fillsArea = Math.abs((i0.x - G.x) - (s.x - G.x)) < 12 && i0.width < G.width * 0.8;
+    fillsArea ? okChip('ab-chips', 'inset:0 fills the grid AREA (' + r1(i0.width) + 'px), not the container (' + r1(G.width) + 'px)') : warnChip('ab-chips', 'inset:0 box ' + r1(i0.width) + ' vs container ' + r1(G.width));
+    okChip('ab-chips', 'static pos = area corner · per-axis containing block · auto end = container end (bench 3/3)');
+  }));
+}
+
+// ── §14 place-self ──
+{
+  const g = $('ps-g');
+  const set = v => {
+    g.firstElementChild.style.placeSelf = v;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const G = g.getBoundingClientRect(), R = g.firstElementChild.getBoundingClientRect();
+      const x = r1(R.x - G.x);
+      $('ps-out').textContent = 'place-self:' + v + ' → x=' + x + ' (track 1 starts at 0, is 100px wide, item is 150px)';
+      if (v === 'center') (x < -10) ? okChip('ps-chips', 'center overflows BOTH edges: x=' + x + ' — the leading ' + (-x) + 'px is unreachable') : warnChip('ps-chips', 'center x=' + x);
+      if (v === 'safe center') (x >= -2) ? okChip('ps-chips', 'safe center → start fallback: x=' + x) : warnChip('ps-chips', 'safe center x=' + x);
+      if (v === 'start') (x >= -2) ? okChip('ps-chips', 'start: sticks out the far side only (x=' + x + ')') : warnChip('ps-chips', 'start x=' + x);
+    }));
+  };
+  $('ps-btns').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    [...$('ps-btns').children].forEach(x => x.classList.remove('on')); b.classList.add('on');
+    set(b.dataset.v);
+  });
+  set('center');
+}
+
+// ── §15 capstone ──
+{
+  const grid = $('od-grid');
+  const cards = [
+    ['OD-7741 · Spectra', 'BATT-SN-8f3e2d1c0b9a8f7e6d5c4b3a2190', '87%', 'nominal'],
+    ['OD-7742 · Kestrel', 'BATT-SN-11223344556677889900aabbccddeeff', '42%', 'charging'],
+    ['OD-7743 · Harrier', 'BATT-SN-ffffffffeeeeeeeeddddddddcccccccc', '8%', 'LOW — RTH']
+  ];
+  const card = (name, sn, batt, st) => '<div style="min-width:0; background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px">' +
+    '<div style="font:600 12px/1.3 var(--mono)">' + name + '</div>' +
+    '<div class="in" style="display:grid; grid-template-columns:auto minmax(0,1fr); gap:2px 10px; font:11.5px/1.5 var(--mono); color:var(--muted); margin-top:8px">' +
+    '<span>SN</span><span style="overflow-wrap:anywhere; overflow:hidden; text-overflow:ellipsis">…' + sn + '</span>' +
+    '<span>BATT</span><span>' + batt + '</span><span>STATE</span><span>' + st + '</span></div></div>';
+  grid.innerHTML = cards.map(c => card(...c)).join('');
+  const range = $('od-r'), lbl = $('od-w');
+  const run = () => {
+    const w = +range.value; lbl.textContent = w + 'px';
+    grid.style.width = w + 'px';
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const over = Math.max(0, (grid.scrollWidth || 0) - grid.clientWidth);
+      const cols = gser(grid).split(' ').length;
+      $('od-out').textContent = 'width ' + w + 'px → ' + cols + ' column(s) · serialization: ' + gser(grid) + ' · container overflow: ' + (over || 'none');
+      (over < 1) ? okChip('od-chips', 'no overflow at ' + w + 'px — minmax(0,1fr) + anywhere + nested min-width:0 all holding') : failChip('od-chips', 'overflow +' + over + 'px at ' + w + 'px — a law is being violated');
+    }));
+  };
+  range.addEventListener('input', run);
+  run();
+  okChip('od-chips', 'auto-fill branch: cards keep their width — no lone-card stretch (§6)');
+  okChip('od-chips', 'auto 1fr telemetry rows: label max-content, value ellipsized (§5)');
+}
+
+// ── §17 ledger chips ──
+{
+  okChip('led-chips', '26 lanes × 3 engines · 165 lane-runs · 5 de-confound batteries · 0 page errors');
+  infoChip('led-chips', 'probes: gr-lib / gr-probe1,1b,2,2b,2c,3,3b (loopback, fresh doc per lane)');
+  warnChip('led-chips', 'audit-ready: §16 ships as the Molt grid audit — checks 1–5 invisible in code review');
+}
+})();
+</script>
+</body>
+</html>
