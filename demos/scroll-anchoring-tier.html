@@ -1,0 +1,795 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSS Scroll Anchoring — the overflow-anchor tier: the insert-vs-mutate wall, the origin law &amp; the snap row-loss split</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --ink:#161513; --muted:#6d675f; --line:#e6e1d9;
+    --accent:#0e6b5c; --accent-soft:#e9f5f2; --ok:#1c6b47; --ok-soft:#eaf6ef;
+    --warn:#8a6100; --warn-soft:#fdf6e3; --fail:#a32b1c; --fail-soft:#fdeceb;
+    --info:#2a5a8a; --info-soft:#ecf3fa; --radius:14px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 24px 96px}
+  header{margin-bottom:28px}
+  .kicker{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  h1{font-size:clamp(26px,4vw,36px);line-height:1.14;letter-spacing:-.022em;margin:0 0 12px;font-weight:680}
+  .lede{font-size:15.5px;color:#403b35;margin:0 0 10px;max-width:66ch}
+  .meta{font:13px/1.5 var(--mono);color:var(--muted);margin-top:18px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px;margin-bottom:24px}
+  h2{font-size:21px;line-height:1.3;margin:0 0 6px;letter-spacing:-.012em;font-weight:660}
+  h3{font-size:15px;margin:22px 0 8px;font-weight:640}
+  .sub{color:var(--muted);font-size:14.5px;margin:0 0 18px;max-width:70ch}
+  code,kbd{font-family:var(--mono);font-size:.885em;background:#f3efe9;padding:.12em .38em;border-radius:5px;border:1px solid #e8e2d8;overflow-wrap:anywhere}
+  .law{border-left:3px solid var(--accent);padding:12px 0 12px 16px;margin:16px 0;background:linear-gradient(90deg,var(--accent-soft),transparent 70%);border-radius:0 8px 8px 0}
+  .law b{color:var(--accent)}
+  .law.bad{border-color:var(--fail);background:linear-gradient(90deg,var(--fail-soft),transparent 70%)}
+  .law.bad b{color:var(--fail)}
+  .law.warn{border-color:var(--warn);background:linear-gradient(90deg,var(--warn-soft),transparent 70%)}
+  .law.warn b{color:var(--warn)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+  .chip{font:600 12px/1.35 var(--mono);padding:6px 10px;border-radius:999px;border:1px solid;white-space:normal;overflow-wrap:anywhere;max-width:100%}
+  .chip.ok{color:var(--ok);border-color:#b9dfca;background:var(--ok-soft)}
+  .chip.warn{color:var(--warn);border-color:#ecd9a3;background:var(--warn-soft)}
+  .chip.fail{color:var(--fail);border-color:#f0c2bc;background:var(--fail-soft)}
+  .chip.info{color:var(--info);border-color:#bfd6ee;background:var(--info-soft)}
+  .chip.pending{color:var(--muted);border-color:var(--line);background:#f6f4f1}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0 4px}
+  th{font:600 12px/1.4 var(--mono);text-align:left;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+  th,td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
+  td.v{font-family:var(--mono);font-size:12.5px;overflow-wrap:anywhere}
+  .lab{border:1px dashed #d8d1c4;border-radius:10px;padding:14px;margin:12px 0;background:#fdfcf9}
+  .lab .cap{font:600 11.5px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  .out{font:12.5px/1.55 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f4f1;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:10px;color:#3d382f}
+  .sc{width:100%;max-width:340px;height:220px;overflow:auto;border:1px solid #c9c2b4;border-radius:8px;background:#fff}
+  .row{height:34px;display:flex;align-items:center;padding:0 10px;border-bottom:1px dashed #e4ddcf;font:600 11px/1.2 var(--mono);color:#57524a;white-space:nowrap;overflow:hidden}
+  .row.new{background:var(--accent-soft);color:var(--accent)}
+  .row.imgrow{background:#f3efe9}
+  .btnrow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+  button{font:600 12.5px/1 var(--mono);color:var(--accent);background:#fff;border:1px solid #bfd6cd;border-radius:8px;padding:9px 12px;cursor:pointer}
+  button:hover{background:var(--accent-soft)}
+  button:disabled{opacity:.45;cursor:default}
+  .kv{display:flex;flex-wrap:wrap;gap:6px 14px;font:12px/1.5 var(--mono);color:var(--muted);margin-top:8px}
+  .kv b{color:var(--ink);font-weight:640;overflow-wrap:anywhere}
+  .cols{display:flex;flex-wrap:wrap;gap:14px}
+  .cols>div{flex:1 1 260px;min-width:0}
+  .pill{display:inline-block;font:600 11px/1 var(--mono);padding:4px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted);margin-left:8px;vertical-align:2px}
+  .ledger td{font-size:12.5px}
+  .note{font-size:13.5px;color:var(--muted);margin-top:10px;max-width:70ch}
+  li{overflow-wrap:anywhere}
+  ol.audit{font-size:14.5px;line-height:1.75;padding-left:22px;max-width:72ch}
+  ol.audit li b{font-weight:660}
+  ol.audit .hi{color:var(--fail);font-weight:660}
+  ol.audit .md{color:var(--warn);font-weight:640}
+  .snaprow{height:30px;display:flex;align-items:center;padding:0 10px;border-bottom:1px dashed #e4ddcf;font:600 10.5px/1.2 var(--mono);scroll-snap-align:start}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">Molt Research · engine tier · live-probed 2026-11-08</div>
+  <h1>CSS Scroll Anchoring — the <code>overflow-anchor</code> tier</h1>
+  <p class="lede">The browser's built-in "don't move what I'm reading" mechanism: when content changes <em>above</em> the viewport, the engine quietly adjusts the scroll offset to keep the visible content still. Shipped in Chromium since 56 and Firefox since 66 — and newly in <b>Safari 27 (Sept 2026)</b>, which finally made it Baseline. Zero prior coverage in the 450-entry catalog: not one passing mention.</p>
+  <p class="lede">Probed live in CfT 149 · Firefox 151 · WebKit 26.5 (the Playwright WebKit build already carries the Safari 27 implementation) over a plain-HTTP loopback origin, fresh document per lane, ~90 lane-runs. Every law below re-measures itself in <b>your</b> browser on this page.</p>
+  <div class="meta">THE HEADLINES: the insert-vs-mutate wall · the origin law · the path suppression triggers · the inline-axis void · the snap row-loss split (WebKit) · the priority void (spec'd but shipped nowhere)</div>
+  <div class="chips" id="chips-header"></div>
+</header>
+
+<section id="s1">
+  <h2>§1 Support census — and the Safari hole<span class="pill">surface</span></h2>
+  <p class="sub">The property grammar is two keywords: <code>overflow-anchor: auto | none</code>. It applies to all elements, is <b>not</b> inherited, and has no JavaScript surface at all — no API, no event, no anchor-node readback. The only observable is behavior: the scroll offset itself.</p>
+  <table>
+    <tr><th>check</th><th>CfT 149</th><th>FF 151</th><th>WK 26.5</th><th>spec</th></tr>
+    <tr><td><code>CSS.supports('overflow-anchor','auto')</code></td><td class="v">true</td><td class="v">true</td><td class="v">true</td><td class="v">parses</td></tr>
+    <tr><td><code>CSS.supports('overflow-anchor','none')</code></td><td class="v">true</td><td class="v">true</td><td class="v">true</td><td class="v">parses</td></tr>
+    <tr><td><code>CSS.supports('overflow-anchor','bogus')</code></td><td class="v">false</td><td class="v">false</td><td class="v">false</td><td class="v">rejected</td></tr>
+    <tr><td>gCS initial value (any element)</td><td class="v">auto</td><td class="v">auto</td><td class="v">auto</td><td class="v">auto</td></tr>
+    <tr><td>behavioral: insert-above adjusts scroll</td><td class="v">+40 exact</td><td class="v">+40 exact</td><td class="v">+40 exact</td><td class="v">adjusts</td></tr>
+    <tr><td>BCD / caniuse first versions</td><td class="v" colspan="3">Chrome 56 (2017) · Firefox 66 (2019) · <b>Safari 27 (2026)</b> — Safari ≤26 ships NO anchoring</td><td class="v">—</td></tr>
+  </table>
+  <div class="law"><b>THE SAFARI HOLE.</b> Until Safari 27 rolls out, every iPhone and every default-config Mac browser on ≤26 gets <b>zero</b> scroll anchoring — the same feed that never jumps in Chrome jumps on Safari, and <code>CSS.supports('overflow-anchor','auto')</code> is the honest gate (it returns <code>false</code> there — the parse follows the implementation).</div>
+  <div class="chips" id="chips-1"></div>
+</section>
+
+<section id="s2">
+  <h2>§2 THE INSERT LAW — node insertion above the anchor adjusts the scroll, exactly<span class="pill">the core</span></h2>
+  <p class="sub">Insert a 34px row above the viewport of a scrolled feed: every engine moves <code>scrollTop</code> by exactly +34 — the visible rows do not move a single pixel. This is the mechanism, and it is <b>free</b>: no listener, no resize observer, no manual compensation. Insert 3 rows in one <code>DocumentFragment</code> → one combined +102 adjustment.</p>
+  <div class="lab">
+    <div class="cap">live lab — feed scrolled mid; insert above</div>
+    <div class="cols">
+      <div><div class="sc" id="sc2"></div></div>
+      <div>
+        <div class="btnrow">
+          <button id="b2a">insert 34px row</button>
+          <button id="b2b">insert 60px banner</button>
+          <button id="b2c">insert 3-row fragment</button>
+          <button id="b2r">reset feed</button>
+        </div>
+        <div class="out" id="out2">— run a button —</div>
+      </div>
+    </div>
+  </div>
+  <div class="law"><b>THE BATCH LAW.</b> One fragment of N nodes = <b>one</b> adjustment of the combined height. Batch your prepends.</div>
+  <div class="chips" id="chips-2"></div>
+</section>
+
+<section id="s3">
+  <h2>§3 THE ORIGIN LAW — at scroll zero there is no anchor<span class="pill">the floor</span></h2>
+  <p class="sub">The selection algorithm's second step: if the scroller "is not scrolled away from the origin of its scrolling area in its block flow direction, do not select an anchor node." At <code>scrollTop&nbsp;0</code> nothing is above the viewport, so no anchor is selected — and a zero scroll offset is <i>also</i> a suppression trigger. Inserting above content you haven't scrolled past simply grows the page downward.</p>
+  <div class="lab">
+    <div class="cap">live lab — feed pinned to top; insert above</div>
+    <div class="cols">
+      <div><div class="sc" id="sc3"></div></div>
+      <div>
+        <div class="btnrow"><button id="b3">insert 34px row at top</button><button id="b3r">reset</button></div>
+        <div class="out" id="out3">scrollTop stays 0 — the new row is just visible at the top</div>
+      </div>
+    </div>
+  </div>
+  <div class="law"><b>Consequence for tests:</b> any e2e lane that asserts anchoring must first scroll <em>past</em> zero — at the origin the no-op is spec-correct, not a bug.</div>
+  <div class="chips" id="chips-3"></div>
+</section>
+
+<section id="s4">
+  <h2>§4 THE MUTATION WALL — insertions anchor, geometry changes on the anchor's path do not<span class="pill">the trap</span></h2>
+  <p class="sub">The spec's <b>suppression triggers</b>: a computed-value change of <code>top/left/right/bottom · margin · padding · width/height/min-*/max-* · position · transform</code> on any element on the path from the anchor to the scroller suppresses that window's adjustment. The non-obvious half: the trigger list only covers the <b>anchor's ancestor path</b>. A sibling above the viewport growing does <i>not</i> trigger — it adjusts. A wrapper <i>around</i> the viewport content growing does trigger — content visibly jumps.</p>
+  <table>
+    <tr><th>lane (all shift content +60px)</th><th>mechanism</th><th>CfT</th><th>FF</th><th>WK</th></tr>
+    <tr><td>insert new node above viewport</td><td class="v">insertion</td><td class="v">+60 ✓</td><td class="v">+60 ✓</td><td class="v">+60 ✓</td></tr>
+    <tr><td>sibling above grows (height 40→100)</td><td class="v">mutation, non-path</td><td class="v">+60 ✓</td><td class="v">+60 ✓</td><td class="v">+60 ✓</td></tr>
+    <tr><td>sibling above grows (margin +60)</td><td class="v">mutation, non-path</td><td class="v">+60 ✓</td><td class="v">+60 ✓</td><td class="v">+60 ✓</td></tr>
+    <tr><td><b>wrapper around the rows grows padding</b></td><td class="v">mutation, ON path</td><td class="v"><b>0 — JUMP</b></td><td class="v"><b>0 — JUMP</b></td><td class="v"><b>0 — JUMP</b></td></tr>
+    <tr><td><b>wrapper gets translateY(60px)</b></td><td class="v">mutation, ON path</td><td class="v"><b>0 — 60px visual jump</b></td><td class="v"><b>0 — 60px visual jump</b></td><td class="v"><b>0 — 60px visual jump</b></td></tr>
+  </table>
+  <div class="lab">
+    <div class="cap">live lab — four lanes, same +60 shift, different fates</div>
+    <div class="cols">
+      <div><div class="sc" id="sc4"></div></div>
+      <div>
+        <div class="btnrow">
+          <button id="b4a">A: insert node</button>
+          <button id="b4b">B: grow sibling</button>
+          <button id="b4c">C: grow wrapper (path)</button>
+          <button id="b4d">D: translateY wrapper</button>
+          <button id="b4r">reset</button>
+        </div>
+        <div class="out" id="out4">A and B adjust +60; C and D jump 60px with zero compensation</div>
+      </div>
+    </div>
+  </div>
+  <div class="law bad"><b>THE PATH-MUTATION WALL.</b> "Anchoring keeps my page still" is only true for <b>insertions</b> and <b>non-path mutations</b>. Grow, pad, margin or transform any element that <b>contains</b> the viewport content and the engine deliberately refuses to compensate — your content visibly jumps, 3/3 engines. Every "expandable section above the fold" and every "revealed-by-transform" panel hits this.</div>
+  <div class="chips" id="chips-4"></div>
+</section>
+
+<section id="s5">
+  <h2>§5 THE INLINE-AXIS VOID &amp; THE BLOCK-FLOW LAW<span class="pill">axes</span></h2>
+  <p class="sub">Anchoring compensates movement along the <b>block-flow axis only</b>. In a normal <code>horizontal-tb</code> overflow-x scroller, inserting at the inline start (the left) shifts every item 60px with <b>zero</b> compensation. Rotate the writing mode — <code>vertical-rl</code>, where block flow is horizontal — and the same insertion at block start adjusts <code>scrollLeft</code> by exactly −60 (negative coordinates, the RTL-style axis), 3/3 engines.</p>
+  <div class="lab">
+    <div class="cap">live lab — left: horizontal-tb inline insert (no compensation) · right: vertical-rl block insert (compensates)</div>
+    <div class="cols">
+      <div>
+        <div class="sc" id="sc5a" style="height:90px;white-space:nowrap"></div>
+        <div class="btnrow"><button id="b5a">insert 60px at inline start</button></div>
+        <div class="out" id="out5a">scrollLeft unchanged</div>
+      </div>
+      <div>
+        <div class="sc" id="sc5b" style="writing-mode:vertical-rl;height:150px"></div>
+        <div class="btnrow"><button id="b5b">insert 60px at block start</button></div>
+        <div class="out" id="out5b">scrollLeft adjusts by the column width</div>
+      </div>
+    </div>
+  </div>
+  <div class="law"><b>THE INLINE VOID.</b> Horizontal carousels and timeline strips get no anchoring in <code>horizontal-tb</code> — the block-flow axis is vertical there. The axis follows the writing mode, not the scroll direction.</div>
+  <div class="chips" id="chips-5"></div>
+</section>
+
+<section id="s6">
+  <h2>§6 THE IMAGE LAW — the motivating case, measured<span class="pill">CLS</span></h2>
+  <p class="sub">Scroll anchoring was invented for this: an unsized <code>&lt;img&gt;</code> above the viewport finishes loading, its height goes 0→150, and the article you're reading would traditionally jump 150px. Measured: the engine compensates <b>exactly +150</b> on all three. The twin lane reserves the box upfront (<code>width/height</code> in CSS) — then loading changes nothing, and correctly nothing is adjusted. Two ways to have a stable page: reserve space, or let anchoring eat the shift.</p>
+  <div class="lab">
+    <div class="cap">live lab — two scrollers, identical SVG image loading above the viewport</div>
+    <div class="cols">
+      <div>
+        <div class="sc" id="sc6a"></div>
+        <div class="kv"><span>unsized: <b id="k6a">pending</b></span></div>
+      </div>
+      <div>
+        <div class="sc" id="sc6b"></div>
+        <div class="kv"><span>reserved: <b id="k6b">pending</b></span></div>
+      </div>
+    </div>
+    <div class="btnrow"><button id="b6">load both images now</button><button id="b6r">reset</button></div>
+  </div>
+  <div class="law"><b>Reserve-space still wins</b> for anything you control (dimensions on media, skeletons) — anchoring is the safety net for everything you don't.</div>
+  <div class="chips" id="chips-6"></div>
+</section>
+
+<section id="s7">
+  <h2>§7 THE EXCLUSION GRAMMAR — <code>none</code> poisons the subtree, and <code>auto</code> cannot rescue it<span class="pill">opt-out</span></h2>
+  <p class="sub">The property is <b>not inherited</b> — a child of a <code>none</code> element reads <code>auto</code> in <code>getComputedStyle</code> — but the anchor-selection rule walks the <b>ancestor chain</b>: "C is not viable if any ancestor up to the scroller is in an excluded subtree." So <code>auto</code> on a leaf inside a <code>none</code> subtree is inert: measured, the leaf's own subtree shift is uncompensated on all three engines. And <code>none</code> on the scroller itself is the kill switch for the whole box.</p>
+  <table>
+    <tr><th>declaration site</th><th>effect</th><th>CfT/FF/WK</th></tr>
+    <tr><td><code>.scroller { overflow-anchor:none }</code></td><td class="v">no anchor selected — anchoring dead for the box</td><td class="v">dead ✓ (measured)</td></tr>
+    <tr><td><code>.wrapper { overflow-anchor:none }</code> around rows</td><td class="v">wrapper + descendants not anchor candidates — anchor moves outside or dies</td><td class="v">excluded ✓</td></tr>
+    <tr><td><code>.leaf { overflow-anchor:auto }</code> inside a <code>none</code> wrapper</td><td class="v"><b>cannot rescue</b> — ancestor-chain exclusion wins</td><td class="v">still excluded ✓</td></tr>
+    <tr><td>child of a <code>none</code> element — gCS read</td><td class="v">reads <code>auto</code> (not inherited) while behaviorally excluded</td><td class="v">auto ✓</td></tr>
+  </table>
+  <div class="law warn"><b>THE NOT-INHERITED-BUT-POISONED SPLIT.</b> Reading <code>getComputedStyle(el).overflowAnchor === 'auto'</code> tells you nothing about whether <code>el</code> can anchor — an ancestor's <code>none</code> excludes it invisibly. There is no API that reports the effective state.</div>
+  <div class="chips" id="chips-7"></div>
+</section>
+
+<section id="s8">
+  <h2>§8 THE NESTED RE-ARM — descendant scrollers turn anchoring back on<span class="pill">nesting</span></h2>
+  <p class="sub">The spec note: it is not possible to turn anchoring back on for descendants of a <code>none</code> element — <b>except descendant scroll containers</b>, which automatically re-enable anchoring for their own scrolling box unless they too declare <code>none</code>. Measured: outer document <code>none</code>, inner scroller still adjusts its own inserts, 3/3.</p>
+  <div class="lab">
+    <div class="cap">live lab — outer region styled overflow-anchor:none; inner scroller still anchors</div>
+    <div id="outer8" style="overflow-anchor:none;border:1px dashed #d8d1c4;border-radius:10px;padding:10px">
+      <div class="sc" id="sc8"></div>
+      <div class="kv" style="margin-top:8px"><span>outer region: <b>overflow-anchor:none</b> · inner scroller: <b id="k8">pending</b></span></div>
+    </div>
+    <div class="btnrow"><button id="b8">insert above inside the inner scroller</button><button id="b8r">reset</button></div>
+  </div>
+  <div class="chips" id="chips-8"></div>
+</section>
+
+<section id="s9">
+  <h2>§9 THE NOISY ADJUSTMENT — anchoring fires real scroll events<span class="pill">events</span></h2>
+  <p class="sub">Spec: the adjustment "is a type of scrolling… and generates scroll events." Confirmed 3/3 — your <code>scroll</code> listener fires for an adjustment the user never performed, and <code>scrollend</code> fires too. Engine detail: Chromium sometimes splits one adjustment into <b>two</b> scroll events (stable 2-of-1 on a fragment batch, ×3 reps; 1 with timeout settle), Firefox and WebKit fire exactly one. An <b>animated</b> insertion (CSS keyframes height 0→60) is tracked frame-by-frame: ~18–19 scroll events over a 300ms growth, 3/3 — the adjustment is continuous, not a single settle-at-end jump.</p>
+  <div class="lab">
+    <div class="cap">live lab — event counters on one scroller</div>
+    <div class="cols">
+      <div><div class="sc" id="sc9"></div></div>
+      <div>
+        <div class="btnrow">
+          <button id="b9a">insert (count events)</button>
+          <button id="b9b">animated insert</button>
+          <button id="b9r">reset</button>
+        </div>
+        <div class="out" id="out9">scroll/scrollend counters appear here</div>
+      </div>
+    </div>
+  </div>
+  <div class="law warn"><b>Instrumentation hazard:</b> scroll-rate analytics, "user is reading" heuristics and infinite-scroll triggers all see anchoring adjustments as user scrolls. There is no flag on the event — <code>isTrusted</code> is <code>true</code>. Guard with a DOM-mutation window (e.g. ignore scroll events within one frame of a <code>MutationObserver</code> batch).</div>
+  <div class="chips" id="chips-9"></div>
+</section>
+
+<section id="s10">
+  <h2>§10 THE SNAP ROW-LOSS SPLIT — WebKit re-snaps a row early<span class="pill">engine split</span></h2>
+  <p class="sub">In a <code>scroll-snap-type:y mandatory</code> scroller, spec says anchoring is "limited to adjustments that would be allowed by re-snapping." Measured with row-identity (which row tops the viewport after a 60px insert above): Chromium and Firefox adjust +60 and re-land on the <b>same row</b> (800→860, row 20→row 20, ×3 stable). WebKit lands one row earlier (800→820, row 20→row 19, ×3 stable) — the same insert silently eats a row of content on the WebKit family inside snap containers.</p>
+  <table>
+    <tr><th>engine</th><th>scrollTop</th><th>row at top</th><th>same row?</th></tr>
+    <tr><td>CfT 149</td><td class="v">800 → 860</td><td class="v">20 → 20</td><td class="v">✓ keeps</td></tr>
+    <tr><td>Firefox 151</td><td class="v">800 → 860</td><td class="v">20 → 20</td><td class="v">✓ keeps</td></tr>
+    <tr><td><b>WebKit 26.5</b></td><td class="v">800 → <b>820</b></td><td class="v">20 → <b>19</b></td><td class="v"><b>✗ loses a row</b></td></tr>
+    <tr><td>Safari ≤26 (no anchoring)</td><td class="v">800 → 820 (re-snap only)</td><td class="v">20 → 19</td><td class="v">✗ observably identical</td></tr>
+  </table>
+  <div class="lab">
+    <div class="cap">live lab — mandatory snap; watch which row tops the box</div>
+    <div class="cols">
+      <div><div class="sc" id="sc10" style="scroll-snap-type:y mandatory"></div></div>
+      <div>
+        <div class="btnrow"><button id="b10">insert 60px above</button><button id="b10r">reset</button></div>
+        <div class="out" id="out10">row identity + scroll readout here</div>
+      </div>
+    </div>
+  </div>
+  <div class="law bad"><b>THE ROW-LOSS SPLIT.</b> Inside snap containers the WebKit family loses a row per above-insert — and the no-anchoring Safari ≤26 path lands on the <b>same observable</b> via pure re-snap. On the wire they are indistinguishable; both are "your carousel ate a card."</div>
+  <div class="chips" id="chips-10"></div>
+</section>
+
+<section id="s11">
+  <h2>§11 THE PINS — at-max keeps the pin, removal returns exactly<span class="pill">geometry</span></h2>
+  <p class="sub">Two edge laws, both 3/3 exact: (1) a feed scrolled to the <b>maximum</b> offset and prepended above adjusts +60 and remains at the new maximum — the bottom-pin survives prepends with zero code (the pattern chat apps hand-roll with <code>scrollTop = scrollHeight</code> re-pins). (2) Removing the inserted node re-anchors <b>back exactly</b> (960→900) — the adjustment is symmetric and reversible. And the adjustment lands at the <b>first layout-forcing read</b>: reading <code>scrollTop</code> synchronously right after the insert already returns the adjusted value (the spec's "suppression window" closes at that query), 3/3.</p>
+  <div class="chips" id="chips-11"></div>
+</section>
+
+<section id="s12">
+  <h2>§12 THE PRIORITY VOID — the spec's focus rule ships nowhere<span class="pill">spec vs engines</span></h2>
+  <p class="sub">The spec defines <b>anchor priority candidates</b>: the DOM anchor of the focused area when it's an editable field, and the current find-in-page match — they win anchor selection outright. Measured with focus asserted (<code>document.activeElement</code> verified) and a mutation that moves only the focused row's subtree: no engine re-anchors to the focused input — delta 0, top-of-viewport candidate kept, 3/3. Find-in-page cannot be driven headless (honest lane limit), but nothing suggests it fares better. The spec promise your editor-in-a-scroller needs is simply not there.</p>
+  <div class="law warn"><b>THE PRIORITY VOID.</b> Don't build on "the browser anchors to what I'm typing in" — it doesn't, anywhere measured. Reserve space or compensate manually around editable regions.</div>
+  <div class="chips" id="chips-12"></div>
+</section>
+
+<section id="s13">
+  <h2>§13 OpenDrones capstone — the no-jump telemetry feed<span class="pill">opendrones</span></h2>
+  <p class="sub">The cockpit telemetry feed prepends rows as packets land. Naive (no anchoring thought) jumps on Safari ≤26 only. The hardened feed: <b>prepend via node insertion</b> (the insert law — free stability on 100% of anchoring engines), <b>bottom-pin for live-follow mode</b> (the at-max law — no re-pin code), <b>batched burst prepends</b> (the batch law — one adjustment per burst), and <b>never</b> reveal-by-margin/padding/transform (the mutation wall) — plus a <code>CSS.supports</code> gate for the Safari hole with the manual-compensation fallback.</p>
+  <div class="lab">
+    <div class="cap">live capstone — telemetry feed, prepend vs the mutation trap</div>
+    <div class="cols">
+      <div>
+        <div class="sc" id="sc13" style="height:240px"></div>
+        <div class="btnrow">
+          <button id="b13a">prepend packet (insert)</button>
+          <button id="b13b">margin-reveal wrapper (the trap)</button>
+          <button id="b13c">burst ×3</button>
+          <button id="b13r">reset</button>
+        </div>
+      </div>
+      <div>
+        <div class="out" id="out13">jump meter: visible-row displacement per prepend</div>
+        <div class="kv"><span>insert prepends: <b id="k13a">pending</b></span><span>margin prepends: <b id="k13b">pending</b></span></div>
+      </div>
+    </div>
+  </div>
+  <div class="chips" id="chips-13"></div>
+</section>
+
+<section id="s14">
+  <h2>§14 Molt audit — the "page jumped" review, 12 checks<span class="pill">molt</span></h2>
+  <ol class="audit">
+    <li><span class="hi">HIGH</span> — <b>Expanding sections above the viewport inside the same wrapper</b> as the reading content: path mutation → suppressed → guaranteed jump (§4C). Every accordion/FAQ/collapsible above content.</li>
+    <li><span class="hi">HIGH</span> — <b>Reveal animations via transform on a wrapper</b> containing viewport content: uncompensated 60px+ visual jumps (§4D).</li>
+    <li><span class="hi">HIGH</span> — <b>Unsized media above the fold</b> relying on anchoring alone for Safari ≤26: no net there — ship dimensions or skeletons.</li>
+    <li><span class="hi">HIGH</span> — <b>Snap carousels that insert above</b> (banners, "new" badges): WebKit + old Safari eat a card (§10).</li>
+    <li><span class="hi">HIGH</span> — <b>Scroll-analytics treating anchoring adjustments as user engagement</b>: isTrusted true, no flag (§9).</li>
+    <li><span class="md">MED</span> — <b>Prepend-by-margin/padding/transform</b> instead of node insertion: works nowhere, jumps everywhere (§4).</li>
+    <li><span class="md">MED</span> — <b>Horizontal inline-axis strips assuming anchoring</b>: no compensation in horizontal-tb (§5).</li>
+    <li><span class="md">MED</span> — <b>e2e asserting raw scrollTop after DOM mutations</b>: expect the anchoring delta on Chrome/Firefox/Safari 27, absence on Safari ≤26 — gate it.</li>
+    <li><span class="md">MED</span> — <b>Editor-in-a-scroller counting on focus anchoring</b>: the priority void (§12).</li>
+    <li><span class="md">MED</span> — <b>Reading <code>getComputedStyle().overflowAnchor</code> to detect effective anchoring</b>: not-inherited-but-poisoned (§7) — it lies.</li>
+    <li class="" style="color:var(--muted)">LOW — <b><code>overflow-anchor:none</code> sprinkled as a "performance fix"</b> without a measured jump: you're disabling the net, not fixing the cause.</li>
+    <li class="" style="color:var(--muted)">LOW — <b>Counting on scrollend per adjustment</b>: fires, but the count is not contract-grade (§9).</li>
+  </ol>
+  <p class="note">Sellable as a half-day "reading-stability audit" — checks 1–5 pass code review on every stack and jump in production.</p>
+</section>
+
+<section id="s15">
+  <h2>§15 Method, engine ledger &amp; falsifications<span class="pill">method</span></h2>
+  <p class="sub">~17 lane families × 3 engines (~90 lane-runs) + stability reps (snap ×3, batch ×3, events ×3) over a plain-HTTP loopback origin (<code>127.0.0.1:8891</code>), a fresh single-purpose document per lane, self-calibrating geometry (deltas derived from measured offsets, never hardcoded font metrics), row-identity via <code>getBoundingClientRect().top</code> comparison against the scroller's own rect, focus asserted via <code>document.activeElement</code>, event capture with <code>performance.now()</code> timestamps, settles sized from the lane's last read (rAF chains for sync-window lanes, 350–600ms timeouts for scrollend/snap lanes).</p>
+  <table class="ledger">
+    <tr><th>law</th><th>CfT 149</th><th>FF 151</th><th>WK 26.5</th></tr>
+    <tr><td>insert-above adjusts exactly (+34/+60/+120/+150)</td><td class="v">✓</td><td class="v">✓</td><td class="v">✓</td></tr>
+    <tr><td>origin (scrollTop 0) → no anchor, no adjust</td><td class="v">✓</td><td class="v">✓</td><td class="v">✓</td></tr>
+    <tr><td>path mutation suppressed / sibling mutation adjusts</td><td class="v">✓ / ✓</td><td class="v">✓ / ✓</td><td class="v">✓ / ✓</td></tr>
+    <tr><td>ancestor transform → uncompensated visual jump</td><td class="v">✓ 60px</td><td class="v">✓ 60px</td><td class="v">✓ 60px</td></tr>
+    <tr><td>inline-axis void (horizontal-tb overflow-x)</td><td class="v">✓ 0</td><td class="v">✓ 0</td><td class="v">✓ 0</td></tr>
+    <tr><td>vertical-rl block insert → scrollLeft −60</td><td class="v">✓</td><td class="v">✓</td><td class="v">✓</td></tr>
+    <tr><td>unsized image load above → exact compensation</td><td class="v">✓ +150</td><td class="v">✓ +150</td><td class="v">✓ +150</td></tr>
+    <tr><td>none on scroller kills; on subtree excludes; auto can't rescue</td><td class="v">✓✓✓</td><td class="v">✓✓✓</td><td class="v">✓✓✓</td></tr>
+    <tr><td>nested scroller re-arms inside none subtree</td><td class="v">✓</td><td class="v">✓</td><td class="v">✓</td></tr>
+    <tr><td>adjustment fires scroll events (≥1) + scrollend</td><td class="v">✓ (1–2)</td><td class="v">✓ 1</td><td class="v">✓ 1 (scEnd 1–2)</td></tr>
+    <tr><td>animated insert tracked frame-by-frame (~18–19 events)</td><td class="v">✓ 18</td><td class="v">✓ 19</td><td class="v">✓ 19</td></tr>
+    <tr><td>at-max prepend keeps the pin (+60, still max)</td><td class="v">✓</td><td class="v">✓</td><td class="v">✓</td></tr>
+    <tr><td>removal returns exactly (960→900)</td><td class="v">✓</td><td class="v">✓</td><td class="v">✓</td></tr>
+    <tr><td>sync read after insert already adjusted</td><td class="v">✓</td><td class="v">✓</td><td class="v">✓</td></tr>
+    <tr><td>focused editable does NOT win anchor selection</td><td class="v">✗ (void)</td><td class="v">✗ (void)</td><td class="v">✗ (void)</td></tr>
+    <tr><td><b>snap + insert keeps the same row</b></td><td class="v">✓ keeps</td><td class="v">✓ keeps</td><td class="v"><b>✗ loses a row</b></td></tr>
+  </table>
+  <h3>Falsified this session</h3>
+  <ul style="font-size:14.5px;max-width:72ch;line-height:1.7">
+    <li><b>"Anchoring adjustments are silent."</b> False everywhere — they are real <code>scroll</code> events with <code>isTrusted:true</code> (and <code>scrollend</code>), exactly as the spec text says. My own pre-bench recollection was the folklore.</li>
+    <li><b>"Anchoring keeps the page still on content changes."</b> Only for insertions and non-path mutations — the suppression-trigger list (height/padding/margin/transform/insets/position on the anchor's path) kills compensation for the most common hand-rolled reveal patterns, deliberately.</li>
+    <li><b>"overflow-anchor inherits."</b> gCS says no; behavior says subtrees — the ancestor-chain exclusion makes it <em>act</em> inherited for anchor candidacy while the computed value stays <code>auto</code>.</li>
+  </ul>
+  <h3>De-confounds (4)</h3>
+  <ul style="font-size:14.5px;max-width:72ch;line-height:1.7">
+    <li><b>The reserved-image false negative</b> — my first image lane set explicit <code>width/height</code> from parse: no layout change on load → correctly no adjustment → looked like "images don't anchor." The unreserved twin is the real lane (+150 exact).</li>
+    <li><b>The transform no-op lane</b> — transforming a sibling above the viewport moves nothing (transform ≠ layout) → "suppressed" was vacuous. The honest lane transforms the anchor's <em>ancestor</em> and measures the uncompensated visual shift via <code>getBoundingClientRect</code>.</li>
+    <li><b>The verdict-constant bugs</b> — hardcoded <code>scrollTop=1000</code> expectations met the 900px scroll clamp on three lanes (nestedRearm, removeProbe, scrollEvents flags read false while the behavior was correct). Report measured before/after, never the intended constant.</li>
+    <li><b>The vertical-rl coordinate flip</b> — <code>scrollLeft</code> runs negative in vertical-rl; my first "before: 0" lane had refused its own scroll set. Negative half-range + <code>scrollLeftMax</code> diagnostics fixed it.</li>
+  </ul>
+  <h3>Lane limits</h3>
+  <ul style="font-size:14.5px;max-width:72ch;line-height:1.7">
+    <li><b>Real Safari 27 untested by automation</b> — the Playwright WebKit 26.5 build already carries the 27 implementation (property parses, laws behave); the App-store Safari 27 row is a human-hand confirmation, pending.</li>
+    <li><b>Find-in-page priority candidates</b> cannot be driven headless — the focus lane is the measured proxy.</li>
+    <li><b>scrollend count</b> varies with settle pattern (1–2) — not contract-grade; ≥1 observed on all engines for single adjustments.</li>
+  </ul>
+</section>
+
+<footer>
+  <p class="meta">Probed 2026-11-08 · CfT 149 (Playwright 1.61.1) · Firefox 151 · WebKit 26.5 · loopback 127.0.0.1:8891 · ~90 lane-runs + reps · spec: CSS Scroll Anchoring Level 1 (drafts.csswg.org/css-scroll-anchoring) · BCD: chrome 56 / firefox 66 / safari 27</p>
+</footer>
+
+</div>
+<script>
+(function(){
+'use strict';
+/* Architecture: ALL chips resolve from automated hidden lanes at load (gate-safe).
+   Visible labs are replay-only for humans. */
+function reg(hostId,key,label){
+  var host=document.getElementById(hostId); if(!host) return;
+  var el=document.createElement('span'); el.className='chip pending'; el.dataset.key=key;
+  el.textContent=label; host.appendChild(el);
+}
+function setChip(key,state,text){
+  var el=document.querySelector('.chip[data-key="'+key+'"]');
+  if(!el){ console.warn('missing chip',key); return; }
+  el.className='chip '+state; el.textContent=text;
+}
+function raf(n,fn){ if(n<=0){fn();return;} requestAnimationFrame(function(){raf(n-1,fn);}); }
+var SVG=function(h){return 'data:image/svg+xml;base64,'+btoa('<svg xmlns="http://www.w3.org/2000/svg" width="360" height="'+h+'"><rect width="360" height="'+h+'" fill="#0e6b5c" opacity="0.25"/></svg>');};
+
+/* ---------- hidden probe factory ---------- */
+var BIN=null;
+function bin(){ if(BIN) return BIN; BIN=document.createElement('div'); BIN.style.cssText='position:absolute;left:-99999px;top:0;width:320px;visibility:hidden'; document.body.appendChild(BIN); return BIN; }
+function mkScroller(extra){ bin(); var sc=document.createElement('div'); sc.style.cssText='width:300px;height:200px;overflow:auto;'+(extra||''); BIN.appendChild(sc); return sc; }
+function rows(sc,n,wrapStyle){
+  var w=sc;
+  if(wrapStyle!==undefined){ w=document.createElement('div'); if(wrapStyle) w.setAttribute('style',wrapStyle); sc.appendChild(w); }
+  for(var i=0;i<n;i++){ var d=document.createElement('div'); d.style.height='34px'; d.dataset.r=i; w.appendChild(d); }
+  return w;
+}
+function insertAbove(w,h){ var n=document.createElement('div'); n.style.height=h+'px'; w.insertBefore(n,w.firstChild); return n; }
+
+/* ---------- register every chip BEFORE any verdict ---------- */
+[['chips-1','c1','supports auto/none'],['chips-1','c2','bogus rejected'],
+ ['chips-header','c3','engine: pending'],
+ ['chips-2','c4','insert 34 → +34'],['chips-2','c5','insert 60 → +60'],['chips-2','c6','fragment 3×34 → +102'],
+ ['chips-3','c7','origin: no adjust'],
+ ['chips-4','c8','sibling grow → +60'],['chips-4','c9','path grow → suppressed'],['chips-4','c10','path transform → jump'],
+ ['chips-5','c11','inline insert → Δ0'],['chips-5','c12','vertical-rl → −60'],
+ ['chips-6','c13','unsized load → +150'],['chips-6','c14','reserved → Δ0'],
+ ['chips-7','c15','scroller none kills'],['chips-7','c16','baseline adjusts'],['chips-7','c17','auto cannot rescue'],
+ ['chips-8','c18','inner re-arms'],
+ ['chips-9','c19','adjustment fires scroll'],['chips-9','c20','animated tracks frames'],
+ ['chips-10','c21','snap row identity'],
+ ['chips-11','c22','at-max keeps pin'],['chips-11','c23','removal returns'],['chips-11','c24','sync window'],
+ ['chips-12','c25','focused editable loses'],
+ ['chips-13','c26','insert prepend clean'],['chips-13','c27','margin prepend jumps']
+].forEach(function(p){ reg(p[0],p[1],p[2]); });
+
+/* ---------- capability probe ---------- */
+var CAP={anchoring:null};
+function capProbe(cb){
+  var sc=mkScroller(); rows(sc,20,'');
+  sc.scrollTop=150;
+  raf(2,function(){
+    var b=sc.scrollTop; insertAbove(sc,60);
+    raf(2,function(){ CAP.anchoring=(sc.scrollTop-b)===60; cb(); });
+  });
+}
+
+/* ---------- the automated battery ---------- */
+function battery(){
+  var A=CAP.anchoring;
+  function gated(key,ok,txt){ setChip(key, A?(ok?'ok':'fail'):'info', txt+(A?'':' · no anchoring engine')); }
+
+  /* §2 insert law */
+  (function(){
+    var sc=mkScroller(); rows(sc,20,''); sc.scrollTop=150;
+    raf(2,function(){ var b=sc.scrollTop; insertAbove(sc,34);
+      raf(2,function(){ gated('c4',(sc.scrollTop-b)===34,'insert 34 → Δ '+(sc.scrollTop-b)); }); });
+  })();
+  (function(){
+    var sc=mkScroller(); rows(sc,20,''); sc.scrollTop=150;
+    raf(2,function(){ var b=sc.scrollTop; insertAbove(sc,60);
+      raf(2,function(){ gated('c5',(sc.scrollTop-b)===60,'insert 60 → Δ '+(sc.scrollTop-b)); }); });
+  })();
+  (function(){
+    var sc=mkScroller(); var w=rows(sc,20,''); sc.scrollTop=150;
+    raf(2,function(){ var b=sc.scrollTop; var f=document.createDocumentFragment();
+      for(var i=0;i<3;i++){var d=document.createElement('div');d.style.height='34px';f.appendChild(d);}
+      w.insertBefore(f,w.firstChild);
+      raf(2,function(){ gated('c6',(sc.scrollTop-b)===102,'fragment 3×34 → Δ '+(sc.scrollTop-b)); }); });
+  })();
+
+  /* §3 origin */
+  (function(){
+    var sc=mkScroller(); rows(sc,20,''); sc.scrollTop=0;
+    raf(2,function(){ var b=sc.scrollTop; insertAbove(sc,60);
+      raf(2,function(){ setChip('c7', sc.scrollTop===0?'ok':'fail','origin insert → scrollTop '+sc.scrollTop+' (expect 0)'); }); });
+  })();
+
+  /* §4 mutation wall */
+  (function(){
+    var sc=mkScroller(); var w=rows(sc,20,''); sc.scrollTop=150;
+    raf(2,function(){ var b=sc.scrollTop; var s=w.children[1]; s.style.height='94px';
+      raf(3,function(){ gated('c8',(sc.scrollTop-b)===60,'sibling grow +60 → Δ '+(sc.scrollTop-b)+' (adjusts)'); }); });
+  })();
+  (function(){
+    var sc=mkScroller(); var w=rows(sc,20,''); sc.scrollTop=150;
+    raf(2,function(){ var b=sc.scrollTop; w.style.paddingTop='60px';
+      raf(3,function(){ gated('c9',(sc.scrollTop-b)===0,'path wrapper padding +60 → Δ '+(sc.scrollTop-b)+' (suppressed)'); }); });
+  })();
+  (function(){
+    var sc=mkScroller(); var w=rows(sc,20,''); sc.scrollTop=120;
+    raf(2,function(){ var b=sc.scrollTop; var anchor=w.children[8]; var t0=anchor.getBoundingClientRect().top;
+      w.style.transform='translateY(60px)';
+      raf(3,function(){ var mv=Math.round(anchor.getBoundingClientRect().top-t0);
+        gated('c10',(sc.scrollTop-b)===0&&Math.abs(mv-60)<4,'path translateY → Δ '+(sc.scrollTop-b)+', visual jump '+mv+'px'); }); });
+  })();
+
+  /* §5 axes */
+  (function(){
+    var sc=mkScroller('width:300px;height:60px;overflow-x:auto;white-space:nowrap');
+    for(var i=0;i<20;i++){ var d=document.createElement('div'); d.style.cssText='width:44px;height:44px;display:inline-block'; sc.appendChild(d); }
+    sc.scrollLeft=200;
+    raf(2,function(){ var l=sc.scrollLeft; var n=document.createElement('div'); n.style.cssText='width:60px;height:44px;display:inline-block'; sc.insertBefore(n,sc.firstChild);
+      raf(2,function(){ setChip('c11',(sc.scrollLeft-l)===0?'ok':'fail','inline insert → Δ '+(sc.scrollLeft-l)+' (void)'); }); });
+  })();
+  (function(){
+    var sc=mkScroller('width:300px;height:160px;overflow:auto;writing-mode:vertical-rl');
+    for(var i=0;i<20;i++){ var d=document.createElement('div'); d.style.cssText='width:44px;height:34px'; sc.appendChild(d); }
+    raf(2,function(){
+      sc.scrollLeft=-Math.round((sc.scrollWidth-sc.clientWidth)/2);
+      raf(2,function(){ var l=sc.scrollLeft; var n=document.createElement('div'); n.style.cssText='width:60px;height:34px'; sc.insertBefore(n,sc.firstChild);
+        raf(3,function(){ var d2=Math.round(sc.scrollLeft-l);
+          setChip('c12', A?(d2===-60?'ok':'fail'):'info','vertical-rl block insert → Δ '+d2+' (expect −60)'); }); });
+    });
+  })();
+
+  /* §6 image law */
+  (function(){
+    var sc=mkScroller();
+    var img=document.createElement('img'); img.style.cssText='display:block;max-width:300px'; sc.appendChild(img);
+    var w=rows(sc,20,''); sc.scrollTop=170;
+    raf(2,function(){ var b=sc.scrollTop;
+      function verdict(){ var h=Math.round(img.getBoundingClientRect().height);
+        gated('c13',(sc.scrollTop-b)===h&&h>=100,'unsized img load → Δ '+(sc.scrollTop-b)+' = rendered h '+h+' (exact)'); }
+      img.onload=function(){ raf(3,verdict); };
+      img.src=SVG(150);
+      setTimeout(verdict,1400);
+    });
+  })();
+  (function(){
+    var sc=mkScroller();
+    var img=document.createElement('img'); img.style.cssText='display:block;width:300px;height:150px'; sc.appendChild(img);
+    var w=rows(sc,20,''); sc.scrollTop=170;
+    raf(2,function(){ var b=sc.scrollTop;
+      img.onload=function(){ raf(3,function(){ setChip('c14',(sc.scrollTop-b)===0?'ok':'fail','reserved img load → Δ '+(sc.scrollTop-b)+' (expect 0)'); }); };
+      img.src=SVG(150);
+      setTimeout(function(){ setChip('c14',(sc.scrollTop-b)===0?'ok':'fail','reserved img load → Δ '+(sc.scrollTop-b)+' (expect 0)'); },1400);
+    });
+  })();
+
+  /* §7 exclusion grammar */
+  (function(){
+    var sc=mkScroller('overflow-anchor:none'); rows(sc,20,''); sc.scrollTop=150;
+    raf(2,function(){ var b=sc.scrollTop; insertAbove(sc,60);
+      raf(2,function(){ gated('c15',sc.scrollTop===b,'scroller none → killed (Δ '+(sc.scrollTop-b)+')'); }); });
+  })();
+  (function(){
+    var sc=mkScroller(); rows(sc,20,''); sc.scrollTop=150;
+    raf(2,function(){ var b=sc.scrollTop; insertAbove(sc,60);
+      raf(2,function(){ gated('c16',(sc.scrollTop-b)===60,'baseline subtree adjusts (Δ '+(sc.scrollTop-b)+')'); }); });
+  })();
+  (function(){
+    var sc=mkScroller(); var w=rows(sc,20,'overflow-anchor:none'); sc.scrollTop=150;
+    var leaf=w.children[15]; leaf.style.overflowAnchor='auto';
+    raf(2,function(){ var b=sc.scrollTop; insertAbove(w,60);
+      raf(2,function(){ gated('c17',sc.scrollTop===b,'leaf auto inside none → still excluded (Δ '+(sc.scrollTop-b)+')'); }); });
+  })();
+
+  /* §8 nested re-arm */
+  (function(){
+    bin(); var outer=document.createElement('div'); outer.style.overflowAnchor='none'; BIN.appendChild(outer);
+    var sc=document.createElement('div'); sc.style.cssText='width:300px;height:200px;overflow:auto'; outer.appendChild(sc);
+    rows(sc,20,''); sc.scrollTop=150;
+    raf(2,function(){ var bo=sc.scrollTop; insertAbove(sc,60);
+      raf(2,function(){ gated('c18',(sc.scrollTop-bo)===60,'inner scroller inside none subtree → Δ '+(sc.scrollTop-bo)); }); });
+  })();
+
+  /* §9 noisy adjustment */
+  (function(){
+    var sc=mkScroller(); rows(sc,26,''); sc.scrollTop=150;
+    var n=0, se=0;
+    sc.addEventListener('scroll',function(){n++;},{passive:true});
+    sc.addEventListener('scrollend',function(){se++;});
+    raf(2,function(){ var b=sc.scrollTop; insertAbove(sc,60);
+      setTimeout(function(){ gated('c19',(sc.scrollTop>b&&n>=1),'Δ '+(sc.scrollTop-b)+' fired '+n+' scroll event(s), '+se+' scrollend'); },420);
+    });
+  })();
+  (function(){
+    var sc=mkScroller(); rows(sc,26,''); sc.scrollTop=150;
+    var n=0; sc.addEventListener('scroll',function(){n++;},{passive:true});
+    var st=document.createElement('style'); st.textContent='@keyframes sagrow2{from{height:0}to{height:60px}}'; document.head.appendChild(st);
+    raf(2,function(){ var b=sc.scrollTop;
+      var el=document.createElement('div'); el.style.animation='sagrow2 400ms ease-out forwards'; sc.insertBefore(el,sc.firstChild);
+      setTimeout(function(){ gated('c20',(sc.scrollTop-b)===60&&n>3,'animated 0→60 → final Δ '+(sc.scrollTop-b)+', '+n+' scroll events'); },620);
+    });
+  })();
+
+  /* §10 snap row */
+  (function(){
+    var sc=mkScroller('width:300px;height:200px;overflow:auto;scroll-snap-type:y mandatory');
+    for(var i=0;i<20;i++){ var d=document.createElement('div'); d.style.cssText='height:30px;scroll-snap-align:start'; d.dataset.r=i; sc.appendChild(d); }
+    sc.scrollTop=150;
+    setTimeout(function(){
+      var st=sc.getBoundingClientRect().top, rs=sc.children, before=null;
+      for(var i=0;i<rs.length;i++){ if(Math.abs(rs[i].getBoundingClientRect().top-st)<3){before=rs[i].dataset.r;break;} }
+      var n=document.createElement('div'); n.style.cssText='height:60px;scroll-snap-align:start'; sc.insertBefore(n,sc.firstChild);
+      setTimeout(function(){
+        var after=null, st2=sc.getBoundingClientRect().top, rs2=sc.querySelectorAll('div[data-r]');
+        for(var i=0;i<rs2.length;i++){ if(Math.abs(rs2[i].getBoundingClientRect().top-st2)<3){after=rs2[i].dataset.r;break;} }
+        if(before===null||after===null){ setChip('c21','fail','snap row identity unresolved ('+before+'/'+after+')'); return; }
+        if(!A){ setChip('c21','info','snap insert → row #'+before+'→#'+after+' (no anchoring engine)'); return; }
+        if(after===before) setChip('c21','ok','snap insert keeps row #'+after+' (this engine: Chromium/Firefox behavior)');
+        else setChip('c21','warn','ROW LOSS #'+before+'→#'+after+' — the WebKit split / no-anchoring observable');
+      },600);
+    },150);
+  })();
+
+  /* §11 pins */
+  (function(){
+    var sc=mkScroller(); rows(sc,8,''); sc.scrollTop=99999;
+    raf(2,function(){ var wasMax=sc.scrollTop===sc.scrollHeight-sc.clientHeight;
+      var n=insertAbove(sc,60);
+      raf(2,function(){
+        var still=sc.scrollTop===sc.scrollHeight-sc.clientHeight;
+        gated('c22',still&&wasMax,'at-max + prepend → still at max = '+still);
+        var b=sc.scrollTop; sc.removeChild(n);
+        raf(2,function(){
+          var back=Math.abs(sc.scrollTop-(b-60))<1;
+          gated('c23',back,'removal returns exactly = '+back+' ('+sc.scrollTop+' vs '+(b-60)+')');
+          var pre=sc.scrollTop; var m2=insertAbove(sc,60); var sync=sc.scrollTop;
+          gated('c24',sync===pre+60,'sync read sees adjusted = '+(sync===pre+60));
+        });
+      });
+    });
+  })();
+
+  /* §12 priority void — focusable host: offscreen but NOT visibility:hidden */
+  (function(){
+    bin(); var fh=document.createElement('div'); fh.setAttribute('style','position:absolute;left:-99999px;top:0;width:320px;visibility:visible'); BIN.appendChild(fh);
+    var sc=document.createElement('div'); sc.style.cssText='width:300px;height:200px;overflow:auto'; fh.appendChild(sc);
+    var w=rows(sc,20,undefined); sc.scrollTop=150;
+    var inp=document.createElement('input'); w.children[14].appendChild(inp);
+    raf(2,function(){ inp.focus();
+      raf(2,function(){ // settle AFTER focus: WebKit's focus scroll is async — never capture the baseline mid-flight
+        var okF=(document.activeElement===inp); var b=sc.scrollTop;
+        w.children[12].style.paddingBottom='60px';
+        raf(3,function(){ var d=sc.scrollTop-b;
+          gated('c25',okF&&d===0,'focus asserted → mutation moves focused row → Δ '+d+' (no priority re-anchor)');
+        });
+      });
+    });
+  })();
+
+  /* §13 capstone meters */
+  (function(){
+    var sc=mkScroller(); var w=rows(sc,18,''); sc.scrollTop=120;
+    raf(2,function(){
+      var anchor=w.querySelectorAll('div[data-r]')[8]; var t0=anchor.getBoundingClientRect().top;
+      insertAbove(w,34);
+      setTimeout(function(){
+        var mv=Math.round(Math.abs(anchor.getBoundingClientRect().top-t0));
+        gated('c26',mv<=2,'insert prepend → visible shift '+mv+'px');
+        w.style.marginTop='34px'; // margin on the wrapper CONTAINING the anchor = path mutation = suppressed
+        setTimeout(function(){
+          var mv2=Math.round(Math.abs(anchor.getBoundingClientRect().top-t0));
+          gated('c27',mv2>=30,'margin-reveal on wrapper → cumulative shift '+mv2+'px (THE TRAP)');
+        },160);
+      },160);
+    });
+  })();
+}
+
+/* ---------- census chips first, then battery ---------- */
+(function(){
+  var a=CSS.supports('overflow-anchor','auto'), n=CSS.supports('overflow-anchor','none'), c=CSS.supports('overflow-anchor','bogus');
+  setChip('c1', a&&n?'ok':'fail','supports auto='+a+' none='+n);
+  setChip('c2', c?'fail':'ok','bogus rejected = '+(!c));
+  var u=navigator.userAgent, nm=/Firefox/.test(u)?'Firefox':(/WebKit/.test(u)&&!/Chrome/.test(u)?'WebKit':'Chromium-family');
+  capProbe(function(){
+    setChip('c3', CAP.anchoring?'ok':'info', nm+' · anchoring '+(CAP.anchoring?'ON':'OFF'));
+    battery();
+  });
+})();
+
+/* ---------- visible replay labs (no chip dependencies) ---------- */
+function feed(sc,n,prefix){ sc.innerHTML=''; for(var i=0;i<n;i++){ var d=document.createElement('div'); d.className='row'; d.dataset.r=i; d.textContent=(prefix||'row ')+i; sc.appendChild(d);} }
+(function(){ // §2
+  var sc=document.getElementById('sc2'), out=document.getElementById('out2');
+  function reset(){ feed(sc,26); sc.scrollTop=200; out.textContent='— run a button —'; }
+  reset();
+  function vis(label,fn){ var a=sc.querySelector('.row[data-r="10"]'); var t0=a.getBoundingClientRect().top; var b=sc.scrollTop;
+    fn(); setTimeout(function(){ out.textContent=label+' → Δscroll '+(sc.scrollTop-b)+' · visible-row shift '+Math.round(Math.abs(a.getBoundingClientRect().top-t0))+'px'; },160); }
+  document.getElementById('b2a').onclick=function(){vis('insert 34',function(){ var n=document.createElement('div');n.className='row new';n.textContent='INSERT 34';sc.insertBefore(n,sc.firstElementChild);});};
+  document.getElementById('b2b').onclick=function(){vis('insert 60',function(){ var n=document.createElement('div');n.className='row new';n.style.height='60px';n.textContent='BANNER 60';sc.insertBefore(n,sc.firstElementChild);});};
+  document.getElementById('b2c').onclick=function(){vis('fragment ×3',function(){ var f=document.createDocumentFragment(); for(var i=0;i<3;i++){var d=document.createElement('div');d.className='row new';d.textContent='B'+i;f.appendChild(d);} sc.insertBefore(f,sc.firstElementChild);});};
+  document.getElementById('b2r').onclick=reset;
+})();
+(function(){ // §3
+  var sc=document.getElementById('sc3'), out=document.getElementById('out3');
+  function reset(){ feed(sc,26); sc.scrollTop=0; out.textContent='scrollTop 0 — insert above and watch it stay 0'; }
+  reset();
+  document.getElementById('b3').onclick=function(){ var n=document.createElement('div');n.className='row new';n.textContent='TOP';sc.insertBefore(n,sc.firstElementChild);
+    setTimeout(function(){out.textContent='scrollTop '+sc.scrollTop+' — no anchor at the origin, page grows downward';},160); };
+  document.getElementById('b3r').onclick=reset;
+})();
+(function(){ // §4
+  var sc=document.getElementById('sc4'), out=document.getElementById('out4');
+  function reset(){ sc.innerHTML='<div id="w4"></div>'; var w=document.getElementById('w4'); feed2(w); sc.scrollTop=150; out.textContent='A/B adjust +60 · C/D jump 60px uncompensated'; }
+  function feed2(w){ for(var i=0;i<24;i++){ var d=document.createElement('div'); d.className='row'; d.dataset.r=i; d.textContent='row '+i; w.appendChild(d);} }
+  reset();
+  function vis(label,fn){ var w=document.getElementById('w4'); var a=w.querySelector('.row[data-r="12"]'); var t0=a.getBoundingClientRect().top; var b=sc.scrollTop;
+    fn(); setTimeout(function(){ out.textContent=label+' → Δscroll '+(sc.scrollTop-b)+' · visible-row shift '+Math.round(Math.abs(a.getBoundingClientRect().top-t0))+'px'; },200); }
+  document.getElementById('b4a').onclick=function(){vis('A insert node',function(){ var n=document.createElement('div');n.className='row new';n.style.height='60px';n.textContent='NEW 60';sc.insertBefore(n,sc.firstElementChild);});};
+  document.getElementById('b4b').onclick=function(){vis('B sibling grow',function(){ sc.querySelector('#w4 .row[data-r="1"]').style.height='94px';});};
+  document.getElementById('b4c').onclick=function(){vis('C wrapper padding',function(){ document.getElementById('w4').style.paddingTop='60px';});};
+  document.getElementById('b4d').onclick=function(){vis('D wrapper translateY',function(){ document.getElementById('w4').style.transform='translateY(60px)';});};
+  document.getElementById('b4r').onclick=reset;
+})();
+(function(){ // §5
+  var a=document.getElementById('sc5a'), b=document.getElementById('sc5b'), oa=document.getElementById('out5a'), ob=document.getElementById('out5b');
+  function resetA(){ a.innerHTML=''; for(var i=0;i<20;i++){var d=document.createElement('div');d.style.cssText='width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;border-right:1px dashed #e4ddcf;font:600 10px/1 var(--mono);color:#57524a';d.textContent=i;a.appendChild(d);} a.scrollLeft=200; oa.textContent='scrollLeft '+a.scrollLeft; }
+  function resetB(){ b.innerHTML=''; for(var i=0;i<16;i++){var d=document.createElement('div');d.style.cssText='width:44px;height:34px;border-bottom:1px dashed #e4ddcf;font:600 10px/1 var(--mono);color:#57524a;display:flex;align-items:center';d.textContent='c'+i;b.appendChild(d);} b.scrollLeft=-Math.round((b.scrollWidth-b.clientWidth)/2); ob.textContent='scrollLeft '+b.scrollLeft; }
+  resetA(); resetB();
+  document.getElementById('b5a').onclick=function(){ var l=a.scrollLeft; var n=document.createElement('div');n.style.cssText='width:60px;height:44px;display:inline-flex;align-items:center;justify-content:center;background:var(--accent-soft);color:var(--accent);font:600 10px/1 var(--mono)';n.textContent='NEW';a.insertBefore(n,a.firstChild);
+    setTimeout(function(){oa.textContent='inline insert → '+l+' → '+a.scrollLeft+' (Δ '+(a.scrollLeft-l)+', no compensation)';},180); };
+  document.getElementById('b5b').onclick=function(){ var l=b.scrollLeft; var n=document.createElement('div');n.style.cssText='width:60px;height:34px;background:var(--accent-soft);display:flex;align-items:center';n.textContent='NEW';b.insertBefore(n,b.firstChild);
+    setTimeout(function(){ob.textContent='vertical-rl block insert → '+l+' → '+b.scrollLeft+' (Δ '+Math.round(b.scrollLeft-l)+')';},180); };
+})();
+(function(){ // §6
+  var a=document.getElementById('sc6a'), b=document.getElementById('sc6b'), ka=document.getElementById('k6a'), kb=document.getElementById('k6b');
+  function build(sc,reserved){ sc.innerHTML='';
+    var img=document.createElement('img'); img.style.cssText='display:block;max-width:320px;'+(reserved?'width:320px;height:150px;':''); img.alt='fixture';
+    sc.appendChild(img);
+    for(var i=0;i<18;i++){ var d=document.createElement('div'); d.className='row'; d.textContent='row '+i; sc.appendChild(d); }
+    sc.scrollTop=170; }
+  build(a,false); build(b,true); ka.textContent='waiting'; kb.textContent='waiting';
+  document.getElementById('b6').onclick=function(){
+    build(a,false); build(b,true);
+    var ba=a.scrollTop, bb=b.scrollTop; ka.textContent='loading…'; kb.textContent='loading…';
+    var i1=a.querySelector('img'), i2=b.querySelector('img');
+    i1.onload=i2.onload=function(){ setTimeout(function(){
+      ka.textContent='Δ '+(a.scrollTop-ba); kb.textContent='Δ '+(b.scrollTop-bb);
+    },200); };
+    i1.src=SVG(150); i2.src=SVG(150);
+    setTimeout(function(){ ka.textContent='Δ '+(a.scrollTop-ba); kb.textContent='Δ '+(b.scrollTop-bb); },1600);
+  };
+  document.getElementById('b6r').onclick=function(){ build(a,false); build(b,true); ka.textContent='reset'; kb.textContent='reset'; };
+})();
+(function(){ // §8
+  var sc=document.getElementById('sc8'), k8=document.getElementById('k8');
+  function reset(){ feed(sc,26); sc.scrollTop=150; k8.textContent='pending'; }
+  reset();
+  document.getElementById('b8').onclick=function(){ var b=sc.scrollTop; var n=document.createElement('div');n.className='row new';n.style.height='60px';n.textContent='NEW';sc.insertBefore(n,sc.firstElementChild);
+    setTimeout(function(){k8.textContent='Δ '+(sc.scrollTop-b)+' — the inner scroller anchors its own box';},180); };
+  document.getElementById('b8r').onclick=reset;
+})();
+(function(){ // §9
+  var sc=document.getElementById('sc9'), out=document.getElementById('out9');
+  function reset(){ feed(sc,26); sc.scrollTop=150; }
+  reset(); var scN=0,endN=0;
+  sc.addEventListener('scroll',function(){scN++;},{passive:true});
+  sc.addEventListener('scrollend',function(){endN++;});
+  document.getElementById('b9a').onclick=function(){ scN=0;endN=0; var b=sc.scrollTop; var n=document.createElement('div');n.className='row new';n.style.height='60px';n.textContent='NEW';sc.insertBefore(n,sc.firstElementChild);
+    setTimeout(function(){out.textContent='insert → Δ '+(sc.scrollTop-b)+' · scroll events '+scN+' · scrollend '+endN+' (isTrusted:true)';},420); };
+  document.getElementById('b9b').onclick=function(){ scN=0;endN=0; var b=sc.scrollTop; var n=document.createElement('div');n.className='row new';n.textContent='ANIM';n.style.animation='sagrow3 400ms ease-out forwards';sc.insertBefore(n,sc.firstElementChild);
+    setTimeout(function(){out.textContent='animated → final Δ '+(sc.scrollTop-b)+' · scroll events '+scN+' (frame-by-frame tracking) · scrollend '+endN;},700); };
+  document.getElementById('b9r').onclick=reset;
+  var st=document.createElement('style'); st.textContent='@keyframes sagrow3{from{height:0}to{height:60px}}'; document.head.appendChild(st);
+})();
+(function(){ // §10
+  var sc=document.getElementById('sc10'), out=document.getElementById('out10');
+  function reset(){ sc.innerHTML=''; sc.style.scrollSnapType='y mandatory'; for(var i=0;i<20;i++){ var d=document.createElement('div');d.className='snaprow';d.dataset.r=i;d.textContent='snap row '+i;sc.appendChild(d);} sc.scrollTop=150; out.textContent='insert above — watch the top row chip'; }
+  function topRow(){ var st=sc.getBoundingClientRect().top, rs=sc.querySelectorAll('.snaprow'); for(var i=0;i<rs.length;i++){ if(Math.abs(rs[i].getBoundingClientRect().top-st)<3) return rs[i].dataset.r; } return '?'; }
+  reset();
+  document.getElementById('b10').onclick=function(){ var bt=topRow(), b=sc.scrollTop; var n=document.createElement('div');n.className='snaprow new';n.style.height='60px';n.textContent='NEW 60';sc.insertBefore(n,sc.firstElementChild);
+    setTimeout(function(){ var at=topRow(); out.textContent='scrollTop '+b+' → '+sc.scrollTop+' · top row #'+bt+' → #'+at+(at===bt?' — SAME row':(bt!=='?'?' — ROW LOST (WebKit split / no-anchoring)':'')); },600); };
+  document.getElementById('b10r').onclick=reset;
+})();
+(function(){ // §13
+  var sc=document.getElementById('sc13'), out=document.getElementById('out13'), ka=document.getElementById('k13a'), kb=document.getElementById('k13b');
+  function reset(){ sc.innerHTML='<div id="w13"></div>'; feed(document.getElementById('w13'),18,'pkt '); sc.scrollTop=120; ka.textContent='pending'; kb.textContent='pending'; out.textContent='jump meter: visible-row displacement per prepend'; }
+  reset();
+  function meter(fn){ var anchor=document.getElementById('w13').querySelector('.row[data-r="8"]'); var t0=anchor.getBoundingClientRect().top;
+    fn(); return new Promise(function(res){ setTimeout(function(){ res(Math.round(Math.abs(anchor.getBoundingClientRect().top-t0))); },170); }); }
+  document.getElementById('b13a').onclick=function(){ meter(function(){ var n=document.createElement('div');n.className='row new';n.textContent='PKG ▸ telemetry';document.getElementById('w13').insertBefore(n,document.getElementById('w13').firstChild); })
+    .then(function(m){ ka.textContent='shift '+m+'px'; out.textContent='insert prepend → visible shift '+m+'px'+(m>2?' — anchoring off here':' — stable'); }); };
+  document.getElementById('b13b').onclick=function(){ meter(function(){ document.getElementById('w13').style.marginTop='34px'; })
+    .then(function(m){ kb.textContent='shift +'+m+'px'; out.textContent='margin-reveal on the wrapper → visible shift '+m+'px (THE TRAP — suppressed, no compensation)'; }); };
+  document.getElementById('b13c').onclick=function(){ var b=sc.scrollTop; var f=document.createDocumentFragment(); for(var i=0;i<3;i++){var d=document.createElement('div');d.className='row new';d.textContent='BURST '+i;f.appendChild(d);} document.getElementById('w13').insertBefore(f,document.getElementById('w13').firstChild);
+    setTimeout(function(){ out.textContent='burst ×3 → Δ '+(sc.scrollTop-b)+' (one combined adjustment)'; },180); };
+  document.getElementById('b13r').onclick=reset;
+})();
+
+/* ---------- final sweep: pending after 8s = defect ---------- */
+setTimeout(function(){
+  document.querySelectorAll('.chip.pending').forEach(function(el){
+    el.className='chip fail'; el.textContent=el.textContent+' — UNRESOLVED';
+  });
+  window.__done=true;
+},8000);
+})();
+</script>
+</body>
+</html>
