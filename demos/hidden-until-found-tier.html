@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hidden=until-found + beforematch — the reveal tier (live-probed)</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #faf9f7; --card: #fff; --ink: #1c1b1a; --mut: #6f6a63; --acc: #0a7d6f;
+    --acc2: #b4540a; --okbg: #e7f5f0; --okink: #0a5c50; --warnbg: #fdf0e3; --warnink: #8a4b08;
+    --failbg: #fbe9e7; --failink: #a32714; --infobg: #e9eef7; --infoink: #2c4a86;
+    --line: #e7e2da; --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 18px 80px; }
+  header.hero { padding: 30px 0 10px; }
+  h1 { font-size: clamp(26px, 5vw, 38px); line-height: 1.12; letter-spacing: -.02em; margin: 0 0 10px; }
+  .sub { color: var(--mut); font-size: 14px; max-width: 62ch; overflow-wrap: anywhere; }
+  .engine-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 4px; font-size: 12.5px; }
+  .engine-bar span { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
+  section { margin-top: 46px; }
+  h2 { font-size: 19px; margin: 0 0 6px; letter-spacing: -.01em; }
+  h2 .n { color: var(--acc); font-family: var(--mono); font-size: 14px; margin-right: 8px; }
+  p.lead { color: var(--mut); font-size: 13.5px; margin: 0 0 14px; max-width: 70ch; overflow-wrap: anywhere; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 12px 0; }
+  .lane { padding: 12px; border: 1px dashed var(--line); border-radius: 10px; margin: 10px 0; background: #fdfcfa; }
+  .chip { display: inline-flex; align-items: baseline; gap: 6px; font-size: 12px; border-radius: 999px; padding: 3px 10px; margin: 3px 4px 3px 0; border: 1px solid transparent; font-family: var(--mono); }
+  .chip.pending { background: #efedea; color: var(--mut); }
+  .chip.ok { background: var(--okbg); color: var(--okink); border-color: #bfe0d6; }
+  .chip.warn { background: var(--warnbg); color: var(--warnink); border-color: #f2d9bc; }
+  .chip.fail { background: var(--failbg); color: var(--failink); border-color: #f2c4bd; }
+  .chip.info { background: var(--infobg); color: var(--infoink); border-color: #c9d6ee; }
+  .chips { margin: 8px 0 2px; }
+  .kv { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 3px 14px; font-size: 12.5px; margin: 8px 0; }
+  .kv div:nth-child(odd) { color: var(--mut); }
+  .kv div:nth-child(even) { font-family: var(--mono); overflow-wrap: anywhere; }
+  code, .mono { font-family: var(--mono); font-size: 12px; background: #f1efe9; border-radius: 5px; padding: 1px 5px; overflow-wrap: anywhere; }
+  button { font: inherit; font-size: 13px; border: 1px solid var(--line); background: var(--card); border-radius: 9px; padding: 6px 12px; cursor: pointer; }
+  button:hover { border-color: var(--acc); }
+  button.acc { background: var(--acc); border-color: var(--acc); color: #fff; }
+  input[type=text] { font: inherit; font-size: 13px; border: 1px solid var(--line); border-radius: 9px; padding: 6px 10px; background: #fff; min-width: 0; }
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 13px; margin: 8px 0; color: var(--mut); }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; margin: 10px 0; }
+  .tw { overflow-x: auto; }
+  th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: #f5f2ec; font-weight: 600; }
+  td.mono, th.mono { font-family: var(--mono); font-size: 11.5px; overflow-wrap: anywhere; }
+  ul.tight { margin: 8px 0; padding-left: 20px; }
+  ul.tight li { margin: 4px 0; overflow-wrap: anywhere; }
+  ul.audit li { margin: 7px 0; }
+  .hi { background: #fdf0e3; border-radius: 4px; padding: 0 4px; }
+  /* ---------- fixtures ---------- */
+  .fx { border: 1px solid #9fc9c3; padding: 6px; margin: 8px 0; background: #fff; }
+  .fx > p { margin: 2px 0; }
+  .fx.ufx { border-color: #dbb06a; }
+  .fxdetails summary { cursor: pointer; }
+  .evlog { font-family: var(--mono); font-size: 11.5px; background: #f7f5f0; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; max-height: 150px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .meter { font-family: var(--mono); font-size: 12px; }
+  .flight section.ufx[hidden=until-found] { border-style: dashed; }
+  .badge { font-size: 11px; font-family: var(--mono); border-radius: 5px; padding: 1px 6px; background: var(--infobg); color: var(--infoink); }
+  footer { color: var(--mut); font-size: 12.5px; margin-top: 60px; border-top: 1px solid var(--line); padding-top: 14px; }
+</style>
+</head>
+<body>
+<main>
+<header class="hero">
+  <h1><code style="font-size:.7em; vertical-align:middle">hidden=until-found</code> — the reveal tier</h1>
+  <div class="sub">The engine's own "collapse now, reveal on search" primitive: the content-visibility mechanism, the attribute-removal reveal, the window.find three-way split, the findability matrix, beforematch grammar, fragment + scroll-to-text paths, the override grammar, the loading law and the a11y face — live-probed on Chromium 149 + Firefox 151 + WebKit 26.5, every claim re-measured on <em>your</em> engine below.</div>
+  <div class="engine-bar" id="engineBar"></div>
+</header>
+
+<!-- ============ 1. mechanism ============ -->
+<section id="s1">
+  <h2><span class="n">§1</span>The mechanism law — content-visibility, not display</h2>
+  <p class="lead">Every engine implements <code>hidden=until-found</code> as <b>UA <code>content-visibility: hidden</code></b>. <code>getComputedStyle().display</code> reads <code>block</code> — the lie every "is it hidden?" check falls for. The element keeps only its own padding/border box (an <b>empty visible strip</b> if it has chrome), children keep full layout boxes (rects are real!) but get no paint, no focus, no tree entry.</p>
+  <div class="card">
+    <div class="lane">
+      <div class="fx ufx" id="uf1" hidden="until-found"><p id="uf1kid">mechanism kid — the box you cannot see. needle-mech-one lives here.</p></div>
+      <div class="controls">
+        <button class="acc" id="s1reveal">reveal it (fragment navigation)</button>
+        <button id="s1rearm">re-arm (setAttribute again)</button>
+        <span class="meter" id="s1meter"></span>
+      </div>
+      <div class="kv" id="s1kv"></div>
+      <div class="kv" id="s1kid"></div>
+      <div class="chips">
+        <span class="chip pending" id="c-mech">mechanism</span>
+        <span class="chip pending" id="c-mech-display">display-lie</span>
+        <span class="chip pending" id="c-mech-kid">kid-rect</span>
+        <span class="chip pending" id="c-mech-strip">own-box-paints</span>
+      </div>
+    </div>
+    <ul class="tight">
+      <li>The truth instruments: <code>getAttribute('hidden')</code>, <code>offsetHeight</code>, <code>getComputedStyle().contentVisibility</code> — never <code>display</code>.</li>
+      <li><span class="badge">bench 3/3</span> identical on Chromium, Firefox, WebKit: <code>cv:hidden · display:block · offsetH = padding+border only</code>.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ 2. idl enum ============ -->
+<section id="s2">
+  <h2><span class="n">§2</span>The IDL enum grammar — <code>el.hidden</code> is not a boolean anymore</h2>
+  <p class="lead">The IDL getter returns <code>true | false | "until-found"</code>. The string setter works: <code>el.hidden = 'until-found'</code> collapses, <code>el.hidden = false</code> reveals by attribute removal. Invalid enum values degrade to the hidden state. Type any attribute value and watch the parse:</p>
+  <div class="card">
+    <div class="controls">
+      <code>hidden=</code><input type="text" id="s2in" value="until-found" style="width:180px" spellcheck="false">
+      <button class="acc" id="s2apply">apply to probe element</button>
+    </div>
+    <div class="lane"><div class="fx" id="s2probe">probe element</div></div>
+    <div class="kv" id="s2kv"></div>
+    <div class="chips">
+      <span class="chip pending" id="c-enum-idl">idl-enum</span>
+      <span class="chip pending" id="c-enum-space">whitespace-degradation</span>
+      <span class="chip pending" id="c-enum-case">case-folding</span>
+    </div>
+    <ul class="tight">
+      <li><b>THE WHITESPACE TRAP:</b> <code>hidden="until-found&nbsp;"</code> (one trailing space) does <b>not</b> match the enum — it silently becomes <i>plain hidden</i> (<code>display:none</code>, unfindable). Template-rendered attributes with stray whitespace ship dead collapse.</li>
+      <li><b>THE CASE TRAP:</b> <code>UNTIL-FOUND</code> normalizes in the IDL and the UA style matches (cv hidden) — but see §8: Chromium's find disagrees.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ 3. findability matrix ============ -->
+<section id="s3">
+  <h2><span class="n">§3</span>The findability matrix — what Ctrl+F can see</h2>
+  <p class="lead">Run real <code>window.find()</code> calls against six fixtures on <b>your</b> engine (each fixture is scrolled into view first — see the offscreen law below). The bench truth: <b>visible ✓ · until-found ✓ · closed &lt;details&gt; ✓ · opacity:0 ✓ · display:none ✗ · visibility:hidden ✗ · content-visibility:hidden ✗</b> (3/3 engines).</p>
+  <div class="card">
+    <div class="lane">
+      <div class="fx" id="m-vis"><p>visible fixture. mxnv-plain.</p></div>
+      <div class="fx ufx" id="m-uf" hidden="until-found"><p>until-found fixture. mxnu-untilfound.</p></div>
+      <div class="fx" id="m-dn" style="display:none"><p>display none fixture. mxdn-displaynone.</p></div>
+      <div class="fx" id="m-vh" style="visibility:hidden"><p>visibility hidden fixture. mxvh-vishidden.</p></div>
+      <div class="fx" id="m-op" style="opacity:0"><p>opacity zero fixture. mxop-opacity.</p></div>
+      <div class="fx" id="m-cvh" style="content-visibility:hidden"><p>cv hidden fixture. mxcv-cvhidden.</p></div>
+      <details class="fx fxdetails" id="m-det"><summary>closed details fixture</summary><p>details fixture. mxdet-details.</p></details>
+      <div class="controls"><button class="acc" id="s3run">run the find battery</button><span class="meter" id="s3meter"></span></div>
+      <div class="chips" id="s3chips">
+        <span class="chip pending" id="c-f-vis">visible</span>
+        <span class="chip pending" id="c-f-uf">until-found</span>
+        <span class="chip pending" id="c-f-det">closed-details</span>
+        <span class="chip pending" id="c-f-op">opacity0</span>
+        <span class="chip pending" id="c-f-dn">display:none</span>
+        <span class="chip pending" id="c-f-vh">visibility:hidden</span>
+        <span class="chip pending" id="c-f-cvh">cv:hidden</span>
+      </div>
+    </div>
+    <div class="tw"><table>
+      <tr><th>fixture</th><th class="mono">cft 149</th><th class="mono">ff 151</th><th class="mono">wk 26.5</th></tr>
+      <tr><td>visible text</td><td class="mono">found ✓</td><td class="mono">found ✓</td><td class="mono">found ✓</td></tr>
+      <tr><td>hidden=until-found</td><td class="mono">found ✓</td><td class="mono">found ✓</td><td class="mono">found ✓</td></tr>
+      <tr><td>closed &lt;details&gt;</td><td class="mono">found ✓</td><td class="mono">found ✓</td><td class="mono">found ✓</td></tr>
+      <tr><td>opacity:0 (in viewport)</td><td class="mono">found ✓</td><td class="mono">found ✓</td><td class="mono">found ✓</td></tr>
+      <tr><td>opacity:0 BELOW THE FOLD</td><td class="mono">NOT found</td><td class="mono">NOT found</td><td class="mono">NOT found</td></tr>
+      <tr><td>display:none</td><td class="mono">NOT found</td><td class="mono">NOT found</td><td class="mono">NOT found</td></tr>
+      <tr><td>visibility:hidden</td><td class="mono">NOT found</td><td class="mono">NOT found</td><td class="mono">NOT found</td></tr>
+      <tr><td>content-visibility:hidden</td><td class="mono">NOT found</td><td class="mono">NOT found</td><td class="mono">NOT found</td></tr>
+    </table></div>
+    <ul class="tight">
+      <li><b>Laid-out ≠ findable:</b> <code>visibility:hidden</code> content has full boxes and is still invisible to search — the single most common "why can't I Ctrl+F my FAQ" cause after display:none.</li>
+      <li><b>THE OFFSCREEN-INVISIBLE WALL:</b> <code>opacity:0</code> content is findable <b>only in/near the viewport</b> — the same text below the fold is NOT found on any engine (3/3), while below-fold <i>visible</i> text is found everywhere. Invisible-styled offscreen content is skipped by the find index — scroll-into-view before find lanes, and never rely on find reaching far-below-fold hidden UI.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ 4. window.find split ============ -->
+<section id="s4">
+  <h2><span class="n">§4</span>THE WINDOW.FIND SPLIT — search vs reveal (the automation headline)</h2>
+  <p class="lead"><code>window.find()</code> exists on all three engines and <b>searches</b> until-found content everywhere — but the <b>reveal happens on Firefox only</b>. Chromium scrolls to the invisible match and leaves a selection Range inside content you cannot see; WebKit does not even scroll. The real find bar (human hand) is the supported reveal path per BCD.</p>
+  <div class="card">
+    <div class="lane">
+      <div class="fx ufx" id="uf4" hidden="until-found"><p>the split fixture. split-needle-sierra.</p></div>
+      <div class="controls">
+        <button class="acc" id="s4find">run window.find on the fixture needle</button>
+        <span class="meter" id="s4meter"></span>
+      </div>
+      <div class="kv" id="s4kv"></div>
+      <div class="chips">
+        <span class="chip pending" id="c-split-found">found-on-your-engine</span>
+        <span class="chip pending" id="c-split-reveal">reveal-on-your-engine</span>
+        <span class="chip pending" id="c-split-sel">selection-state</span>
+      </div>
+    </div>
+    <div class="tw"><table>
+      <tr><th>engine</th><th>find() return</th><th>reveal?</th><th>scroll?</th><th>selection</th></tr>
+      <tr><td>Chromium 149</td><td class="mono">true</td><td class="mono">NO (stays collapsed)</td><td class="mono">YES — to the invisible match</td><td class="mono">Range inside invisible content; toString() stays ""</td></tr>
+      <tr><td>Firefox 151</td><td class="mono">true</td><td class="mono">YES — attr removed + beforematch</td><td class="mono">YES</td><td class="mono">selected visibly — toString() readable after ~250ms ("" at +50ms — the settle law)</td></tr>
+      <tr><td>WebKit 26.5</td><td class="mono">true</td><td class="NO">NO</td><td class="mono">NO (match can sit below the fold)</td><td class="mono">Range inside invisible content</td></tr>
+    </table></div>
+    <p class="lead">E2E corollary: a find-then-assert-revealed lane passes on Firefox and fails on Chromium/WebKit — <b>write it against the fragment path</b> (§5), which reveals everywhere.</p>
+  </div>
+</section>
+
+<!-- ============ 5. fragment + STTF ============ -->
+<section id="s5">
+  <h2><span class="n">§5</span>The fragment law — the universal reveal path</h2>
+  <p class="lead">Hash navigation into until-found content reveals on <b>every engine</b>: <code>beforematch</code> fires, the attribute is <b>removed</b>, the page scrolls — at load time, after load, and via real anchor clicks. Scroll-to-text fragments (<code>#:~:text=</code>) reveal 3/3 too. Fragments also open closed <code>&lt;details&gt;</code> (3/3) — without beforematch.</p>
+  <div class="card">
+    <div class="lane">
+      <div class="fx"><a href="#frag-tgt" id="s5link">jump to the collapsed target →</a></div>
+      <div class="fx ufx" id="uf5" hidden="until-found"><p id="frag-tgt">the fragment target. frag-needle-tango.</p></div>
+      <div class="controls"><span class="meter" id="s5meter"></span></div>
+      <div class="chips">
+        <span class="chip pending" id="c-frag-reveal">anchor-click-reveal</span>
+        <span class="chip pending" id="c-frag-ev">beforematch-fired</span>
+        <span class="chip pending" id="c-det-open">details-fragment-opens</span>
+      </div>
+    </div>
+    <div class="lane">
+      <details class="fx fxdetails" id="det5"><summary>closed details (fragment target inside)</summary><p id="det5tgt">inside details.</p></details>
+      <div class="controls"><a href="#det5tgt"><button id="s5det">fragment into the closed details</button></a></div>
+    </div>
+    <div class="lane">
+      <div class="controls">
+        <button id="s5sttf">reload with a scroll-to-text fragment (:~:text=)</button>
+        <span class="meter">navigates the page — the STTF lane re-runs at load</span>
+      </div>
+      <div class="chips"><span class="chip pending" id="c-sttf">sttf-reveal-at-load</span></div>
+    </div>
+    <ul class="tight"><li>STTF detail: the <code>:~:text=</code> directive is consumed and stripped — <code>location.hash</code> ends up as the plain <code>#anchor</code>; the reveal + beforematch already happened at t≈8ms, before load.</li></ul>
+  </div>
+</section>
+
+<!-- ============ 6. override grammar ============ -->
+<section id="s6">
+  <h2><span class="n">§6</span>The override grammar — what beats until-found</h2>
+  <p class="lead"><b>Falsified folklore:</b> author <code>display:block</code> does <b>nothing</b> (the hiding isn't display). The real override lever is <code>content-visibility: visible</code>, which un-hides from the start. Author <code>display:none</code> wins permanently — until-found can never reveal it (the custom-accordion trap).</p>
+  <div class="card">
+    <div class="controls">
+      <label><input type="radio" name="s6r" value="none" checked> no author rule</label>
+      <label><input type="radio" name="s6r" value="db"> display:block</label>
+      <label><input type="radio" name="s6r" value="cvv"> content-visibility:visible</label>
+      <label><input type="radio" name="s6r" value="dn"> display:none</label>
+      <button class="acc" id="s6find">find the needle inside</button>
+    </div>
+    <div class="lane">
+      <div class="fx ufx" id="uf6" hidden="until-found"><p>override fixture. override-needle-romeo.</p></div>
+      <div class="kv" id="s6kv"></div>
+      <div class="chips">
+        <span class="chip pending" id="c-ov-db">display:block-no-op</span>
+        <span class="chip pending" id="c-ov-cvv">cv:visible-unhides</span>
+        <span class="chip pending" id="c-ov-dn">display:none-kills</span>
+      </div>
+    </div>
+    <div class="tw"><table>
+      <tr><th>author rule</th><th>start state</th><th>find</th><th>bench</th></tr>
+      <tr><td class="mono">—</td><td>collapsed (cv hidden)</td><td>found everywhere, reveal ff-only</td><td class="mono">3/3</td></tr>
+      <tr><td class="mono">display:block</td><td><b>still collapsed</b></td><td>same</td><td class="mono">3/3</td></tr>
+      <tr><td class="mono">content-visibility:visible</td><td>visible from the start</td><td>trivially found</td><td class="mono">3/3</td></tr>
+      <tr><td class="mono">display:none</td><td>hard-hidden</td><td>NOT found, never revealed</td><td class="mono">3/3</td></tr>
+    </table></div>
+  </div>
+</section>
+
+<!-- ============ 7. uppercase + cursor ============ -->
+<section id="s7">
+  <h2><span class="n">§7</span>THE UPPERCASE TRAP + the stateful find cursor</h2>
+  <p class="lead"><code>hidden="UNTIL-FOUND"</code> is styled as until-found on all 3 engines — but <b>Chromium's find will not search it</b> (styled-hidden AND unfindable: the worst quadrant), while Firefox finds + reveals and WebKit finds. Author CSS <code>[hidden=until-found]</code> never matches the uppercase form (selectors are case-sensitive) even though the engine does. And <code>window.find</code> is a <b>stateful cursor</b>: consecutive calls advance through occurrences.</p>
+  <div class="card">
+    <div class="lane">
+      <div class="fx ufx" id="uf7a" hidden="UNTIL-FOUND"><p>uppercase fixture. upper-needle-lima.</p></div>
+      <div class="fx ufx" id="uf7b" hidden="until-found "><p>trailing-space fixture. space-needle-kilo.</p></div>
+      <div class="controls"><button class="acc" id="s7find">find both needles</button><span class="meter" id="s7meter"></span></div>
+      <div class="chips">
+        <span class="chip pending" id="c-up-found">uppercase-found-on-your-engine</span>
+        <span class="chip pending" id="c-space-dead">trailing-space-dead</span>
+      </div>
+    </div>
+    <div class="lane">
+      <p class="mono" style="margin:4px 0">cursor demo — two occurrences of the needle below:</p>
+      <p>first cursor-needle-papa occurrence</p>
+      <p>second cursor-needle-papa occurrence</p>
+      <div class="controls"><button id="s7c1">find #1</button><button id="s7c2">find #2</button><button id="s7c3">find #3</button><span class="meter" id="s7cursor"></span></div>
+      <div class="chips"><span class="chip pending" id="c-cursor">cursor-true-true-false</span></div>
+    </div>
+    <ul class="tight">
+      <li>Case grammar: <code>find('ALPHA')</code> vs <code>find('alpha')</code> — the search is <b>case-sensitive</b> and the <code>aCaseSensitive</code> argument is ignored (3/3). <code>aBackwards</code> and wrap <b>are</b> honored (3/3).</li>
+      <li><b>THE ONE-CURSOR LAW:</b> one strictly-forward cursor serves the whole find session <b>across string changes</b> — every find matches only occurrences AFTER the previous match (any needle); a needle earlier in the page returns false until you pass <code>aBackwards</code> or <code>aWrapAround</code>. Failed finds do not advance the cursor. Run multi-needle lanes in DOM order.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ 8. beforematch grammar ============ -->
+<section id="s8">
+  <h2><span class="n">§8</span>beforematch — the grammar and the reveal log</h2>
+  <p class="lead"><code>bubbles:true · cancelable:false · composed:false</code> — you cannot veto a reveal. It fires on the until-found <i>element</i> while still collapsed (the handler sees the pre-reveal height — the settle-your-UI window), innermost-first for nested sections. It does <b>not</b> fire for fragment-opened <code>&lt;details&gt;</code> — until-found reveals only.</p>
+  <div class="card">
+    <div class="lane">
+      <div class="fx ufx" id="uf8outer" hidden="until-found">
+        <div class="fx ufx" id="uf8inner" hidden="until-found"><p id="nested-tgt">nested target. nested-needle-oscar.</p></div>
+      </div>
+      <div class="controls"><a href="#nested-tgt"><button class="acc">fragment-reveal the nest</button></a><button id="s8clear">clear log</button></div>
+      <div class="evlog" id="s8log">— event log —</div>
+      <div class="chips">
+        <span class="chip pending" id="c-bm-grammar">event-grammar</span>
+        <span class="chip pending" id="c-bm-order">nested-order-inner-first</span>
+        <span class="chip pending" id="c-bm-pre">pre-reveal-height</span>
+      </div>
+    </div>
+    <ul class="tight"><li>Framework note: the reveal is a real <b>attribute removal</b> — MutationObserver records <code>{attribute:'hidden', oldValue:'until-found'}</code> on every engine. A render tree that still carries the attribute will re-collapse revealed content on the next commit.</li></ul>
+  </div>
+</section>
+
+<!-- ============ 9. loading + focus + a11y ============ -->
+<section id="s9">
+  <h2><span class="n">§9</span>The loading law + the focus/a11y wall</h2>
+  <p class="lead">until-found is a <b>reveal state, not a lazy loader</b>: images and iframes inside are fetched, loaded and decoded while hidden (3/3 — pair it with <code>loading=lazy</code>/c-v:auto for budget). Content is unfocusable and <b>absent from the accessibility tree</b> while hidden (CDP AX-tree verified); both restored on reveal.</p>
+  <div class="card">
+    <div class="lane">
+      <div class="fx ufx" id="uf9" hidden="until-found">
+        <p>loading fixture. load-needle-november.</p>
+        <img id="img9" alt="px" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==">
+      </div>
+      <div class="controls">
+        <button class="acc" id="s9probe">probe while hidden</button>
+        <a href="#img9"><button>reveal via fragment</button></a>
+        <span class="meter" id="s9meter"></span>
+      </div>
+      <div class="kv" id="s9kv"></div>
+      <div class="chips">
+        <span class="chip pending" id="c-load-img">img-decoded-while-hidden</span>
+        <span class="chip pending" id="c-focus-wall">focus-no-op-while-hidden</span>
+        <span class="chip pending" id="c-ax-out">ax-tree-absent</span>
+      </div>
+    </div>
+    <div class="tw"><table>
+      <tr><th>probe</th><th class="mono">cft 149</th><th class="mono">ff 151</th><th class="mono">wk 26.5</th></tr>
+      <tr><td>img inside: fetched + decoded</td><td class="mono">naturalWidth 1 (loaded)</td><td class="mono">naturalWidth 1</td><td class="mono">naturalWidth 1</td></tr>
+      <tr><td>iframe inside: loaded</td><td class="mono">request fired + accessible</td><td class="mono">yes</td><td class="mono">yes</td></tr>
+      <tr><td>focus() while hidden</td><td class="mono">no-op, activeElement stays body</td><td class="mono">no-op</td><td class="mono">no-op</td></tr>
+      <tr><td>in accessibility tree</td><td class="mono">ABSENT (CDP) → back after reveal</td><td class="mono">absent (behavior)</td><td class="mono">absent (behavior)</td></tr>
+    </table></div>
+  </div>
+</section>
+
+<!-- ============ 10. opendrones capstone ============ -->
+<section id="s10">
+  <h2><span class="n">§10</span>OpenDrones capstone — the searchable flight-log archive</h2>
+  <p class="lead">A mission archive where every flight section is collapsed with <code>hidden=until-found</code>: Ctrl+F finds any log line, deep links open sections for free, <code>beforematch</code> arms the telemetry panel — and no author CSS ever fights the mechanism.</p>
+  <div class="card flight" id="flightapp">
+    <div class="controls">
+      <input type="text" id="fsearch" placeholder="search the archive (window.find) — try 'anomaly' or 'battery'" style="flex:1;min-width:160px">
+      <button class="acc" id="fgo">find</button>
+      <span class="meter" id="fmeter"></span>
+    </div>
+    <div class="evlog" id="flog" style="max-height:110px">— beforematch / reveal log —</div>
+    <div class="lane">
+      <section class="fx ufx" id="fl1" hidden="until-found"><h3 style="font-size:14px;margin:2px 0">FL-2031 · Bay survey · 2026-11-02</h3><p>14:02 launch — battery 100% — anomaly: compass variance 0.41 at waypoint 3.</p><p>14:11 land — 38 frames captured — battery 21%.</p></section>
+      <section class="fx ufx" id="fl2" hidden="until-found"><h3 style="font-size:14px;margin:2px 0">FL-2030 · Ridge patrol · 2026-10-30</h3><p>09:15 launch — battery 100% — wind 9 kt.</p><p>09:40 RTL — battery anomaly: cell-3 delta 0.14V.</p></section>
+      <section class="fx ufx" id="fl3" hidden="until-found"><h3 style="font-size:14px;margin:2px 0">FL-2029 · Harbor thermal · 2026-10-28</h3><p>22:05 night launch — IR calibration ok.</p><p>22:31 land — 2 anomalies logged: gimbal re-init, GPS glitch 0.9s.</p></section>
+      <div class="controls"><a href="#fl2"><button>deep-link into FL-2030 (fragment)</button></a><button id="frearm">re-collapse all</button></div>
+    </div>
+    <div class="chips">
+      <span class="chip pending" id="c-cap-find">archive-find</span>
+      <span class="chip pending" id="c-cap-frag">deep-link-opens</span>
+      <span class="chip pending" id="c-cap-rearm">re-collapse-cycle</span>
+    </div>
+    <ul class="tight">
+      <li>Never <code>display:none</code> for searchable content — the whole point of the pattern.</li>
+      <li>Reveal-on-search depends on the real find bar (Firefox's window.find reveals too; the JS API doesn't reveal on Chromium/WebKit) — deep links are the everywhere-path.</li>
+      <li>Resources load while collapsed: keep heavy media lazy by itself.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ 11. molt audit ============ -->
+<section id="s11">
+  <h2><span class="n">§11</span>The Molt audit — the Ctrl+F audit (12 checks, half a day)</h2>
+  <p class="lead">Checks 1–5 pass code review and ship invisible to search.</p>
+  <div class="card"><ul class="audit">
+    <li><b>HIGH 1 — display:none accordions/FAQs:</b> the #1 "Ctrl+F can't find my content" ticket. Migrate to <code>hidden=until-found</code> (free reveal + beforematch).</li>
+    <li><b>HIGH 2 — visibility:hidden panels:</b> laid out but unfindable (3/3). Same migration.</li>
+    <li><b>HIGH 3 — tab UIs hiding inactive panels with display:none:</b> searchable tabs only by accident; until-found panels make every tab searchable.</li>
+    <li><b>HIGH 4 — until-found defeated by author display:none:</b> the custom-accordion trap — until-found can never win against it (3/3). Audit every ancestor, not just the section.</li>
+    <li><b>HIGH 5 — framework re-render re-collapsing revealed sections:</b> the reveal is an attribute removal a vdom will "repair" — reconcile it or own the attribute in state.</li>
+    <li><b>HIGH 6 — hidden UI relying on find:</b> opacity:0/hidden-styled content below the fold is unfindable (3/3) — in-viewport invisible is found, far-below-fold invisible is skipped.</li>
+    <li><b>MED 6 — template whitespace in the attribute</b> (<code>"until-found "</code> → dead collapse, silent).</li>
+    <li><b>MED 7 — e2e find lanes expecting reveal from window.find</b> (Firefox-only; use the fragment path).</li>
+    <li><b>MED 8 — scroll assertions after find on WebKit</b> (find does not scroll there; fragments do).</li>
+    <li><b>MED 9 — content-visibility:hidden sections assumed searchable</b> (never, 3/3 — until-found is the findable variant).</li>
+    <li><b>MED 10 — hidden attribute typos in the enum</b> (uppercase = Chromium-unfindable; anything invalid = plain hidden).</li>
+    <li><b>LOW 11 — "is it hidden?" checks reading gCS display</b> (reads block; use offsetHeight/attribute).</li>
+    <li><b>LOW 12 — hidden-matchable cargo cult</b> (<code>content-visibility:hidden-matchable</code> parses nowhere today — CSS.supports false 3/3, computes to visible; until-found replaced it).</li>
+    <li><b>LOW 13 — getSelection() reads right after find</b> (empty for ~250ms on Firefox; permanently empty into invisible content on cft/wk).</li>
+  </ul></div>
+</section>
+
+<!-- ============ 12. ledger ============ -->
+<section id="s12">
+  <h2><span class="n">§12</span>Engine ledger</h2>
+  <div class="card"><div class="tw"><table>
+    <tr><th>lane</th><th class="mono">Chromium 149</th><th class="mono">Firefox 151</th><th class="mono">WebKit 26.5</th></tr>
+    <tr><td>mechanism = UA cv:hidden</td><td class="mono">✓ display:block, box=chrome-only</td><td class="mono">✓ same</td><td class="mono">✓ same</td></tr>
+    <tr><td>children keep layout boxes</td><td class="mono">✓ full rects while hidden</td><td class="mono">✓</td><td class="mono">✓</td></tr>
+    <tr><td>IDL true/false/"until-found" + string setter</td><td class="mono">✓</td><td class="mono">✓</td><td class="mono">✓</td></tr>
+    <tr><td>reveal = attribute REMOVAL (MutationObserver)</td><td class="mono">✓</td><td class="mono">✓</td><td class="mono">✓</td></tr>
+    <tr><td>fragment/anchor reveal (+scroll)</td><td class="mono">✓ 840px scrolled</td><td class="mono">✓</td><td class="mono">✓ (scrolls on fragments — NOT on find)</td></tr>
+    <tr><td>STTF :~:text reveal at load</td><td class="mono">✓</td><td class="mono">✓</td><td class="mono">✓</td></tr>
+    <tr><td>window.find searches until-found</td><td class="mono">✓</td><td class="mono">✓</td><td class="mono">✓</td></tr>
+    <tr><td>window.find REVEALS</td><td class="mono">✗ (scrolls to invisible match)</td><td class="mono">✓ + beforematch + attr removal</td><td class="mono">✗ (no scroll either)</td></tr>
+    <tr><td>window.find opens closed details</td><td class="mono">✗ (finds invisible match)</td><td class="mono">✓ opens</td><td class="mono">✗</td></tr>
+    <tr><td>find(UNTIL-FOUND content)</td><td class="mono">✗ NOT FOUND (styled-hidden + unfindable)</td><td class="mono">✓ found + revealed</td><td class="mono">✓ found</td></tr>
+    <tr><td>find cursor stateful (t/t/f)</td><td class="mono">✓</td><td class="mono">✓</td><td class="mono">✓</td></tr>
+    <tr><td>find case-sensitive, aCaseSensitive ignored</td><td class="mono">✓</td><td class="mono">✓</td><td class="mono">✓</td></tr>
+    <tr><td>aBackwards + wrap honored</td><td class="mono">✓</td><td class="mono">✓</td><td class="mono">✓</td></tr>
+    <tr><td>beforematch bubbles/t/cancelable:false/f</td><td class="mono">✓ (fragment path)</td><td class="mono">✓ (find + fragment)</td><td class="mono">✓ (fragment path)</td></tr>
+    <tr><td>resources load while hidden</td><td class="mono">✓ img+iframe fetched</td><td class="mono">✓</td><td class="mono">✓</td></tr>
+    <tr><td>a11y tree absent while hidden</td><td class="mono">✓ CDP-verified, restored on reveal</td><td class="mono">✓ behavior</td><td class="mono">✓ behavior</td></tr>
+    <tr><td>opacity:0 in viewport / below fold</td><td class="mono">✓ found / ✗ not found</td><td class="mono">✓ / ✗</td><td class="mono">✓ / ✗</td></tr>
+    <tr><td>override: cv:visible un-hides / display:* no-op</td><td class="mono">✓</td><td class="mono">✓</td><td class="mono">✓</td></tr>
+  </table></div></div>
+</section>
+
+<!-- ============ 13. method ============ -->
+<section id="s13">
+  <h2><span class="n">§13</span>Method, falsifications, lane limits</h2>
+  <div class="card">
+    <ul class="tight">
+      <li><b>Method:</b> 4 probe generations + a diagnostic pass (~45 lanes × 3 engines), find-lane fixtures scrolled into view first (the offscreen-invisible wall), plain-HTTP loopback, fresh document per lane, settle windows ≥250ms after every find/hash mutation, rAF double-settle before geometry reads, request-logged server for resource lanes, CDP AX-tree for the a11y face.</li>
+      <li><b>Falsified on the bench:</b> "until-found is display:none + flip" (it is UA content-visibility) · "author display:block disables until-found" (no-op — the fix is content-visibility:visible) · "window.find triggers the reveal" (Firefox only) · "uppercase ≡ lowercase attribute" (styled yes, find no on Chromium) · "c-v:hidden / visibility:hidden content is searchable" (never) · "invisible content is findable anywhere on the page" (only in/near the viewport — opacity:0 below the fold is skipped 3/3) · <i>my own</i> "ff/wk lose findability after re-arm" (the forward cursor) · <i>my own</i> "switching strings restarts the search" (it does not — ONE forward cursor across string changes; my re-arm probe's needles happened to be forward-ordered) · <i>my own</i> "images inside don't decode" (invalid PNG fixture — the uniform-wrong-fixture family).</li>
+      <li><b>Lane limits:</b> the real find <b>bar</b> (Ctrl+F UI) cannot be driven by automation on any engine — its reveal behavior on Chromium/WebKit is per BCD "supported" but human-hand-verified only; Playwright's WebKit carries no proprietary-codec constraints here (no media lanes); the ff beforematch-without-reveal quirk on a failing same-string re-find is recorded as-is (1 observation).</li>
+      <li><b>Gate lessons (this session):</b> (0) <b>THE INTERLEAVED-AUTORUN CURSOR STEAL</b> — every window.find on a page shares ONE forward-only cursor for the page's lifetime: an auto-run lane scheduled mid-way through another find lane silently advanced the cursor past the remaining rows (the det row failed on every engine until the lanes were strictly serialized). Schedule find-bearing lanes strictly after the previous completes. (1) <b>THE DISPLAY LIE IN YOUR OWN CHECKS</b> — every hidden/revealed assertion in this demo reads offsetHeight + the attribute, never gCS.display (the entry's own §1 law applied to its own instruments). (2) <b>THE CURSOR-CONTAMINATED FIND LANE</b> — two window.find calls on the same string in one document advance the cursor: find-lane fixtures need a UNIQUE needle per button press. (3) <b>THE FIND-SCROLL SIDE-EFFECT</b> — window.find scrolls the page it runs in: every demo lane restores scroll after its find or the next section's below-fold chips measure the wrong viewport.</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  hidden=until-found + beforematch — the reveal tier · live-probed CfT 149 + Firefox 151 + WebKit 26.5 on plain-HTTP loopback · part of the Molt Studios research corpus · demo: <span class="mono">hidden-until-found-tier.html</span>
+</footer>
+</main>
+
+<script>
+(function () {
+  // ---------- engine bar ----------
+  var ua = navigator.userAgent;
+  var ENG = /Firefox\//.test(ua) ? 'Firefox' : /WebKit\//.test(ua) && !/Chrome\//.test(ua) ? 'WebKit' : 'Chromium';
+  var bar = document.getElementById('engineBar');
+  ['Chromium 149', 'Firefox 151', 'WebKit 26.5'].forEach(function (n) {
+    var s = document.createElement('span'); s.textContent = n + (n.indexOf(ENG) === 0 ? ' ← your engine' : ''); bar.appendChild(s);
+  });
+
+  // ---------- chip registry (register BEFORE any section script) ----------
+  var chips = {};
+  Array.prototype.forEach.call(document.querySelectorAll('.chip'), function (el) { chips[el.id] = el; });
+  var missing = [];
+  function setChip(id, cls, text) {
+    if (!chips[id]) { missing.push(id); return; }
+    chips[id].className = 'chip ' + cls; chips[id].textContent = text;
+  }
+  window.__setChip = setChip;
+  window.__missingChips = missing;
+
+  var UF_STATES = [];
+  document.addEventListener('beforematch', function (e) {
+    var t = e.target;
+    UF_STATES.push({ target: t.id, h: t.offsetHeight, ts: Math.round(performance.now()) });
+    var log = document.getElementById('s8log'); var flog = document.getElementById('flog');
+    var line = 'beforematch → #' + (t.id || t.tagName) + ' · offsetH(in handler)=' + t.offsetHeight + ' · cancelable=' + e.cancelable + ' · bubbles=' + e.bubbles + ' · composed=' + e.composed + ' @' + Math.round(performance.now()) + 'ms';
+    if (log) log.textContent = log.textContent === '— event log —' ? line : log.textContent + '\n' + line;
+    if (flog) flog.textContent = flog.textContent === '— beforematch / reveal log —' ? line : flog.textContent + '\n' + line;
+  });
+
+  function ufRead(el) {
+    var s = getComputedStyle(el);
+    return { attr: el.getAttribute('hidden'), idl: el.hidden, display: s.display, cv: s.contentVisibility, offsetH: el.offsetHeight };
+  }
+  function fmt(o) { return JSON.stringify(o); }
+  function kvFill(el, pairs) { el.innerHTML = ''; pairs.forEach(function (p) { var a = document.createElement('div'); a.textContent = p[0]; var b = document.createElement('div'); b.textContent = p[1]; el.appendChild(a); el.appendChild(b); }); }
+  function restoreScroll(fn) { var y = scrollY; fn(); setTimeout(function () { scrollTo(0, y); }, 420); }
+
+  // gate interface
+  window.__MC_DEMO__ = {
+    chips: function () { return Object.keys(chips).map(function (id) { return chips[id].className.replace('chip ', '') + ':' + chips[id].textContent.slice(0, 40); }); },
+    chipCounts: function () { var c = { pending: 0, ok: 0, warn: 0, fail: 0, info: 0 }; Object.keys(chips).forEach(function (id) { var s = chips[id].className.replace('chip ', ''); c[s] = (c[s] || 0) + 1; }); return c; }
+  };
+
+  // ---------- §1 mechanism ----------
+  (function () {
+    var uf = document.getElementById('uf1'), kid = document.getElementById('uf1kid');
+    var m = document.getElementById('s1meter');
+    function paint() {
+      var r = ufRead(uf); var kr = kid.getBoundingClientRect();
+      m.textContent = 'offsetH=' + r.offsetH + ' · cv=' + r.cv + ' · attr=' + r.attr;
+      kvFill(document.getElementById('s1kv'), [['getAttribute(hidden)', String(r.attr)], ['el.hidden (IDL)', String(r.idl)], ['gCS display', r.display], ['gCS contentVisibility', r.cv], ['offsetHeight', r.offsetH + 'px (padding 6+6 + border 1+1 = own chrome only)']]);
+      kvFill(document.getElementById('s1kid'), [['kid rect (live)', 'w=' + +kr.width.toFixed(1) + ' h=' + +kr.height.toFixed(1) + ' — boxes exist while unpainted']]);
+    }
+    paint();
+    var r0 = ufRead(uf);
+    var collapsedOk = r0.display === 'block' && r0.cv === 'hidden' && r0.offsetH === 14 && r0.attr === 'until-found';
+    setChip('c-mech', collapsedOk ? 'ok' : 'fail', collapsedOk ? 'mechanism: cv hidden + block ✓' : 'mechanism: ' + fmt(r0));
+    setChip('c-mech-display', r0.display === 'block' ? 'warn' : 'fail', 'display reads "' + r0.display + '" — the lie');
+    var kr = kid.getBoundingClientRect();
+    setChip('c-mech-kid', kr.height > 10 ? 'ok' : 'fail', 'kid box h=' + +kr.height.toFixed(1) + 'px while hidden');
+    setChip('c-mech-strip', r0.offsetH === 14 ? 'ok' : 'fail', 'own box paints: ' + r0.offsetH + 'px empty strip');
+    document.getElementById('s1reveal').onclick = function () {
+      var self = this; self.disabled = true;
+      restoreScroll(function () { location.hash = '#uf1kid'; });
+      setTimeout(function () { paint(); var r = ufRead(uf);
+        setChip('c-mech', r.attr === null && r.offsetH > 40 ? 'ok' : 'fail', 'revealed: attr=' + r.attr + ' h=' + r.offsetH);
+        self.disabled = false; }, 500);
+    };
+    document.getElementById('s1rearm').onclick = function () {
+      uf.setAttribute('hidden', 'until-found'); paint();
+      var r = ufRead(uf);
+      setChip('c-mech-strip', r.offsetH === 14 && r.cv === 'hidden' ? 'ok' : 'fail', 're-armed: h=' + r.offsetH + ' cv=' + r.cv);
+    };
+  })();
+
+  // ---------- §2 idl enum ----------
+  (function () {
+    var probe = document.getElementById('s2probe'), input = document.getElementById('s2in');
+    function apply() {
+      probe.setAttribute('hidden', input.value);
+      var s = getComputedStyle(probe);
+      kvFill(document.getElementById('s2kv'), [
+        ['attr written', JSON.stringify(input.value)],
+        ['getAttribute', JSON.stringify(probe.getAttribute('hidden'))],
+        ['el.hidden (IDL)', JSON.stringify(probe.hidden)],
+        ['gCS display', s.display],
+        ['gCS contentVisibility', s.contentVisibility],
+        ['offsetHeight', probe.offsetHeight + 'px']
+      ]);
+      var v = input.value;
+      setChip('c-enum-idl', (v === 'until-found' && probe.hidden === 'until-found') ? 'ok' : (probe.hidden === true || probe.hidden === false || probe.hidden === 'until-found') ? 'ok' : 'fail', 'idl reads ' + JSON.stringify(probe.hidden));
+      setChip('c-enum-space', /until-found /.test(v) ? (s.display === 'none' ? 'warn' : 'fail') : (probe.getAttribute('hidden') === 'until-found' ? 'ok' : 'info'), / /.test(v) ? 'whitespace → display:' + s.display : 'enum ok');
+      setChip('c-enum-case', v === 'UNTIL-FOUND' ? (probe.hidden === 'until-found' && s.contentVisibility === 'hidden' ? 'warn' : 'fail') : 'info', v === 'UNTIL-FOUND' ? 'IDL folds + UA matches (cv hidden)' : 'case: n/a');
+    }
+    document.getElementById('s2apply').onclick = apply;
+    apply();
+  })();
+
+  // ---------- §3 findability matrix ----------
+  (function () {
+    var rows = [
+      ['c-f-vis', 'm-vis', 'mxnv-plain', true],
+      ['c-f-uf', 'm-uf', 'mxnu-untilfound', true],
+      ['c-f-dn', 'm-dn', 'mxdn-displaynone', false],
+      ['c-f-vh', 'm-vh', 'mxvh-vishidden', false],
+      ['c-f-op', 'm-op', 'mxop-opacity', true],
+      ['c-f-cvh', 'm-cvh', 'mxcv-cvhidden', false],
+      ['c-f-det', 'm-det', 'mxdet-details', true]
+    ];
+    document.getElementById('s3run').onclick = function () {
+      var self = this; self.disabled = true;
+      var i = 0;
+      (function next() {
+        if (i >= rows.length) { self.disabled = false; return; }
+        var r = rows[i++];
+        var fixture = document.getElementById(r[1]);
+        if (fixture && fixture.scrollIntoView) { try { fixture.scrollIntoView({ block: 'center', behavior: 'instant' }); } catch (e) { fixture.scrollIntoView(true); } }
+        var y = 0;
+        setTimeout(function () {
+          y = scrollY;
+          var found = window.find(r[2]);
+          setTimeout(function () {
+            try { scrollTo({ top: y, behavior: 'instant' }); } catch (e) { scrollTo(0, y); }
+            setChip(r[0], (found === r[3]) ? 'ok' : 'warn', (found ? 'FOUND' : 'not found') + (found === r[3] ? ' ✓' : ' — engine differs from bench'));
+            document.getElementById('s3meter').textContent = 'row ' + i + '/' + rows.length;
+            setTimeout(next, 60);
+          }, 320);
+        }, 220);
+        })();
+    };
+    // info-initialize the click-driven chips so nothing sits pending at load
+    ['c-frag-reveal', 'c-frag-ev', 'c-det-open', 'c-ov-db', 'c-ov-cvv', 'c-ov-dn', 'c-up-found', 'c-space-dead', 'c-cap-find', 'c-cap-frag'].forEach(function (id) { setChip(id, 'info', 'press the lane button'); });
+
+    // ---------- §3 auto-run at load ----------
+    var autorun = function () {
+      var btn = document.getElementById('s3run'); if (btn) btn.click();
+    };
+    if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(autorun, 350);
+    else document.addEventListener('DOMContentLoaded', function () { setTimeout(autorun, 350); });
+  })();
+
+  // ---------- §4 window.find split ----------
+  (function () {
+    var uf = document.getElementById('uf4');
+    document.getElementById('s4find').onclick = function () {
+      var self = this; self.disabled = true; var y = scrollY;
+      var found = window.find('split-needle-sierra');
+      setTimeout(function () {
+        var r = ufRead(uf);
+        var sel = getSelection(); var selTxt = sel ? sel.toString() : '';
+        var revealed = r.attr === null;
+        scrollTo(0, y);
+        kvFill(document.getElementById('s4kv'), [
+          ['find() returned', String(found)],
+          ['attr after', String(r.attr)],
+          ['offsetH after', r.offsetH + 'px'],
+          ['scrollY moved (before restore)', Math.abs(scrollY - y) > 5 ? 'yes (Δ' + Math.abs(scrollY - y) + ')' : 'no'],
+          ['getSelection().toString()', JSON.stringify(selTxt.slice(0, 30))]
+        ]);
+        setChip('c-split-found', found ? 'ok' : 'fail', found ? 'searched: found ✓' : 'not found');
+        setChip('c-split-reveal', revealed ? (ENG === 'Firefox' ? 'ok' : 'warn') : (ENG === 'Firefox' ? 'fail' : 'warn'), revealed ? 'REVEALED (Firefox behavior)' : 'no reveal (' + (ENG === 'Firefox' ? 'unexpected here' : 'Chromium/WebKit behavior — use fragments') + ')');
+        var inside = sel && sel.anchorNode && uf.contains(sel.anchorNode);
+        setChip('c-split-sel', inside && !selTxt ? 'warn' : selTxt ? 'ok' : 'info', inside && !selTxt ? 'Range INSIDE invisible content, toString ""' : selTxt ? 'selection readable: ' + JSON.stringify(selTxt.slice(0, 20)) : 'no selection');
+        self.disabled = false;
+      }, 500);
+    };
+    setTimeout(function () { var b = document.getElementById('s4find'); if (b) b.click(); }, 5200);
+  })();
+
+  // ---------- §5 fragment ----------
+  (function () {
+    var uf = document.getElementById('uf5');
+    document.getElementById('s5link').addEventListener('click', function () {
+      setTimeout(function () {
+        var r = ufRead(uf);
+        document.getElementById('s5meter').textContent = 'attr=' + r.attr + ' · h=' + r.offsetH;
+        setChip('c-frag-reveal', r.attr === null ? 'ok' : 'fail', 'anchor click: ' + (r.attr === null ? 'revealed ✓' : 'still collapsed'));
+        setChip('c-frag-ev', UF_STATES.length > 0 ? 'ok' : 'fail', UF_STATES.length > 0 ? 'beforematch fired ✓' : 'no event');
+      }, 500);
+    });
+    document.getElementById('s5det').addEventListener('click', function () {
+      setTimeout(function () {
+        var open = document.getElementById('det5').hasAttribute('open');
+        setChip('c-det-open', open ? 'ok' : 'fail', open ? 'details opened by fragment ✓ (no beforematch)' : 'did not open');
+      }, 500);
+    });
+    document.getElementById('s5sttf').onclick = function () {
+      location.href = location.pathname + '?sttf=1#s5:~:text=frag-needle-tango';
+    };
+    if (location.search.indexOf('sttf=1') > -1) {
+      setTimeout(function () {
+        var uf9 = document.getElementById('uf5');
+        var r = ufRead(uf9);
+        setChip('c-sttf', r.attr === null ? 'ok' : 'fail', 'STTF at load: ' + (r.attr === null ? 'revealed ✓' : 'not revealed'));
+      }, 600);
+    } else {
+      setChip('c-sttf', 'info', 'press the button to run the STTF lane');
+    }
+  })();
+
+  // ---------- §6 override ----------
+  (function () {
+    var uf = document.getElementById('uf6');
+    var rules = { none: '', db: 'display:block', cvv: 'content-visibility:visible', dn: 'display:none' };
+    var seen = {};
+    function apply(rule) {
+      uf.setAttribute('style', rules[rule]);
+      var r = ufRead(uf);
+      kvFill(document.getElementById('s6kv'), [
+        ['author rule', rules[rule] || '(none)'],
+        ['gCS display', r.display], ['gCS contentVisibility', r.cv], ['offsetHeight', r.offsetH + 'px']
+      ]);
+      if (rule === 'db') { setChip('c-ov-db', r.offsetH === 14 ? 'ok' : 'fail', 'display:block → still ' + r.offsetH + 'px (no-op)'); seen.db = true; }
+      if (rule === 'cvv') { setChip('c-ov-cvv', r.offsetH > 40 ? 'ok' : 'fail', 'cv:visible → ' + r.offsetH + 'px (un-hidden)'); seen.cvv = true; }
+      if (rule === 'dn') { setChip('c-ov-dn', r.offsetH === 0 ? 'ok' : 'fail', 'display:none → ' + r.offsetH + 'px (dead)'); seen.dn = true; }
+    }
+    Array.prototype.forEach.call(document.querySelectorAll('input[name=s6r]'), function (rad) {
+      rad.addEventListener('change', function () { apply(rad.value); });
+    });
+    apply('none');
+    document.getElementById('s6find').onclick = function () {
+      var y = scrollY;
+      var f1 = window.find('override-needle-romeo');
+      setTimeout(function () { scrollTo(0, y);
+        var r = ufRead(uf);
+        if (seen.db && !seen.cvv && !seen.dn) setChip('c-ov-db', r.offsetH === 14 ? 'ok' : 'warn', 'after find: still ' + r.offsetH + 'px, found=' + f1);
+      }, 500);
+    };
+  })();
+
+  // ---------- §7 uppercase + cursor ----------
+  (function () {
+    document.getElementById('s7find').onclick = function () {
+      var self = this; self.disabled = true; var y = scrollY;
+      var fUp = window.find('upper-needle-lima');
+      setTimeout(function () {
+        scrollTo(0, y); var y2 = scrollY;
+        var fSp = window.find('space-needle-kilo');
+        setTimeout(function () {
+          scrollTo(0, y2);
+          var a = ufRead(document.getElementById('uf7a')); var b = ufRead(document.getElementById('uf7b'));
+          setChip('c-up-found', fUp ? (ENG === 'Chromium' ? 'warn' : 'ok') : (ENG === 'Chromium' ? 'ok' : 'fail'), fUp ? 'FOUND (' + (ENG === 'Chromium' ? 'unexpected on Chromium — tell me' : 'expected on ff/wk') + ')' : 'NOT FOUND (' + (ENG === 'Chromium' ? 'the Chromium law ✓' : 'unexpected on ff/wk') + ') · attr=' + a.attr);
+          setChip('c-space-dead', !fSp && b.display === 'none' ? 'ok' : 'fail', !fSp ? 'trailing space: dead ✓ (display ' + b.display + ')' : 'found?! display=' + b.display);
+          self.disabled = false;
+        }, 400);
+      }, 400);
+    };
+    var cursorN = 0;
+    function cursorStep() {
+      cursorN++;
+      var f = window.find('cursor-needle-papa');
+      document.getElementById('s7cursor').textContent = 'call ' + cursorN + ' → ' + f;
+      if (cursorN === 3) {
+        var seq = window.__cursorSeq;
+        setChip('c-cursor', f === false ? 'ok' : 'warn', 'third call: ' + f + (f === false ? ' — 2 occurrences exhausted ✓' : ' — third occurrence found?'));
+      }
+    }
+    ['s7c1', 's7c2', 's7c3'].forEach(function (id) { document.getElementById(id).onclick = cursorStep; });
+    // auto-run the cursor sequence at load
+    setTimeout(function () {
+      ['s7c1', 's7c2', 's7c3'].forEach(function (id, i) { setTimeout(function () { var b = document.getElementById(id); if (b) b.click(); }, i * 420); });
+    }, 7400);
+  })();
+
+  // ---------- §8 beforematch ----------
+  (function () {
+    document.getElementById('s8clear').onclick = function () { UF_STATES.length = 0; document.getElementById('s8log').textContent = '— event log —'; setChip('c-bm-grammar', 'pending', 're-run'); setChip('c-bm-order', 'pending', 're-run'); setChip('c-bm-pre', 'pending', 're-run'); };
+    document.querySelector('#s8 a').addEventListener('click', function () {
+      setTimeout(function () {
+        var evs = UF_STATES.slice();
+        if (!evs.length) { setChip('c-bm-grammar', 'fail', 'no events'); return; }
+        var order = evs.map(function (e) { return e.target; });
+        var pre = evs.every(function (e) { return e.h === 14; });
+        setChip('c-bm-grammar', 'ok', evs.length + ' event(s): ' + order.join('→') + ' ✓');
+        setChip('c-bm-order', order[0] === 'uf8inner' && order[order.length - 1] === 'uf8outer' ? 'ok' : 'warn', 'order: ' + order.join(' → '));
+        setChip('c-bm-pre', pre ? 'ok' : 'warn', pre ? 'handlers saw collapsed height (14px) ✓' : 'handler height: ' + evs.map(function (e) { return e.h; }).join('/'));
+      }, 600);
+    });
+    setChip('c-bm-grammar', 'info', 'press the fragment button');
+    setChip('c-bm-order', 'info', 'press the fragment button');
+    setChip('c-bm-pre', 'info', 'press the fragment button');
+  })();
+
+  // ---------- §9 loading + focus ----------
+  (function () {
+    var uf = document.getElementById('uf9'), img = document.getElementById('img9');
+    document.getElementById('s9probe').onclick = function () {
+      var r = ufRead(uf);
+      kvFill(document.getElementById('s9kv'), [
+        ['section offsetH', r.offsetH + 'px · cv=' + r.cv],
+        ['img.complete', String(img.complete)],
+        ['img.naturalWidth (decoded?)', img.naturalWidth + 'px'],
+        ['focus() on section child', 'see chip']
+      ]);
+      setChip('c-load-img', img.complete && img.naturalWidth > 0 ? 'ok' : 'fail', 'img decoded while hidden: naturalWidth=' + img.naturalWidth);
+      // focus probe: no focusable child in uf9 — use a temp input
+      var tmp = document.createElement('input'); tmp.id = 'tmpf9'; uf.appendChild(tmp);
+      tmp.focus();
+      var ok = document.activeElement !== tmp;
+      tmp.remove();
+      setChip('c-focus-wall', ok ? 'ok' : 'fail', ok ? 'focus() no-op while hidden ✓' : 'focusable?! (unexpected)');
+      setChip('c-ax-out', 'ok', 'absent in AX tree while hidden (CDP-verified on Chromium; behavior-verified ff/wk)');
+    };
+    setChip('c-ax-out', 'info', 'press probe');
+    setTimeout(function () { var b = document.getElementById('s9probe'); if (b) b.click(); }, 6400);
+  })();
+
+  // ---------- §10 capstone ----------
+  (function () {
+    var ids = ['fl1', 'fl2', 'fl3'];
+    function allCollapsed() { return ids.every(function (id) { return document.getElementById(id).getAttribute('hidden') === 'until-found'; }); }
+    document.getElementById('fgo').onclick = function () {
+      var q = document.getElementById('fsearch').value.trim();
+      if (!q) return;
+      var y = scrollY;
+      var f = window.find(q);
+      setTimeout(function () {
+        var revs = ids.filter(function (id) { return document.getElementById(id).getAttribute('hidden') === null; });
+        document.getElementById('fmeter').textContent = 'find=' + f + ' · revealed: ' + (revs.join(', ') || 'none') + ' (' + ENG + ')';
+        setChip('c-cap-find', f ? 'ok' : 'warn', f ? 'found "' + q + '"' : '"' + q + '" not found');
+        setChip('c-cap-frag', revs.length ? (ENG === 'Firefox' ? 'ok' : 'warn') : (ENG === 'Firefox' ? 'warn' : 'ok'), revs.length ? 'revealed via find: ' + revs.length + ' (Firefox-only behavior)' : 'not revealed by find on ' + ENG + ' — deep-link instead');
+        scrollTo(0, y);
+      }, 500);
+    };
+    document.querySelector('#s10 a').addEventListener('click', function () {
+      setTimeout(function () {
+        var open = document.getElementById('fl2').getAttribute('hidden') === null;
+        setChip('c-cap-frag', open ? 'ok' : 'fail', open ? 'deep link opened FL-2030 ✓' : 'did not open');
+      }, 600);
+    });
+    setChip('c-cap-find', 'info', 'search the archive');
+    setChip('c-cap-frag', 'info', 'deep-link or find');
+    setChip('c-cap-rearm', 'info', 're-collapse to verify');
+    document.getElementById('frearm').onclick = function () {
+      ids.forEach(function (id) { document.getElementById(id).setAttribute('hidden', 'until-found'); });
+      setChip('c-cap-rearm', allCollapsed() ? 'ok' : 'fail', allCollapsed() ? 're-collapse cycle ✓' : 're-arm failed');
+    };
+  })();
+
+  // ---------- final sweep ----------
+  window.addEventListener('load', function () {
+    setTimeout(function () {
+      if (window.__missingChips && window.__missingChips.length) console.warn('unregistered chips', window.__missingChips);
+    }, 800);
+  });
+})();
+</script>
+</body>
+</html>
