@@ -1,0 +1,861 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>overscroll-behavior — the scroll-boundary tier: the Firefox contain void, the mid-burst chain grammar &amp; the backdrop split</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --ink:#161513; --muted:#6d675f; --line:#e6e1d9;
+    --accent:#0e6b5c; --accent-soft:#e9f5f2; --ok:#1c6b47; --ok-soft:#eaf6ef;
+    --warn:#8a6100; --warn-soft:#fdf6e3; --fail:#a32b1c; --fail-soft:#fdeceb;
+    --info:#2a5a8a; --info-soft:#ecf3fa; --radius:14px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 24px 96px}
+  header{margin-bottom:28px}
+  .kicker{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  h1{font-size:clamp(26px,4vw,36px);line-height:1.14;letter-spacing:-.022em;margin:0 0 12px;font-weight:680}
+  .lede{font-size:15.5px;color:#403b35;margin:0 0 10px;max-width:66ch}
+  .meta{font:13px/1.5 var(--mono);color:var(--muted);margin-top:18px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px;margin-bottom:24px}
+  h2{font-size:21px;line-height:1.3;margin:0 0 6px;letter-spacing:-.012em;font-weight:660}
+  h3{font-size:15px;margin:22px 0 8px;font-weight:640}
+  .sub{color:var(--muted);font-size:14.5px;margin:0 0 18px;max-width:70ch}
+  code,kbd{font-family:var(--mono);font-size:.885em;background:#f3efe9;padding:.12em .38em;border-radius:5px;border:1px solid #e8e2d8;overflow-wrap:anywhere}
+  .law{border-left:3px solid var(--accent);padding:12px 0 12px 16px;margin:16px 0;background:linear-gradient(90deg,var(--accent-soft),transparent 70%);border-radius:0 8px 8px 0}
+  .law b{color:var(--accent)}
+  .law.bad{border-color:var(--fail);background:linear-gradient(90deg,var(--fail-soft),transparent 70%)}
+  .law.bad b{color:var(--fail)}
+  .law.warn{border-color:var(--warn);background:linear-gradient(90deg,var(--warn-soft),transparent 70%)}
+  .law.warn b{color:var(--warn)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+  .chip{font:600 12px/1.35 var(--mono);padding:6px 10px;border-radius:999px;border:1px solid;white-space:normal;overflow-wrap:anywhere;max-width:100%}
+  .chip.ok{color:var(--ok);border-color:#b9dfca;background:var(--ok-soft)}
+  .chip.warn{color:var(--warn);border-color:#ecd9a3;background:var(--warn-soft)}
+  .chip.fail{color:var(--fail);border-color:#f0c2bc;background:var(--fail-soft)}
+  .chip.info{color:var(--info);border-color:#bfd6ee;background:var(--info-soft)}
+  .chip.pending{color:var(--muted);border-color:var(--line);background:#f6f4f1}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0 4px}
+  th{font:600 12px/1.4 var(--mono);text-align:left;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+  th,td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
+  td.v{font-family:var(--mono);font-size:12.5px;overflow-wrap:anywhere}
+  .lab{border:1px dashed #d8d1c4;border-radius:10px;padding:14px;margin:12px 0;background:#fdfcf9}
+  .lab .cap{font:600 11.5px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  .out{font:12.5px/1.55 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f4f1;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:10px;color:#3d382f}
+  .btnrow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+  button{font:600 12.5px/1 var(--mono);color:var(--accent);background:#fff;border:1px solid #bfd6cd;border-radius:8px;padding:9px 12px;cursor:pointer}
+  button:hover{background:var(--accent-soft)}
+  button:disabled{opacity:.45;cursor:default}
+  button.sel{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .kv{display:flex;flex-wrap:wrap;gap:6px 14px;font:12px/1.5 var(--mono);color:var(--muted);margin-top:8px}
+  .kv b{color:var(--ink);font-weight:640;overflow-wrap:anywhere}
+  .note{font-size:13.5px;color:var(--muted);margin-top:10px;max-width:70ch}
+  li{overflow-wrap:anywhere}
+  ol.audit{font-size:14.5px;line-height:1.75;padding-left:22px;max-width:72ch}
+  ol.audit li b{font-weight:660}
+  ol.audit .hi{color:var(--fail);font-weight:660}
+  ol.audit .md{color:var(--warn);font-weight:640}
+  ol.audit .lo{color:var(--info);font-weight:620}
+  .ledger td{font-size:12.5px}
+  /* the "world" pattern: a mini document the visitor can wheel inside without leaving the page */
+  .world{position:relative;height:420px;overflow:auto;border:1px solid #c9c2b4;border-radius:8px;background:#fff}
+  .world .wtall{height:1700px;padding:0}
+  .pane{width:230px;height:190px;overflow:auto;border:2px solid #4a8f7f;border-radius:8px;background:#fdfcf9}
+  .pane .prow{height:34px;display:flex;align-items:center;padding:0 10px;border-bottom:1px dashed #e4ddcf;font:600 11px/1.2 var(--mono);color:#57524a;white-space:nowrap;overflow:hidden}
+  .world .wtick{height:120px;border-bottom:1px dotted #ddd5c6;display:flex;align-items:center;padding-left:10px;font:600 11px/1.2 var(--mono);color:#a49c8e}
+  .sticky-badge{position:sticky;top:8px;z-index:5;display:flex;gap:6px;justify-content:flex-end;padding:8px 8px 0;pointer-events:none}
+  .sticky-badge span{pointer-events:auto;background:#fff;border:1px solid var(--line);border-radius:999px;font:600 11px/1 var(--mono);padding:6px 9px;color:var(--muted)}
+  .sticky-badge span.live{color:var(--accent);border-color:#bfd6cd}
+  .xworld{height:200px;overflow:auto;border:1px solid #c9c2b4;border-radius:8px;background:#fff;white-space:nowrap}
+  .xworld .xtall{width:2200px;height:100%;display:flex;align-items:center;gap:24px;padding:0 16px}
+  .xpane{width:300px;height:140px;overflow-x:auto;overflow-y:hidden;white-space:nowrap;border:2px solid #4a8f7f;border-radius:8px;flex:none}
+  .xpane span{display:inline-block;width:2400px;height:100px;background:linear-gradient(90deg,#e9f5f2,#f7e8d9)}
+  .xtick{flex:none;font:600 11px/1.2 var(--mono);color:#a49c8e}
+  .snap .prow{height:64px;scroll-snap-align:start;flex-direction:column;align-items:flex-start;justify-content:center;gap:2px}
+  /* modal */
+  #modalRoot{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;background:rgba(22,21,19,.35)}
+  #modalRoot.open{display:flex}
+  #modalVeil{position:absolute;inset:0;background:transparent}
+  #modalCard{position:relative;width:min(420px,92vw);background:#fff;border-radius:14px;border:1px solid var(--line);box-shadow:0 18px 50px rgba(20,18,12,.22);overflow:hidden}
+  #modalCard header{margin:0;padding:12px 16px;border-bottom:1px solid var(--line);font:640 14px/1.3 var(--mono)}
+  #modalBody{height:220px;overflow:auto;padding:10px 16px}
+  #modalBody .mrow{height:30px;display:flex;align-items:center;border-bottom:1px dashed #eee6d8;font:600 11px/1.2 var(--mono);color:#57524a}
+  #modalCard footer{padding:10px 16px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:space-between;align-items:center;font:12px/1.4 var(--mono);color:var(--muted)}
+  .bleed-pill{font:700 12px/1 var(--mono);padding:6px 10px;border-radius:999px;background:var(--ok-soft);color:var(--ok);border:1px solid #b9dfca}
+  .bleed-pill.dirty{background:var(--fail-soft);color:var(--fail);border-color:#f0c2bc}
+  iframe.kf{width:100%;height:180px;border:2px solid #4a8f7f;border-radius:8px;background:#fff}
+  .twofer{display:flex;flex-wrap:wrap;gap:14px}
+  .twofer>div{flex:1 1 300px;min-width:0}
+  pre.recipe{font:12.5px/1.6 var(--mono);background:#f6f4f1;border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow:auto;white-space:pre;color:#3d382f}
+  .fam{font:700 11px/1 var(--mono);padding:4px 8px;border-radius:999px;background:#f3efe9;border:1px solid var(--line);color:var(--muted)}
+  .fam.cft{background:#e8f0fb;color:#2a5a8a;border-color:#bfd6ee}
+  .fam.ff{background:#fdeada;color:#9a5b00;border-color:#f0d4ad}
+  .fam.wk{background:#eaf6ef;color:#1c6b47;border-color:#b9dfca}
+</style>
+</head>
+<body>
+<div class="wrap" id="top">
+
+<header>
+  <div class="kicker">Molt Research · engine tier · live-probed 2026-11-08</div>
+  <h1><code>overscroll-behavior</code> — the scroll-boundary tier</h1>
+  <p class="lede">The property that promises to stop <b>scroll chaining</b> — wheel past the bottom of a chat pane, a map strip, a modal, and the page behind it stays still. Shipped everywhere since 2018 (Chrome 63 · Firefox 59 · Safari 16). This session measured what it actually does on three engines — and the promise <b>silently fails on Firefox for wheel input</b>.</p>
+  <p class="lede">Probed live in CfT 149 · Firefox 151 · WebKit 26.5 over a loopback origin with per-wheel position traces across ~60 lane-runs: nested element scrollers, the document viewport, iframes, keyboards, snap containers, RTL and vertical writing modes. The interactive labs below re-run the core lanes in <b>your</b> browser — wheel over them.</p>
+  <div class="chips" id="uaChips"></div>
+  <p class="meta">Catalog gap: 452 entries scanned — <code>overscroll</code> appears in 4 passing mentions, zero dedicated coverage. · Companion entries: Wheel tier · Scroll Snap · Smooth-scroll tier · RTL &amp; Logical.</p>
+</header>
+
+<!-- ══════════════════ §1 CHAIN GRAMMAR ══════════════════ -->
+<section id="s1">
+  <h2>§1 · The chain grammar — what <code>auto</code> actually does</h2>
+  <p class="sub">A scroller at its boundary hands the wheel to the nearest scrollable ancestor — the full delta, immediately. The lab below is a mini-document ("world") with a pane inside it. Wheel the pane to its bottom and keep wheeling: watch the world move under it.</p>
+  <div class="law"><b>THE CHAIN LAW.</b> With <code>auto</code>, an at-edge scroller chains the <b>entire</b> wheel delta to the nearest scrollable ancestor — vertical and horizontal, element ancestors and the viewport — on every engine measured. The wheel that <em>saturates mid-flight</em> still loses its remainder (it vanishes — the wheel-tier law); the <em>next</em> at-edge wheel chains everything.</div>
+  <div class="lab">
+    <div class="cap">Live lab · wheel over the pane</div>
+    <div class="btnrow">
+      <button class="sel" data-ob="auto">auto</button>
+      <button data-ob="contain">contain</button>
+      <button data-ob="none">none</button>
+      <button id="s1reset">reset world</button>
+    </div>
+    <div class="world" id="s1world">
+      <div class="sticky-badge"><span id="s1badge">chain: —</span></div>
+      <div class="wtall">
+        <div class="wtick">world top · scroll me by chaining from the pane ↓</div>
+        <div class="pane" id="s1pane"></div>
+        <div class="wtick">+120px</div><div class="wtick">+240px</div><div class="wtick">+360px</div><div class="wtick">+480px</div>
+        <div class="wtick">+600px</div><div class="wtick">+720px</div><div class="wtick">+840px</div><div class="wtick">+960px</div>
+        <div class="wtick">world bottom</div>
+      </div>
+    </div>
+    <div class="out" id="s1out">wheel the pane — readout appears here</div>
+    <div class="kv"><span>pane scrollTop <b id="s1pt">0</b></span><span>pane max <b id="s1pm">—</b></span><span>world scrollTop <b id="s1wt">0</b></span><span>ob <b id="s1ob">auto</b></span></div>
+  </div>
+  <div class="chips" id="s1chips"></div>
+  <table class="ledger">
+    <tr><th>lane (recorded bench)</th><th>cft 149</th><th>ff 151</th><th>wk 26.5</th></tr>
+    <tr><td>y → document, mid-burst, <code>auto</code> — worldΔ/wheel</td><td class="v">300 each, from the first at-edge wheel</td><td class="v">0,0,0,… mid-burst (deferred)</td><td class="v">300 each, from the first at-edge wheel</td></tr>
+    <tr><td>y → element ancestor, mid-burst, <code>auto</code></td><td class="v">chains immediately</td><td class="v">deferred to next gesture</td><td class="v">chains immediately</td></tr>
+    <tr><td>x → document / element, <code>auto</code></td><td class="v">chains (400/wheel)</td><td class="v">chains on fresh gesture only</td><td class="v">chains (400/wheel)</td></tr>
+    <tr><td>fresh wheel after ≥2.5s idle, <code>auto</code></td><td class="v">chains (full delta)</td><td class="v">chains (full delta)</td><td class="v">chains (full delta)</td></tr>
+  </table>
+  <div class="law warn"><b>THE HANDOFF DEFERRAL (Firefox).</b> Firefox never chains <em>mid-burst</em>: within an active wheel transaction the delta just dies at the edge; the chain happens on the <b>next, fresh gesture</b> (after ~2.5s idle or moving the pointer away and back). Chromium + WebKit chain on the very next wheel, inside the burst.</div>
+</section>
+
+<!-- ══════════════════ §2 TRANSACTION LAB ══════════════════ -->
+<section id="s2">
+  <h2>§2 · The transaction lab — contain, tested honestly</h2>
+  <p class="sub">The classic test — "I put <code>contain</code> on the pane, I wheel to the bottom, the page doesn't move, it works!" — is contaminated: on Firefox, <b>auto behaves identically mid-burst</b> (§1, the deferral). You haven't tested contain until you've paused and wheeled again.</p>
+  <div class="lab">
+    <div class="cap">Guided · two-phase wheel test</div>
+    <div class="btnrow">
+      <button class="sel" data-ob2="auto">pane ob: auto</button>
+      <button data-ob2="contain">pane ob: contain</button>
+      <button id="s2arm">arm test</button>
+    </div>
+    <ol style="font-size:14px;margin:8px 0;padding-left:20px;max-width:64ch">
+      <li>Click <b>arm test</b> — it scrolls the pane to its bottom edge.</li>
+      <li><b>Phase A:</b> wheel down over the pane 3–4× in quick succession (no pauses).</li>
+      <li><b>Phase B:</b> wait 3 seconds, then wheel once more.</li>
+    </ol>
+    <div class="world" id="s2world" style="height:300px">
+      <div class="wtall">
+        <div class="wtick">world top — does it move?</div>
+        <div class="pane" id="s2pane" style="margin-top:10px"></div>
+        <div class="wtick">+120</div><div class="wtick">+240</div><div class="wtick">+360</div><div class="wtick">+480</div>
+        <div class="wtick">world bottom</div>
+      </div>
+    </div>
+    <div class="out" id="s2out">idle — arm the test</div>
+  </div>
+  <div class="law bad"><b>THE FIREFOX CONTAIN VOID (headline falsification).</b> On Firefox 151, <code>contain</code> and <code>none</code> do <b>not</b> block wheel scroll chaining. Mid-burst they appear to work — but that's the handoff deferral doing the blocking (<code>auto</code> passes the same test). After the transaction breaks (idle ~2.5s, or pointer away-and-back), the next wheel chains <b>straight through</b> <code>contain</code>: to element ancestors, to the document, and across iframe boundaries. Chromium + WebKit honor <code>contain</code> at both phases. <i>Measured through the automation wheel pipeline (macOS builds); consistent with the still-open Bugzilla 1595791 reports on real devices — treat the Firefox wheel path as ungated until proven otherwise on your hardware.</i></div>
+  <div class="chips" id="s2chips"></div>
+  <table class="ledger">
+    <tr><th>contain on the pane</th><th>cft 149</th><th>ff 151</th><th>wk 26.5</th></tr>
+    <tr><td>mid-burst wheel at edge (phase A)</td><td class="v">blocked ✓</td><td class="v">blocked — but so is auto (deferral, not contain)</td><td class="v">blocked ✓</td></tr>
+    <tr><td>fresh wheel after idle (phase B)</td><td class="v">blocked ✓ (0 of 400)</td><td class="v"><b>CHAINS +300 through contain</b></td><td class="v">blocked ✓ (0 of 400)</td></tr>
+    <tr><td><code>none</code> value, fresh wheel</td><td class="v">blocked ✓</td><td class="v"><b>chains through</b></td><td class="v">blocked ✓</td></tr>
+    <tr><td>modal body <code>overflow:auto</code> + contain, fresh wheel</td><td class="v">blocked ✓</td><td class="v"><b>bleeds 400</b></td><td class="v">blocked ✓</td></tr>
+  </table>
+  <p class="note">The phase-A trap is why this survived a decade: every quick demo "works" on Firefox. The blocking you see in phase A is transaction behavior; contain itself contributes nothing.</p>
+</section>
+
+<!-- ══════════════════ §3 TARGET SELECTION ══════════════════ -->
+<section id="s3">
+  <h2>§3 · The target-selection trap — the first wheel</h2>
+  <p class="sub">A pane that was <b>script-scrolled</b> to its edge (never user-scrolled) can be skipped by the first wheel entirely: the engine targets the root and the page jumps — <code>contain</code> can't help, because the wheel never targets the contained element. The engine bug class is Bugzilla 1595791 ("not honored on first interaction").</p>
+  <div class="lab">
+    <div class="cap">Live · the cold-start lane</div>
+    <div class="btnrow"><button id="s3go">script-scroll pane to bottom</button><button id="s3reset">reset</button></div>
+    <div class="world" id="s3world" style="height:300px">
+      <div class="wtall">
+        <div class="wtick">world top — if your first wheel lands HERE, the pane was skipped</div>
+        <div class="pane" id="s3pane" style="margin-top:10px;overscroll-behavior:contain"></div>
+        <div class="wtick">+120</div><div class="wtick">+240</div><div class="wtick">+360</div>
+        <div class="wtick">world bottom</div>
+      </div>
+    </div>
+    <div class="out" id="s3out">click the button, then wheel ONCE over the pane</div>
+  </div>
+  <div class="law warn"><b>THE COLD-START LAW.</b> On the bench, Firefox chained <b>+400 on the very first wheel</b> over a script-positioned, contained, at-edge pane (fresh page, no warm-up) — the wheel targeted the document, not the pane. One warm-up wheel over the pane (while it still has room) makes it the transaction target and the routing heals. Chromium/WebKit targeted the pane correctly on the first wheel. <i>SSR/SPA panes that open pre-scrolled (chat logs, feeds) are the production shape of this trap.</i></div>
+  <div class="chips" id="s3chips"></div>
+</section>
+
+<!-- ══════════════════ §4 BACKDROP SPLIT ══════════════════ -->
+<section id="s4">
+  <h2>§4 · The backdrop split — <code>overflow:hidden</code> + <code>contain</code></h2>
+  <p class="sub">The standard modal backdrop recipe: a fullscreen overlay with <code>overflow:hidden; overscroll-behavior:contain</code>. Per spec (and MDN), a scroll container with no overflow is "always at its scroll boundary" — so contain should stop the wheel. Chrome <b>fixed this in 144</b> (Jan 2026). Firefox's fix (Bugzilla 1837436, landed 150) did not cover this bench's wheel path. WebKit never got it.</p>
+  <div class="lab">
+    <div class="cap">Live · a real bleed lane on THIS page</div>
+    <div class="btnrow">
+      <button id="s4open">open backdrop overlay</button>
+      <button id="s4top">scroll page to top</button>
+    </div>
+    <div class="kv"><span>page scrollY while testing <b id="s4y">0</b></span><span>bleed events <b id="s4n">0</b></span><span class="bleed-pill" id="s4pill">no bleed observed</span></div>
+    <div class="out" id="s4out">open the overlay, wheel over it, watch the counter — then check the table</div>
+  </div>
+  <table class="ledger">
+    <tr><th>backdrop lane (recorded)</th><th>cft 149 <span class="fam cft">fixed in 144</span></th><th>ff 151</th><th>wk 26.5</th></tr>
+    <tr><td><code>overflow:hidden</code> + contain, wheel</td><td class="v">0 — wheel dies ✓</td><td class="v"><b>+400 page scroll</b></td><td class="v"><b>+400 page scroll</b></td></tr>
+    <tr><td><code>overflow:auto</code> (nothing to scroll) + contain</td><td class="v">0 ✓</td><td class="v"><b>+400</b></td><td class="v"><b>+400</b></td></tr>
+    <tr><td>real modal body (<code>overflow:auto</code>, content, at bottom) + contain</td><td class="v">0 ✓</td><td class="v">0 mid-burst / <b>+400 fresh</b> (§2 law)</td><td class="v">0 ✓</td></tr>
+  </table>
+  <div class="law bad"><b>THE BACKDROP LAW.</b> The CSS-only backdrop lock is <b>Chromium-144+-only</b>. On Firefox and Safari the wheel goes straight through to the page behind it — even when the overlay is a spec-perfect always-at-boundary scroll container. The cross-engine backdrop needs one line of JavaScript (§8 recipe).</div>
+  <div class="chips" id="s4chips"></div>
+</section>
+
+<!-- ══════════════════ §5 KEYBOARD ══════════════════ -->
+<section id="s5">
+  <h2>§5 · Keyboard chaining — the 144 fix, and the engines that never chain</h2>
+  <p class="sub">Keyboard scrolling chains too: focus a scroller, hold <kbd>↓</kbd> past the end. Chrome made keyboard respect <code>overscroll-behavior</code> in <b>144</b>; before that it chained through contain just like Firefox's wheel path does today.</p>
+  <div class="lab">
+    <div class="cap">Live · click the pane, then press End, then hold ArrowDown</div>
+    <div class="world" id="s5world" style="height:280px">
+      <div class="wtall">
+        <div class="wtick">world top — keyboard chain lands here</div>
+        <div class="pane" id="s5pane" tabindex="0" style="margin-top:10px;overscroll-behavior:contain"></div>
+        <div class="wtick">+120</div><div class="wtick">+240</div>
+        <div class="wtick">world bottom</div>
+      </div>
+    </div>
+    <div class="out" id="s5out">click the pane → press End → hold ↓</div>
+  </div>
+  <table class="ledger">
+    <tr><th>keyboard lane (recorded)</th><th>cft 149</th><th>ff 151</th><th>wk 26.5</th></tr>
+    <tr><td>focused pane at bottom, arrows — <code>auto</code></td><td class="v">chains to doc (6 keys → +240)</td><td class="v">no chain (keyboard stops at edge)</td><td class="v">no chain</td></tr>
+    <tr><td>same, <code>contain</code></td><td class="v">blocked ✓ (the 144 fix)</td><td class="v">nothing to block</td><td class="v">nothing to block</td></tr>
+  </table>
+  <div class="law"><b>THE KEYBOARD SPLIT.</b> Only Chromium-family keyboards chain from a focused scroller to its ancestors (and since 144, contain gates it). Firefox and WebKit keyboard scrolling just stops at the edge — no chain to block. Keyboard bleed is a Chrome-family-only problem; wheel bleed is an everyone-problem that contain only solves on two engines.</div>
+  <div class="chips" id="s5chips"></div>
+</section>
+
+<!-- ══════════════════ §6 CROSS-FRAME ══════════════════ -->
+<section id="s6">
+  <h2>§6 · Cross-frame chaining — contain on the child root</h2>
+  <p class="sub">Wheel an embedded frame's content to its edge and keep going: the chain crosses the frame boundary into the host page — on all three engines. The only lever is <code>overscroll-behavior</code> on the child's <code>html</code> — and on Firefox even that does nothing.</p>
+  <div class="lab">
+    <div class="cap">Live · two same-origin children (left: auto · right: contain)</div>
+    <div class="twofer">
+      <div><div class="cap">child html: auto</div><iframe class="kf" id="kfA" src="ovs-iframe-child.html"></iframe></div>
+      <div><div class="cap">child html: contain</div><iframe class="kf" id="kfB" src="ovs-iframe-child.html?ob=contain"></iframe></div>
+    </div>
+    <div class="kv" style="margin-top:10px"><span>THIS page scrollY <b id="s6y">0</b></span><span>instructions: wheel inside a frame to its bottom, keep wheeling</span></div>
+  </div>
+  <table class="ledger">
+    <tr><th>iframe lane (recorded, fresh gesture)</th><th>cft 149</th><th>ff 151</th><th>wk 26.5</th></tr>
+    <tr><td>child at edge, host page — <code>auto</code></td><td class="v">host scrolls (chained)</td><td class="v">host scrolls (+400)</td><td class="v">host scrolls (chained)</td></tr>
+    <tr><td>child <code>html{overscroll-behavior:contain}</code></td><td class="v">blocked ✓</td><td class="v"><b>chains anyway</b></td><td class="v">blocked ✓</td></tr>
+  </table>
+  <div class="law warn"><b>THE FRAME LAW.</b> Cross-frame chaining is real on every engine; <code>contain</code> on the child's root stops it on Chromium and WebKit only. Third-party embeds you don't control (maps, feeds, players) will bleed your page on all three — sandbox or intercept at the host.</div>
+  <div class="chips" id="s6chips"></div>
+</section>
+
+<!-- ══════════════════ §7 X-AXIS + RTL ══════════════════ -->
+<section id="s7">
+  <h2>§7 · The x-axis — carousels, RTL, and parity</h2>
+  <p class="sub">Horizontal chaining behaves identically to vertical per engine — my own first reading ("Chromium/WebKit never chain the x-axis to the viewport") was an <b>over-drive artifact</b>: the drive wheels had already scrolled the document to its edge, so the measured wheel had nothing left to chain (see §11 falsifications). Re-measured with saturating-only panes: full parity.</p>
+  <div class="lab">
+    <div class="cap">Live · horizontal pane inside a wide world (trackpad sideways, or Shift+wheel on Windows)</div>
+    <div class="xworld" id="s7world">
+      <div class="xtall">
+        <div class="xtick">world left ·</div>
+        <div class="xpane" id="s7pane" style="overscroll-behavior:contain"><span>→→→</span></div>
+        <div class="xtick">+300 ·</div><div class="xtick">+600 ·</div><div class="xtick">+900 ·</div><div class="xtick">world right</div>
+      </div>
+    </div>
+    <div class="out" id="s7out">wheel/scroll the pane sideways to its right edge, keep going</div>
+  </div>
+  <table class="ledger">
+    <tr><th>x-axis lane (recorded)</th><th>cft 149</th><th>ff 151</th><th>wk 26.5</th></tr>
+    <tr><td>pane at right edge → document x, <code>auto</code></td><td class="v">chains 400/wheel mid-burst</td><td class="v">chains on fresh gesture</td><td class="v">chains 400/wheel mid-burst</td></tr>
+    <tr><td>same, <code>contain</code></td><td class="v">blocked ✓</td><td class="v"><b>chains through</b></td><td class="v">blocked ✓</td></tr>
+    <tr><td>RTL document, leftward chain, <code>contain</code></td><td class="v">blocked ✓</td><td class="v"><b>chains −400 through</b></td><td class="v">blocked ✓</td></tr>
+    <tr><td>element→element x chain, <code>contain</code></td><td class="v">blocked ✓</td><td class="v"><b>chains through</b></td><td class="v">blocked ✓</td></tr>
+  </table>
+  <div class="chips" id="s7chips"></div>
+  <p class="note">RTL lanes: the document's scrollable region sits on the negative axis; the chain mirrors exactly (−400 measured), and the contain split is unchanged. The macOS Shift+wheel transpose is OS-level, never the engine (wheel-tier law).</p>
+</section>
+
+<!-- ══════════════════ §8 SNAP ══════════════════ -->
+<section id="s8">
+  <h2>§8 · Snap interplay — chaining past the last point</h2>
+  <p class="sub">Mandatory snap owns landings but not boundaries: wheel past the final snap position and the chain hands the delta to the ancestor exactly like an unsnapped scroller.</p>
+  <div class="lab">
+    <div class="cap">Live · mandatory y-snap pane (9 × 64px rows) inside the world</div>
+    <div class="world" id="s8world" style="height:280px">
+      <div class="wtall">
+        <div class="wtick">world top</div>
+        <div class="pane snap" id="s8pane" style="margin-top:10px;overscroll-behavior:contain;scroll-snap-type:y mandatory"></div>
+        <div class="wtick">+120</div><div class="wtick">+240</div>
+        <div class="wtick">world bottom</div>
+      </div>
+    </div>
+    <div class="out" id="s8out">wheel the pane to its last row, keep wheeling</div>
+  </div>
+  <table class="ledger">
+    <tr><th>snap lane (recorded)</th><th>cft 149</th><th>ff 151</th><th>wk 26.5</th></tr>
+    <tr><td>past last snap point, <code>auto</code></td><td class="v">chains +400</td><td class="v">chains +400 (fresh)</td><td class="v">chains +400</td></tr>
+    <tr><td>past last snap point, <code>contain</code></td><td class="v">blocked ✓</td><td class="v"><b>chains through</b></td><td class="v">blocked ✓</td></tr>
+  </table>
+  <div class="chips" id="s8chips"></div>
+  <p class="note">Snap does not rescue you: the anchoring tier's row-loss split (WebKit eats a row on inserts) composes with this — snap containers chain at their boundary like everything else.</p>
+</section>
+
+<!-- ══════════════════ §9 CSSOM ══════════════════ -->
+<section id="s9">
+  <h2>§9 · The CSSOM tier — the two-value shorthand &amp; the logical transpose</h2>
+  <p class="sub">Auto-probed in your browser on load. Three surprises shipped here: the shorthand accepts <b>two values</b> (x y — undocumented in MDN's formal syntax), the logical longhands <code>-block</code>/<code>-inline</code> exist everywhere and <b>transpose at computed-value time</b> under writing modes, and a longhand-only declaration leaves the shorthand serializing as an empty string.</p>
+  <div class="chips" id="s9chips"></div>
+  <div class="lab">
+    <div class="cap">Live · type any value, read the parse</div>
+    <div class="btnrow">
+      <input id="s9in" placeholder="contain · none · auto · contain none · bounce" style="font:600 12.5px/1 var(--mono);padding:9px 10px;border:1px solid #bfd6cd;border-radius:8px;flex:1;min-width:200px" spellcheck="false">
+      <button id="s9apply">apply</button>
+    </div>
+    <div class="out" id="s9out">style.overscrollBehavior readback appears here</div>
+  </div>
+  <table class="ledger">
+    <tr><th>CSSOM probe (3/3 engines identical)</th><th>result</th></tr>
+    <tr><td><code>CSS.supports('overscroll-behavior','contain' | 'none' | 'auto')</code></td><td class="v">true, true, true</td></tr>
+    <tr><td><code>…'-x' / '-y' / '-block' / '-inline'</code> longhands</td><td class="v">all supported (logical pair shipped everywhere)</td></tr>
+    <tr><td><code>'bounce'</code> / other bogus values</td><td class="v">false — rejected</td></tr>
+    <tr><td><code>el.style.overscrollBehavior = 'contain none'</code></td><td class="v">parses + serializes <code>contain none</code> (x y two-value grammar)</td></tr>
+    <tr><td>vertical-rl probe: <code>overscroll-behavior-block:contain</code></td><td class="v">gCS reads X=contain Y=auto — block maps to the physical <b>x</b> axis; inline → y</td></tr>
+    <tr><td>set only <code>-y</code>, read shorthand</td><td class="v"><code>''</code> — partial longhand sets leave the shorthand unserializable</td></tr>
+    <tr><td><code>body{overscroll-behavior:contain}</code>, read <code>html</code> computed</td><td class="v">still <code>auto</code> — no computed-value propagation to the root</td></tr>
+    <tr><td>initial computed value (plain div)</td><td class="v">auto · not inherited</td></tr>
+  </table>
+  <p class="note">Lane limit: whether the root viewport <em>behaviorally</em> honors a body-level value when html is auto (the overflow-propagation rule) is untestable through the automation wheel pipeline — the viewport's overscroll affordances (pull-to-refresh, rubber-band, glow) don't engage headless. The <code>none</code>-vs-<code>contain</code> affordance difference is spec-documented but equally unmeasurable here: on this bench the two values are behaviorally identical for chaining on every engine.</p>
+</section>
+
+<!-- ══════════════════ §10 RECIPE ══════════════════ -->
+<section id="s10">
+  <h2>§10 · The bulletproof lock — contain + one line of JS</h2>
+  <p class="sub">Until Firefox gates wheels and Safari gates no-overflow containers, a CSS-only lock is a two-engine lock. The cross-engine recipe is contain <b>plus</b> a non-passive wheel guard on the overlay. This modal ships it — wheel it as hard as you like.</p>
+  <div class="btnrow"><button id="s10open">open the guarded modal</button></div>
+  <pre class="recipe">/* the cross-engine scroll lock (this page's §10 modal) */
+overlay.addEventListener('wheel', e =&gt; e.preventDefault(), { passive: false });
+// + keep overscroll-behavior: contain for the engines that honor it
+// + focus-trap / Esc handling per the focus tier</pre>
+  <div class="law"><b>WHY preventDefault IS SAFE HERE.</b> The listener rides the overlay element — the wheel tier's passive wall only silences root-target listeners; element listeners default to non-passive in every engine measured. The guard costs nothing when contain works and saves the page when it doesn't.</div>
+</section>
+
+<!-- ══════════════════ §11 OPENDRONES ══════════════════ -->
+<section id="s11">
+  <h2>§11 · OpenDrones capstone — the telemetry modal &amp; the map strip</h2>
+  <p class="sub">Two shipped surfaces, two laws applied:</p>
+  <ul style="max-width:70ch;font-size:14.5px;line-height:1.75">
+    <li><b>The mission-detail modal</b> — the guarded pattern from §10: <code>contain</code> (Chromium/WebKit) + the JS wheel guard (Firefox/Safari) + focus trap. Wheel the telemetry list to its end; the map behind it never moves. The same modal opened from a fleet table (the anchoring tier's row-loss lane) keeps its scroll lock through prepends.</li>
+    <li><b>The map strip / filmstrip</b> — a horizontal pane at its end chains sideways into the page on fresh gestures (Firefox) or mid-burst (Chromium/WebKit). <code>overscroll-behavior-x: contain</code> stops it on two engines; the guard covers the third. Never rely on "horizontal doesn't chain" folklore — it was my own over-drive artifact, falsified in §7.</li>
+  </ul>
+  <div class="chips" id="s11chips"></div>
+</section>
+
+<!-- ══════════════════ §12 AUDIT ══════════════════ -->
+<section id="s12">
+  <h2>§12 · The Molt client audit — 12 checks</h2>
+  <p class="sub">Half a day with any modal/pane-heavy client site. Checks 1–4 pass every code review and bleed in production on at least one engine.</p>
+  <ol class="audit">
+    <li><span class="hi">HIGH</span> — <b>contain-only modal locks</b>: open the modal, wheel its body to the end, pause 3s, wheel again — on Firefox the page behind scrolls (§2). Ship the JS guard.</li>
+    <li><span class="hi">HIGH</span> — <b>overflow:hidden + contain backdrops</b>: same test on Safari — the page scrolls (§4). Chromium-144+-only as CSS.</li>
+    <li><span class="hi">HIGH</span> — <b>pre-scrolled panes</b> (chat/feed logs restored to bottom): the first wheel can jump the page outright on Firefox — the pane was never the wheel target (§3).</li>
+    <li><span class="hi">HIGH</span> — <b>embedded third-party frames</b> (maps, players): wheel at the child's edge scrolls your page on every engine; child-root contain is unreachable for embeds you don't own (§6).</li>
+    <li><span class="md">MED</span> — <b>keyboard bleed on Chrome-family</b>: focused pane + held arrows scroll the page behind (144+ respects contain — apply it).</li>
+    <li><span class="md">MED</span> — <b>phase-A-tested containment claims</b>: any e2e/QA note saying "contain works on Firefox" that only wheeled mid-burst — retest with the idle pause.</li>
+    <li><span class="md">MED</span> — <b>horizontal carousels without ob-x</b>: strip ends chain into the page sideways on every engine (auto).</li>
+    <li><span class="md">MED</span> — <b>snap containers assumed self-contained</b>: snap owns landings, not boundaries — chains past the last point (§8).</li>
+    <li><span class="lo">LOW</span> — <b>root PTR/rubber-band expectations</b>: html-level <code>none</code> is for pull-to-refresh/glow affordances (touch platforms) — desktop wheel tests can't verify it.</li>
+    <li><span class="lo">LOW</span> — <b>two-value shorthand assumptions</b>: it parses and serializes, but MDN's grammar says single-value — feature-test before shipping <code>contain none</code>.</li>
+    <li><span class="lo">LOW</span> — <b>gCS propagation checks</b>: body-level values never surface in html's computed style — don't build runtime detection on computed reads (cf. the scrollbar tier's Firefox wall).</li>
+    <li><span class="lo">LOW</span> — <b>contain as a "performance" fix</b>: it gates chaining, nothing else — it does not stop overscroll paint effects from compositing on engines that ignore it for input.</li>
+  </ol>
+</section>
+
+<!-- ══════════════════ §13 LEDGER ══════════════════ -->
+<section id="s13">
+  <h2>§13 · Engine ledger, method &amp; falsifications</h2>
+  <table class="ledger">
+    <tr><th>law</th><th>cft 149</th><th>ff 151</th><th>wk 26.5</th></tr>
+    <tr><td>chains mid-burst (auto)</td><td class="v">✓ immediately</td><td class="v">✗ deferred to fresh gesture</td><td class="v">✓ immediately</td></tr>
+    <tr><td>chains on fresh gesture (auto)</td><td class="v">✓ full delta</td><td class="v">✓ full delta</td><td class="v">✓ full delta</td></tr>
+    <tr><td>contain blocks wheel chain</td><td class="v">✓ both phases</td><td class="v"><b>✗ never</b></td><td class="v">✓ overflowing scrollers</td></tr>
+    <tr><td>contain on no-overflow container</td><td class="v">✓ (since 144)</td><td class="v"><b>✗</b></td><td class="v"><b>✗</b></td></tr>
+    <tr><td>keyboard chains / contain gates</td><td class="v">chains · gated ✓ (144)</td><td class="v">never chains</td><td class="v">never chains</td></tr>
+    <tr><td>cross-frame chain / child contain</td><td class="v">chains · blocked ✓</td><td class="v">chains · <b>not blocked</b></td><td class="v">chains · blocked ✓</td></tr>
+    <tr><td>x-axis parity</td><td class="v">✓</td><td class="v">✓ (fresh-gesture)</td><td class="v">✓</td></tr>
+    <tr><td>RTL mirror chain</td><td class="v">✓ · gated</td><td class="v">✓ · ungated</td><td class="v">✓ · gated</td></tr>
+    <tr><td>snap boundary chaining</td><td class="v">chains · gated</td><td class="v">chains · ungated</td><td class="v">chains · gated</td></tr>
+    <tr><td>two-value shorthand + logical transpose</td><td class="v">✓</td><td class="v">✓</td><td class="v">✓</td></tr>
+    <tr><td>cold-start first-wheel mistarget</td><td class="v">clean</td><td class="v"><b>chains +400</b></td><td class="v">clean</td></tr>
+  </table>
+  <h3>Method</h3>
+  <p class="note" style="max-width:74ch">Seven probe generations (gen1–gen7, ~60 lane-runs) over Playwright 1.61.1: CfT 149.0.7827.55 · Firefox 151.0 · WebKit 26.5 (pw build), launched headless with route-fulfilled fresh documents per lane. All scroll claims through the REAL input pipeline (<code>mouse.wheel</code>, <code>keyboard.press</code>) — synthetic events drive nothing (the standing wall). Per-wheel position traces (pane + ancestor + document sampled after every wheel with settles), self-calibrating saturating panes, verified at-edge preconditions printed in every verdict (the over-drive lesson), idle-break (≥2.6s) and pointer-away transaction breaks, same-origin iframe children with in-child max verification, CSSOM census on detached probes + a live vertical-rl probe.</p>
+  <h3>Falsified on the bench this session (including two of my own)</h3>
+  <ul style="max-width:72ch;font-size:14px;line-height:1.7">
+    <li><b>"contain stops scroll chaining"</b> — false on Firefox for wheel input (the headline).</li>
+    <li><b>"contain works on overflow:hidden backdrops"</b> — Chromium-only (144+); spec-true, engine-false on FF/WK.</li>
+    <li><b>(mine) "Chromium/WebKit never chain the x-axis to the viewport"</b> — an over-drive artifact: the drive wheels had already scrolled the document to its edge before the measured wheel. Re-measured with saturating panes: full x parity. The gen4 conclusion died in gen6.</li>
+    <li><b>(mine) "Firefox honors contain after warm-up"</b> — the warm-up only opened the wheel transaction; the deferral did the blocking. The idle-break discriminator (gen4 TB) flipped it: fresh wheels chain through contain.</li>
+    <li><b>"contain differences are testable with a quick wheel"</b> — the phase-A trap: auto and contain are indistinguishable mid-burst on Firefox.</li>
+  </ul>
+  <h3>Lane limits</h3>
+  <p class="note" style="max-width:74ch">Pull-to-refresh, rubber-band elasticity and overscroll glow are platform input affordances that do not engage through the automation wheel pipeline (headless macOS) — the <code>none</code>-vs-<code>contain</code> affordance split is spec-documented, unmeasured here. Touch chaining untested (no touch pipeline). The behavioral transpose of <code>-block</code>/<code>-inline</code> under vertical-rl was probed at the CSSOM level only (computed-value mapping measured 3/3); the chained-geometry lanes need a human-hand pass — the mirrored-axis fixtures defeat clean automation reads (two attempts recorded honestly). Firefox's synthesized-wheel scroll quantum measured ~0.6× the issued delta on this bench (300 issued → ~180–221 applied); chained amounts are reported as applied, not issued.</p>
+  <div class="chips" id="s13chips"></div>
+</section>
+
+<footer style="text-align:center;color:var(--muted);font:12.5px/1.6 var(--mono)">
+  molt-research.vercel.app/demos/overscroll-behavior-tier.html · probed 2026-11-08 · CfT 149 · FF 151 · WK 26.5 · MC entry pending
+</footer>
+</div>
+
+<!-- §4 raw backdrop overlay (no guard) -->
+<div id="s4ov" style="position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;background:rgba(240,240,255,.92);overscroll-behavior:contain;overflow:hidden">
+  <div style="background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px 24px;max-width:420px;text-align:center">
+    <div style="font:640 14px/1.4 var(--mono);margin-bottom:8px">overflow:hidden + contain backdrop</div>
+    <div style="font-size:13.5px;color:var(--muted)">wheel over me — does the page behind move?<br>check the §4 counter, then close</div>
+    <div class="btnrow" style="justify-content:center;margin-top:14px"><button id="s4close">close</button></div>
+  </div>
+</div>
+
+<!-- §10 guarded modal -->
+<div id="modalRoot">
+  <div id="modalVeil"></div>
+  <div id="modalCard">
+    <header>DRN-04 · mission telemetry (guarded modal)</header>
+    <div id="modalBody"></div>
+    <footer>
+      <span class="bleed-pill" id="m10pill">page scrollY 0 · 0 bleed</span>
+      <button id="modalClose">close · Esc</button>
+    </footer>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+var CHIPS = {};
+function chipHost(id){ return document.getElementById(id); }
+function setChip(hostId, key, cls, label){
+  var host = chipHost(hostId); if(!host) return null;
+  var cid = hostId + '-' + key;
+  var el = document.getElementById(cid);
+  if(!el){
+    el = document.createElement('span'); el.id = cid; el.className = 'chip pending'; el.textContent = label;
+    host.appendChild(el); CHIPS[cid] = { el: el, registered: true };
+  }
+  el.className = 'chip ' + cls; el.textContent = label;
+  return el;
+}
+function pendingChip(hostId, key, cls, label){
+  var host = chipHost(hostId); if(!host) return;
+  var cid = hostId + '-' + key;
+  if(document.getElementById(cid)) return;
+  var el = document.createElement('span'); el.id = cid; el.className = 'chip ' + (cls || 'info'); el.textContent = label;
+  host.appendChild(el); CHIPS[cid] = { el: el, registered: true };
+}
+function chipCount(hostId, cls){ var host = chipHost(hostId); if(!host) return {n:0,total:0}; var els = host.querySelectorAll('.chip'); var n=0; for(var i=0;i<els.length;i++) if(els[i].classList.contains(cls)) n++; return {n:n,total:els.length}; }
+
+/* ── shared pane builders ── */
+function fillPane(el, n, label){
+  var h = '';
+  for(var i=1;i<=n;i++) h += '<div class="prow">'+label+' '+i+'</div>';
+  el.innerHTML = h;
+}
+function maxTop(el){ return el.scrollHeight - el.clientHeight; }
+
+/* ── UA chips ── */
+(function(){
+  var ua = navigator.userAgent;
+  var fam = /firefox/i.test(ua) ? 'Firefox-family' : (/webkit/i.test(ua) && !/chrome/i.test(ua) ? 'WebKit/Safari' : 'Chromium-family');
+  setChip('uaChips','fam','info','your engine: '+fam);
+  setChip('uaChips','date','info','probed 2026-11-08 · CfT 149 · FF 151 · WK 26.5');
+})();
+
+/* ══════════ §1 chain grammar lab ══════════ */
+(function(){
+  var world = document.getElementById('s1world'), pane = document.getElementById('s1pane');
+  fillPane(pane, 9, 'row');
+  var ob = 'auto';
+  var lastW = 0, lastP = 0, chainTotal = 0, chained = false, gated = false, s1t = null;
+  function badge(){
+    var b = document.getElementById('s1badge');
+    b.className = chainTotal > 0 ? 'live' : '';
+    b.textContent = chainTotal > 0 ? ('chained worldΔ ' + Math.round(chainTotal) + 'px') : 'chain: —';
+  }
+  document.querySelectorAll('#s1 [data-ob]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('#s1 [data-ob]').forEach(function(b2){ b2.classList.remove('sel'); });
+      btn.classList.add('sel'); ob = btn.getAttribute('data-ob');
+      pane.style.overscrollBehavior = ob;
+      document.getElementById('s1ob').textContent = ob;
+    });
+  });
+  document.getElementById('s1reset').addEventListener('click', function(){ world.scrollTop = 0; pane.scrollTop = 0; chainTotal = 0; chained = gated = false; badge(); out('reset — wheel the pane again'); });
+  function out(t){ document.getElementById('s1out').textContent = t; }
+  pane.addEventListener('wheel', function(){
+    if(s1t) clearTimeout(s1t);
+    s1t = setTimeout(function(){
+      var w = world.scrollTop, p = pane.scrollTop, m = maxTop(pane);
+      var dW = w - lastW, dP = p - lastP;
+      document.getElementById('s1pt').textContent = Math.round(p);
+      document.getElementById('s1pm').textContent = m;
+      document.getElementById('s1wt').textContent = Math.round(w);
+      if(p >= m - 1 && dW > 0){
+        chainTotal += dW; chained = true; badge();
+        out('AT EDGE: pane is at max (' + m + ') and the world moved +' + Math.round(dW) + 'px — the wheel CHAINED (ob: ' + ob + ')');
+        if(ob !== 'auto'){ gated = true; setChip('s1chips','chain'+ob, ob==='auto'?'ok':'fail', (ob!=='auto' ? 'CHAIN THROUGH '+ob.toUpperCase() : 'chain observed') + ' (your engine)'); }
+        else setChip('s1chips','chainauto','ok','auto chains at edge (your engine)');
+      } else if(p < m - 1){
+        out('pane scrolling: ' + Math.round(p) + ' / ' + m + (dP>0?' (+'+Math.round(dP)+')':''));
+      } else {
+        out('BLOCKED: pane at max (' + m + '), world did NOT move — the wheel died at the edge (ob: ' + ob + (ob === 'auto' ? ' — Firefox mid-burst deferral, see §2' : ' held ✓ (Chromium/WebKit behavior)') + ')');
+        if(ob !== 'auto') setChip('s1chips','held'+ob,'ok',ob + ' held at edge (your engine)');
+      }
+      lastW = w; lastP = p;
+    }, 90);
+  }, {passive:true});
+  world.addEventListener('wheel', function(){
+    requestAnimationFrame(function(){ document.getElementById('s1wt').textContent = Math.round(world.scrollTop); });
+  }, {passive:true});
+  pendingChip('s1chips','hint','info','wheel the pane to its bottom and keep going');
+  badge();
+})();
+
+/* ══════════ §2 transaction lab ══════════ */
+(function(){
+  var world = document.getElementById('s2world'), pane = document.getElementById('s2pane');
+  fillPane(pane, 9, 'row');
+  var ob = 'auto', armed = false, phase = 'idle', lastWheelAt = 0;
+  var phaseA = {world:0, wheels:0}, phaseB = {world:0, wheels:0};
+  function setOb(v){
+    ob = v; pane.style.overscrollBehavior = v;
+  }
+  document.querySelectorAll('#s2 [data-ob2]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('#s2 [data-ob2]').forEach(function(b2){ b2.classList.remove('sel'); });
+      btn.classList.add('sel'); setOb(btn.getAttribute('data-ob2'));
+      document.getElementById('s2out').textContent = 'pane ob = ' + ob + ' — arm the test again';
+    });
+  });
+  document.getElementById('s2arm').addEventListener('click', function(){
+    world.scrollTop = 0; pane.scrollTop = maxTop(pane);
+    armed = true; phase = 'A'; phaseA = {world:0, wheels:0}; phaseB = {world:0, wheels:0};
+    lastWheelAt = performance.now();
+    document.getElementById('s2out').textContent = 'ARMED · pane at bottom, world at top, ob=' + ob + '. Phase A: wheel over the pane 3–4× quickly.';
+  });
+  pane.addEventListener('wheel', function(){
+    if(!armed) return;
+    var now = performance.now();
+    var gap = now - lastWheelAt; lastWheelAt = now;
+    if(gap > 2000){ phase = 'B'; }
+    setTimeout(function(){
+      var ph = phase === 'A' ? phaseA : phaseB;
+      ph.wheels++; ph.world = Math.round(world.scrollTop);
+      var line = 'phase A (burst): ' + phaseA.wheels + ' wheels → worldΔ ' + phaseA.world + 'px   |   phase B (after ≥2s pause): ' + phaseB.wheels + ' wheels → worldΔ ' + phaseB.world + 'px';
+      if(phaseB.wheels > 0){
+        var verdict;
+        if(phaseA.world === 0 && phaseB.world === 0) verdict = 'contain HELD both phases — Chromium/WebKit behavior with ob=' + ob;
+        else if(phaseA.world === 0 && phaseB.world > 0) verdict = 'deferred chain THROUGH ' + ob + ' — the Firefox signature (ob=' + ob + ' did not block)';
+        else if(phaseA.world > 0) verdict = 'chained mid-burst with ob=' + ob + ' — that means ob=auto (Chromium/WebKit signature)';
+        document.getElementById('s2out').textContent = line + '\nVERDICT: ' + verdict;
+        if(ob === 'contain'){
+          if(phaseA.world === 0 && phaseB.world === 0) setChip('s2chips','contain-held','ok','contain held both phases (your engine)');
+          else if(phaseA.world === 0 && phaseB.world > 0) setChip('s2chips','contain-void','fail','contain VOID: fresh wheel chained through (your engine = the Firefox law)');
+          else setChip('s2chips','contain-odd','warn','unexpected trace with contain — see readout');
+        } else {
+          if(phaseA.world === 0 && phaseB.world > 0) setChip('s2chips','auto-defer','info','auto: deferred chain (Firefox-family timing)');
+          else if(phaseA.world > 0) setChip('s2chips','auto-burst','info','auto: mid-burst chain (Chromium/WebKit-family timing)');
+        }
+      } else {
+        document.getElementById('s2out').textContent = line + '\nnow PAUSE ≥3 seconds and wheel once more…';
+      }
+    }, 160);
+  }, {passive:true});
+  pendingChip('s2chips','hint','info','arm → wheel burst → pause 3s → wheel once');
+})();
+
+/* ══════════ §3 cold-start lane ══════════ */
+(function(){
+  var world = document.getElementById('s3world'), pane = document.getElementById('s3pane');
+  fillPane(pane, 9, 'row');
+  document.getElementById('s3go').addEventListener('click', function(){
+    world.scrollTop = 0; pane.scrollTop = maxTop(pane);
+    window.__s3armed = { w0: world.scrollTop, done: false };
+    document.getElementById('s3out').textContent = 'pane script-scrolled to bottom (cold). Now wheel ONCE over the pane.';
+  });
+  document.getElementById('s3reset').addEventListener('click', function(){
+    world.scrollTop = 0; pane.scrollTop = 0; window.__s3armed = null;
+    document.getElementById('s3out').textContent = 'reset';
+  });
+  pane.addEventListener('wheel', function(){
+    var a = window.__s3armed; if(!a || a.done) return;
+    setTimeout(function(){
+      a.done = true;
+      var moved = Math.round(world.scrollTop);
+      if(moved > 0){
+        document.getElementById('s3out').textContent = 'FIRST WHEEL: world moved +' + moved + 'px — the pane was SKIPPED (the cold-start mistarget). contain could not help: the wheel never targeted the pane.';
+        setChip('s3chips','cold','fail','cold-start mistarget reproduced (+' + moved + 'px)');
+      } else {
+        document.getElementById('s3out').textContent = 'FIRST WHEEL: pane was targeted correctly (world still 0). Your engine routes cold wheels to the pane.';
+        setChip('s3chips','cold','ok','cold-start clean on your engine');
+      }
+    }, 150);
+  }, {passive:true});
+  pendingChip('s3chips','hint','info','script-scroll the pane, then wheel once');
+})();
+
+/* ══════════ §4 backdrop bleed counter ══════════ */
+(function(){
+  var ov = document.getElementById('s4ov');
+  var n = 0, y0 = 0;
+  document.getElementById('s4open').addEventListener('click', function(){
+    window.scrollTo(0, 300); y0 = 300; n = 0;
+    document.getElementById('s4y').textContent = 300;
+    document.getElementById('s4n').textContent = 0;
+    var pill = document.getElementById('s4pill'); pill.className = 'bleed-pill'; pill.textContent = 'no bleed observed';
+    ov.style.display = 'flex';
+    document.getElementById('s4out').textContent = 'overlay open at scrollY=300 — wheel over it several times (with pauses), then close';
+  });
+  document.getElementById('s4close').addEventListener('click', function(){ ov.style.display = 'none'; });
+  window.addEventListener('scroll', function(){
+    if(ov.style.display === 'none') return;
+    var y = Math.round(window.scrollY);
+    document.getElementById('s4y').textContent = y;
+    if(Math.abs(y - y0) > 8){ n++; y0 = y;
+      document.getElementById('s4n').textContent = n;
+      var pill = document.getElementById('s4pill'); pill.className = 'bleed-pill dirty'; pill.textContent = 'BLEED · page moved ' + n + '×';
+      setChip('s4chips','bleed','fail','backdrop bled on YOUR engine (contain + overflow:hidden insufficient)');
+      document.getElementById('s4out').textContent = 'the page behind the overflow:hidden + contain backdrop moved — the §4 law, live on your engine';
+    }
+  }, {passive:true});
+  pendingChip('s4chips','hint','info','open the overlay and wheel over it');
+})();
+
+/* ══════════ §5 keyboard lane ══════════ */
+(function(){
+  var world = document.getElementById('s5world'), pane = document.getElementById('s5pane');
+  fillPane(pane, 9, 'row');
+  var armed = false, k0 = 0, keys = 0;
+  pane.addEventListener('focus', function(){
+    armed = true; keys = 0; k0 = Math.round(world.scrollTop);
+    document.getElementById('s5out').textContent = 'pane focused — press End (jumps to bottom), then hold ArrowDown';
+  });
+  pane.addEventListener('keydown', function(e){
+    if(!armed) return;
+    if(e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === 'End' || e.key === ' '){ keys++; }
+  });
+  pane.addEventListener('keyup', function(e){
+    if(!armed) return;
+    setTimeout(function(){
+      var moved = Math.round(world.scrollTop);
+      var p = Math.round(pane.scrollTop), m = maxTop(pane);
+      if(p >= m - 1 && moved > k0 + 4){
+        document.getElementById('s5out').textContent = 'keyboard chain: world moved +' + (moved - k0) + 'px past the pane end — YOUR ENGINE chains by keyboard through contain (Chromium-family, the 144-pre/144-post split governs gating)';
+        setChip('s5chips','kb','fail','keyboard chained through contain (+' + (moved - k0) + 'px)');
+      } else if(keys >= 3 && p >= m - 1 && moved <= k0 + 4){
+        document.getElementById('s5out').textContent = 'keyboard stops at the edge — world did not move. Your engine does not keyboard-chain (Firefox/WebKit), or contain gated it (Chromium 144+).';
+        setChip('s5chips','kb','ok','keyboard did not chain on your engine');
+      } else {
+        document.getElementById('s5out').textContent = 'pane ' + p + '/' + m + ' · worldΔ ' + (moved - k0) + ' · keys ' + keys + ' — keep going: End then hold ↓';
+      }
+    }, 380);
+  });
+  pendingChip('s5chips','hint','info','click pane → End → hold ↓');
+})();
+
+/* ══════════ §6 iframe counter ══════════ */
+(function(){
+  var last = window.scrollY, n = 0;
+  window.addEventListener('scroll', function(){
+    var y = Math.round(window.scrollY);
+    if(Math.abs(y - last) > 8){ n++; last = y;
+      document.getElementById('s6y').textContent = y;
+      setChip('s6chips','frame','fail','cross-frame bleed on YOUR engine (' + n + ' moves)');
+    } else { document.getElementById('s6y').textContent = y; }
+  }, {passive:true});
+  pendingChip('s6chips','hint','info','wheel inside a frame to its end, keep wheeling');
+})();
+
+/* ══════════ §7 x lane ══════════ */
+(function(){
+  var world = document.getElementById('s7world'), pane = document.getElementById('s7pane');
+  var l0 = 0, x0 = 0, chained = 0, s7t = null;
+  pane.addEventListener('wheel', function(){
+    if(s7t) clearTimeout(s7t);
+    s7t = setTimeout(function(){
+      var l = pane.scrollLeft, xm = pane.scrollWidth - pane.clientWidth;
+      var xw = world.scrollLeft;
+      if(l >= xm - 1 && xw > x0 + 2){
+        chained += Math.round(xw - x0);
+        document.getElementById('s7out').textContent = 'pane at right edge; world moved → ' + Math.round(xw) + ' (+' + Math.round(xw - x0) + ') — chained through ob-x:contain? ' + (chained > 0 ? 'YES — the Firefox signature' : 'no');
+        if(chained > 40) setChip('s7chips','xvoid','fail','x-chain through contain on YOUR engine');
+        else setChip('s7chips','xheld','ok','ob-x:contain held on YOUR engine');
+      } else {
+        document.getElementById('s7out').textContent = 'pane ' + Math.round(l) + '/' + xm + ' · world ' + Math.round(xw);
+      }
+      x0 = xw;
+    }, 90);
+  }, {passive:true});
+  pendingChip('s7chips','hint','info','scroll the pane sideways to its end, keep going');
+})();
+
+/* ══════════ §8 snap lane ══════════ */
+(function(){
+  var world = document.getElementById('s8world'), pane = document.getElementById('s8pane');
+  var h = '';
+  for(var i=1;i<=9;i++) h += '<div class="prow"><span>card '+i+'</span><span style="font-weight:400;color:#a49c8e">snap row</span></div>';
+  pane.innerHTML = h;
+  var w0 = 0, s8t = null;
+  pane.addEventListener('wheel', function(){
+    if(s8t) clearTimeout(s8t);
+    s8t = setTimeout(function(){
+      var m = maxTop(pane), w = Math.round(world.scrollTop);
+      if(pane.scrollTop >= m - 1 && w > w0 + 2){
+        document.getElementById('s8out').textContent = 'past the last snap point: world moved +' + (w - w0) + 'px — snap did NOT stop the boundary chain (ob=contain on this pane: ' + (w - w0 > 4 ? 'CHAIN THROUGH — Firefox law' : 'held') + ')';
+        if(w - w0 > 4) setChip('s8chips','snap','fail','snap lane chained through contain (your engine)');
+        else setChip('s8chips','snap','ok','contain gated the snap boundary (your engine)');
+      } else {
+        document.getElementById('s8out').textContent = 'pane ' + Math.round(pane.scrollTop) + '/' + m + ' (snapping) · world ' + w;
+      }
+      w0 = w;
+    }, 110);
+  }, {passive:true});
+  pendingChip('s8chips','hint','info','wheel the snap pane to its last row, keep going');
+})();
+
+/* ══════════ §9 CSSOM auto-probes ══════════ */
+(function(){
+  try{
+    var d = document.createElement('div'); document.body.appendChild(d);
+    var sup = {};
+    var probes = [['overscroll-behavior','contain'],['overscroll-behavior','none'],['overscroll-behavior','auto'],['overscroll-behavior','bounce'],['overscroll-behavior-x','contain'],['overscroll-behavior-y','none'],['overscroll-behavior-block','contain'],['overscroll-behavior-inline','contain'],['overscroll-behavior','contain none']];
+    var allTrue = true, nTrue = 0;
+    probes.forEach(function(p){
+      var v = CSS.supports(p[0], p[1]); sup[p[0]+':'+p[1]] = v;
+      if(p[0]+':'+p[1] !== 'overscroll-behavior:bounce'){ if(v) nTrue++; else allTrue = false; }
+    });
+    setChip('s9chips','sup', (allTrue && sup['overscroll-behavior:bounce'] === false) ? 'ok' : 'warn', 'supports census: ' + nTrue + '/8 standard values true, bogus false — ' + (allTrue ? 'matches bench 3/3' : 'differs from bench'));
+    // two-value shorthand
+    d.style.overscrollBehavior = 'contain none';
+    var two = d.style.overscrollBehavior;
+    setChip('s9chips','two', two === 'contain none' ? 'ok' : 'warn', 'two-value shorthand serializes "' + two + '"');
+    // logical transpose under vertical-rl
+    var wm = document.createElement('div'); wm.style.writingMode = 'vertical-rl'; document.body.appendChild(wm);
+    wm.style.overscrollBehaviorBlock = 'contain';
+    var bx = getComputedStyle(wm).overscrollBehaviorX, by = getComputedStyle(wm).overscrollBehaviorY;
+    wm.style.overscrollBehaviorBlock = ''; wm.style.overscrollBehaviorInline = 'contain';
+    var ix = getComputedStyle(wm).overscrollBehaviorX, iy = getComputedStyle(wm).overscrollBehaviorY;
+    var transpose = (bx === 'contain' && by === 'auto' && ix === 'auto' && iy === 'contain');
+    setChip('s9chips','wm', transpose ? 'ok' : 'fail', 'vertical-rl transpose: block→' + (bx==='contain'?'x':'?') + ' inline→' + (iy==='contain'?'y':'?') + (transpose ? ' (bench 3/3)' : ' — UNEXPECTED'));
+    // initial + inheritance
+    var init = getComputedStyle(d).overscrollBehavior;
+    setChip('s9chips','init', init === 'auto' ? 'ok' : 'warn', 'initial computed = ' + init);
+    // partial longhand serialization void
+    d.style.cssText = ''; d.style.overscrollBehaviorY = 'contain';
+    var sh = d.style.overscrollBehavior;
+    setChip('s9chips','void', sh === '' ? 'ok' : 'warn', 'y-only set → shorthand serializes "' + (sh === '' ? '(empty)' : sh) + '"');
+    // root propagation (computed side)
+    document.body.style.overscrollBehavior = 'contain';
+    var htmlV = getComputedStyle(document.documentElement).overscrollBehavior;
+    document.body.style.overscrollBehavior = '';
+    setChip('s9chips','root', htmlV === 'auto' ? 'ok' : 'warn', 'body=contain → html computed stays "' + htmlV + '" (no computed propagation)');
+    d.remove(); wm.remove();
+  }catch(err){
+    setChip('s9chips','err','fail','CSSOM probe error: ' + err.message);
+  }
+  // live apply lane
+  document.getElementById('s9apply').addEventListener('click', function(){
+    var v = document.getElementById('s9in').value.trim();
+    var probe = document.createElement('div'); document.body.appendChild(probe);
+    probe.style.overscrollBehavior = v;
+    var sh = probe.style.overscrollBehavior, x = probe.style.overscrollBehaviorX, y = probe.style.overscrollBehaviorY;
+    document.getElementById('s9out').textContent = 'input: "' + v + '"\nshorthand → ' + JSON.stringify(sh) + '\n-x → ' + JSON.stringify(x) + '\n-y → ' + JSON.stringify(y) + (sh === '' ? '\n(empty = parse rejection — invalid at the CSSOM setter)' : '');
+    probe.remove();
+  });
+})();
+
+/* ══════════ §10 guarded modal ══════════ */
+(function(){
+  var root = document.getElementById('modalRoot'), body = document.getElementById('modalBody');
+  var h = '';
+  for(var i=1;i<=24;i++) h += '<div class="mrow">T+' + (i*250) + 'ms · batt ' + (98 - i/3).toFixed(1) + '% · alt ' + (120 + i*7) + 'm · link ok</div>';
+  body.innerHTML = h;
+  var lastY = null, bleed = 0;
+  function pill(){
+    var p = document.getElementById('m10pill');
+    p.textContent = 'page scrollY ' + Math.round(window.scrollY) + ' · ' + bleed + ' bleed';
+    p.className = 'bleed-pill' + (bleed > 0 ? ' dirty' : '');
+  }
+  document.getElementById('s10open').addEventListener('click', function(){
+    window.scrollTo(0, 400); lastY = 400; bleed = 0; pill();
+    root.classList.add('open'); body.scrollTop = 0; body.focus && body.focus();
+    setChip('s11chips','guard', bleed === 0 ? 'pending' : 'pending', 'guarded modal open — wheel the telemetry list');
+  });
+  function close(){ root.classList.remove('open'); setChip('s11chips','guard', bleed === 0 ? 'ok' : 'fail', bleed === 0 ? 'JS guard: 0 bleed on YOUR engine' : 'guard bled ' + bleed + '×'); }
+  document.getElementById('modalClose').addEventListener('click', close);
+  document.getElementById('modalVeil').addEventListener('click', close);
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && root.classList.contains('open')) close(); });
+  window.addEventListener('scroll', function(){
+    if(!root.classList.contains('open')) return;
+    if(lastY !== null && Math.abs(window.scrollY - lastY) > 8){ bleed++; }
+    lastY = window.scrollY; pill();
+  }, {passive:true});
+  // THE GUARD — non-passive wheel preventDefault on the whole overlay (card + veil)
+  root.addEventListener('wheel', function(e){ e.preventDefault(); }, { passive: false });
+  pendingChip('s11chips','hint','info','open the guarded modal (§10) and wheel hard');
+})();
+
+/* ══════════ footer + page-level counters ══════════ */
+window.addEventListener('scroll', function(){
+  document.getElementById('s6y').textContent = Math.round(window.scrollY);
+}, {passive:true});
+
+/* expose for the gate */
+window.__OVS_DEMO__ = {
+  chips: function(){
+    var out = {};
+    Object.keys(CHIPS).forEach(function(id){
+      var el = document.getElementById(id);
+      if(el) out[id] = el.className.replace('chip','').trim() + ' | ' + el.textContent;
+    });
+    return out;
+  },
+  chipCounts: function(){
+    var hosts = ['uaChips','s1chips','s2chips','s3chips','s4chips','s5chips','s6chips','s7chips','s8chips','s9chips','s11chips','s13chips'];
+    var res = {};
+    hosts.forEach(function(h){ var c = chipCount(h); if(c.total) res[h] = c.n + 'ok/' + c.total; });
+    return res;
+  }
+};
+/* gate sentinel chips for the ledger section */
+setChip('s13chips','built','ok','demo self-check: scripts executed');
+setChip('s13chips','method','info','3 engines · 7 generations · ~60 lane-runs · real input pipeline');
+})();
+</script>
+</body>
+</html>
