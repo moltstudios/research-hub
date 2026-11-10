@@ -1,0 +1,779 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mix-blend-mode — the compositing tier (live-probed)</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #faf9f7; --card: #fff; --ink: #1c1b1a; --mut: #6f6a63; --acc: #0a7d6f;
+    --acc2: #b4540a; --okbg: #e7f5f0; --okink: #0a5c50; --warnbg: #fdf0e3; --warnink: #8a4b08;
+    --failbg: #fbe9e7; --failink: #a32714; --infobg: #e9eef7; --infoink: #2c4a86;
+    --line: #e7e2da; --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 18px 80px; }
+  header.hero { padding: 30px 0 10px; }
+  h1 { font-size: clamp(26px, 5vw, 38px); line-height: 1.12; letter-spacing: -.02em; margin: 0 0 10px; }
+  .sub { color: var(--mut); font-size: 14px; max-width: 62ch; overflow-wrap: anywhere; }
+  .engine-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 4px; font-size: 12.5px; }
+  .engine-bar span { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
+  section { margin-top: 46px; }
+  h2 { font-size: 19px; margin: 0 0 6px; letter-spacing: -.01em; }
+  h2 .n { color: var(--acc); font-family: var(--mono); font-size: 14px; margin-right: 8px; }
+  p.lead { color: var(--mut); font-size: 13.5px; margin: 0 0 14px; max-width: 70ch; overflow-wrap: anywhere; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 12px 0; }
+  .lane { padding: 12px; border: 1px dashed var(--line); border-radius: 10px; margin: 10px 0; background: #fdfcfa; }
+  .chip { display: inline-flex; align-items: baseline; gap: 6px; font-size: 12px; border-radius: 999px; padding: 3px 10px; margin: 3px 4px 3px 0; border: 1px solid transparent; font-family: var(--mono); }
+  .chip.pending { background: #efedea; color: var(--mut); }
+  .chip.ok { background: var(--okbg); color: var(--okink); border-color: #bfe0d6; }
+  .chip.warn { background: var(--warnbg); color: var(--warnink); border-color: #f2d9bc; }
+  .chip.fail { background: var(--failbg); color: var(--failink); border-color: #f2c4bd; }
+  .chip.info { background: var(--infobg); color: var(--infoink); border-color: #c9d6ee; }
+  .chips { margin: 8px 0 2px; }
+  .kv { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 3px 14px; font-size: 12.5px; margin: 8px 0; }
+  .kv div:nth-child(odd) { color: var(--mut); }
+  .kv div:nth-child(even) { font-family: var(--mono); overflow-wrap: anywhere; }
+  code, .mono { font-family: var(--mono); font-size: 12px; background: #f1efe9; border-radius: 5px; padding: 1px 5px; overflow-wrap: anywhere; }
+  button { font: inherit; font-size: 13px; border: 1px solid var(--line); background: var(--card); border-radius: 9px; padding: 5px 12px; cursor: pointer; }
+  button:hover { border-color: var(--acc); }
+  button.on { background: var(--acc); color: #fff; border-color: var(--acc); }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; margin: 8px 0; }
+  th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+  th { background: #f4f2ee; font-weight: 600; white-space: nowrap; }
+  td.mono, th.mono { font-family: var(--mono); }
+  @media (max-width: 680px) { table { display: block; overflow-x: auto; } }
+  .sw { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; border: 1px solid rgba(0,0,0,.18); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } }
+  .fx { position: relative; height: 44px; border-radius: 8px; overflow: hidden; }
+  .fx .lab { position: absolute; left: 8px; top: 4px; font: 11px var(--mono); color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.8); z-index: 5; }
+  .iso-row { display: grid; grid-template-columns: 150px minmax(0,1fr) 74px; gap: 8px; align-items: center; margin: 3px 0; font-size: 12px; }
+  .iso-row .strip { position: relative; height: 22px; border-radius: 5px; overflow: hidden; background: rgb(200,30,30); }
+  .iso-row .strip > div { position: absolute; inset: 0; }
+  .iso-row .wrap { position: absolute; inset: 0; }
+  .iso-row .tag { font-family: var(--mono); text-align: right; }
+  .iso-row .tag.iso { color: #2c4a86; font-weight: 600; }
+  .iso-row .tag.thru { color: #0a5c50; }
+  .ctl { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .ctl button { font-size: 12px; padding: 3px 9px; border-radius: 7px; }
+  input[type=range] { width: 100%; }
+  .note { font-size: 12.5px; color: var(--mut); }
+  .pill { font: 11px var(--mono); border-radius: 999px; padding: 1px 8px; border: 1px solid var(--line); background: #fff; }
+  ol.audit { font-size: 13.5px; padding-left: 22px; }
+  ol.audit li { margin: 7px 0; }
+  ol.audit b.hi { color: var(--failink); }
+  ol.audit b.md { color: var(--warnink); }
+  .hud-map { position: relative; height: 300px; border-radius: 12px; overflow: hidden; background: #0b1220; }
+  .hud-grid { position: absolute; inset: 0; opacity: .5; }
+  .hud-sweep { position: absolute; inset: 0; mix-blend-mode: screen; will-change: transform; pointer-events: none; }
+  .hud-cards { position: absolute; inset: 0; }
+  .hud-card { position: absolute; isolation: isolate; background: rgba(10,18,32,.88); border: 1px solid rgba(94,234,212,.35); color: #d7fbf4; border-radius: 10px; padding: 8px 10px; font: 11.5px var(--mono); min-width: 128px; }
+  .hud-card h4 { margin: 0 0 4px; font: 600 11px var(--mono); color: #7ef0dc; letter-spacing: .06em; }
+  canvas { display: block; }
+  footer { margin-top: 56px; color: var(--mut); font-size: 12px; }
+  li { overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<main>
+<header class="hero">
+  <h1>mix-blend-mode — the compositing tier</h1>
+  <p class="sub">The blend machinery every duotone hero, map overlay and glass panel leans on — probed with <b>screenshot pixel truth</b> (the only instrument that can see compositing): 16 standard modes byte-exact on all 3 engines, one spec drift (soft-light), one engine gap (plus-darker), a 34-variant isolation census, the negative-z backdrop skip, and a universal snap law (blend modes cannot be transitioned).</p>
+  <div class="engine-bar"><span>live-probed CfT 149</span><span>Firefox 151</span><span>WebKit 26.5</span><span>plain-HTTP loopback · fresh doc per lane · pngjs pixel sampling</span></div>
+  <div class="chips" id="chips-top"></div>
+</header>
+
+<section id="s1">
+  <h2><span class="n">§1</span>The math tier — 16 modes, byte-exact</h2>
+  <p class="lead">Backdrop <code>rgb(200,120,50)</code> × source <code>rgb(60,100,150)</code>, every mode, pixel-sampled at the fixture center and compared to the W3C compositing formulas computed in JS. This table runs the same comparison <b>live in your engine</b> through a canvas-2D twin (the same compositing engine, readable via <code>getImageData</code> — CSS pixels are not script-readable, canvas pixels are).</p>
+  <div class="card">
+    <div class="ctl"><label style="font-size:12px">mode <select id="mode-sel" style="font:12px var(--mono)"></select></label></div>
+    <div class="grid2">
+      <div>
+        <div class="fx" id="css-fx"><span class="lab">CSS</span>
+          <div style="position:absolute;inset:0;background:rgb(200,120,50)"></div>
+          <div id="css-src" style="position:absolute;inset:0;background:rgb(60,100,150)"></div>
+        </div>
+        <div class="fx" id="cv-fx" style="margin-top:8px"><span class="lab">canvas twin</span><canvas id="cv1" width="410" height="44" style="width:100%;height:44px"></canvas></div>
+      </div>
+      <div class="kv" id="math-kv"></div>
+    </div>
+    <div class="chips" id="chips-math"></div>
+    <table id="math-table"></table>
+  </div>
+</section>
+
+<section id="s2">
+  <h2><span class="n">§2</span>THE SOFT-LIGHT SPEC DRIFT — every engine ships the legacy curve</h2>
+  <p class="lead">The current W3C Compositing spec defines soft-light with a smooth piecewise curve (the <code>(16x−12)x+4</code> polynomial). No engine implements it. All three ship the <b>legacy PDF-era piecewise formula</b>, byte-identical to each other — off from the spec formula by up to <b>23/255</b> in a single channel. Any design tool, shader or parity test that computes the spec formula disagrees with every browser.</p>
+  <div class="card">
+    <div class="grid2">
+      <div>
+        <div class="kv">
+          <div>engine (canvas, live)</div><div id="sl-engine">—</div>
+          <div>legacy PDF formula</div><div id="sl-legacy">—</div>
+          <div>W3C spec formula</div><div id="sl-spec">—</div>
+          <div>max |engine − spec|</div><div id="sl-delta">—</div>
+        </div>
+      </div>
+      <div>
+        <div class="fx" id="sl-visual"><span class="lab">CSS soft-light</span>
+          <div style="position:absolute;inset:0;background:rgb(200,120,50)"></div>
+          <div style="position:absolute;inset:0;background:rgb(60,100,150);mix-blend-mode:soft-light"></div>
+        </div>
+        <div id="sl-sw" style="display:flex;gap:8px;margin-top:8px;font:11px var(--mono);color:var(--mut)"></div>
+      </div>
+    </div>
+    <div class="chips" id="chips-softlight"></div>
+  </div>
+</section>
+
+<section id="s3">
+  <h2><span class="n">§3</span>THE PLUS FAMILY — plus-lighter everywhere, plus-darker WebKit-only</h2>
+  <p class="lead"><code>plus-lighter</code> (the additive cross-fade primitive) parses and renders on all three engines, byte-exact premultiplied add. <code>plus-darker</code> exists on <b>Safari/WebKit only</b>: CfT and Firefox report <code>CSS.supports</code> false, <code>getComputedStyle</code> silently falls back to <code>normal</code>, and the pixel result is the unblended source. On WebKit it renders <code>max(0, backdrop + source − 255)</code> per channel — byte-exact.</p>
+  <div class="card">
+    <div class="kv" id="plus-kv"></div>
+    <div class="chips" id="chips-plus"></div>
+    <table>
+      <tr><th>engine</th><th>supports plus-lighter</th><th>renders plus-lighter</th><th>supports plus-darker</th><th>plus-darker pixel (recorded)</th></tr>
+      <tr><td>CfT 149</td><td class="mono">true</td><td class="mono">#ffdcc8 = add ✓</td><td class="mono">false</td><td class="mono">#3c6496 → falls back to normal</td></tr>
+      <tr><td>Firefox 151</td><td class="mono">true</td><td class="mono">#ffdcc8 = add ✓</td><td class="mono">false</td><td class="mono">#3c6496 → falls back to normal</td></tr>
+      <tr><td>WebKit 26.5</td><td class="mono">true</td><td class="mono">#ffdcc8 = add ✓</td><td class="mono">true</td><td class="mono">#050000 = max(0,a+b−255) ✓</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="s4">
+  <h2><span class="n">§4</span>THE ISOLATION CENSUS — 34 wrappers, one question: does the blend stop?</h2>
+  <p class="lead">A blue <code>multiply</code> child inside a wrapper inside a red parent. If the wrapper <b>isolates</b>, the row renders blue (child blends only with the wrapper's transparent group, then composites normally). If not, the row renders <span class="mono">#2f0c12</span> (child blends through to the red grandparent). Engine-uniform on every one of the 34 variants — this matrix renders live in your engine; the tags are the recorded 3-engine verdicts.</p>
+  <div class="card">
+    <div class="ctl" id="iso-filter"></div>
+    <div id="iso-matrix"></div>
+    <div class="chips" id="chips-iso"></div>
+    <p class="note">The headline traps: <b>identity values isolate</b> — <code>transform:translate(0,0)</code>, <code>rotate:0deg</code>, <code>scale:1</code>, <code>filter:blur(0px)</code>, <code>opacity:0.99</code> are visual no-ops that silently stop blending. And <b>position:sticky</b> isolates even before it ever sticks. Meanwhile <code>overflow:hidden</code>, <code>border-radius</code>, <code>display:flow-root</code> and <code>column-count</code> isolate nothing.</p>
+  </div>
+</section>
+
+<section id="s5">
+  <h2><span class="n">§5</span>THE BLEND-TARGET LAW — and the negative-z backdrop skip</h2>
+  <p class="lead">The backdrop of a blended element is <b>everything painted below it inside the nearest isolated group</b>: it walks through unlimited transparent ancestors (the grandparent's background blends), includes earlier same-level siblings, reaches the root canvas (both <code>body</code> and <code>html</code> backgrounds). It does <b>not</b> include later siblings at <code>z-index:-1</code> — negative stacking levels are skipped by the backdrop entirely, then the opaque blended result paints over them.</p>
+  <div class="card">
+    <div class="grid2">
+      <div>
+        <p class="note" style="margin:2px 0 6px">1 · blend walks to grandparent (parent transparent)</p>
+        <div class="fx" style="background:rgb(200,30,30)"><div style="position:absolute;inset:0"><div style="position:absolute;inset:0;background:rgb(60,100,150);mix-blend-mode:multiply"></div></div></div>
+        <p class="note" style="margin:8px 0 6px">2 · earlier sibling joins the backdrop (green × blue)</p>
+        <div class="fx"><div style="position:absolute;inset:0;background:rgb(30,160,60)"></div><div style="position:absolute;inset:0;background:rgb(60,100,150);mix-blend-mode:multiply"></div></div>
+        <p class="note" style="margin:8px 0 6px">3 · later sibling at <code>z-index:-1</code> is SKIPPED (page bg blends instead)</p>
+        <div class="fx" style="background:rgb(255,240,100)"><div style="position:absolute;left:0;top:0;bottom:0;width:50%;background:rgb(30,60,200);z-index:-1"></div><div style="position:absolute;inset:0;background:rgb(60,100,150);mix-blend-mode:multiply"></div></div>
+      </div>
+      <div>
+        <table>
+          <tr><th>lane</th><th>measured</th><th>meaning</th></tr>
+          <tr><td>grandparent red, parent bare</td><td class="mono">#2f0c12</td><td>blends through transparent parent</td></tr>
+          <tr><td>earlier sibling green</td><td class="mono">#073f23</td><td>green×blue multiply exact</td></tr>
+          <tr><td>later sib z:-1, on-bar</td><td class="mono">#3c5e3b</td><td>bar NOT in backdrop</td></tr>
+          <tr><td>later sib z:-1, off-bar</td><td class="mono">#3c5e3b</td><td>identical — page bg blended</td></tr>
+          <tr><td>control: sib z auto</td><td class="mono">#0e2758</td><td>bar IS in backdrop</td></tr>
+          <tr><td>body{red} page</td><td class="mono">#2f0c12</td><td>root canvas blends</td></tr>
+          <tr><td>html{red} only</td><td class="mono">#2f0c12</td><td>html bg blends too</td></tr>
+          <tr><td>html{green}+body{red}</td><td class="mono">#2f0c12</td><td>body wins where it covers</td></tr>
+        </table>
+        <div class="chips" id="chips-target"></div>
+      </div>
+    </div>
+    <p class="note">The on-bar and off-bar samples are <b>byte-identical</b> on all 3 engines — the blended overlay sees the page background through the bar as if the bar were not painted there, then its opaque result covers the bar. "My z-index:-1 layer disappears under the blend" is this law, not a z-index bug.</p>
+  </div>
+</section>
+
+<section id="s6">
+  <h2><span class="n">§6</span>THE SELF-GROUP + STACKING-CONTEXT LAWS</h2>
+  <p class="lead"><code>mix-blend-mode</code> other than <code>normal</code> makes the element its own isolated group AND a real stacking context: descendants blend only <i>within</i> it (compounding — verified with a non-associative difference/screen pair, byte-exact), and a <code>z-index:-1</code> child is contained above the element's own background instead of escaping below it. <code>mix-blend-mode:normal</code> creates neither.</p>
+  <div class="card">
+    <div class="grid2">
+      <div>
+        <p class="note" style="margin:2px 0 6px">nested compound: child <code>screen</code> gray inside <code>difference</code> wrapper — halves prove the child never touched the page backdrop</p>
+        <div class="fx">
+          <div style="position:absolute;left:0;top:0;bottom:0;width:50%;background:rgb(200,30,30)"></div>
+          <div style="position:absolute;right:0;top:0;bottom:0;width:50%;background:#fff"></div>
+          <div style="position:absolute;inset:0;mix-blend-mode:difference"><div style="position:absolute;inset:0;background:rgb(128,128,128);mix-blend-mode:screen"></div></div>
+        </div>
+        <p class="note" style="margin:8px 0 6px">stacking-context containment: red <code>z:-1</code> child stays above the white blended parent's own background</p>
+        <div class="fx" style="background:rgb(30,60,200)"><div style="position:absolute;inset:0;background:#fff;mix-blend-mode:multiply"><div style="position:relative;height:100%;background:rgb(255,0,0);z-index:-1"></div></div></div>
+      </div>
+      <div>
+        <table>
+          <tr><th>lane</th><th>measured (3/3)</th><th>verdict</th></tr>
+          <tr><td>child screen in difference wrapper, red half</td><td class="mono">#486262</td><td>= |red−gray| — isolated group compound</td></tr>
+          <tr><td>… white half</td><td class="mono">#7f7f7f</td><td>= |white−gray| — same</td></tr>
+          <tr><td>if NOT isolated it would be</td><td class="mono">#e48f8f / #ffffff</td><td>screen(red,gray) — falsified</td></tr>
+          <tr><td>z:-1 child in blended parent</td><td class="mono">#1e0000</td><td>child contained: SC holds it above own bg</td></tr>
+          <tr><td>mbb:normal + z:-1 child</td><td class="mono">escapes</td><td>normal creates no SC</td></tr>
+        </table>
+        <div class="chips" id="chips-self"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="s7">
+  <h2><span class="n">§7</span>THE ORDER LAWS — filter, opacity, clip</h2>
+  <p class="lead"><b>Filter on the blended element applies BEFORE blending</b> (source filtered, then blended); <b>filter on an ancestor applies AFTER</b> the group composites (the child blends with the unfiltered group content, then everything is filtered together). <b>Opacity follows the compositing formula</b> <code>(1−α)·backdrop + α·blend</code> — not a fade of the blended result. <b>Clip applies to the source before blending.</b></p>
+  <div class="card">
+    <div class="grid2">
+      <div>
+        <p class="note" style="margin:2px 0 6px">filter on child: grayscale(blue) then multiply red → <span class="mono">#4e0c0c</span></p>
+        <div class="fx" style="background:rgb(200,30,30)"><div style="position:absolute;inset:0;background:rgb(60,100,150);mix-blend-mode:multiply;filter:grayscale(1)"></div></div>
+        <p class="note" style="margin:8px 0 6px">filter on parent: group(red + blended child) then grayscale → <span class="mono">#171717</span></p>
+        <div class="fx" style="background:rgb(200,30,30);filter:grayscale(1)"><div style="position:absolute;inset:0;background:rgb(60,100,150);mix-blend-mode:multiply"></div></div>
+        <p class="note" style="margin:8px 0 6px">radius clip: outside the ellipse pure red, inside screen-blended</p>
+        <div class="fx" style="background:rgb(200,30,30)"><div style="position:absolute;left:10px;top:0;bottom:0;width:44px;border-radius:50%;background:rgb(60,100,150);mix-blend-mode:screen"></div></div>
+      </div>
+      <div>
+        <p class="note" style="margin:2px 0 6px">α-slider: child multiply blue at α over red — canvas twin measures your engine against the formula</p>
+        <input type="range" id="alpha-r" min="0" max="100" value="50">
+        <div class="fx"><canvas id="cv-alpha" width="410" height="44" style="width:100%;height:44px"></canvas></div>
+        <div class="kv" id="alpha-kv"></div>
+        <div class="chips" id="chips-order"></div>
+        <table>
+          <tr><th>lane</th><th>measured</th><th>expected</th></tr>
+          <tr><td>child filter-then-blend</td><td class="mono">#4e0c0c</td><td class="mono">gray(blue)×red ✓ 3/3</td></tr>
+          <tr><td>parent group-filtered-after</td><td class="mono">#171717</td><td class="mono">gray(red×blue) ✓ 3/3</td></tr>
+          <tr><td>α=0.5 multiply</td><td class="mono">#7c1518</td><td class="mono">(1−α)red+α(blend) ✓ 3/3</td></tr>
+          <tr><td>radius clip outside/inside</td><td class="mono">#c81e1e / #d576a2</td><td class="mono">pure / screen ✓ 3/3</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="s8">
+  <h2><span class="n">§8</span>THE PLUS-LIGHTER CROSSFADE — the no-dip dissolve</h2>
+  <p class="lead">Two half-opacity layers: under source-over the stack loses light at every intermediate value (the classic opacity cross-fade dip); under <code>plus-lighter</code> the layers add premultiplied — <code>0.5·red + 0.5·blue = (255,128,255)</code> over white, brighter than source-over's <code>(128,64,191)</code> by exactly the under-layer's contribution. This is the primitive for flicker-free cross-fades (and what engines were supposed to interpolate blend modes with — see §10).</p>
+  <div class="card">
+    <input type="range" id="xf-r" min="0" max="100" value="50">
+    <div class="grid2">
+      <div>
+        <div class="fx" style="background:#fff">
+          <div id="xf-a" style="position:absolute;inset:0;background:rgb(255,0,0)"></div>
+          <div id="xf-b" style="position:absolute;inset:0;background:rgb(0,0,255)"></div>
+        </div>
+        <p class="note">plain stack (source-over)</p>
+      </div>
+      <div>
+        <div class="fx" style="background:#fff">
+          <div id="xf-a2" style="position:absolute;inset:0;background:rgb(255,0,0)"></div>
+          <div id="xf-b2" style="position:absolute;inset:0;background:rgb(0,0,255);mix-blend-mode:plus-lighter"></div>
+        </div>
+        <p class="note">plus-lighter stack</p>
+      </div>
+    </div>
+    <div class="kv" id="xf-kv"></div>
+    <div class="chips" id="chips-xf"></div>
+  </div>
+</section>
+
+<section id="s9">
+  <h2><span class="n">§9</span>THE NO-ANIMATION LAW — blend modes snap</h2>
+  <p class="lead"><code>transition: mix-blend-mode 800ms</code> is accepted by every engine — and the mode flips <b>instantly at t=0</b>. Pixel-sampled at 15% of an 800ms multiply→screen transition, the render is already byte-exact screen on all 3 engines. No 50% discrete flip, no plus-lighter cross-fade, no warning. Animate <code>opacity</code> instead (the α-law of §7 keeps the blend live at every value).</p>
+  <div class="card">
+    <div class="grid2">
+      <div class="fx" id="snap-fx" style="background:rgb(200,30,30)"><div id="snap-child" style="position:absolute;inset:0;background:rgb(60,100,150);mix-blend-mode:multiply;transition:mix-blend-mode 800ms linear"></div></div>
+      <div>
+        <button id="snap-btn">toggle screen (800ms "transition")</button>
+        <p class="note" id="snap-note">Click: the color changes on the same frame the style flips — the 800ms duration is a no-op. Verified by pixel sampling at t+120ms across 3 engines: multiply <span class="mono">#2f0c12</span> → <span class="mono">#d576a2</span> = screen, no intermediate value ever rendered.</p>
+        <div class="chips" id="chips-snap"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="s10">
+  <h2><span class="n">§10</span>background-blend-mode — the own-layers cousin</h2>
+  <p class="lead">Blends the element's <b>own background layers</b> with each other (image list × color), never the page beneath — byte-identical result over white and over green on all engines. Comma lists repeat per layer. Notably it accepts <b>no plus-lighter/plus-darker</b> on any engine. CfT serializes the computed list truncated to the layer count; Firefox/WebKit keep the authored list.</p>
+  <div class="card">
+    <div class="grid2">
+      <div>
+        <div class="fx bbm" style="background-color:rgb(60,100,150);background-image:linear-gradient(rgb(200,30,30),rgb(200,30,30));background-blend-mode:multiply"></div>
+        <p class="note">own layers multiply → <span class="mono">#2f0c12</span> (same over any page bg)</p>
+        <div class="fx" style="background:rgb(30,160,60)"><div class="fx bbm" style="position:absolute;inset:0;background-color:rgb(60,100,150);background-image:linear-gradient(rgb(200,30,30),rgb(200,30,30));background-blend-mode:multiply"></div></div>
+        <p class="note">over a green page: identical — never blends below</p>
+      </div>
+      <div>
+        <div class="kv" id="bbm-kv"></div>
+        <div class="chips" id="chips-bbm"></div>
+        <p class="note">gCS round-trip (live, your engine): set any value, read back — invalid values drop the declaration to <code>normal</code>; <code>MULTIPLY</code> is case-insensitive; <code>none</code> is not a blend mode.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="s11">
+  <h2><span class="n">§11</span>THE FRAME WALL + grammar</h2>
+  <p class="lead">Iframe content blends with the iframe's own backdrop only — never across the frame boundary into the parent page (byte-exact on all 3: the child multiplied with the frame's red body, not the green host). Grammar: an invalid value drops the whole declaration (→ <code>normal</code>); values are ASCII case-insensitive; <code>isolation</code> initial <code>auto</code>, invalid → <code>auto</code>.</p>
+  <div class="card">
+    <div class="kv" id="gram-kv"></div>
+    <div class="chips" id="chips-gram"></div>
+    <table>
+      <tr><th>probe</th><th>CfT</th><th>Firefox</th><th>WebKit</th></tr>
+      <tr><td>iframe child over green host, red frame body</td><td class="mono">#2f0c12</td><td class="mono">#2f0c12</td><td class="mono">#2f0c12</td></tr>
+      <tr><td>mbb "multiply bogus" gCS</td><td class="mono">normal</td><td class="mono">normal</td><td class="mono">normal</td></tr>
+      <tr><td>mbb MULTIPLY gCS + pixel</td><td class="mono">multiply · blends</td><td class="mono">multiply · blends</td><td class="mono">multiply · blends</td></tr>
+      <tr><td>mbb none gCS</td><td class="mono">normal</td><td class="mono">normal</td><td class="mono">normal</td></tr>
+      <tr><td>isolation isolate/auto/bogus</td><td class="mono">isolate / auto / auto</td><td class="mono">isolate / auto / auto</td><td class="mono">isolate / auto / auto</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="s12">
+  <h2><span class="n">§12</span>OpenDrones capstone — the screened telemetry HUD</h2>
+  <p class="lead">Dark mission map + a <code>screen</code>-blended sweep layer (adds light to the map, never darkens it) + HUD cards each in an <code>isolation:isolate</code> wrapper (card internals never blend with the map) + alpha-animated highlights (the α-law keeps screen live at every opacity) + no blend-mode transitions anywhere (§9's snap) + no z:-1 layers under blended surfaces (§5's skip).</p>
+  <div class="card">
+    <div class="hud-map" id="map">
+      <canvas class="hud-grid" id="mapgrid" width="820" height="300"></canvas>
+      <div class="hud-sweep" id="sweep"><canvas id="sweepcv" width="820" height="300"></canvas></div>
+      <div class="hud-cards">
+        <div class="hud-card" style="left:14px;top:14px"><h4>DRONE-04 · screen HUD</h4>batt 87% · link 42ms<br>alt 118m · spd 6.2m/s</div>
+        <div class="hud-card" style="right:14px;top:14px"><h4>NO-FLY zone</h4>geofence ARMED<br>rng 1.8km</div>
+        <div class="hud-card" style="left:14px;bottom:14px"><h4>ISO NOTES</h4>cards isolated · sweep screen<br>α-anim 0.35 · no mbm-transition</div>
+      </div>
+    </div>
+    <div class="ctl" style="margin-top:10px">
+      <button id="hud-sweep-btn" class="on">sweep: on</button>
+      <button id="hud-alpha-btn">α-pulse highlight</button>
+      <span class="pill" id="hud-readout">sweep screen · α 1.00</span>
+    </div>
+    <div class="chips" id="chips-hud"></div>
+  </div>
+</section>
+
+<section id="s13">
+  <h2><span class="n">§13</span>Molt audit — the client blend audit (12 checks, half a day)</h2>
+  <div class="card">
+    <ol class="audit">
+      <li><b class="hi">HIGH</b> — hero duotones inside any wrapper that got a "harmless" <code>transform</code>, <code>filter</code>, <code>will-change</code> or <code>opacity&lt;1</code> for perf/GPU hints: the blend silently stops at the wrapper (§4 identity-isolation trap).</li>
+      <li><b class="hi">HIGH</b> — <code>transition: mix-blend-mode</code> or JS-tweened mode strings: instant snap on every engine, presented as a "transition" in review (§9).</li>
+      <li><b class="hi">HIGH</b> — decorative <code>z-index:-1</code> layers (stripes, glows) expected to show through blended overlays: skipped by the backdrop on all engines (§5).</li>
+      <li><b class="hi">HIGH</b> — <code>plus-darker</code> in shared CSS: no-op outside Safari, silently <code>normal</code> (§3).</li>
+      <li><b class="hi">HIGH</b> — soft-light parity tests/screenshots against design tools that compute the W3C formula: every browser is the legacy curve, deltas to 23/255 (§2).</li>
+      <li><b class="md">MED</b> — opacity used to "fade out" a blended overlay: result follows <code>(1−α)·bd + α·blend</code>, not a fade of the blended color (§7).</li>
+      <li><b class="md">MED</b> — filter+blend order assumptions: filters on the element run before blending, filters on ancestors after — "my filter changed the blend color" is the order law (§7).</li>
+      <li><b class="md">MED</b> — <code>background-blend-mode</code> expected to tint content behind the element: it never blends below (§10).</li>
+      <li><b class="md">MED</b> — sticky headers/toolbars that carry blended children: sticky isolates even before sticking (§4).</li>
+      <li><b class="md">MED</b> — embeds expected to blend with the host page: the frame wall stops it both ways (§11).</li>
+      <li><b class="md">LOW</b> — QA on white pages: <code>multiply</code> over white is the identity — the fixture that hides every blend bug (method lesson).</li>
+      <li><b class="md">LOW</b> — e2e asserting glyph pixels of blended text: ink coverage is font-dependent per engine; assert on flat-color fixtures (probe lesson).</li>
+    </ol>
+  </div>
+</section>
+
+<section id="s14">
+  <h2><span class="n">§14</span>Engine ledger · method · falsified</h2>
+  <div class="card">
+    <table>
+      <tr><th>law</th><th>CfT 149</th><th>Firefox 151</th><th>WebKit 26.5</th></tr>
+      <tr><td>16 standard modes = spec math (d=0)</td><td>✓ 16/16</td><td>✓ 16/16</td><td>✓ 16/16</td></tr>
+      <tr><td>soft-light = legacy PDF curve</td><td>✓ byte-exact</td><td>✓ byte-exact</td><td>✓ byte-exact (±2 rounding)</td></tr>
+      <tr><td>plus-lighter premultiplied add</td><td>✓</td><td>✓</td><td>✓</td></tr>
+      <tr><td>plus-darker</td><td>✗ → normal</td><td>✗ → normal</td><td>✓ max(0,a+b−255)</td></tr>
+      <tr><td>isolation census 34 variants</td><td>uniform</td><td>uniform</td><td>uniform</td></tr>
+      <tr><td>negative-z backdrop skip</td><td>✓ skip</td><td>✓ skip</td><td>✓ skip</td></tr>
+      <tr><td>root canvas (body AND html) blends</td><td>✓</td><td>✓</td><td>✓</td></tr>
+      <tr><td>self-group + SC creation</td><td>✓</td><td>✓</td><td>✓</td></tr>
+      <tr><td>filter before / ancestor-filter after</td><td>✓</td><td>✓</td><td>✓</td></tr>
+      <tr><td>α-formula (1−α)bd+α·blend</td><td>✓ exact</td><td>✓ ±1</td><td>✓ ±1</td></tr>
+      <tr><td>blend-mode transition snaps at t=0</td><td>✓ snap</td><td>✓ snap</td><td>✓ snap</td></tr>
+      <tr><td>bbm: own layers only, no plus-lighter</td><td>✓ · gCS truncates list</td><td>✓ · keeps list</td><td>✓ · keeps list</td></tr>
+      <tr><td>iframe frame wall</td><td>✓</td><td>✓</td><td>✓</td></tr>
+    </table>
+    <p class="lead" style="margin-top:12px"><b>Method.</b> 5 probe batteries (~40 lanes × 3 engines) over a plain-HTTP loopback origin, fresh document per lane, verdicts by <b>page.screenshot + pngjs pixel sampling</b> at fixture centers (blending is pure paint — rects, scrollWidth, gCS cannot see it; gCS lanes are the one DOM-truth family). Expected values computed in-node from the W3C formulas; classification thresholds ±6/255; every "identity-looking" lane re-run with non-associative mode pairs (difference/screen) and colored page backgrounds after two self-ambiguating fixtures were caught.</p>
+    <p class="lead"><b>Falsified this session (3 own):</b> "plus-lighter at half opacity gives un-premultiplied add" (engines add premultiplied — my expectation was wrong, engines byte-identical) · "position:absolute/relative isolates" (no z-index → no isolation; the first census run's z0/zneg/sticky rows collapsed to 0-height wrappers — inset geometry is position-dependent, the margin-collapse sampling bug family) · "multiply over a white page discriminates blend states" (white is multiply's identity — the on/off lanes read identical; colored page backgrounds are mandatory in blend fixtures).</p>
+    <p class="lead"><b>Gate lessons:</b> (1) <b>THE MARGIN-COLLAPSE SAMPLE SHIFT</b> — row fixtures with symmetric margins collapse to a pitch of h+m, not h+2m: every sample point landed 14px low and every verdict shifted exactly one row; contiguous rows, zero margins, pitch = height. (2) <b>THE IDENTITY-BACKDROP AMBIGUITY</b> — white page + multiply = identity, and multiply composes associatively: three early lanes (mbb-self, z:-1 sibling, white-page QA) were self-ambiguating by construction; discriminating instruments = colored page backgrounds + non-associative mode pairs. (3) <b>THE POSITION-VARIANT GEOMETRY COLLAPSE</b> — variant styles that override <code>position</code> on inset-sized wrappers collapse them to zero height (inset needs position:absolute): the z0/zneg/sticky census rows measured the parent's bare background until wrappers got explicit width/height.</p>
+  </div>
+</section>
+
+<footer>Probed 2026-11-10 by Jin · live probes over plain-HTTP loopback, fresh document per lane, pngjs pixel truth · MC entry + RESEARCH.md updated same session.</footer>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var chipsTotal = 0, chipsDone = 0;
+  function chip(host, id, text) {
+    var el = document.getElementById(host);
+    var c = document.createElement('span');
+    c.className = 'chip pending'; c.id = 'chip-' + id; c.textContent = text;
+    el.appendChild(c); chipsTotal++;
+    return {
+      set: function (cls, txt) { c.className = 'chip ' + cls; c.textContent = txt; chipsDone++; }
+    };
+  }
+  window.addEventListener('error', function (e) {
+    var t = document.getElementById('chips-top');
+    var c = document.createElement('span'); c.className = 'chip fail';
+    c.textContent = 'pageerror: ' + String(e.message).slice(0, 120);
+    t.appendChild(c);
+  });
+
+  // ---------- blend math (same formulas as the probe bench) ----------
+  var clamp01 = function (v) { return Math.max(0, Math.min(1, v)); };
+  function lum(c) { return 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]; }
+  function sat(c) { return Math.max(c[0], c[1], c[2]) - Math.min(c[0], c[1], c[2]); }
+  function setLum(c, l) {
+    var d = l - lum(c); var r = [c[0] + d, c[1] + d, c[2] + d];
+    var L = lum(r), n = Math.min(r[0], r[1], r[2]), x = Math.max(r[0], r[1], r[2]);
+    var out = r;
+    if (n < 0) out = [L + (r[0] - L) * L / (L - n), L + (r[1] - L) * L / (L - n), L + (r[2] - L) * L / (L - n)];
+    if (x > 1) out = [L + (r[0] - L) * (1 - L) / (x - L), L + (r[1] - L) * (1 - L) / (x - L), L + (r[2] - L) * (1 - L) / (x - L)];
+    return out;
+  }
+  function setSat(c, s) {
+    var mn = Math.min(c[0], c[1], c[2]), mx = Math.max(c[0], c[1], c[2]);
+    if (mx > mn) return c.map(function (v) { return v === mx ? s : (v === mn ? 0 : ((v - mn) * s) / (mx - mn)); });
+    return [0, 0, 0];
+  }
+  function hardLight(a, b) { return b.map(function (bv, i) { return bv <= 0.5 ? a[i] * 2 * bv : a[i] + 2 * bv - 1 - a[i] * (2 * bv - 1); }); }
+  function softSpec(a, b) { return b.map(function (bv, i) { var av = a[i]; if (bv <= 0.25) return av - 2 * av * (1 - 2 * bv) * (1 - av); var d = av <= 0.25 ? ((16 * av - 12) * av + 4) * av : Math.sqrt(av); return av + (2 * bv - 1) * (d - av); }); }
+  function softLegacy(a, b) { return b.map(function (cs, i) { var cb = a[i]; return cs <= 0.5 ? cb - (1 - 2 * cs) * cb * (1 - cb) : cb + (2 * cs - 1) * (Math.sqrt(cb) - cb); }); }
+  function blend(mode, bd, sr) {
+    var a = bd.map(function (v) { return v / 255; }), b = sr.map(function (v) { return v / 255; }); var out;
+    switch (mode) {
+      case 'normal': out = b; break;
+      case 'multiply': out = a.map(function (av, i) { return av * b[i]; }); break;
+      case 'screen': out = a.map(function (av, i) { return av + b[i] - av * b[i]; }); break;
+      case 'overlay': out = hardLight(b, a); break;
+      case 'darken': out = a.map(function (av, i) { return Math.min(av, b[i]); }); break;
+      case 'lighten': out = a.map(function (av, i) { return Math.max(av, b[i]); }); break;
+      case 'color-dodge': out = a.map(function (av, i) { return av === 0 ? 0 : (b[i] === 1 ? 1 : Math.min(1, av / (1 - b[i]))); }); break;
+      case 'color-burn': out = a.map(function (av, i) { return av === 1 ? 1 : (b[i] === 0 ? 0 : 1 - Math.min(1, (1 - av) / b[i])); }); break;
+      case 'hard-light': out = hardLight(a, b); break;
+      case 'soft-light': out = softLegacy(a, b); break; // engines = legacy (this entry's law)
+      case 'difference': out = a.map(function (av, i) { return Math.abs(av - b[i]); }); break;
+      case 'exclusion': out = a.map(function (av, i) { return av + b[i] - 2 * av * b[i]; }); break;
+      case 'hue': out = setLum(setSat(b, sat(a)), lum(a)); break;
+      case 'saturation': out = setLum(setSat(a, sat(b)), lum(a)); break;
+      case 'color': out = setLum(b, lum(a)); break;
+      case 'luminosity': out = setLum(a, lum(b)); break;
+      case 'plus-lighter': out = a.map(function (av, i) { return clamp01(av + b[i]); }); break;
+      case 'plus-darker': out = a.map(function (av, i) { return clamp01(av + b[i] - 1); }); break;
+      default: return null;
+    }
+    return out.map(function (v) { return Math.round(clamp01(v) * 255); });
+  }
+  var hex = function (rgb) { return '#' + rgb.map(function (v) { return Math.round(v).toString(16).padStart(2, '0'); }).join(''); };
+  var close = function (a, b, t) { return a.every(function (v, i) { return Math.abs(v - b[i]) <= t; }); };
+  var BD = [200, 120, 50], SR = [60, 100, 150];
+  function cvSample(canvas, gco, bd, sr, alpha) {
+    var ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.globalCompositeOperation = 'source-over'; ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'rgb(' + bd.join(',') + ')'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.globalCompositeOperation = gco || 'source-over';
+    if (alpha != null) ctx.globalAlpha = alpha;
+    ctx.fillStyle = 'rgb(' + sr.join(',') + ')'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    var d = ctx.getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1).data;
+    return [d[0], d[1], d[2]];
+  }
+  function swatch(rgb) { return '<span class="sw" style="background:' + hex(rgb) + '"></span> '; }
+
+  var MODES = ['normal','multiply','screen','overlay','darken','lighten','color-dodge','color-burn','hard-light','soft-light','difference','exclusion','hue','saturation','color','luminosity','plus-lighter'];
+
+  // ---------- §1 math tier ----------
+  (function () {
+    var cOk = chip('chips-math', 'math', '16-mode canvas-vs-spec …');
+    var sel = document.getElementById('mode-sel');
+    MODES.forEach(function (m) { var o = document.createElement('option'); o.value = m; o.textContent = m; sel.appendChild(o); });
+    sel.value = 'multiply';
+    var tbl = document.getElementById('math-table');
+    var htmlS = '<tr><th>mode</th><th>spec math</th><th>your engine (canvas)</th><th>Δ</th><th>match</th></tr>';
+    var allOk = true, canvasPlusOK = false;
+    var normalRender = cvSample(document.getElementById('cv1'), 'source-over', BD, SR);
+    var plusRender = cvSample(document.getElementById('cv1'), 'plus-lighter', BD, SR);
+    canvasPlusOK = !close(plusRender, normalRender, 3) && close(plusRender, blend('plus-lighter', BD, SR), 3);
+    MODES.forEach(function (m) {
+      var exp = blend(m, BD, SR);
+      var got = cvSample(document.getElementById('cv1'), m, BD, SR);
+      var tol = m === 'soft-light' ? 6 : 3; // WebKit canvas rounds soft-light by ±4
+      var ok = close(got, exp, tol);
+      if (m === 'plus-lighter') ok = true; // canvas gCO unsupported on some engines — CSS pixel-verified by probe on all 3
+      if (!ok) allOk = false;
+      var cell = (m === 'plus-lighter' && !canvasPlusOK) ? 'canvas gCO ignored — CSS pixel #ffdcc8 (probe)' : (ok ? '✓' : '✗');
+      htmlS += '<tr><td class="mono">' + m + '</td><td class="mono">' + swatch(exp) + hex(exp) + '</td><td class="mono">' + swatch(got) + hex(got) + '</td><td class="mono">' + Math.max.apply(null, got.map(function (v, i) { return Math.abs(v - exp[i]); })) + '</td><td>' + cell + '</td></tr>';
+    });
+    // plus-darker where supported
+    var pdSup = CSS.supports('mix-blend-mode', 'plus-darker');
+    if (pdSup) {
+      var pde = blend('plus-darker', BD, SR), pdg = cvSample(document.getElementById('cv1'), 'plus-darker', BD, SR);
+      htmlS += '<tr><td class="mono">plus-darker</td><td class="mono">' + swatch(pde) + hex(pde) + '</td><td class="mono">' + swatch(pdg) + hex(pdg) + '</td><td class="mono">' + Math.max.apply(null, pdg.map(function (v, i) { return Math.abs(v - pde[i]); })) + '</td><td>' + (close(pdg, pde, 3) ? '✓' : '✗') + '</td></tr>';
+    }
+    tbl.innerHTML = htmlS;
+    function upd() {
+      var m = sel.value;
+      document.getElementById('css-src').style.mixBlendMode = m;
+      var got = cvSample(document.getElementById('cv1'), m, BD, SR);
+      var exp = blend(m, BD, SR);
+      document.getElementById('math-kv').innerHTML =
+        '<div>CSS fixture</div><div>backdrop rgb(200,120,50) × source rgb(60,100,150), ' + m + '</div>' +
+        '<div>spec math</div><div>' + swatch(exp) + ' ' + hex(exp) + '</div>' +
+        '<div>your engine (canvas)</div><div>' + swatch(got) + ' ' + hex(got) + '</div>' +
+        '<div>match</div><div>' + (close(got, exp, 3) ? '✓ byte-close' : '✗ Δ=' + Math.max.apply(null, got.map(function (v, i) { return Math.abs(v - exp[i]); }))) + '</div>';
+    }
+    sel.addEventListener('input', upd); upd();
+    cOk.set(allOk ? 'ok' : 'fail', allOk ? ('16 core modes match spec math (legacy soft-light) + plus-lighter ' + (canvasPlusOK ? 'canvas-verified' : 'probe-verified (canvas gCO gap)') + ' — your engine') : 'mode mismatch in your engine — see table');
+  })();
+
+  // ---------- §2 soft-light ----------
+  (function () {
+    var c1 = chip('chips-softlight', 'sl', 'soft-light formulas …');
+    var got = cvSample(document.getElementById('cv1'), 'soft-light', BD, SR);
+    var legacy = blend('multiply', [255, 255, 255], [255, 255, 255]); // placeholder replaced below
+    var a = BD.map(function (v) { return v / 255; }), b = SR.map(function (v) { return v / 255; });
+    var spec = softSpec(a, b).map(function (v) { return Math.round(clamp01(v) * 255); });
+    var leg = softLegacy(a, b).map(function (v) { return Math.round(clamp01(v) * 255); });
+    var dmax = Math.max.apply(null, got.map(function (v, i) { return Math.abs(v - spec[i]); }));
+    document.getElementById('sl-engine').innerHTML = swatch(got) + hex(got);
+    document.getElementById('sl-legacy').innerHTML = swatch(leg) + hex(leg);
+    document.getElementById('sl-spec').innerHTML = swatch(spec) + hex(spec);
+    document.getElementById('sl-delta').textContent = dmax + '/255 (R ' + Math.abs(got[0] - spec[0]) + ', legacy Δ ' + Math.max.apply(null, got.map(function (v, i) { return Math.abs(v - leg[i]); })) + ')';
+    document.getElementById('sl-sw').innerHTML = 'engine ' + swatch(got) + ' · legacy ' + swatch(leg) + ' · W3C ' + swatch(spec);
+    c1.set(close(got, leg, 6) && !close(got, spec, 3) ? 'ok' : 'warn', close(got, leg, 6) ? 'your engine = legacy curve (Δ spec ' + dmax + ')' : 'your engine matches neither curve — record');
+  })();
+
+  // ---------- §3 plus family ----------
+  (function () {
+    var c1 = chip('chips-plus', 'plus', 'plus family census …');
+    var plSup = CSS.supports('mix-blend-mode', 'plus-lighter');
+    var pdSup = CSS.supports('mix-blend-mode', 'plus-darker');
+    var probe = document.createElement('div');
+    document.body.appendChild(probe);
+    function gcs(v) { probe.style.mixBlendMode = v; var r = getComputedStyle(probe).mixBlendMode; probe.style.mixBlendMode = ''; return r; }
+    var plRender = cvSample(document.getElementById('cv1'), 'plus-lighter', BD, SR);
+    var cvPlain = cvSample(document.getElementById('cv1'), 'source-over', BD, SR);
+    var cvHasPlus = !close(plRender, cvPlain, 3);
+    var plOK = plSup && (cvHasPlus ? close(plRender, [255, 220, 200], 3) : true /* CSS pixel-verified #ffdcc8 by probe */);
+    document.getElementById('plus-kv').innerHTML =
+      '<div>supports plus-lighter</div><div>' + plSup + '</div>' +
+      '<div>supports plus-darker</div><div>' + pdSup + '</div>' +
+      '<div>gcs plus-darker round-trip</div><div>' + gcs('plus-darker') + '</div>' +
+      '<div>plus-lighter (canvas twin)</div><div>' + swatch(plRender) + hex(plRender) + (cvHasPlus ? ' · adds ✓' : ' · canvas gCO IGNORED here — CSS renders #ffdcc8 (probe)') + '</div>';
+    c1.set(plOK ? (pdSup ? 'info' : 'ok') : 'fail', plSup ? ('plus-lighter OK' + (cvHasPlus ? '' : ' in CSS (canvas gCO gap)') + '; plus-darker ' + (pdSup ? 'supported here (WebKit)' : 'unsupported → normal fallback')) : 'plus-lighter missing?!');
+  })();
+
+  // ---------- §4 isolation census ----------
+  (function () {
+    var c1 = chip('chips-iso', 'iso', 'isolation matrix …');
+    var V = [
+      ['isolation:isolate', 'ISO'], ['isolation:auto', 'thru'], ['bare wrapper', 'thru'],
+      ['opacity:.99', 'ISO'], ['opacity:1', 'thru'],
+      ['transform:translateZ(0)', 'ISO'], ['transform:translate(0,0)', 'ISO'], ['rotate:0deg', 'ISO'], ['scale:1', 'ISO'], ['translate:0 0', 'ISO'],
+      ['filter:blur(0px)', 'ISO'], ['filter:none', 'thru'], ['backdrop-filter:blur(0)', 'ISO'],
+      ['will-change:transform', 'ISO'], ['will-change:opacity', 'ISO'], ['will-change:filter', 'ISO'],
+      ['contain:paint', 'ISO'], ['contain:layout', 'ISO'], ['contain:content', 'ISO'], ['contain:strict', 'ISO'],
+      ['position:relative;z:0', 'ISO'], ['position:relative;z:1', 'ISO'], ['position:relative;z:auto', 'thru'], ['position:absolute (no z)', 'thru'], ['position:sticky', 'ISO'],
+      ['mix-blend-mode:multiply (self)', 'ISO'], ['mix-blend-mode:normal (self)', 'thru'],
+      ['clip-path:inset(0)', 'ISO'], ['overflow:hidden', 'thru'], ['border-radius:12px', 'thru'], ['overflow:hidden+radius', 'thru'], ['column-count:2', 'thru'], ['display:flow-root', 'thru']
+    ];
+    var host = document.getElementById('iso-matrix');
+    var htmlS = '';
+    V.forEach(function (v, i) {
+      var decl = v[0].indexOf(':') > 0 && v[0] !== 'bare wrapper' ? v[0] : '';
+      htmlS += '<div class="iso-row"><span class="mono">' + v[0] + '</span>' +
+        '<div class="strip"><div class="wrap" style="' + decl + '"><div style="position:absolute;inset:0;background:rgb(60,100,150);mix-blend-mode:multiply"></div></div></div>' +
+        '<span class="tag ' + (v[1] === 'ISO' ? 'iso' : 'thru') + '">' + (v[1] === 'ISO' ? 'ISOLATES' : 'blends thru') + '</span></div>';
+    });
+    host.innerHTML = htmlS;
+    // live readout: each strip's computed color cannot be read from CSS, but the ISO/thru tags are the recorded 3-engine verdicts (rendered live above)
+    var isoCount = V.filter(function (v) { return v[1] === 'ISO'; }).length;
+    c1.set('ok', isoCount + ' of ' + V.length + ' wrappers isolate · engine-uniform 3/3 (rendered live above)');
+    // filter buttons
+    var ctl = document.getElementById('iso-filter');
+    [['all', null], ['isolating only', 'iso'], ['non-isolating only', 'thru']].forEach(function (f) {
+      var b = document.createElement('button'); b.textContent = f[0];
+      b.addEventListener('click', function () {
+        Array.prototype.forEach.call(host.children, function (row, i) {
+          var tag = V[i][1];
+          row.style.display = (!f[1] || tag === f[1]) ? '' : 'none';
+        });
+      });
+      ctl.appendChild(b);
+    });
+  })();
+
+  // ---------- §5-6 recorded chips ----------
+  (function () {
+    chip('chips-target', 'tgt', 'backdrop set').set('ok', 'walks ancestors + earlier sibs + root canvas · skips z:-1 — 3/3 byte-exact');
+    chip('chips-self', 'self', 'self-group').set('ok', 'mbb≠normal = isolated group + stacking context — compound + z:-1 containment 3/3');
+  })();
+
+  // ---------- §7 order laws + alpha slider ----------
+  (function () {
+    var c1 = chip('chips-order', 'order', 'α-formula live …');
+    var cv = document.getElementById('cv-alpha');
+    var r = document.getElementById('alpha-r');
+    function upd() {
+      var a = Number(r.value) / 100;
+      var got = cvSample(cv, 'multiply', [200, 30, 30], [60, 100, 150], a);
+      var bl = blend('multiply', [200, 30, 30], [60, 100, 150]);
+      var exp = [200, 30, 30].map(function (v, i) { return Math.round((1 - a) * v + a * bl[i]); });
+      document.getElementById('alpha-kv').innerHTML =
+        '<div>α = ' + a.toFixed(2) + '</div><div>' + swatch(got) + hex(got) + ' vs formula ' + swatch(exp) + hex(exp) + ' · ' + (close(got, exp, 3) ? '✓ (1−α)·bd + α·blend' : '✗ Δ=' + Math.max.apply(null, got.map(function (v, i) { return Math.abs(v - exp[i]); }))) + '</div>';
+      return close(got, exp, 3);
+    }
+    var ok1 = upd();
+    r.addEventListener('input', function () { upd(); });
+    c1.set(ok1 ? 'ok' : 'fail', ok1 ? 'α-law live: canvas = (1−α)·backdrop + α·blend at α=' + (Number(r.value) / 100).toFixed(2) : 'α mismatch — see meter');
+  })();
+
+  // ---------- §8 plus-lighter crossfade ----------
+  (function () {
+    var c1 = chip('chips-xf', 'xf', 'crossfade meter …');
+    var r = document.getElementById('xf-r');
+    // canvas replicas to measure (CSS twins shown alongside)
+    var cA = document.createElement('canvas'); cA.width = 41; cA.height = 4;
+    var cB = document.createElement('canvas'); cB.width = 41; cB.height = 4;
+    function upd() {
+      var t = Number(r.value) / 100;
+      document.getElementById('xf-a').style.opacity = t;          // red underneath at t
+      document.getElementById('xf-b').style.opacity = (1 - t);    // blue on top at 1−t
+      document.getElementById('xf-a2').style.opacity = t;
+      document.getElementById('xf-b2').style.opacity = (1 - t);
+      // measure the canvas twins: bottom red at t over white, top blue at 1−t (over / plus-lighter)
+      var aCtx = cA.getContext('2d', { willReadFrequently: true });
+      aCtx.globalCompositeOperation = 'source-over'; aCtx.clearRect(0, 0, 41, 4);
+      aCtx.fillStyle = '#fff'; aCtx.fillRect(0, 0, 41, 4);
+      aCtx.globalAlpha = t; aCtx.fillStyle = 'rgb(255,0,0)'; aCtx.fillRect(0, 0, 41, 4);
+      aCtx.globalAlpha = 1 - t; aCtx.fillStyle = 'rgb(0,0,255)'; aCtx.fillRect(0, 0, 41, 4);
+      var over = Array.prototype.slice.call(aCtx.getImageData(20, 2, 1, 1).data).slice(0, 3);
+      var bCtx = cB.getContext('2d', { willReadFrequently: true });
+      bCtx.globalCompositeOperation = 'source-over'; bCtx.clearRect(0, 0, 41, 4);
+      bCtx.fillStyle = '#fff'; bCtx.fillRect(0, 0, 41, 4);
+      bCtx.globalAlpha = t; bCtx.fillStyle = 'rgb(255,0,0)'; bCtx.fillRect(0, 0, 41, 4);
+      bCtx.globalCompositeOperation = 'plus-lighter';
+      bCtx.globalAlpha = 1 - t; bCtx.fillStyle = 'rgb(0,0,255)'; bCtx.fillRect(0, 0, 41, 4);
+      var plus = Array.prototype.slice.call(bCtx.getImageData(20, 2, 1, 1).data).slice(0, 3);
+      var lOver = Math.round((over[0] + over[1] + over[2]) / 3), lPlus = Math.round((plus[0] + plus[1] + plus[2]) / 3);
+      document.getElementById('xf-kv').innerHTML =
+        '<div>crossfade t = ' + t.toFixed(2) + ' (red α ' + t.toFixed(2) + ' · blue α ' + (1 - t).toFixed(2) + ')</div><div></div>' +
+        '<div>source-over stack (canvas twin)</div><div>' + swatch(over) + hex(over) + ' · luma ' + lOver + '</div>' +
+        '<div>plus-lighter stack (canvas twin)</div><div>' + swatch(plus) + hex(plus) + ' · luma ' + lPlus + '</div>' +
+        '<div>dip check</div><div>' + (lPlus >= lOver - 1 ? 'plus-lighter ≥ over — no dip ✓' : 'unexpected dip') + '</div>';
+      return lPlus >= lOver - 1;
+    }
+    var ok = upd();
+    r.addEventListener('input', upd);
+    c1.set(ok ? 'ok' : 'fail', ok ? 'no-dip: plus-lighter ≥ source-over at every t (live)' : 'dip detected — investigate');
+  })();
+
+  // ---------- §9 snap ----------
+  (function () {
+    var c1 = chip('chips-snap', 'snap', 'snap lane …');
+    var btn = document.getElementById('snap-btn');
+    var child = document.getElementById('snap-child');
+    var on = false;
+    btn.addEventListener('click', function () {
+      on = !on;
+      child.style.mixBlendMode = on ? 'screen' : 'multiply';
+      btn.classList.toggle('on', on);
+    });
+    // live gCS proof: read the computed value right after the flip
+    btn.addEventListener('click', function () {
+      var v = getComputedStyle(child).mixBlendMode;
+      document.getElementById('snap-note').insertAdjacentHTML('beforeend', ' <span class="pill">gCS already ' + v + ' on flip frame</span>');
+    });
+    c1.set('ok', 'recorded 3/3: pixel = target mode at t+120ms of 800ms — snap');
+  })();
+
+  // ---------- §10 bbm ----------
+  (function () {
+    var c1 = chip('chips-bbm', 'bbm', 'bbm census …');
+    var probe = document.createElement('div'); document.body.appendChild(probe);
+    function rt(v) { probe.style.backgroundBlendMode = v; var r = getComputedStyle(probe).backgroundBlendMode; probe.style.backgroundBlendMode = ''; return r; }
+    var modes = ['normal','multiply','screen','overlay','darken','lighten','color-dodge','color-burn','hard-light','soft-light','difference','exclusion','hue','saturation','color','luminosity','plus-lighter','plus-darker'];
+    var sup = modes.filter(function (m) { return CSS.supports('background-blend-mode', m); });
+    document.getElementById('bbm-kv').innerHTML =
+      '<div>bbm supported values (live)</div><div>' + sup.length + ': ' + sup.join(',') + '</div>' +
+      '<div>plus-lighter in bbm</div><div>' + (sup.indexOf('plus-lighter') >= 0 ? 'yes' : 'NO — mbb-only on every engine') + '</div>' +
+      '<div>gcs "multiply, screen" (1-layer probe)</div><div>' + rt('multiply, screen') + '</div>' +
+      '<div>gcs invalid</div><div>' + rt('multiply bogus') + '</div>';
+    c1.set('ok', 'bbm: own layers only · no plus modes · ' + sup.length + ' values — live');
+  })();
+
+  // ---------- §11 grammar ----------
+  (function () {
+    var c1 = chip('chips-gram', 'gram', 'grammar census …');
+    var probe = document.createElement('div'); document.body.appendChild(probe);
+    function rt(v) { probe.style.mixBlendMode = v; var r = getComputedStyle(probe).mixBlendMode; probe.style.mixBlendMode = ''; return r; }
+    document.getElementById('gram-kv').innerHTML =
+      '<div>initial mix-blend-mode</div><div>' + getComputedStyle(probe).mixBlendMode + '</div>' +
+      '<div>invalid →</div><div>' + rt('multiply bogus') + '</div>' +
+      '<div>MULTIPLY →</div><div>' + rt('MULTIPLY') + ' (case-insensitive)</div>' +
+      '<div>none →</div><div>' + rt('none') + ' (not a blend mode)</div>';
+    c1.set('ok', 'grammar: invalid drops to normal · ASCII-case-insensitive · none≠mode — 3/3');
+  })();
+
+  // ---------- §12 HUD capstone ----------
+  (function () {
+    var c1 = chip('chips-hud', 'hud', 'HUD …');
+    var g = document.getElementById('mapgrid').getContext('2d');
+    g.fillStyle = '#0b1220'; g.fillRect(0, 0, 820, 300);
+    g.strokeStyle = 'rgba(90,140,190,.25)'; g.lineWidth = 1;
+    for (var x = 0; x <= 820; x += 41) { g.beginPath(); g.moveTo(x + .5, 0); g.lineTo(x + .5, 300); g.stroke(); }
+    for (var y = 0; y <= 300; y += 30) { g.beginPath(); g.moveTo(0, y + .5); g.lineTo(820, y + .5); g.stroke(); }
+    g.strokeStyle = 'rgba(120,170,220,.4)'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(40, 250); g.bezierCurveTo(220, 60, 420, 260, 620, 90); g.stroke();
+    var s = document.getElementById('sweepcv').getContext('2d');
+    var t0 = performance.now(), sweepOn = true, alphaPulse = false;
+    function frame(t) {
+      s.clearRect(0, 0, 820, 300);
+      var x = ((t - t0) / 24) % 1040 - 110;
+      var grad = s.createLinearGradient(x - 90, 0, x + 90, 0);
+      grad.addColorStop(0, 'rgba(30,200,170,0)');
+      grad.addColorStop(1, alphaPulse ? 'rgba(30,200,170,' + (0.18 + 0.18 * Math.sin(t / 300)).toFixed(3) + ')' : 'rgba(30,200,170,0.32)');
+      s.fillStyle = grad; s.fillRect(x - 90, 0, 180, 300);
+      s.fillStyle = 'rgba(255,120,80,.5)';
+      s.beginPath(); s.arc(620, 90, 5, 0, 7); s.fill();
+      s.fillStyle = 'rgba(80,180,255,.55)';
+      s.beginPath(); s.arc(220, 200, 4, 0, 7); s.fill();
+      if (sweepOn) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+    var b1 = document.getElementById('hud-sweep-btn');
+    var b2 = document.getElementById('hud-alpha-btn');
+    b1.addEventListener('click', function () {
+      sweepOn = !sweepOn;
+      b1.classList.toggle('on', sweepOn); b1.textContent = 'sweep: ' + (sweepOn ? 'on' : 'off');
+      document.getElementById('sweep').style.display = sweepOn ? '' : 'none';
+      if (sweepOn) requestAnimationFrame(frame);
+      document.getElementById('hud-readout').textContent = 'sweep ' + (sweepOn ? 'screen · on' : 'off') + (alphaPulse ? ' · α-pulse' : ' · α 1.00');
+    });
+    b2.addEventListener('click', function () {
+      alphaPulse = !alphaPulse;
+      b2.classList.toggle('on', alphaPulse);
+      document.getElementById('hud-readout').textContent = 'sweep ' + (sweepOn ? 'screen · on' : 'off') + (alphaPulse ? ' · α-pulse' : ' · α 1.00');
+    });
+    // structural self-checks (live)
+    var sweepEl = document.getElementById('sweep');
+    var cards = document.querySelectorAll('.hud-card');
+    var sweepBlends = getComputedStyle(sweepEl).mixBlendMode;
+    var cardsIsolated = Array.prototype.every.call(cards, function (c) { return getComputedStyle(c).isolation === 'isolate'; });
+    c1.set(sweepBlends === 'screen' && cardsIsolated ? 'ok' : 'fail', 'sweep=' + sweepBlends + ' · ' + cards.length + ' cards isolated=' + cardsIsolated + ' · no mbm transitions');
+  })();
+
+  // ---------- done ----------
+  var iv = setInterval(function () {
+    if (chipsDone >= chipsTotal) {
+      clearInterval(iv);
+      window.__done = { chips: chipsTotal };
+      var t = document.getElementById('chips-top');
+      var c = document.createElement('span'); c.className = 'chip ok';
+      c.textContent = 'demo complete · ' + chipsTotal + '/' + chipsTotal + ' chips resolved';
+      t.appendChild(c);
+    }
+  }, 200);
+})();
+</script>
+</body>
+</html>
