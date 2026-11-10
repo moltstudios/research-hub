@@ -1,0 +1,707 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>datalist + showPicker() + inputmode — the suggestion/picker tier (live-probed)</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #faf9f7; --card: #fff; --ink: #1c1b1a; --mut: #6f6a63; --acc: #0a7d6f;
+    --acc2: #b4540a; --okbg: #e7f5f0; --okink: #0a5c50; --warnbg: #fdf0e3; --warnink: #8a4b08;
+    --failbg: #fbe9e7; --failink: #a32714; --infobg: #e9eef7; --infoink: #2c4a86;
+    --line: #e7e2da; --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 18px 80px; }
+  header.hero { padding: 30px 0 10px; }
+  h1 { font-size: clamp(26px, 5vw, 38px); line-height: 1.12; letter-spacing: -.02em; margin: 0 0 10px; }
+  .sub { color: var(--mut); font-size: 14px; max-width: 62ch; overflow-wrap: anywhere; }
+  .engine-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 4px; font-size: 12.5px; }
+  .engine-bar span { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
+  section { margin-top: 46px; }
+  h2 { font-size: 19px; margin: 0 0 6px; letter-spacing: -.01em; }
+  h2 .n { color: var(--acc); font-family: var(--mono); font-size: 14px; margin-right: 8px; }
+  p.lead { color: var(--mut); font-size: 13.5px; margin: 0 0 14px; max-width: 70ch; overflow-wrap: anywhere; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 12px 0; }
+  .lane { padding: 12px; border: 1px dashed var(--line); border-radius: 10px; margin: 10px 0; background: #fdfcfa; }
+  .chip { display: inline-flex; align-items: baseline; gap: 6px; font-size: 12px; border-radius: 999px; padding: 3px 10px; margin: 3px 4px 3px 0; border: 1px solid transparent; font-family: var(--mono); }
+  .chip.pending { background: #efedea; color: var(--mut); }
+  .chip.ok { background: var(--okbg); color: var(--okink); border-color: #bfe0d6; }
+  .chip.warn { background: var(--warnbg); color: var(--warnink); border-color: #f2d9bc; }
+  .chip.fail { background: var(--failbg); color: var(--failink); border-color: #f2c4bd; }
+  .chip.info { background: var(--infobg); color: var(--infoink); border-color: #c9d6ee; }
+  .chips { margin: 8px 0 2px; }
+  .kv { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 3px 14px; font-size: 12.5px; margin: 8px 0; }
+  .kv div:nth-child(odd) { color: var(--mut); }
+  .kv div:nth-child(even) { font-family: var(--mono); overflow-wrap: anywhere; }
+  code, .mono { font-family: var(--mono); font-size: 12px; background: #f1efe9; border-radius: 5px; padding: 1px 5px; overflow-wrap: anywhere; }
+  button { font: inherit; font-size: 13px; border: 1px solid var(--line); background: var(--card); border-radius: 9px; padding: 6px 12px; cursor: pointer; }
+  button:hover { border-color: var(--acc); }
+  button.acc { background: var(--acc); border-color: var(--acc); color: #fff; }
+  input[type=text], input[type=number], input[type=date] { font: inherit; font-size: 13px; border: 1px solid var(--line); border-radius: 9px; padding: 6px 10px; background: #fff; min-width: 0; }
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 13px; margin: 8px 0; color: var(--mut); }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; margin: 10px 0; }
+  .tw { overflow-x: auto; }
+  th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: #f5f2ec; font-weight: 600; }
+  td.mono, th.mono { font-family: var(--mono); font-size: 11.5px; overflow-wrap: anywhere; }
+  ul.tight { margin: 8px 0; padding-left: 20px; }
+  ul.tight li { margin: 4px 0; overflow-wrap: anywhere; }
+  ul.audit li { margin: 7px 0; overflow-wrap: anywhere; }
+  .hi { background: #fdf0e3; border-radius: 4px; padding: 0 4px; }
+  .fx { border: 1px solid #9fc9c3; padding: 8px; margin: 8px 0; background: #fff; border-radius: 8px; }
+  .fx.ufx { border-color: #dbb06a; }
+  .evlog { font-family: var(--mono); font-size: 11.5px; background: #f7f5f0; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; max-height: 150px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .meter { font-family: var(--mono); font-size: 12px; }
+  .pill-note { font-size: 12.5px; color: var(--mut); border-left: 3px solid var(--acc); padding: 2px 10px; margin: 10px 0; overflow-wrap: anywhere; }
+  .human { border-left: 3px solid var(--acc2); padding: 2px 10px; margin: 10px 0; font-size: 12.5px; color: var(--mut); overflow-wrap: anywhere; }
+  .demo-dl-exposed { border: 2px solid #dbb06a; border-radius: 8px; padding: 6px 10px; background: #fffdf5; }
+  .demo-dl-exposed option { color: #8a4b08; }
+  footer { margin-top: 60px; color: var(--mut); font-size: 12.5px; border-top: 1px solid var(--line); padding-top: 14px; }
+</style>
+</head>
+<body>
+<main>
+<header class="hero">
+  <h1>&lt;datalist&gt; + showPicker() + inputmode — the suggestion/picker tier</h1>
+  <p class="sub">The native autocomplete machinery: the suggestion popup the DOM cannot see, the gesture wall in front of every picker, the Firefox disabled-option exclusion, the pre-highlight grammar (how the popup was opened decides what Enter commits), the WebKit select void, and the inputmode grammar. Live-probed on CfT 149 + Firefox 151 + WebKit 26.5 (5 probe generations, ~45 lanes × 3 engines, trusted-keyboard pipeline).</p>
+  <div class="engine-bar" id="engine-bar"><span>engine: <b id="eng-name">detecting…</b></span><span id="eng-note"></span></div>
+</header>
+
+<!-- ============ 1. SURFACE ============ -->
+<section id="s1">
+  <h2><span class="n">§1</span>The surface — the list contract &amp; the typeof lie</h2>
+  <p class="lead">One <code>&lt;datalist&gt;</code> is shared state: <code>input.list</code> resolves it for any number of inputs; a <code>list</code> pointing at a non-datalist (or missing) id reads <code>null</code>. And <code>showPicker</code> reports <code>typeof "function"</code> on <em>every</em> input type — checkbox, radio, submit included — the census lies; behavior gates on type + state.</p>
+  <div class="card">
+    <div class="lane">
+      <div class="controls">
+        <label>shared list A <input id="in-a" type="text" list="dl-main" placeholder="type dp-a…"></label>
+        <label>shared list B <input id="in-b" type="text" list="dl-main" placeholder="same datalist"></label>
+        <label>list → div <input id="in-div" type="text" list="not-a-datalist"></label>
+        <label>list → ghost <input id="in-ghost" type="text" list="ghost-id"></label>
+      </div>
+      <div class="kv" id="kv-s1"></div>
+      <div class="chips" id="s1-chips"></div>
+    </div>
+    <div class="tw"><table id="typeof-table"><thead><tr><th>input type</th><th>typeof showPicker</th></tr></thead><tbody></tbody></table></div>
+    <p class="pill-note">Probed: <code>input.list === theDatalist</code> for both sharers 3/3 · non-datalist / missing target → <code>null</code> 3/3 · <code>datalist.options</code> is a live <code>HTMLOptionsCollection</code> 3/3 · UA <code>display:none</code> on the datalist itself 3/3.</p>
+  </div>
+</section>
+
+<!-- ============ 2. FF EXCLUSION ============ -->
+<section id="s2">
+  <h2><span class="n">§2</span>THE FIREFOX DISABLED-OPTION EXCLUSION</h2>
+  <p class="lead">On Firefox, <code>datalist.options</code> <em>hides disabled options from the collection itself</em> — <code>options.length</code> 3 while <code>children.length</code> is 5 — and it's live: un-disable one at runtime and the collection grows back, re-disable and it shrinks. CfT + WebKit keep all 5. The split extends into the popup: Firefox never suggests a disabled option; WebKit lists it but Enter refuses to commit it.</p>
+  <div class="card">
+    <div class="lane">
+      <div class="controls">
+        <button id="s2-toggle" class="acc">disable / re-enable “o2”</button>
+        <span class="meter" id="s2-meter">reading…</span>
+      </div>
+      <div class="chips" id="s2-chips"></div>
+      <ul class="tight">
+        <li>probe list: o1 · <b>o2 (disabled)</b> · o3 · <b>o4 (disabled)</b> · o5</li>
+        <li>Firefox measured: <code>options = [o1,o3,o5]</code>, toggle o2 → length 3→4→3, <code>children</code> stays 5</li>
+        <li>CfT / WebKit measured: <code>options ≡ children ≡ 5</code>, disabled included</li>
+        <li>popup face (trusted keyboard): needle matching <em>only</em> a disabled option never commits on any engine; WebKit's Alt-open walk can land <em>on</em> the disabled row — Enter still refuses</li>
+      </ul>
+    </div>
+    <p class="pill-note">Dev face: never read <code>datalist.options</code> to count "all suggestions" — on Firefox your disabled entries are already gone. Feature-detect the engine by the exclusion itself (below), not by UA string.</p>
+  </div>
+</section>
+
+<!-- ============ 3. GESTURE WALL ============ -->
+<section id="s3">
+  <h2><span class="n">§3</span>THE GESTURE WALL — error grammar &amp; the 5-second fuse</h2>
+  <p class="lead"><code>showPicker()</code> requires <em>transient</em> user activation on all three engines. Outside a gesture: <code>NotAllowedError</code> 3/3. On disabled/readonly controls: <code>InvalidStateError</code> 3/3. Inside a gesture but 6 seconds late (activation expired): <code>NotAllowedError</code> again 3/3 — at +2s it still passes. Match the error <b>name</b>, never the message: three engines, three message shapes.</p>
+  <div class="card">
+    <div class="lane">
+      <div class="chips" id="s3a-chips"></div>
+      <p class="pill-note">The no-gesture call ran the moment this section rendered — read its verdict above (expect <code>NotAllowedError</code> everywhere).</p>
+    </div>
+    <div class="lane">
+      <div class="controls">
+        <button id="s3-in-gesture" class="acc">in-gesture call (date picker)</button>
+        <button id="s3-disabled">call on disabled date</button>
+        <button id="s3-readonly">call on readonly date</button>
+        <button id="s3-nolist">call on text input without list</button>
+      </div>
+      <div class="chips" id="s3b-chips"></div>
+      <p class="pill-note">The no-list call is the <b>silent-ok wall</b>: it throws nothing — <code>"ok"</code> on all three engines — it just can't show suggestions that don't exist. A missing datalist is not an error state; guard it yourself.</p>
+    </div>
+    <div class="lane">
+      <div class="controls">
+        <button id="fuse-btn" class="acc">arm the 6-second fuse</button>
+        <span class="meter" id="fuse-meter">click to arm — the call fires 6.1s after your click</span>
+      </div>
+      <div class="chips" id="fuse-chips"></div>
+      <p class="pill-note">Measured 3/3: click → +6.1s → <code>showPicker()</code> → <code>NotAllowedError</code> (transient activation burned). Positive control: +2s after click → opens fine. Pair: the User Activation tier's 5-second fuse, picker edition.</p>
+    </div>
+    <div class="tw"><table><thead><tr><th>lane</th><th class="mono">CfT 149</th><th class="mono">Firefox 151</th><th class="mono">WebKit 26.5</th></tr></thead><tbody>
+      <tr><td>no gesture</td><td class="mono">NotAllowedError</td><td class="mono">NotAllowedError</td><td class="mono">NotAllowedError</td></tr>
+      <tr><td>gesture + 6.1s delay</td><td class="mono">NotAllowedError</td><td class="mono">NotAllowedError</td><td class="mono">NotAllowedError</td></tr>
+      <tr><td>gesture + 2s delay</td><td class="mono">ok (opens)</td><td class="mono">ok (opens)</td><td class="mono">ok (opens)</td></tr>
+      <tr><td>disabled control, in gesture</td><td class="mono">InvalidStateError</td><td class="mono">InvalidStateError</td><td class="mono">InvalidStateError</td></tr>
+      <tr><td>readonly control, in gesture</td><td class="mono">InvalidStateError</td><td class="mono">InvalidStateError</td><td class="mono">InvalidStateError</td></tr>
+      <tr><td>text input, no list, in gesture</td><td class="mono">ok — silent no-op</td><td class="mono">ok — silent no-op</td><td class="mono">ok — silent no-op</td></tr>
+      <tr><td>detached input, no gesture</td><td class="mono">NotAllowedError</td><td class="mono">NotAllowedError</td><td class="mono">NotAllowedError</td></tr>
+    </tbody></table></div>
+  </div>
+</section>
+
+<!-- ============ 4. PICK VOID + KEYBOARD GRAMMAR ============ -->
+<section id="s4">
+  <h2><span class="n">§4</span>THE PICK GRAMMAR — what Enter commits, and the CfT automation void</h2>
+  <p class="lead">The suggestion popup is browser chrome — the DOM never sees it. Truth instrument: drive it with a <em>trusted keyboard</em> and read what Enter commits. The grammar that fell out: <b>typing opens the popup with NO pre-highlight — Enter commits your typed text</b> (ff/wk); press ↓ first to enter the list. On CfT under automation the datalist popup never materializes at all — AX tree flat, keyboard inert, headless AND headed — while its <em>date</em> calendar opens fine (§8). FF/WK popups are fully automation-drivable.</p>
+  <div class="card">
+    <div class="lane">
+      <div class="controls">
+        <input id="walk-in" type="text" list="dl-walk" placeholder="type be / ta, then ↓ / Enter">
+        <span class="meter" id="walk-meter">value: —</span>
+        <button id="walk-clear">clear</button>
+      </div>
+      <div class="evlog" id="walk-log">event log (input / change):</div>
+      <div class="chips" id="s4-chips"></div>
+      <div class="human">HUMAN LANE — your hands, real popup: click the input, type <code>be</code>, press Enter → typed text commits. Now type <code>be</code> again, press <code>↓</code> then Enter → the suggestion commits. On Firefox, past-the-end ↓ <b>wraps</b> back to no-highlight; on WebKit it <b>clamps</b> on the last row.</div>
+    </div>
+    <div class="tw"><table><thead><tr><th>walk (trusted keys)</th><th class="mono">CfT 149</th><th class="mono">Firefox 151</th><th class="mono">WebKit 26.5</th></tr></thead><tbody>
+      <tr><td>type “be” + Enter only</td><td class="mono">"be" (void)</td><td class="mono">"be" — typed text, no pick</td><td class="mono">"be" — typed text, no pick</td></tr>
+      <tr><td>type “be” + ↓ + Enter</td><td class="mono">"be" (void)</td><td class="mono">"beta"</td><td class="mono">"beta"</td></tr>
+      <tr><td>type “be” + ↓↓ + Enter</td><td class="mono">"be" (void)</td><td class="mono">"be" — WRAPPED to none</td><td class="mono">"beta" — CLAMPED at last</td></tr>
+      <tr><td>type “ta” (2 matches) + ↓ + Enter</td><td class="mono">"ta" (void)</td><td class="mono">"beta" (document order)</td><td class="mono">"beta" (document order)</td></tr>
+      <tr><td>empty + Alt+↓ + Enter</td><td class="mono">"" (void)</td><td class="mono">"" — no pre-highlight</td><td class="mono">"alpha" — item 1 pre-highlighted*</td></tr>
+      <tr><td>showPicker() + Enter only, empty</td><td class="mono">"" (void)</td><td class="mono">"alpha" — PRE-HIGHLIGHTED</td><td class="mono">"" (void)</td></tr>
+      <tr><td>showPicker() + Enter only, “be” typed</td><td class="mono">"be" (void)</td><td class="mono">"beta" — PRE-HIGHLIGHTED</td><td class="mono">"be" (void)</td></tr>
+    </tbody></table></div>
+    <p class="pill-note">*WebKit's Alt+↓ pre-highlight was measured from a <em>trusted-click</em> focus; from an API <code>focus()</code> it lands un-highlighted (4/4) — the focus-path face. THE PRE-HIGHLIGHT LAW: <b>how the popup opens decides the initial highlight</b> — typing → none · FF showPicker() → first match · WK Alt+↓ (click path) → item 1.</p>
+    <p class="pill-note">THE CfT AUTOMATION PICK VOID is a lane limit, not an engine bug: real Chrome users see datalist popups. Under Playwright/CDP automation CfT suppresses them (AX flat, keyboard inert — the same lane family as the headless-scrollbar void); e2e datalist-interaction suites must run the FF/WK lanes, CfT only DOM-level truth.</p>
+  </div>
+</section>
+
+<!-- ============ 5. LABEL ORDER ============ -->
+<section id="s5">
+  <h2><span class="n">§5</span>THE LABEL-ORDER SPLIT — a label reorders Firefox's walk</h2>
+  <p class="lead">Give one <code>&lt;option&gt;</code> a <code>label</code> and Firefox's suggestion walk changes: needle “ta” with labeled <code>beta</code> + unlabeled <code>delta</code> committed <b>delta</b> on ↓+Enter (stable ×2); remove the label → <b>beta</b> (stable ×2). WebKit: <b>beta both ways</b>. Suggestion order is engine-internal state — never assert it in e2e when labels are present.</p>
+  <div class="card">
+    <div class="lane">
+      <div class="controls">
+        <label>labeled list <input id="lab-in" type="text" list="dl-labeled" placeholder="type ta…"></label>
+        <label>plain list <input id="nolab-in" type="text" list="dl-plain" placeholder="type ta…"></label>
+      </div>
+      <div class="chips" id="s5-chips"></div>
+      <div class="tw"><table><thead><tr><th>needle “ta”, ↓+Enter</th><th class="mono">CfT</th><th class="mono">Firefox 151</th><th class="mono">WebKit 26.5</th></tr></thead><tbody>
+        <tr><td>beta carries <code>label</code></td><td class="mono">undrivable (§4)</td><td class="mono">delta ← the split</td><td class="mono">beta</td></tr>
+        <tr><td>no labels anywhere</td><td class="mono">undrivable (§4)</td><td class="mono">beta</td><td class="mono">beta</td></tr>
+      </tbody></table></div>
+      <p class="pill-note">Two probe generations disagreed before this battery pinned it (gen2 saw delta, gen4 saw beta — the difference was the label attribute itself). If your QA asserts suggestion order, strip labels from the fixture or accept engine truth.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 6. SELECT SHOWPICKER ============ -->
+<section id="s6">
+  <h2><span class="n">§6</span>THE SELECT SPLIT — showPicker() on &lt;select&gt;</h2>
+  <p class="lead"><code>select.showPicker()</code> exists on CfT + Firefox and is <b>missing entirely on WebKit 26.5</b> (<code>TypeError: not a function</code>). Where it exists, under automation the call returns <code>"ok"</code> but the popup never materializes — CfT AX tree stays flat (35 nodes → 35), ArrowDown/Enter go nowhere. Native-surface popups: undriveable through synthetic paths; verify with the real-hand lane or AX.</p>
+  <div class="card">
+    <div class="lane">
+      <div class="controls">
+        <select id="sel-main"><option value="">– pick –</option><option value="one">One</option><option value="two">Two</option></select>
+        <button id="s6-call" class="acc">select.showPicker()</button>
+        <span class="meter" id="s6-meter">typeof: …</span>
+      </div>
+      <div class="chips" id="s6-chips"></div>
+      <p class="pill-note">Fallback for WebKit: the cross-engine picker opener is a real click on the select — or <code>size&gt;1</code> listbox styling. Feature-gate with <code>typeof sel.showPicker === 'function'</code>, never with UA sniffing.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 7. DATE PICKER + :open ============ -->
+<section id="s7">
+  <h2><span class="n">§7</span>THE DATE-PICKER LANE — :open is the only observable</h2>
+  <p class="lead">The date calendar is the one picker every engine opens under automation, and while it's open the input matches <code><b>:open</b></code> — measured <b>true on all three engines</b>. On CfT the open calendar balloons the AX tree 35 → 213 nodes, keyboard drives it (↓+Enter committed <code>2026-11-17</code> from a fresh input), and Enter closes it (:open falls back). There is no <code>toggle</code>/open <em>event</em> for input pickers — poll <code>:open</code>, or read the AX tree.</p>
+  <div class="card">
+    <div class="lane">
+      <div class="controls">
+        <input id="date-main" type="date">
+        <button id="s7-open" class="acc">showPicker() in gesture</button>
+        <span class="meter" id="s7-meter">:open → …</span>
+      </div>
+      <div class="chips" id="s7-chips"></div>
+      <div class="human">HUMAN LANE — open the picker, watch the meter flip to <code>:open → true</code> live (200ms poll), pick a date, watch it close. The value readout shows what committed.</div>
+    </div>
+    <p class="pill-note">CSS census (3/3): <code>selector(:open)</code> parses everywhere · <code>::picker-icon</code> CfT+WebKit only · <code>selector(select::picker)</code> parses nowhere yet · the <code>::input-suggest-*</code> pseudos don't exist on any engine — the datalist dropdown is still unstyleable browser chrome. Gate lesson: sequential picker lanes need an <b>Escape-settle between drives</b> — with a native picker left open, Firefox swallows the next page click and a second <code>showPicker()</code> promise never settles (the settle-gap law, picker edition).</p>
+  </div>
+</section>
+
+<!-- ============ 8. RENDER TRAP ============ -->
+<section id="s8">
+  <h2><span class="n">§8</span>THE HIDDEN-DATALIST RENDER TRAP</h2>
+  <p class="lead">The UA hides datalist with <code>display:none</code> — and any author rule beats it. One <code>datalist { display: block }</code> (a reset stylesheet, a <code>* { display: block }</code> sweep) renders the suggestion list <em>as page content</em>: a full-width block listing every option. Worse: re-adding <code>hidden</code> does <b>not</b> re-hide it — <code>[hidden]</code> is only a UA rule, your <code>display:block</code> outranks it. Measured 3/3.</p>
+  <div class="card">
+    <div class="lane">
+      <div class="controls">
+        <button id="s8-block" class="acc">toggle author display:block</button>
+        <button id="s8-hidden">toggle hidden attribute</button>
+        <span class="meter" id="s8-meter">computed display: …</span>
+      </div>
+      <div id="s8-host" style="margin-top:8px">
+        <datalist id="dl-trap"><option value="trap-a"></option><option value="trap-b"></option></datalist>
+      </div>
+      <div class="kv" id="kv-s8"></div>
+      <div class="chips" id="s8-chips"></div>
+      <p class="pill-note">The trap datalist above is live — flip it visible and it becomes a fat in-page list while still feeding its input. Audit resets: <code>datalist</code> belongs in every display-normalizing selector list <em>with none</em>, never with block.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 9. INPUTMODE ============ -->
+<section id="s9">
+  <h2><span class="n">§9</span>inputmode + enterKeyHint — the grammar tier</h2>
+  <p class="lead">On desktop these attributes do nothing (there's no virtual keyboard to steer) — their contract is the grammar and the mobile keyboard they select. The grammar measured 3/3: valid keywords pass through · invalid values fall to the <b>missing default</b> (<code>""</code>) — never a fallback keyword · matching is ASCII case-insensitive (<code>"None"</code> → <code>"none"</code>, <code>"BOGUS"</code> → <code>""</code>) · removed attribute → <code>""</code>.</p>
+  <div class="card">
+    <div class="lane">
+      <div class="controls">
+        <label>inputmode <input id="im-in" type="text" inputmode="decimal" size="12"></label>
+        <button id="im-set-bogus">set inputmode="BOGUS"</button>
+        <button id="im-set-none">set inputmode="None"</button>
+        <button id="im-remove">removeAttribute</button>
+        <span class="meter" id="im-meter">…</span>
+      </div>
+      <div class="chips" id="s9-chips"></div>
+      <div class="tw"><table><thead><tr><th>attribute</th><th class="mono">IDL readback</th></tr></thead><tbody>
+        <tr><td class="mono">none/text/tel/url/email/numeric/decimal/search</td><td class="mono">passes through, 3/3</td></tr>
+        <tr><td class="mono">"BOGUS"</td><td class="mono">"" — missing default</td></tr>
+        <tr><td class="mono">"None" / "DECIMAL" (case)</td><td class="mono">"none" / "decimal" — ASCII-folds</td></tr>
+        <tr><td class="mono">removed</td><td class="mono">""</td></tr>
+        <tr><td class="mono">enterkeyhint: enter/go/done/next/previous/search/send</td><td class="mono">passes through · "BOGUS" → ""</td></tr>
+      </tbody></table></div>
+    </div>
+    <div class="lane">
+      <div class="controls">
+        <label>quantity, type=number + numeric datalist <input id="qty-num" type="number" list="dl-qty" placeholder="type 5, press ↓, Enter"></label>
+        <span class="meter" id="qty-meter">value: —</span>
+      </div>
+      <div class="chips" id="qty-chips"></div>
+      <p class="pill-note">THE NUMBER FACE: numeric suggestions surface and commit in document order (typed “5”, ↓+Enter → <code>5</code>, ↓↓+Enter → <code>50</code> — ff/wk measured). But non-numeric options never surface on <code>type=number</code> — ↓ falls through to the native stepper (7 → 6). The client pattern: <code>type="text" inputmode="numeric"</code> keeps the numeric keyboard on mobile <em>and</em> the datalist working, without number-input's quirks (badInput voids, scroll-to-change, leading-zero loss).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 10. OPENDRONES CAPSTONE ============ -->
+<section id="s10">
+  <h2><span class="n">§10</span>Capstone — the OpenDrones pre-flight form</h2>
+  <p class="lead">Every law applied: mission designations autocomplete from a shared datalist (two inputs, one list — §1), disabled hangar entries vanish from Firefox's collection (§2), the picker buttons are gesture-gated with honest error readouts (§3), quantity uses the text+inputmode pattern with a numeric datalist (§9), and a date picker whose open state reads through :open (§7).</p>
+  <div class="card">
+    <div class="lane">
+      <div class="controls">
+        <label>mission <input id="od-mission" type="text" list="dl-od-mission" placeholder="MC-…"></label>
+        <label>backup mission <input id="od-mission2" type="text" list="dl-od-mission" placeholder="shares the list"></label>
+        <label>scheduled <input id="od-date" type="date"></label>
+        <button id="od-open-date">open calendar</button>
+      </div>
+      <div class="controls">
+        <label>quantity (text+inputmode) <input id="od-qty" type="text" inputmode="numeric" list="dl-od-qty" placeholder="batteries"></label>
+        <label>battery SN <input id="od-sn" type="text" list="dl-od-sn" placeholder="serial"></label>
+        <button id="od-open-mission" class="acc">showPicker() on mission</button>
+      </div>
+      <div class="evlog" id="od-log">form state:</div>
+      <div class="chips" id="od-chips"></div>
+    </div>
+    <ul class="tight">
+      <li>shared mission datalist: MC-ALPHA · MC-BRAVO · MC-DELTA · MC-ECHO</li>
+      <li>disabled entry: MC-CHARLIE (hangar maintenance) — Firefox never suggests it; other engines list it un-selectable</li>
+      <li>battery SNs: BT-4471 · BT-4472 · BT-4489 (labels carry the cell chemistry)</li>
+      <li>quantities: 1 · 5 · 10 · 25</li>
+    </ul>
+    <p class="pill-note">The event log records every input/change as the form fills — including what a suggestion pick fires (the human-lane readout; no automation assert, §4's void).</p>
+  </div>
+</section>
+
+<!-- ============ 11. MOLT AUDIT ============ -->
+<section id="s11">
+  <h2><span class="n">§11</span>The Molt client audit — 12 checks, half a day</h2>
+  <p class="lead">Pass these against every client form. Checks 1–5 pass code review and ship broken.</p>
+  <div class="card">
+    <ul class="audit">
+      <li><b>HIGH 1 — the reset un-hide:</b> any global <code>display</code> normalization that includes <code>datalist { display:block }</code> renders every suggestion list as page content; <code>[hidden]</code> will not save you (§8). Grep design systems for bare <code>datalist</code> display rules.</li>
+      <li><b>HIGH 2 — the disabled-count lie:</b> dashboards reading <code>datalist.options.length</code> as "options available" undercount on Firefox by the disabled entries (§2) — count <code>children</code>, or state which you mean.</li>
+      <li><b>HIGH 3 — showPicker without a gesture plan:</b> programmatic <code>showPicker()</code> from load/state-change (React effect, open-on-focus UX) throws <code>NotAllowedError</code> on 100% of engines; it needs a live gesture chain, and a ≥5s-old gesture is dead (§3).</li>
+      <li><b>HIGH 4 — select.showPicker on Safari:</b> the method does not exist on WebKit 26.5 — feature-gate or TypeError on every iOS/macOS Safari visitor (§6).</li>
+      <li><b>HIGH 5 — e2e datalist suites on Chromium-only CI:</b> CfT suppresses datalist popups under automation — interaction tests silently pass-through (typed text "commits"); run interaction asserts on the FF/WK lanes and DOM-level asserts only on CfT (§4).</li>
+      <li><b>MED 6 — Enter-commits-typed assumptions:</b> typing never pre-highlights; "press Enter to accept the first suggestion" UX copy is wrong unless you call showPicker() (which pre-highlights on Firefox only — and is void on WK text inputs).</li>
+      <li><b>MED 7 — suggestion-order asserts:</b> a <code>label</code> on an option reorders Firefox's walk (§5); strip labels from fixtures or drop order asserts.</li>
+      <li><b>MED 8 — error-message matching:</b> QA matching showPicker failure text breaks per-engine (three message shapes); match <code>e.name</code>.</li>
+      <li><b>MED 9 — inputmode as validation:</b> inputmode changes keyboards, never parsing — invalid values read back <code>""</code> from the IDL but the attribute still does nothing on desktop; pair with <code>pattern</code>/parse, never assume the grammar enforced anything (§9).</li>
+      <li><b>MED 10 — type=number + text suggestions:</b> datalists feeding serials/codes into <code>type=number</code> never surface (↓ hits the stepper instead); use text+inputmode (§9).</li>
+      <li><b>LOW 11 — picker-open detection:</b> no events exist for picker open/close; poll <code>:open</code> (works 3/3 for date pickers) instead of listening for phantoms (§7).</li>
+      <li><b>LOW 12 — disabled-option UX:</b> a disabled suggestion on WebKit is visible-but-refused (Enter no-ops — a dead-end for keyboard users); on Firefox it's hidden entirely. Prefer filtering the datalist over disabling entries.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ 12. LEDGER ============ -->
+<section id="s12">
+  <h2><span class="n">§12</span>Engine ledger</h2>
+  <div class="card">
+    <div class="tw"><table><thead><tr><th>law</th><th class="mono">CfT 149</th><th class="mono">Firefox 151</th><th class="mono">WebKit 26.5</th></tr></thead><tbody>
+      <tr><td>gesture wall (no activation)</td><td class="mono">NotAllowedError</td><td class="mono">NotAllowedError</td><td class="mono">NotAllowedError</td></tr>
+      <tr><td>6s fuse expiry</td><td class="mono">NotAllowedError</td><td class="mono">NotAllowedError</td><td class="mono">NotAllowedError</td></tr>
+      <tr><td>immutable wall (disabled/readonly)</td><td class="mono">InvalidStateError</td><td class="mono">InvalidStateError</td><td class="mono">InvalidStateError</td></tr>
+      <tr><td>text-no-list call</td><td class="mono">silent ok</td><td class="mono">silent ok</td><td class="mono">silent ok</td></tr>
+      <tr><td>select.showPicker exists</td><td class="mono">function</td><td class="mono">function</td><td class="mono">MISSING (TypeError)</td></tr>
+      <tr><td>options excludes disabled</td><td class="mono">no</td><td class="mono">YES (live)</td><td class="mono">no</td></tr>
+      <tr><td>typing pre-highlights</td><td class="mono">— (void)</td><td class="mono">no</td><td class="mono">no</td></tr>
+      <tr><td>showPicker() pre-highlights (text)</td><td class="mono">— (void)</td><td class="mono">first match</td><td class="mono">— (void)</td></tr>
+      <tr><td>Alt+↓ pre-highlights (click path)</td><td class="mono">— (void)</td><td class="mono">no</td><td class="mono">item 1</td></tr>
+      <tr><td>↓ past last</td><td class="mono">—</td><td class="mono">wraps to none</td><td class="mono">clamps at last</td></tr>
+      <tr><td>label reorders walk</td><td class="mono">—</td><td class="mono">YES (stable ×2)</td><td class="mono">no</td></tr>
+      <tr><td>:open on open date picker</td><td class="mono">true</td><td class="mono">true</td><td class="mono">true</td></tr>
+      <tr><td>date picker automation-drivable</td><td class="mono">yes (AX 35→213)</td><td class="mono">opens; keys inert</td><td class="mono">opens; keys inert</td></tr>
+      <tr><td>datalist popup under automation</td><td class="mono">VOID</td><td class="mono">drivable</td><td class="mono">drivable</td></tr>
+      <tr><td>::picker-icon parses</td><td class="mono">yes</td><td class="mono">no</td><td class="mono">yes</td></tr>
+      <tr><td>numeric datalist on type=number</td><td class="mono">— (void)</td><td class="mono">commits in order</td><td class="mono">commits in order</td></tr>
+      <tr><td>inputMode invalid → ""</td><td class="mono">yes</td><td class="mono">yes</td><td class="mono">yes</td></tr>
+    </tbody></table></div>
+    <p class="pill-note"><b>Method:</b> 5 probe generations (~45 lanes × 3 engines) over a plain-HTTP loopback origin, fresh document per lane; picker truth via the trusted-keyboard commit pipeline + CfT CDP AX-tree (getFullAXTree); gestures via real Playwright clicks; activation states via setTimeout offsets (+2s control, +6.1s fuse); reps ×2 on every contested lane (the label-order split, the Alt+↓ focus-path). <b>Falsified this session (3):</b> "Enter accepts the first suggestion" (typing never pre-highlights) · "select.showPicker opens the dropdown under automation" (silent ok, AX flat, keys inert — CfT+FF) · "Firefox pre-highlights after Alt+↓" (a gen3 flake, 4/4 clean in gen4/5). <b>Lane limits:</b> CfT datalist popups suppressed under automation entirely; FF/WK date-picker keyboard paths are native surfaces (open verifiable via :open, keys not deliverable); suggestion <em>rendering</em> (the "value — label" display format) is not observable by any of these instruments.</p>
+  </div>
+</section>
+
+<footer>
+  Live-probed 2026-11-10 · CfT 149 · Firefox 151 · WebKit 26.5 · part of the Molt research series · probe harness: plain-HTTP loopback, trusted keyboard, CDP AX · <a href="../index.html">research index</a>
+</footer>
+</main>
+
+<!-- hidden fixtures -->
+<datalist id="dl-main"><option value="dp-alpha-ne"></option><option value="dp-beta-ne"></option><option value="dp-delta-ne"></option></datalist>
+<datalist id="dl-walk"><option value="alpha"></option><option value="beta"></option><option value="delta"></option></datalist>
+<datalist id="dl-labeled"><option value="alpha"></option><option value="beta" label="Gamma-Label-XYZ"></option><option value="delta"></option></datalist>
+<datalist id="dl-plain"><option value="alpha"></option><option value="beta"></option><option value="delta"></option></datalist>
+<datalist id="dl-qty"><option value="5"></option><option value="50"></option><option value="500"></option></datalist>
+<datalist id="dl-od-mission"><option value="MC-ALPHA"></option><option value="MC-BRAVO"></option><option value="MC-CHARLIE" disabled></option><option value="MC-DELTA"></option><option value="MC-ECHO"></option></datalist>
+<datalist id="dl-od-qty"><option value="1"></option><option value="5"></option><option value="10"></option><option value="25"></option></datalist>
+<datalist id="dl-od-sn"><option value="BT-4471" label="LiFePO4 6S"></option><option value="BT-4472" label="LiPo 4S"></option><option value="BT-4489" label="LiIon 18650×6"></option></datalist>
+<div id="not-a-datalist">I am a div</div>
+
+<script>
+'use strict';
+(function () {
+  // ---------- engine detect (feature-based, no UA string) ----------
+  var ENGINE = 'unknown';
+  (function detect() {
+    var probe = document.createElement('datalist');
+    var o1 = document.createElement('option'); o1.value = 'a';
+    var o2 = document.createElement('option'); o2.value = 'b'; o2.disabled = true;
+    probe.appendChild(o1); probe.appendChild(o2);
+    var selFn = typeof HTMLSelectElement !== 'undefined' && typeof HTMLSelectElement.prototype.showPicker === 'function';
+    var pickerIcon = window.CSS && CSS.supports && CSS.supports('selector(input::picker-icon)');
+    if (!selFn) ENGINE = 'webkit';
+    else if (pickerIcon) ENGINE = 'cft';
+    else ENGINE = 'firefox';
+    window.__EXCLUDES_DISABLED = probe.options.length < probe.children.length;
+  })();
+  document.getElementById('eng-name').textContent = ENGINE === 'cft' ? 'Chromium (CfT-family)' : ENGINE;
+  document.getElementById('eng-note').textContent =
+    ENGINE === 'webkit' ? 'select.showPicker: MISSING · pickers open, keys limited'
+    : ENGINE === 'firefox' ? 'disabled-option exclusion: LIVE · showPicker pre-highlights'
+    : 'datalist popup: automation void (§4) · date pickers drivable';
+
+  // ---------- chip utils (presence-checked) ----------
+  var REG = {};
+  function chip(hostId, id) {
+    var host = document.getElementById(hostId);
+    if (!host) { console.warn('missing host', hostId); return; }
+    var el = document.createElement('span');
+    el.className = 'chip pending'; el.id = 'chip-' + id;
+    el.textContent = '…';
+    host.appendChild(el); REG[id] = el;
+    return el;
+  }
+  function setChip(id, cls, text) {
+    var el = REG[id];
+    if (!el) { console.warn('setChip on missing', id); return; }
+    el.className = 'chip ' + cls; el.textContent = text;
+  }
+  function kv(hostId, pairs) {
+    var host = document.getElementById(hostId);
+    pairs.forEach(function (p) {
+      var k = document.createElement('div'); k.textContent = p[0];
+      var v = document.createElement('div'); v.textContent = p[1];
+      host.appendChild(k); host.appendChild(v);
+    });
+  }
+
+  // ---------- §1 surface ----------
+  (function s1() {
+    chip('s1-chips', 's1-list'); chip('s1-chips', 's1-null'); chip('s1-chips', 's1-live'); chip('s1-chips', 's1-typeof');
+    var dl = document.getElementById('dl-main');
+    var a = document.getElementById('in-a'), b = document.getElementById('in-b');
+    var listOk = a.list === dl && b.list === dl;
+    setChip('s1-list', listOk ? 'ok' : 'fail', listOk ? 'input.list → shared datalist ✓' : 'list contract broken');
+    var divNull = document.getElementById('in-div').list === null;
+    var ghostNull = document.getElementById('in-ghost').list === null;
+    setChip('s1-null', (divNull && ghostNull) ? 'ok' : 'fail', (divNull && ghostNull) ? 'list → div/ghost reads null ✓' : 'non-datalist list target resolved?!');
+    var live = false;
+    var o = document.createElement('option'); o.value = 'dp-live-check';
+    dl.appendChild(o); live = dl.options.length >= 4; dl.removeChild(o);
+    live = live && dl.options.length === 3;
+    setChip('s1-live', live ? 'ok' : 'fail', live ? 'options is a live collection ✓' : 'options not live');
+    var rows = '';
+    ['text', 'checkbox', 'radio', 'submit', 'date', 'color'].forEach(function (t) {
+      var i = document.createElement('input'); i.type = t;
+      rows += '<tr><td class="mono">' + t + '</td><td class="mono">' + (typeof i.showPicker) + ' ← the typeof lie' + '</td></tr>';
+    });
+    document.querySelector('#typeof-table tbody').innerHTML = rows;
+    setChip('s1-typeof', 'info', 'typeof showPicker === "function" on every type — census lies');
+    kv('kv-s1', [
+      ['engine', ENGINE],
+      ['datalist.options (ff-exclusion probe)', window.__EXCLUDES_DISABLED ? 'excludes disabled (Firefox-family)' : 'includes disabled'],
+      ['UA display of <datalist>', getComputedStyle(dl).display]
+    ]);
+  })();
+
+  // ---------- §2 FF exclusion ----------
+  (function s2() {
+    chip('s2-chips', 's2-verdict');
+    var dl = document.createElement('datalist');
+    ['o1', 'o2', 'o3', 'o4', 'o5'].forEach(function (v, i) {
+      var o = document.createElement('option'); o.value = v;
+      if (i === 1 || i === 3) o.disabled = true;
+      dl.appendChild(o);
+    });
+    document.body.appendChild(dl);
+    function meter() {
+      var m = document.getElementById('s2-meter');
+      m.textContent = 'options: ' + dl.options.length + ' · children: ' + dl.children.length +
+        ' · o2 disabled: ' + dl.children[1].disabled;
+      var excludes = dl.options.length < dl.children.length;
+      setChip('s2-verdict', excludes ? 'warn' : 'info',
+        excludes ? 'LIVE: this engine excludes disabled options from the collection (the Firefox law)' :
+        'this engine keeps disabled options in the collection (CfT/WebKit law)');
+    }
+    meter();
+    document.getElementById('s2-toggle').addEventListener('click', function () {
+      dl.children[1].disabled = !dl.children[1].disabled; meter();
+    });
+  })();
+
+  // ---------- §3 gesture wall ----------
+  (function s3() {
+    chip('s3a-chips', 's3-nogesture');
+    chip('s3b-chips', 's3-ingesture'); chip('s3b-chips', 's3-disabled'); chip('s3b-chips', 's3-readonly'); chip('s3b-chips', 's3-nolist');
+    var dateInput = document.getElementById('date-main');
+    var probe = document.createElement('input'); probe.type = 'date'; document.body.appendChild(probe);
+    // showPicker can throw SYNCHRONOUSLY (measured 3/3) or reject its promise — handle both
+    function safeCall(fn, onOk, onErr) {
+      try { var p = fn(); if (p && typeof p.then === 'function') p.then(onOk, onErr); else onOk(); }
+      catch (e) { onErr(e); }
+    }
+    safeCall(function () { return probe.showPicker(); }, function () {
+      setChip('s3-nogesture', 'fail', 'no-gesture call unexpectedly succeeded');
+    }, function (e) {
+      setChip('s3-nogesture', e.name === 'NotAllowedError' ? 'ok' : 'fail', 'no gesture → ' + e.name + ' ✓ (expect NotAllowedError 3/3)');
+    });
+    function attempt(id, fn, expect) {
+      safeCall(fn, function () { setChip(id, expect === 'ok' ? 'ok' : 'fail', 'call ok — ' + (expect === 'ok' ? 'as expected' : 'UNEXPECTED')); },
+        function (e) { setChip(id, e.name === expect ? 'ok' : 'fail', e.name + (e.name === expect ? ' ✓' : ' — expected ' + expect)); });
+    }
+    document.getElementById('s3-in-gesture').addEventListener('click', function () {
+      attempt('s3-ingesture', function () { dateInput.showPicker(); }, 'ok');
+    });
+    document.getElementById('s3-disabled').addEventListener('click', function () {
+      var d = document.createElement('input'); d.type = 'date'; d.disabled = true; document.body.appendChild(d);
+      attempt('s3-disabled', function () { d.showPicker(); }, 'InvalidStateError');
+    });
+    document.getElementById('s3-readonly').addEventListener('click', function () {
+      var d = document.createElement('input'); d.type = 'date'; d.readOnly = true; document.body.appendChild(d);
+      attempt('s3-readonly', function () { d.showPicker(); }, 'InvalidStateError');
+    });
+    document.getElementById('s3-nolist').addEventListener('click', function () {
+      var t = document.createElement('input'); t.type = 'text'; document.body.appendChild(t);
+      attempt('s3-nolist', function () { t.showPicker(); }, 'ok');
+    });
+    // fuse lane
+    chip('fuse-chips', 's3-fuse');
+    var btn = document.getElementById('fuse-btn'), meter = document.getElementById('fuse-meter');
+    btn.addEventListener('click', function () {
+      setChip('s3-fuse', 'pending', 'armed — firing at +6.1s…');
+      meter.textContent = 'armed at ' + new Date().toLocaleTimeString() + ' — firing in 6.1s…';
+      setTimeout(function () {
+        var t = document.createElement('input'); t.type = 'text'; t.setAttribute('list', 'dl-main'); document.body.appendChild(t);
+        safeCall(function () { return t.showPicker(); }, function () {
+          setChip('s3-fuse', 'fail', 'call at +6.1s SUCCEEDED — fuse longer than probed');
+          meter.textContent = '+6.1s → ok (unexpected)';
+        }, function (e) {
+          setChip('s3-fuse', e.name === 'NotAllowedError' ? 'ok' : 'fail', '+6.1s → ' + e.name + (e.name === 'NotAllowedError' ? ' ✓ activation burned' : ' — unexpected'));
+          meter.textContent = '+6.1s → ' + e.name + ' (transient activation expired)';
+        });
+      }, 6100);
+    });
+  })();
+
+  // ---------- §4 pick grammar ----------
+  (function s4() {
+    chip('s4-chips', 's4-engine');
+    setChip('s4-engine', ENGINE === 'cft' ? 'warn' : 'ok',
+      ENGINE === 'cft' ? 'this engine: datalist popup suppressed under automation — use the human lane / FF+WK e2e lanes' :
+      'this engine: popup drivable — the table above is assertable in e2e');
+    var input = document.getElementById('walk-in'), meter = document.getElementById('walk-meter'), log = document.getElementById('walk-log');
+    var lines = ['event log (input / change):'];
+    function note(t) { lines.push(t); log.textContent = lines.slice(-12).join('\n'); }
+    input.addEventListener('input', function () { note('input → "' + input.value + '"'); meter.textContent = 'value: "' + input.value + '"'; });
+    input.addEventListener('change', function () { note('change → "' + input.value + '"'); });
+    document.getElementById('walk-clear').addEventListener('click', function () { input.value = ''; meter.textContent = 'value: —'; input.focus(); });
+  })();
+
+  // ---------- §5 label order ----------
+  (function s5() {
+    chip('s5-chips', 's5-verdict');
+    setChip('s5-verdict', ENGINE === 'firefox' ? 'warn' : 'info',
+      ENGINE === 'firefox' ? 'this engine reorders the walk when an option carries a label — strip labels before asserting order' :
+      'this engine keeps document order regardless of labels (CfT undrivable — automation void)');
+  })();
+
+  // ---------- §6 select ----------
+  (function s6() {
+    chip('s6-chips', 's6-typeof'); chip('s6-chips', 's6-call');
+    var sel = document.getElementById('sel-main');
+    var fn = typeof sel.showPicker;
+    document.getElementById('s6-meter').textContent = 'typeof: ' + fn;
+    setChip('s6-typeof', fn === 'function' ? 'ok' : 'info', fn === 'function' ? 'select.showPicker present on this engine' : 'select.showPicker MISSING on this engine (the WebKit void)');
+    document.getElementById('s6-call').addEventListener('click', function () {
+      if (fn !== 'function') { setChip('s6-call', 'info', 'TypeError: not a function — the WebKit split, live'); return; }
+      try {
+        var p = sel.showPicker();
+        if (p && typeof p.then === 'function') p.then(function () { setChip('s6-call', 'warn', 'call ok — but under automation the popup never materializes (AX flat)'); }, function (e) { setChip('s6-call', e.name === 'NotAllowedError' ? 'ok' : 'fail', e.name + ' — ' + (e.name === 'NotAllowedError' ? 'gesture wall' : 'unexpected')); });
+        else setChip('s6-call', 'warn', 'call ok — but under automation the popup never materializes (AX flat)');
+      } catch (e) { setChip('s6-call', e.name === 'NotAllowedError' ? 'ok' : 'fail', e.name + ' — ' + (e.name === 'NotAllowedError' ? 'gesture wall' : 'unexpected')); }
+    });
+  })();
+
+  // ---------- §7 date + :open ----------
+  (function s7() {
+    chip('s7-chips', 's7-open'); chip('s7-chips', 's7-match');
+    var d = document.getElementById('date-main'), meter = document.getElementById('s7-meter');
+    setInterval(function () {
+      var open = d.matches(':open');
+      meter.textContent = ':open → ' + open + ' · value: ' + (d.value || '—');
+    }, 200);
+    document.getElementById('s7-open').addEventListener('click', function () {
+      var settled = false;
+      function ok() { if (settled) return; settled = true; setChip('s7-open', 'ok', 'showPicker() ok in gesture');
+        setTimeout(function () {
+          setChip('s7-match', d.matches(':open') ? 'ok' : 'warn',
+            d.matches(':open') ? ':open matched while the picker is open ✓ (3/3 law)' : 'picker closed again (or :open not matching) — reopen to re-check');
+        }, 350); }
+      function bad(e) { if (settled) return; settled = true; setChip('s7-open', 'fail', e.name + ' — unexpected in gesture'); }
+      try { var p = d.showPicker(); if (p && typeof p.then === 'function') p.then(ok, bad); else ok(); }
+      catch (e) { bad(e); }
+      // promise-hang fallback: with another native picker left open, Firefox can
+      // leave the promise unsettled — resolve honestly from live state instead
+      setTimeout(function () {
+        if (settled) return; settled = true;
+        setChip('s7-open', 'warn', 'promise UNSETTLED (open-picker contamination — the §7 settle-gap note)');
+        setChip('s7-match', d.matches(':open') ? 'ok' : 'warn', d.matches(':open') ? ':open true (picker is open) ✓' : 'picker not open');
+      }, 1400);
+    });
+  })();
+
+  // ---------- §8 render trap ----------
+  (function s8() {
+    chip('s8-chips', 's8-block'); chip('s8-chips', 's8-hidden');
+    var dl = document.getElementById('dl-trap');
+    var blocked = false, hiddenOn = false;
+    function meter() {
+      var cs = getComputedStyle(dl).display;
+      document.getElementById('s8-meter').textContent = 'computed display: ' + cs + ' · hidden attr: ' + hiddenOn;
+      document.getElementById('kv-s8').innerHTML = '';
+      kv('kv-s8', [
+        ['computed display', cs],
+        ['rect height (px)', Math.round(dl.getBoundingClientRect().height)],
+        ['options still feeding inputs', document.getElementById('in-a').list === document.getElementById('dl-main') ? 'yes (§1 list)' : '—']
+      ]);
+      setChip('s8-block', blocked ? 'warn' : 'info',
+        blocked ? 'VISIBLE: author display:block renders the suggestion list as page content' : 'hidden (UA display:none active)');
+      setChip('s8-hidden', blocked && hiddenOn ? 'fail' : 'info',
+        blocked && hiddenOn ? 'hidden=true does NOT re-hide it — author display outranks [hidden]' :
+        'hidden attr is a no-op while UA rule stands (toggle display first to see the trap)');
+    }
+    document.getElementById('s8-block').addEventListener('click', function () {
+      blocked = !blocked;
+      if (blocked) { dl.className = 'demo-dl-exposed'; dl.style.display = 'block'; }
+      else { dl.className = ''; dl.style.display = ''; }
+      meter();
+    });
+    document.getElementById('s8-hidden').addEventListener('click', function () { hiddenOn = !hiddenOn; dl.hidden = hiddenOn; meter(); });
+    meter();
+  })();
+
+  // ---------- §9 inputmode ----------
+  (function s9() {
+    chip('s9-chips', 's9-grammar');
+    var im = document.getElementById('im-in'), meter = document.getElementById('im-meter');
+    function read() { meter.textContent = 'inputMode IDL: "' + im.inputMode + '" · enterKeyHint: "' + im.enterKeyHint + '"'; }
+    read();
+    document.getElementById('im-set-bogus').addEventListener('click', function () { im.setAttribute('inputmode', 'BOGUS'); read(); });
+    document.getElementById('im-set-none').addEventListener('click', function () { im.setAttribute('inputmode', 'None'); read(); });
+    document.getElementById('im-remove').addEventListener('click', function () { im.removeAttribute('inputmode'); read(); });
+    // grammar chip: live-verify the two faces
+    var probe = document.createElement('input');
+    probe.setAttribute('inputmode', 'BOGUS');
+    var bogus = probe.inputMode === '';
+    probe.setAttribute('inputmode', 'None');
+    var fold = probe.inputMode === 'none';
+    setChip('s9-grammar', (bogus && fold) ? 'ok' : 'fail',
+      (bogus && fold) ? 'invalid → "" and "None" → "none" ✓ (grammar law, this engine)' : 'grammar deviation — recheck');
+    // quantity lane
+    var q = document.getElementById('qty-num'), qm = document.getElementById('qty-meter');
+    chip('qty-chips', 's9-qty');
+    q.addEventListener('input', function () { qm.textContent = 'value: "' + q.value + '"'; });
+    q.addEventListener('change', function () { qm.textContent = 'value: "' + q.value + '" (change)'; });
+    setChip('s9-qty', ENGINE === 'cft' ? 'warn' : 'ok',
+      ENGINE === 'cft' ? 'this engine: popup suppressed under automation — human lane only (§4)' : 'this engine: numeric suggestions commit in document order (measured)');
+  })();
+
+  // ---------- §10 OpenDrones capstone ----------
+  (function s10() {
+    chip('od-chips', 'od-shared'); chip('od-chips', 'od-disabled'); chip('od-chips', 'od-date');
+    var log = document.getElementById('od-log');
+    var lines = ['form state:'];
+    function note(t) { lines.push(t); log.textContent = lines.slice(-10).join('\n'); }
+    ['od-mission', 'od-mission2', 'od-date', 'od-qty', 'od-sn'].forEach(function (id) {
+      var el = document.getElementById(id);
+      el.addEventListener('input', function () { note(id + ' → "' + el.value + '"'); });
+      el.addEventListener('change', function () { note(id + ' change → "' + el.value + '"'); });
+    });
+    var dl = document.getElementById('dl-od-mission');
+    var m1 = document.getElementById('od-mission'), m2 = document.getElementById('od-mission2');
+    setChip('od-shared', (m1.list === dl && m2.list === dl) ? 'ok' : 'fail', 'two mission inputs share one datalist ✓');
+    var excludes = dl.options.length < dl.children.length;
+    setChip('od-disabled', excludes ? 'warn' : 'info',
+      excludes ? 'MC-CHARLIE (disabled): absent from options on this engine — Firefox never suggests it' :
+      'MC-CHARLIE (disabled): in the collection — visible-but-refused on this engine family');
+    document.getElementById('od-open-date').addEventListener('click', function () {
+      var d = document.getElementById('od-date');
+      var done = false;
+      function good() { if (done) return; done = true; setChip('od-date', 'ok', 'calendar opened in gesture — :open poll live in §7 style'); }
+      function badO(e) { if (done) return; done = true; setChip('od-date', 'fail', e.name + ' — unexpected'); }
+      try { var p = d.showPicker(); if (p && typeof p.then === 'function') p.then(good, badO); else good(); }
+      catch (e) { badO(e); }
+      setTimeout(function () { if (!done) { done = true; setChip('od-date', 'warn', 'promise UNSETTLED (open-picker contamination)'); } }, 1400);
+    });
+    document.getElementById('od-open-mission').addEventListener('click', function () {
+      var t = document.getElementById('od-mission');
+      try {
+        t.showPicker();
+        note('mission showPicker() → ok' + (ENGINE === 'firefox' ? ' (pre-highlighted first match — Enter commits)' : ''));
+      } catch (e) { note('mission showPicker() → ' + e.name); }
+    });
+  })();
+
+  // gate contract: all chips registered (none left unregistered), no auto-run crashes
+  window.__demoReady = Object.keys(REG).length;
+})();
+</script>
+</body>
+</html>
