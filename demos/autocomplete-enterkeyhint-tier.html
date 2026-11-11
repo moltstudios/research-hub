@@ -1,0 +1,602 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>autocomplete tokens + enterKeyHint — the autofill routing tier (live-probed)</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #faf9f7; --card: #fff; --ink: #1c1b1a; --mut: #6f6a63; --acc: #0a7d6f;
+    --acc2: #b4540a; --okbg: #e7f5f0; --okink: #0a5c50; --warnbg: #fdf0e3; --warnink: #8a4b08;
+    --failbg: #fbe9e7; --failink: #a32714; --infobg: #e9eef7; --infoink: #2c4a86;
+    --line: #e7e2da; --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 18px 80px; }
+  header.hero { padding: 30px 0 10px; }
+  h1 { font-size: clamp(26px, 5vw, 38px); line-height: 1.12; letter-spacing: -.02em; margin: 0 0 10px; }
+  .sub { color: var(--mut); font-size: 14px; max-width: 62ch; overflow-wrap: anywhere; }
+  .engine-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 4px; font-size: 12.5px; }
+  .engine-bar span { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
+  section { margin-top: 46px; }
+  h2 { font-size: 19px; margin: 0 0 6px; letter-spacing: -.01em; }
+  h2 .n { color: var(--acc); font-family: var(--mono); font-size: 14px; margin-right: 8px; }
+  p.lead { color: var(--mut); font-size: 13.5px; margin: 0 0 14px; max-width: 70ch; overflow-wrap: anywhere; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 12px 0; }
+  .lane { padding: 12px; border: 1px dashed var(--line); border-radius: 10px; margin: 10px 0; background: #fdfcfa; }
+  .chip { display: inline-flex; align-items: baseline; gap: 6px; font-size: 12px; border-radius: 999px; padding: 3px 10px; margin: 3px 4px 3px 0; border: 1px solid transparent; font-family: var(--mono); }
+  .chip.pending { background: #efedea; color: var(--mut); }
+  .chip.ok { background: var(--okbg); color: var(--okink); border-color: #bfe0d6; }
+  .chip.warn { background: var(--warnbg); color: var(--warnink); border-color: #f2d9bc; }
+  .chip.fail { background: var(--failbg); color: var(--failink); border-color: #f2c4bd; }
+  .chip.info { background: var(--infobg); color: var(--infoink); border-color: #c9d6ee; }
+  .chips { margin: 8px 0 2px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; margin: 10px 0; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+  th { color: var(--mut); font-weight: 600; font-size: 12px; }
+  th.mono { font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; }
+  code { font-family: var(--mono); font-size: 12.5px; background: #f1efe9; border-radius: 5px; padding: 1px 5px; overflow-wrap: anywhere; }
+  pre { font-family: var(--mono); font-size: 12px; line-height: 1.5; background: #14171c; color: #dbe4ee; border-radius: 10px; padding: 14px; overflow-x: auto; margin: 10px 0; }
+  pre .c { color: #7a8ba0; }
+  .note { font-size: 12.5px; color: var(--mut); margin: 8px 0 0; max-width: 72ch; overflow-wrap: anywhere; }
+  .pill { display: inline-block; font-family: var(--mono); font-size: 11px; border-radius: 6px; padding: 1px 7px; margin-right: 6px; }
+  .pill.ok { background: var(--okbg); color: var(--okink); }
+  .pill.no { background: var(--failbg); color: var(--failink); }
+  .pill.info { background: var(--infobg); color: var(--infoink); }
+  .lab { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+  .lab label { font-size: 12px; color: var(--mut); min-width: 92px; }
+  input[type="text"], select { font: 13px/1.4 var(--mono); padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: #fff; min-width: 200px; flex: 1; }
+  input[type="text"]:focus { outline: 2px solid var(--acc); outline-offset: 1px; }
+  .readout { font-family: var(--mono); font-size: 12.5px; background: #f6f4ef; border-radius: 8px; padding: 9px 11px; margin-top: 8px; overflow-wrap: anywhere; white-space: pre-wrap; }
+  button { font: 13px/1.4 -apple-system, system-ui, sans-serif; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--acc); background: var(--acc); color: #fff; cursor: pointer; }
+  button.ghost { background: #fff; color: var(--acc); }
+  .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+  .scopebox { border: 1.5px solid var(--line); border-radius: 10px; padding: 10px; font-size: 12.5px; }
+  .scopebox.fill { border-color: var(--acc); background: var(--okbg); }
+  .scopebox.nofill { border-color: #d9a08a; background: #fdf3ee; }
+  .scopebox b { font-family: var(--mono); font-size: 11.5px; display: block; margin-bottom: 4px; }
+  .kv { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 4px 12px; font-size: 12.5px; margin: 6px 0; }
+  .kv dt { color: var(--mut); font-family: var(--mono); font-size: 11.5px; padding-top: 2px; }
+  .kv dd { margin: 0; font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+  .ekh-demo-field { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 6px 0; }
+  .ekh-demo-field input { min-width: 160px; }
+  .field-label { font-size: 11.5px; color: var(--mut); font-family: var(--mono); }
+  ul.tight { margin: 8px 0; padding-left: 20px; font-size: 13px; }
+  ul.tight li { margin: 4px 0; }
+  .audit { font-size: 13px; }
+  .audit b.hi { color: var(--failink); }
+  .audit b.md { color: var(--warnink); }
+  .ledger { font-size: 12px; }
+  footer { margin-top: 60px; color: var(--mut); font-size: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
+</style>
+</head>
+<body>
+<main>
+<header class="hero">
+  <h1>autocomplete tokens + enterKeyHint<br>— the autofill routing tier</h1>
+  <p class="sub">The web's native form-fill routing layer, live-probed on Chrome for Testing 149, Firefox 151 and WebKit 26.5 — with real fills driven headless through Chromium's CDP <code>Autofill.trigger</code> instrument. Fifteen laws: a three-way IDL split, the anchor-scope partition, the heuristic fallback that fills fields you thought were anonymous, and the styling lock that eats your backgrounds.</p>
+  <div class="engine-bar">
+    <span id="eng-pill">engine: …</span>
+    <span>live-probed: CfT 149 · FF 151 · WK 26.5</span>
+    <span>fill lanes: CDP Autofill (Chromium instrument)</span>
+  </div>
+  <div class="chips" id="chips-top"></div>
+</header>
+
+<section id="s2">
+  <h2><span class="n">§2</span>The autocomplete IDL three-way split</h2>
+  <p class="lead">The attribute keeps whatever you write, everywhere. The IDL getter (<code>input.autocomplete</code>) lies differently on every engine: Chromium normalizes (lowercases a valid token list, returns <code>""</code> for an unparseable one), Firefox returns <code>""</code> for every multi-token list (only bare <code>on</code>/<code>off</code> survive), WebKit validates + lowercases like Chromium. <code>getAttribute()</code> is the only honest read.</p>
+  <div class="card">
+    <div class="lab"><label for="idl-in">autocomplete</label><input type="text" id="idl-in" value="BILLING cc-csc" spellcheck="false"></div>
+    <div class="lab"><label for="idl-set">set via IDL</label><input type="text" id="idl-set" value="SHIPPING tel" spellcheck="false"><button class="ghost" id="idl-set-btn">assign</button></div>
+    <div class="lane">
+      <div class="field-label">probe input (not visible in the page flow)</div>
+      <input type="text" id="idl-probe" style="position:absolute; left:-9999px; top:0;">
+      <div class="readout" id="idl-readout">…</div>
+    </div>
+    <div class="chips" id="chips-idl"></div>
+    <table>
+      <thead><tr><th>input</th><th class="mono">getAttribute</th><th class="mono">.autocomplete IDL</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">"shipping postal-code"</td><td class="mono">shipping postal-code</td><td class="mono">CfT "shipping postal-code" · FF "" · WK "shipping postal-code"</td></tr>
+        <tr><td class="mono">"BILLING cc-csc"</td><td class="mono">BILLING cc-csc</td><td class="mono">CfT "billing cc-csc" · FF "" · WK "billing cc-csc"</td></tr>
+        <tr><td class="mono">"off"</td><td class="mono">off</td><td class="mono">"off" on all three</td></tr>
+        <tr><td class="mono">"  spaced  tokens  "</td><td class="mono">literal, spaces kept</td><td class="mono">"" on all three</td></tr>
+        <tr><td class="mono">IDL set <code>null</code></td><td class="mono">"null" (stringified!)</td><td class="mono">"" everywhere ("null" isn't a token)</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Rule for dashboards/e2e: assert with <code>getAttribute('autocomplete')</code>. A Firefox-lane assertion on <code>el.autocomplete</code> reads <code>""</code> for every real token list — every shipping form, every checkout — and your test silently degrades to "no autocomplete anywhere."</p>
+  </div>
+</section>
+
+<section id="s3">
+  <h2><span class="n">§3</span>enterKeyHint — the enum grammar, two truths per element</h2>
+  <p class="lead">The IDL is an enumerated reflection (3/3 engines): valid tokens read back lowercased, <b>invalid tokens vanish to <code>""</code> in the IDL while the attribute keeps the literal</b>, whitespace is fatal, and the setter writes verbatim. It exists on <code>HTMLElement</code> — a plain <code>&lt;div&gt;</code> carries it. Seven valid tokens: <code>enter · done · go · next · previous · search · send</code>.</p>
+  <div class="card">
+    <div class="lab"><label for="ekh-in">enterkeyhint</label><input type="text" id="ekh-in" value="GO" spellcheck="false"></div>
+    <div class="lane">
+      <div class="ekh-demo-field"><div id="ekh-live" contenteditable="false" tabindex="0"></div><span class="field-label">← a &lt;div&gt; (HTMLElement face — attribute + IDL live on non-inputs)</span></div>
+      <div class="readout" id="ekh-readout">…</div>
+    </div>
+    <div class="chips" id="chips-ekh"></div>
+    <table>
+      <thead><tr><th>attribute value</th><th class="mono">getAttribute</th><th class="mono">.enterKeyHint IDL</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">"go"</td><td class="mono">go</td><td class="mono">go (3/3)</td></tr>
+        <tr><td class="mono">"GO"</td><td class="mono">GO</td><td class="mono">go — ASCII case-fold on read (3/3)</td></tr>
+        <tr><td class="mono">"bogus"</td><td class="mono">bogus</td><td class="mono">"" — invalid → missing default (3/3)</td></tr>
+        <tr><td class="mono">" go "</td><td class="mono">literal</td><td class="mono">"" — whitespace fatal, never trimmed (3/3)</td></tr>
+        <tr><td class="mono">IDL set <code>null</code></td><td class="mono">"null"</td><td class="mono">"" (3/3)</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Same grammar as <code>inputMode</code> (re-confirmed this session: <code>"None"</code>→<code>none</code>, <code>"BOGUS"</code>→<code>""</code>, IDL-set writes the literal). The virtual-keyboard label itself is a mobile-only effect — desktop has no observable face beyond reflection, a lane limit recorded honestly.</p>
+  </div>
+</section>
+
+<section id="s4">
+  <h2><span class="n">§4</span>The attribute-selector case wall</h2>
+  <p class="lead">Tokens fold in the IDL but <b>never in selectors</b>: <code>[autocomplete="off"]</code> does not match <code>autocomplete="OFF"</code>, and <code>[enterkeyhint="go"]</code> does not match <code>"GO"</code> — case-sensitive value matching on all three engines, in CSS rules and in <code>querySelector</code> alike. The hidden=until-found uppercase trap, generalized: author in lowercase or match in lowercase, but never mix.</p>
+  <div class="card">
+    <div class="lab"><label for="sel-in">attribute value</label><input type="text" id="sel-in" value="OFF" spellcheck="false">
+      <button class="ghost" id="sel-swap">↔ lowercase</button></div>
+    <div class="readout" id="sel-readout">…</div>
+    <div class="chips" id="chips-sel"></div>
+  </div>
+</section>
+
+<section id="s5">
+  <h2><span class="n">§5</span>The autofill pseudo pair — and the instrument split</h2>
+  <p class="lead"><code>:autofill</code> parses on all three engines, and so does <code>:-webkit-autofill</code> — Firefox ships the prefixed selector for compat. But only Chromium exposes an automation path to a <b>real</b> fill state: the CDP <code>Autofill</code> domain (<code>setAddresses</code> + <code>trigger</code>) performs genuine fills headless and reports per-field <code>fillingStrategy</code> (<code>autocompleteAttribute</code> vs <code>autofillInferred</code> — heuristics). Firefox/WebKit have no such path: their fill-state behavior is a human-hand lane, recorded as an instrument limit, not measured.</p>
+  <div class="card">
+    <div class="chips" id="chips-supports"></div>
+    <table>
+      <thead><tr><th>instrument</th><th>CfT 149</th><th>FF 151</th><th>WK 26.5</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">selector(:autofill)</td><td><span class="pill ok">parses</span></td><td><span class="pill ok">parses</span></td><td><span class="pill ok">parses</span></td></tr>
+        <tr><td class="mono">selector(:-webkit-autofill)</td><td><span class="pill ok">parses</span></td><td><span class="pill ok">parses</span></td><td><span class="pill ok">parses</span></td></tr>
+        <tr><td class="mono">CDP Autofill.trigger real fill</td><td><span class="pill ok">yes</span></td><td><span class="pill no">no domain</span></td><td><span class="pill no">no domain</span></td></tr>
+        <tr><td class="mono">form.requestAutocomplete</td><td><span class="pill no">removed</span></td><td><span class="pill no">removed</span></td><td><span class="pill no">removed</span></td></tr>
+      </tbody>
+    </table>
+    <p class="note">The dead <code>requestAutocomplete()</code> API is <code>undefined</code> on all three — if a legacy integration doc mentions it, it's a fossil.</p>
+  </div>
+</section>
+
+<section id="s6">
+  <h2><span class="n">§6</span>The token routing table (Chromium, real fill)</h2>
+  <p class="lead">One address profile, one <code>Autofill.trigger</code>, every field token on the bench. This is what the browser actually writes — the composition laws are the story: multi-line streets <b>keep newlines in a textarea</b> but arrive <b>comma-joined in a single-line input</b>, <code>address-line1/2</code> auto-split, and <code>tel</code> keeps the international <code>+1…</code> prefix.</p>
+  <div class="card">
+    <table>
+      <thead><tr><th>token</th><th class="mono">profile field (CDP)</th><th class="mono">filled value</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">name</td><td class="mono">NAME_FULL</td><td class="mono">"Ada Lovelace"</td></tr>
+        <tr><td class="mono">given-name</td><td class="mono">NAME_FIRST</td><td class="mono">"Ada"</td></tr>
+        <tr><td class="mono">additional-name</td><td class="mono">NAME_MIDDLE</td><td class="mono">"King"</td></tr>
+        <tr><td class="mono">family-name</td><td class="mono">NAME_LAST</td><td class="mono">"Lovelace"</td></tr>
+        <tr><td class="mono">email</td><td class="mono">EMAIL_ADDRESS</td><td class="mono">"ada@example.com"</td></tr>
+        <tr><td class="mono">tel</td><td class="mono">PHONE_HOME_WHOLE_NUMBER</td><td class="mono">"+14155550100" — spaces stripped, +1 kept</td></tr>
+        <tr><td class="mono">organization</td><td class="mono">COMPANY_NAME</td><td class="mono">"Molt Studios"</td></tr>
+        <tr><td class="mono">street-address (textarea)</td><td class="mono">ADDRESS_HOME_STREET_ADDRESS</td><td class="mono">"12 Mission Row\nSuite 3" — newline kept</td></tr>
+        <tr><td class="mono">street-address (input)</td><td class="mono">— same —</td><td class="mono">"12 Mission Row, Suite 3" — \n → ", "</td></tr>
+        <tr><td class="mono">address-line1 / -line2</td><td class="mono">— same —</td><td class="mono">auto-split "12 Mission Row" / "Suite 3"</td></tr>
+        <tr><td class="mono">address-level2 / -level1</td><td class="mono">…_CITY / …_STATE</td><td class="mono">"San Francisco" / "CA"</td></tr>
+        <tr><td class="mono">postal-code</td><td class="mono">ADDRESS_HOME_ZIP</td><td class="mono">"94105"</td></tr>
+        <tr><td class="mono">country</td><td class="mono">ADDRESS_HOME_COUNTRY</td><td class="mono">"United States" — the NAME, not a code</td></tr>
+        <tr><td class="mono">honorific-prefix / honorific-suffix / organization-title / country-name</td><td class="mono">—</td><td class="mono">classified but never written (no address-profile data)</td></tr>
+        <tr><td class="mono">username / current-password / new-password / one-time-code</td><td class="mono">—</td><td class="mono">classified (username reads as "Email address"!), never written by the address fill</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Client consequences: a <code>&lt;select name=country&gt;</code> whose options carry ISO codes (<code>US</code>) will not match the fill's <code>"United States"</code> — option <b>values</b> must include the plain country name. And a one-line street field silently receives comma-joined text your parser may not expect.</p>
+  </div>
+</section>
+
+<section id="s7">
+  <h2><span class="n">§7</span>The anchor-scope law</h2>
+  <p class="lead">One fill covers <b>only the anchor's scope</b>. <code>shipping</code>, <code>billing</code> and unprefixed fields are three separate worlds: anchor a shipping field → shipping fills, billing and unprefixed stay empty (×2 reps, stable); anchor billing → billing only. Explicit <code>section-*</code> tokens partition the same way. And the <code>addressFormFilled</code> event <b>overspeaks</b> — it lists every classified field on the form, filled or not: read field values, never the event, to know what happened.</p>
+  <div class="card">
+    <div class="grid3">
+      <div class="scopebox"><b>autocomplete="postal-code"</b>filled when an unprefixed field anchors</div>
+      <div class="scopebox fill"><b>autocomplete="shipping postal-code"</b>filled when a shipping field anchors</div>
+      <div class="scopebox"><b>autocomplete="billing postal-code"</b>filled when a billing field anchors</div>
+    </div>
+    <p class="note" style="margin-top:10px">In unscoped mixed forms the fill group is anchor-relative and classifier-segmented — measured: forward bias (anchoring the ZIP filled ZIP + tel but not the email field after them), control-type boundaries and dead (readonly/disabled/hidden) neighbors influence grouping, while a simple text–select–text form fills whole from any anchor. The deterministic lever is the scope token: give every logical group a <code>section-…</code>, <code>shipping</code> or <code>billing</code> prefix and stop depending on adjacency.</p>
+    <p class="note"><b>The two-anchor checkout:</b> a shipping+billing form needs the user (or your UI) to trigger each scope separately — one fill never crosses. That's not a bug; it's the partition working. Label the second button "Use for billing" and let it re-anchor.</p>
+  </div>
+</section>
+
+<section id="s8">
+  <h2><span class="n">§8</span>The off grammar — and the submission folklore</h2>
+  <p class="lead"><code>autocomplete="off"</code> on a field blocks its fill — but a <b>field-level explicit token beats a form-level off</b> (anchored directly, it fills inside an <code>autocomplete="off"</code> form). <code>autocomplete="on"</code> ≡ default. And the big folklore kill: <b>off does not remove the field from submission</b> — FormData carries its value exactly as before.</p>
+  <div class="card">
+    <table>
+      <thead><tr><th>configuration</th><th>fills?</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">field autocomplete="off"</td><td><span class="pill no">never</span>attempted in the event, never written</td></tr>
+        <tr><td class="mono">form off + field token, field anchored</td><td><span class="pill ok">fills</span>field beats form</td></tr>
+        <tr><td class="mono">form off, no field attr (name="email")</td><td><span class="pill no">no</span></td></tr>
+        <tr><td class="mono">field autocomplete="on"</td><td><span class="pill ok">fills</span>≡ default</td></tr>
+      </tbody>
+    </table>
+    <div class="lane">
+      <div class="field-label">live on your engine — build FormData from this form:</div>
+      <form id="fd-form" onsubmit="return false">
+        <div class="ekh-demo-field"><input id="fd-a" name="contact_email" autocomplete="email" value="ada@example.com"><span class="field-label">autocomplete="email"</span></div>
+        <div class="ekh-demo-field"><input id="fd-b" name="operator_notes" autocomplete="off" value="mission-internal-9"><span class="field-label">autocomplete="off"</span></div>
+      </form>
+      <button class="ghost" id="fd-btn">submit → FormData</button>
+      <div class="readout" id="fd-readout">click to build…</div>
+    </div>
+    <div class="chips" id="chips-fd"></div>
+  </div>
+</section>
+
+<section id="s9">
+  <h2><span class="n">§9</span>The heuristic fallback — absent ≠ anonymous</h2>
+  <p class="lead">Remove every autocomplete token and Chromium's classifier still fills fields whose <code>name</code> hits its dictionary — reported as <code>fillingStrategy: autofillInferred</code>. Measured dictionary hits: <code>email</code>, <code>zip</code>, <code>phone</code>, <code>city</code>, <code>firstname</code>. Measured misses: <code>fname</code>, <code>first_name</code>, <code>postal_code</code>, <code>zipcode</code>, <code>phonenumber</code>, <code>mobile</code>, <code>type=email</code> alone, placeholder text alone. The dictionary is token-exact, not fuzzy.</p>
+  <div class="card">
+    <table>
+      <thead><tr><th class="mono">name=</th><th>filled?</th><th class="mono">value</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">email</td><td><span class="pill ok">yes (inferred)</span></td><td class="mono">ada@example.com</td></tr>
+        <tr><td class="mono">zip</td><td><span class="pill ok">yes</span></td><td class="mono">94105</td></tr>
+        <tr><td class="mono">phone</td><td><span class="pill ok">yes</span></td><td class="mono">4155550100 — no +1! (see below)</td></tr>
+        <tr><td class="mono">city / firstname</td><td><span class="pill ok">yes</span></td><td class="mono">San Francisco / Ada</td></tr>
+        <tr><td class="mono">zipcode, postal_code, phonenumber, mobile, fname, first_name</td><td><span class="pill no">no</span></td><td class="mono">classified in the event, value never written</td></tr>
+        <tr><td class="mono">type="email" (no name match)</td><td><span class="pill no">no</span></td><td class="mono">input type alone is not a signal</td></tr>
+        <tr><td class="mono">placeholder="Your email address"</td><td><span class="pill no">no</span></td><td class="mono">placeholder alone is not a signal</td></tr>
+      </tbody>
+    </table>
+    <p class="note"><b>The format split:</b> the same profile's phone filled as <code>"+14155550100"</code> through <code>autocomplete="tel"</code> but as <code>"4155550100"</code> (national digits) through the <code>name="phone"</code> heuristic — ×2 stable across anchor lanes. If your validation regex demands E.164, the heuristic path fails it. Another reason tokens beat names: the token route is the deterministic format.</p>
+    <p class="note">Privacy face: adding <code>autocomplete="off"</code> is the only opt-out — an unnamed-looking field with a dictionary name still fills.</p>
+  </div>
+</section>
+
+<section id="s10">
+  <h2><span class="n">§10</span>The card tier</h2>
+  <p class="lead">The CDP card instrument fills the full <code>cc-*</code> family: <code>cc-exp</code> composes month/year into <code>"09/2031"</code>, the split tokens stay two-digit clean, <code>cc-type</code> writes an input <b>and</b> selects the matching <code>&lt;option&gt;</code>, and <code>cc-given-name</code> parses the first word of the cardholder name. One instrument caveat recorded honestly: CDP fills <code>cc-csc</code> ("789") — the real browser UI never offers the CVC; treat that cell as instrument-only.</p>
+  <div class="card">
+    <table>
+      <thead><tr><th class="mono">token</th><th class="mono">filled</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">cc-name</td><td class="mono">"Grace Hopper"</td></tr>
+        <tr><td class="mono">cc-number</td><td class="mono">"4111111111111111"</td></tr>
+        <tr><td class="mono">cc-exp</td><td class="mono">"09/2031" — composed</td></tr>
+        <tr><td class="mono">cc-exp-month / cc-exp-year</td><td class="mono">"09" / "2031"</td></tr>
+        <tr><td class="mono">cc-csc</td><td class="mono">"789" — CDP-only; real UI never fills CVC</td></tr>
+        <tr><td class="mono">cc-type (input)</td><td class="mono">"Visa"</td></tr>
+        <tr><td class="mono">cc-type (select)</td><td class="mono">option "Visa" selected</td></tr>
+        <tr><td class="mono">cc-given-name</td><td class="mono">"Grace" — first word of the cardholder</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Event grammar is identical to the address fill: trusted <code>input</code> + <code>change</code> pairs per field, no per-field focus stealing.</p>
+  </div>
+</section>
+
+<section id="s11">
+  <h2><span class="n">§11</span>The state walls</h2>
+  <p class="lead">Readonly, disabled, <code>display:none</code> and <code>visibility:hidden</code> fields are classified (the event lists them) but never written. Fields outside any <code>&lt;form&gt;</code> don't fill from a form-anchored trigger. The walls are absolute in the measured lanes — multi-step checkouts that keep later fields <code>readonly</code> until "step 2" are invisible to autofill for the whole first pass.</p>
+  <div class="card">
+    <table>
+      <thead><tr><th class="mono">field state</th><th>written?</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">readonly</td><td><span class="pill no">never</span></td></tr>
+        <tr><td class="mono">disabled</td><td><span class="pill no">never</span></td></tr>
+        <tr><td class="mono">display:none</td><td><span class="pill no">never</span></td></tr>
+        <tr><td class="mono">visibility:hidden</td><td><span class="pill no">never</span></td></tr>
+        <tr><td class="mono">outside any &lt;form&gt;</td><td><span class="pill no">no</span>(from a form-anchored fill)</td></tr>
+        <tr><td class="mono">type="number" / type="tel"</td><td><span class="pill ok">fill fine</span>(an earlier "wall" here was my own anchor artifact — falsified)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="s12">
+  <h2><span class="n">§12</span>The commit law — autofill meets React</h2>
+  <p class="lead">Every filled field fires a real <code>input</code> followed immediately by a real <code>change</code> — <code>isTrusted: true</code> on both, change <b>not</b> waiting for blur. Focus stays on the anchor; filled fields never receive focus events. Consequences: React/Vue controlled inputs see autofill through the same native <code>input</code> event as typing (no synthetic wall), and a <code>change</code>-only listener fires too — but only after the <code>input</code>, so cross-field validation reading "the other field" mid-<code>input</code> reads stale values for one event.</p>
+  <div class="card">
+    <pre><span class="c">// recorded CfT 149 — anchor at #n-email, two fields in scope:</span>
+focusin : n-email  : isTrusted=true   ← your focus() / the user's click
+input   : n-email  : isTrusted=true   ← fill writes field 1
+change  : n-email  : isTrusted=true   ← immediately, no blur wait
+input   : n-zip    : isTrusted=true   ← fill writes field 2
+change  : n-zip    : isTrusted=true
+<span class="c">// (no focusin for n-zip — filled fields are never focused)</span></pre>
+    <p class="note">This is also why "clear the form" UIs miss autofilled values: reading <code>el.value</code> in a <code>change</code> handler is correct, but a snapshot taken before the fill (state hydrated at mount) won't see it — listen, don't snapshot.</p>
+  </div>
+</section>
+
+<section id="s13">
+  <h2><span class="n">§13</span>The styling lock</h2>
+  <p class="lead">After a real fill, inputs match <code>:autofill</code> and <code>:-webkit-autofill</code> simultaneously, and the UA's tint wins: computed <code>background-color</code> reads <code>rgb(232,240,254)</code> over every author strategy tried — a plain background on the element, a <code>:autofill</code> rule, a <code>:-webkit-autofill</code> rule — and authored <code>background-image</code> is <b>stripped to none</b>. The two measured escape hatches: the inset box-shadow trick and <code>-webkit-text-fill-color</code>.</p>
+  <div class="card">
+    <pre><span class="c">/* measured on CfT 149 with a REAL CDP-driven fill: */</span>
+input            { background: #fff }        <span class="c">/* computed after fill: rgb(232,240,254) — LOSES */</span>
+input:autofill        { background: #00aa00 }  <span class="c">/* computed: rgb(232,240,254) — LOSES */</span>
+input:-webkit-autofill{ background: #00aaaa }  <span class="c">/* computed: rgb(232,240,254) — LOSES */</span>
+input { background-image: linear-gradient(...) } <span class="c">/* computed after fill: none — STRIPPED */</span>
+
+<span class="c">/* escape hatches that survive (computed, verified): */</span>
+input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px #002642 inset;  <span class="c">/* survives — paints over the tint */</span>
+  -webkit-text-fill-color: #7fd1ff;                 <span class="c">/* survives — recolors the glyphs */</span>
+}</pre>
+    <p class="note">The computed <code>background-color</code> is a lie for what's visible: the surviving inset shadow renders over it. Dark-mode forms must use the shadow hatch or their autofilled fields flash blue-on-blue. Firefox/WebKit tint behavior: human-hand lanes (no automation fill path) — test with a real saved profile before shipping dark themes there.</p>
+  </div>
+</section>
+
+<section id="s14">
+  <h2><span class="n">§14</span>OpenDrones capstone — the mission checkout form</h2>
+  <p class="lead">The hardened pattern, live in your engine: explicit <code>section-mission</code> scope tokens (never adjacency), country <code>&lt;option&gt;</code> values that match the fill's plain-name format, <code>tel</code> on the token route (international), postal-code as text (leading zeros survive — and number inputs fill, but text is the honest contract), <code>autocomplete="off"</code> on operator notes, one-time-code armed only on the verify step, and per-field <code>enterkeyhint</code> labels.</p>
+  <div class="card">
+    <form id="od-form" onsubmit="return false">
+      <div class="ekh-demo-field"><input id="od-name" autocomplete="section-mission name" enterkeyhint="next" placeholder="Ada Lovelace"><span class="field-label">section-mission name · ekh next</span></div>
+      <div class="ekh-demo-field"><input id="od-tel" type="tel" autocomplete="section-mission tel" enterkeyhint="next" placeholder="+1 415 555 0100"><span class="field-label">tel on the token route</span></div>
+      <div class="ekh-demo-field"><input id="od-street" autocomplete="section-mission street-address" enterkeyhint="next" placeholder="12 Mission Row"><span class="field-label">street-address</span></div>
+      <div class="ekh-demo-field"><select id="od-country" autocomplete="section-mission country"><option value="United States">United States</option><option value="CA">Canada</option></select><span class="field-label">country — names, not ISO codes</span></div>
+      <div class="ekh-demo-field"><input id="od-notes" autocomplete="off" placeholder="operator notes"><span class="field-label">off — the only real opt-out</span></div>
+      <div class="ekh-demo-field"><input id="od-otp" autocomplete="one-time-code" inputmode="numeric" enterkeyhint="send" placeholder="123456"><span class="field-label">one-time-code + inputmode + ekh send</span></div>
+    </form>
+    <div class="chips" id="chips-od"></div>
+    <div class="readout" id="od-readout">…</div>
+  </div>
+</section>
+
+<section id="s15">
+  <h2><span class="n">§15</span>Molt audit — the client form-fill checklist (half a day)</h2>
+  <div class="card audit">
+    <ul class="tight">
+      <li><b class="hi">1. Country selects with ISO-code option values</b> — the fill writes "United States"; the select stays blank. Option values (not just labels) must carry plain names.</li>
+      <li><b class="hi">2. Single-line street inputs that re-parse on "\n"</b> — the fill comma-joins multi-line streets; the parser breaks silently.</li>
+      <li><b class="hi">3. e2e/React reading el.autocomplete</b> — Firefox returns "" for every token list; asserts pass vacuously. getAttribute only.</li>
+      <li><b class="hi">4. tel validation demanding E.164 on heuristic-routed fields</b> — the name-based path fills national digits; only the token route is international.</li>
+      <li><b class="hi">5. Dark themes without the box-shadow hatch</b> — autofilled fields flash the UA blue with light text; background-image hero fields lose their gradient entirely.</li>
+      <li><b class="md">6. Multi-step checkouts with readonly later steps</b> — the walls: readonly/disabled/hidden fields never receive the first-pass fill.</li>
+      <li><b class="md">7. Forms relying on form-level autocomplete="off" for sensitive fields</b> — field tokens beat it; the off must be on the field.</li>
+      <li><b class="md">8. addressFormFilled-style telemetry assumptions</b> — the event overspeaks (lists unfilled fields); assert on values.</li>
+      <li><b class="md">9. "Anonymous" fields with dictionary names (email/zip/phone/city/firstname)</b> — they still fill; off is the only opt-out.</li>
+      <li><b class="md">10. Uppercase attribute values with lowercase selectors (or vice versa)</b> — the case wall: [autocomplete="off"] never matches "OFF".</li>
+      <li><b class="md">11. Snapshot-hydrated forms that never listen</b> — fills arrive as trusted input+change; mount-time state never sees them.</li>
+      <li><b class="md">12. enterKeyHint values with typos or spaces</b> — silently "" in the IDL, default key label on mobile; no console warning anywhere.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="s16">
+  <h2><span class="n">§16</span>Method, ledger &amp; falsifications</h2>
+  <div class="card ledger">
+    <p><b>Method.</b> Grammar lanes (reflection, selectors, IDL setters) live-probed on CfT 149 + Firefox 151 + WebKit 26.5 over a plain-HTTP loopback, fresh document per lane. Fill lanes driven headless on Chromium via CDP <code>Autofill.enable → setAddresses/trigger</code> with backendNodeIds from <code>DOM.describeNode</code>; verdicts read from field values (never the fill event — see the overspeak law); contested partition lanes ×2 reps. The CDP field-name vocabulary (19 accepted ServerFieldType names, e.g. <code>NAME_FIRST</code> not <code>GIVEN_NAME</code>) discovered empirically; <code>PHONE_HOME_CITY_CODE</code>/…_CITY_AND_NUMBER accept but hang the trigger — avoided. FF/WK fill-state behavior: no automation path exists, recorded as lane limits.</p>
+    <p><b>Falsified this session (3, all mine).</b> (1) "type=number and type=tel block autofill" — my anchor-scope artifact: both fill fine inside the anchor's group (direct-anchor lanes). (2) "selects section the form / don't co-fill with inputs" — the simple text–select–text form fills whole from any anchor; the earlier split was the same artifact family. (3) "form-level off blocks a field-level token" — field beats form when the field carries an explicit token.</p>
+    <p><b>Instrument lessons (3).</b> (1) A first-generation harness threw uniform <code>Invalid parameters</code> on every address lane while an isomorphic rebuild with identical payloads ran clean end-to-end — in CDP-trigger land, rebuild the harness before debugging the protocol; laws were measured only on the rebuilt harness. (2) The fill event overspeaks: Chromium's <code>addressFormFilled</code> lists all classified fields including never-written ones — value reads are the only truth. (3) Buffered-stdout + no per-call timeout swallowed a hung trigger for minutes — every CDP send gets a 4–5 s race and streaming progress now.</p>
+    <table>
+      <thead><tr><th>lane family</th><th>CfT 149</th><th>FF 151</th><th>WK 26.5</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">IDL reflection split (§2)</td><td>normalize+validate</td><td>multi-token → ""</td><td>validate+normalize</td></tr>
+        <tr><td class="mono">enterKeyHint enum grammar (§3)</td><td colspan="3">identical on all three</td></tr>
+        <tr><td class="mono">selector case wall (§4)</td><td colspan="3">identical on all three</td></tr>
+        <tr><td class="mono">:autofill / :-webkit-autofill parse (§5)</td><td colspan="3">true × 3</td></tr>
+        <tr><td class="mono">real-fill lanes (§6–§13)</td><td>measured (CDP)</td><td>human-hand lane</td><td>human-hand lane</td></tr>
+        <tr><td class="mono">formdata carries off values (§8)</td><td colspan="3">fires + carries, × 3</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer>
+  <div>Live-probed 2026-11-11 (6 PM slot) · CfT 149 · Firefox 151 · WebKit 26.5 · CDP Autofill instrument · fresh document per lane · <span id="ft-chipcount"></span></div>
+  <div>Part of the Molt Studios research catalog — pairs: Checkout UX · WebOTP · datalist/picker · Constraint Validation · :user-invalid.</div>
+</footer>
+</main>
+<script>
+(function () {
+  'use strict';
+  var chipsTotal = 0, chipsDone = 0;
+  function chip(host, id, text) {
+    var el = document.getElementById(host);
+    var c = document.createElement('span');
+    c.className = 'chip pending'; c.id = 'chip-' + id; c.textContent = text;
+    el.appendChild(c); chipsTotal++;
+    return { set: function (cls, txt) { c.className = 'chip ' + cls; c.textContent = txt; chipsDone++; } };
+  }
+  window.addEventListener('error', function (e) {
+    var t = document.getElementById('chips-top');
+    var c = document.createElement('span'); c.className = 'chip fail';
+    c.textContent = 'pageerror: ' + String(e.message).slice(0, 120);
+    t.appendChild(c);
+  });
+  function engine() {
+    var ua = navigator.userAgent;
+    if (/Firefox\//.test(ua)) return 'firefox';
+    if (/WebKit|Safari/.test(ua) && !/Chrome|Chromium/.test(ua)) return 'webkit';
+    return 'chromium';
+  }
+  var ENG = engine();
+  var engNames = { chromium: 'Chromium-family', firefox: 'Firefox', webkit: 'WebKit' };
+  document.getElementById('eng-pill').textContent = 'engine: ' + engNames[ENG] + ' (live)';
+
+  function q(s) { return JSON.stringify(s); }
+
+  // ---------- §2 IDL split ----------
+  (function () {
+    var probe = document.getElementById('idl-probe');
+    var out = document.getElementById('idl-readout');
+    var cClass = chip('chips-idl', 'idl-class', 'engine class: …');
+    var cSet = chip('chips-idl', 'idl-set', 'IDL setter: …');
+    function classify(v) {
+      probe.setAttribute('autocomplete', v);
+      var idl = probe.autocomplete, attr = probe.getAttribute('autocomplete');
+      var cls;
+      if (idl === attr) cls = 'literal reflection';
+      else if (idl === '') cls = 'strict (multi/unparseable → "")';
+      else cls = 'normalizing (validate + lowercase)';
+      return { idl: idl, attr: attr, cls: cls };
+    }
+    function render(v) {
+      var r1 = classify(v);
+      var r2 = classify('off');
+      out.textContent = 'input "' + v + '"  →  getAttribute=' + q(r1.attr) + '  .autocomplete=' + q(r1.idl) +
+        '\ninput "off"        →  getAttribute=' + q(r2.attr) + '  .autocomplete=' + q(r2.idl) +
+        '\nyour engine class: ' + r1.cls + '   (CfT normalize · FF strict · WK validate+normalize)';
+    }
+    render(document.getElementById('idl-in').value);
+    document.getElementById('idl-in').addEventListener('input', function () { render(this.value); });
+    // setter lane
+    var setIn = document.getElementById('idl-set');
+    function doSet() {
+      probe.autocomplete = setIn.value;
+      var attr = probe.getAttribute('autocomplete');
+      var idl = probe.autocomplete;
+      out.textContent = 'IDL probe.autocomplete = ' + q(setIn.value) +
+        '\n→ getAttribute=' + q(attr) + '  ·  .autocomplete reads back ' + q(idl) +
+        '\n(the SETTER writes verbatim everywhere; only the GETTER diverges)';
+      cSet.set(attr === setIn.value ? 'ok' : 'fail', 'setter verbatim: ' + (attr === setIn.value ? 'yes' : 'NO (' + q(attr) + ')'));
+    }
+    doSet();
+    document.getElementById('idl-set-btn').addEventListener('click', doSet);
+    probe.setAttribute('autocomplete', 'shipping postal-code');
+    var idlVal = probe.autocomplete;
+    cClass.set(idlVal === 'shipping postal-code' ? 'ok' : (idlVal === '' ? 'warn' : 'info'),
+      'class: ' + classify('BILLING cc-csc').cls);
+  })();
+
+  // ---------- §3 enterKeyHint ----------
+  (function () {
+    var live = document.getElementById('ekh-live');
+    var out = document.getElementById('ekh-readout');
+    var inEl = document.getElementById('ekh-in');
+    var cEnum = chip('chips-ekh', 'ekh-enum', 'invalid → "": …');
+    var cCase = chip('chips-ekh', 'ekh-case', 'case-fold: …');
+    var cWs = chip('chips-ekh', 'ekh-ws', 'ws fatal: …');
+    var cDiv = chip('chips-ekh', 'ekh-div', 'div face: …');
+    var VALID = ['enter', 'done', 'go', 'next', 'previous', 'search', 'send'];
+    function render(v) {
+      live.setAttribute('enterkeyhint', v);
+      var idl = live.enterKeyHint, attr = live.getAttribute('enterkeyhint');
+      out.textContent = 'attribute=' + q(attr) + '  →  .enterKeyHint=' + q(idl) +
+        '\nvalid token? ' + (VALID.indexOf(v.toLowerCase()) >= 0 ? 'yes' : 'no') +
+        '   ·   div: ' + (('enterKeyHint' in live) ? 'carries it (HTMLElement-wide)' : 'MISSING');
+    }
+    render(inEl.value);
+    inEl.addEventListener('input', function () { render(this.value.trim() === this.value ? this.value : this.value); });
+    // deterministic chips
+    live.setAttribute('enterkeyhint', 'bogus');
+    cEnum.set(live.enterKeyHint === '' && live.getAttribute('enterkeyhint') === 'bogus' ? 'ok' : 'fail',
+      'invalid → "' + live.enterKeyHint + '" in IDL, literal kept in attr');
+    live.setAttribute('enterkeyhint', 'GO');
+    cCase.set(live.enterKeyHint === 'go' ? 'ok' : 'fail', 'case-fold GO → ' + q(live.enterKeyHint));
+    live.setAttribute('enterkeyhint', ' go ');
+    cWs.set(live.enterKeyHint === '' ? 'ok' : 'fail', '" go " → ' + q(live.enterKeyHint) + ' (whitespace fatal)');
+    cDiv.set('enterKeyHint' in live ? 'ok' : 'fail', 'div.enterKeyHint present: ' + ('enterKeyHint' in live));
+  })();
+
+  // ---------- §4 selector case ----------
+  (function () {
+    var inEl = document.getElementById('sel-in');
+    var out = document.getElementById('sel-readout');
+    var probe = document.createElement('input');
+    probe.type = 'text'; probe.style.cssText = 'position:absolute;left:-9999px;top:0';
+    document.body.appendChild(probe);
+    var cAc = chip('chips-sel', 'sel-ac', '[autocomplete=off] vs OFF: …');
+    var cEk = chip('chips-sel', 'sel-ek', '[enterkeyhint=go] vs GO: …');
+    function render(v) {
+      probe.setAttribute('autocomplete', v);
+      var mLower = probe.matches('[autocomplete="off"]');
+      var mExact = probe.matches('[autocomplete="OFF"]');
+      out.textContent = 'attribute autocomplete=' + q(v) +
+        '\n[autocomplete="off"] matches → ' + mLower +
+        '    [autocomplete="OFF"] matches → ' + mExact +
+        '\nvalue matching is case-SENSITIVE on every engine (3/3)';
+    }
+    render(inEl.value);
+    inEl.addEventListener('input', function () { render(this.value); });
+    document.getElementById('sel-swap').addEventListener('click', function () {
+      var v = inEl.value === inEl.value.toUpperCase() ? inEl.value.toLowerCase() : inEl.value.toUpperCase();
+      inEl.value = v; render(v);
+    });
+    probe.setAttribute('autocomplete', 'OFF');
+    cAc.set(!probe.matches('[autocomplete="off"]') && probe.matches('[autocomplete="OFF"]') ? 'ok' : 'fail',
+      'OFF: lower-sel ' + probe.matches('[autocomplete="off"]'));
+    probe.setAttribute('enterkeyhint', 'GO');
+    cEk.set(!probe.matches('[enterkeyhint="go"]') && probe.matches('[enterkeyhint="GO"]') ? 'ok' : 'fail',
+      'GO: lower-sel ' + probe.matches('[enterkeyhint="go"]'));
+  })();
+
+  // ---------- §5 supports ----------
+  (function () {
+    var c1 = chip('chips-supports', 'sup-af', ':autofill …');
+    var c2 = chip('chips-supports', 'sup-wk', ':-webkit-autofill …');
+    try {
+      var s1 = CSS.supports('selector(:autofill)');
+      var s2 = CSS.supports('selector(:-webkit-autofill)');
+      c1.set(s1 ? 'ok' : 'fail', ':autofill parses → ' + s1);
+      c2.set(s2 ? 'ok' : 'fail', ':-webkit-autofill parses → ' + s2);
+    } catch (e) {
+      c1.set('fail', ':autofill — ' + e.name); c2.set('fail', 'wk — ' + e.name);
+    }
+  })();
+
+  // ---------- §8 formdata ----------
+  (function () {
+    var btn = document.getElementById('fd-btn');
+    var out = document.getElementById('fd-readout');
+    var cCarry = chip('chips-fd', 'fd-carry', 'off rides along: …');
+    var cEvt = chip('chips-fd', 'fd-evt', 'formdata event: …');
+    var evtFired = false;
+    document.getElementById('fd-form').addEventListener('formdata', function () { evtFired = true; });
+    btn.addEventListener('click', function () {
+      evtFired = false;
+      var entries = [];
+      try {
+        var fd = new FormData(document.getElementById('fd-form'));
+        fd.forEach(function (v, k) { entries.push(k + '=' + v); });
+        var hasOff = entries.some(function (e) { return e.indexOf('mission-internal-9') >= 0; });
+        out.textContent = 'FormData: ' + entries.join(' & ') + '\nformdata event fired on submit? (see chip) · off field carried: ' + hasOff;
+        cCarry.set(hasOff ? 'ok' : 'fail', hasOff ? 'off value submitted ✓' : 'off value MISSING');
+        // requestSubmit fires formdata too — via a submit-prevented listener
+        var f = document.getElementById('fd-form');
+        f.addEventListener('submit', function (e) { e.preventDefault(); }, { once: true });
+        try { f.requestSubmit(); } catch (err) { /* no submit button — some engines? */ }
+        setTimeout(function () { cEvt.set(evtFired ? 'ok' : 'warn', 'formdata on requestSubmit: ' + evtFired); }, 80);
+      } catch (e) {
+        out.textContent = 'FormData build error: ' + e;
+        cCarry.set('fail', 'FormData error');
+      }
+    });
+  })();
+
+  // ---------- §14 OpenDrones ----------
+  (function () {
+    var cTok = chip('chips-od', 'od-tok', 'section-mission tokens: …');
+    var cEkh = chip('chips-od', 'od-ekh', 'enterkeyhints: …');
+    var cCountry = chip('chips-od', 'od-country', 'country options: …');
+    var out = document.getElementById('od-readout');
+    var ids = ['od-name', 'od-tel', 'od-street', 'od-country', 'od-notes', 'od-otp'];
+    function audit() {
+      var lines = [], tokOk = 0, ekhOk = 0;
+      ids.forEach(function (id) {
+        var el = document.getElementById(id);
+        var attr = el.getAttribute('autocomplete');
+        var ekh = el.getAttribute('enterkeyhint');
+        if (attr && attr.indexOf('section-mission') === 0 || attr === 'off' || attr === 'one-time-code') tokOk++;
+        if (!ekh || ['next', 'send', 'search', 'go', 'done', 'enter', 'previous'].indexOf(ekh) >= 0) ekhOk++;
+        lines.push(id + ': autocomplete=' + q(attr) + (ekh ? ' ekh=' + q(ekh) : ''));
+      });
+      var sel = document.getElementById('od-country');
+      var names = Array.prototype.map.call(sel.options, function (o) { return o.value; });
+      var hasPlain = names.indexOf('United States') >= 0;
+      cTok.set(tokOk === ids.length ? 'ok' : 'warn', 'scope tokens: ' + tokOk + '/' + ids.length);
+      cEkh.set(ekhOk === ids.length ? 'ok' : 'warn', 'enterkeyhint valid: ' + ekhOk + '/' + ids.length);
+      cCountry.set(hasPlain ? 'ok' : 'fail', 'plain-name option value: ' + hasPlain);
+      out.textContent = lines.join('\n') + '\n(country option values: ' + names.join(', ') + ')';
+    }
+    audit();
+  })();
+
+  // footer count (after all chips registered)
+  document.getElementById('ft-chipcount').textContent = chipsTotal + ' self-verifying chips';
+  window.__chips = { total: chipsTotal, done: chipsDone };
+})();
+</script>
+</body>
+</html>
