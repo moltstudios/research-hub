@@ -1,0 +1,812 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aspect-ratio + object-fit — the replaced-element sizing tier (live-probed)</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #faf9f7; --card: #fff; --ink: #1c1b1a; --mut: #6f6a63; --acc: #0a7d6f;
+    --acc2: #b4540a; --okbg: #e7f5f0; --okink: #0a5c50; --warnbg: #fdf0e3; --warnink: #8a4b08;
+    --failbg: #fbe9e7; --failink: #a32714; --infobg: #e9eef7; --infoink: #2c4a86;
+    --line: #e7e2da; --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 18px 80px; }
+  header.hero { padding: 30px 0 10px; }
+  h1 { font-size: clamp(26px, 5vw, 38px); line-height: 1.12; letter-spacing: -.02em; margin: 0 0 10px; }
+  .sub { color: var(--mut); font-size: 14px; max-width: 62ch; overflow-wrap: anywhere; }
+  .engine-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 4px; font-size: 12.5px; }
+  .engine-bar span { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
+  section { margin-top: 46px; }
+  h2 { font-size: 19px; margin: 0 0 6px; letter-spacing: -.01em; }
+  h2 .n { color: var(--acc); font-family: var(--mono); font-size: 14px; margin-right: 8px; }
+  p.lead { color: var(--mut); font-size: 13.5px; margin: 0 0 14px; max-width: 70ch; overflow-wrap: anywhere; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 12px 0; }
+  .lane { padding: 12px; border: 1px dashed var(--line); border-radius: 10px; margin: 10px 0; background: #fdfcfa; }
+  .chip { display: inline-flex; align-items: baseline; gap: 6px; font-size: 12px; border-radius: 999px; padding: 3px 10px; margin: 3px 4px 3px 0; border: 1px solid transparent; font-family: var(--mono); }
+  .chip.pending { background: #efedea; color: var(--mut); }
+  .chip.ok { background: var(--okbg); color: var(--okink); border-color: #bfe0d6; }
+  .chip.warn { background: var(--warnbg); color: var(--warnink); border-color: #f2d9bc; }
+  .chip.fail { background: var(--failbg); color: var(--failink); border-color: #f2c4bd; }
+  .chip.info { background: var(--infobg); color: var(--infoink); border-color: #c9d6ee; }
+  .chips { margin: 8px 0 2px; }
+  .kv { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 3px 14px; font-size: 12.5px; margin: 8px 0; }
+  .kv div:nth-child(odd) { color: var(--mut); }
+  .kv div:nth-child(even) { font-family: var(--mono); overflow-wrap: anywhere; }
+  code, .mono { font-family: var(--mono); font-size: 12px; background: #f1efe9; border-radius: 5px; padding: 1px 5px; overflow-wrap: anywhere; }
+  button { font: inherit; font-size: 13px; border: 1px solid var(--line); background: var(--card); border-radius: 9px; padding: 5px 12px; cursor: pointer; }
+  button:hover { border-color: var(--acc); }
+  button.on { background: var(--acc); color: #fff; border-color: var(--acc); }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; margin: 8px 0; }
+  th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+  th { background: #f4f2ee; font-weight: 600; white-space: nowrap; }
+  td.mono, th.mono { font-family: var(--mono); }
+  @media (max-width: 680px) { table { display: block; overflow-x: auto; } }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } }
+  .ctl { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; align-items: center; }
+  .ctl button { font-size: 12px; padding: 3px 9px; border-radius: 7px; }
+  input[type=range] { width: 100%; }
+  .note { font-size: 12.5px; color: var(--mut); }
+  ol.audit { font-size: 13.5px; padding-left: 22px; }
+  ol.audit li { margin: 7px 0; }
+  ol.audit b.hi { color: var(--failink); }
+  ol.audit b.md { color: var(--warnink); }
+  .fit-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .fit-cell { text-align: center; }
+  .fit-cell img { width: 100%; height: 110px; display: block; background:
+    repeating-linear-gradient(45deg, #f0eee9 0 8px, #e5e2da 8px 16px); border-radius: 8px; border: 1px solid var(--line); }
+  .fit-cell .cap { font: 11.5px var(--mono); color: var(--mut); margin-top: 4px; }
+  .vm-host { writing-mode: vertical-rl; height: 160px; background: #f3f3f3; border-radius: 8px; padding: 6px; }
+  .wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+  .wall .cell { position: relative; }
+  .wall img { width: 100%; display: block; border-radius: 10px; border: 1px solid var(--line); }
+  .wall .tag { position: absolute; left: 8px; top: 6px; font: 10.5px var(--mono); color: #fff; background: rgba(10,18,32,.72); border-radius: 5px; padding: 1px 6px; }
+  footer { margin-top: 56px; color: var(--mut); font-size: 12px; }
+  li { overflow-wrap: anywhere; }
+  .flexcol { display: flex; flex-direction: column; height: 110px; width: 220px; background: #f3f3f3; border-radius: 8px; }
+  .flexcol > div { background: repeating-linear-gradient(45deg, #0a7d6f 0 8px, #0c9383 8px 16px); border-radius: 6px; }
+  .marker { outline: 2px solid var(--acc2); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+<header class="hero">
+  <h1>aspect-ratio + object-fit — the replaced-element sizing tier</h1>
+  <p class="sub">The sizing machinery under every media box, hero image, video wall and avatar on client sites — probed with rects + pixel sampling: the dual-value handoff (placeholder ratio → natural ratio at load), the presentational-hint trap (overriding one dimension distorts the box), the column-flex explosion (a transferred ratio beats <code>flex:1</code>), the clamp law (min/max break the ratio with no re-transfer), degenerate ratios that parse but do nothing, and the object-fit family — letterbox hit-testing, the cropped-axis position ladder, the snap-vs-animate transition split, and an object-position that never flips under RTL or vertical writing.</p>
+  <div class="engine-bar"><span>live-probed CfT 149</span><span>Firefox 151</span><span>WebKit 26.5</span><span>plain-HTTP loopback · fresh doc per lane · load-waited geometry (decode-settled)</span></div>
+  <div class="chips" id="chips-top"></div>
+</header>
+
+<section id="s1">
+  <h2><span class="n">§1</span>The precedence tier — ratio vs natural vs definite dimensions</h2>
+  <p class="lead">An image with a <b>natural 2:1 ratio</b> (generated 80×40 PNG), width 300, three forms of <code>aspect-ratio</code>. Measured live in your engine after the image has fully decoded — <b>every geometry chip on this page waits for load</b> (the probe session's own two candidate "engine splits" died exactly there: measured pre-decode, a natural 2:1 image reads as having no ratio at all).</p>
+  <div class="card">
+    <div class="lane"><img id="p-ratio" alt="" style="display:block;width:300px;border:0;border-radius:6px">
+      <div class="kv" id="kv-ratio"></div></div>
+    <div class="lane"><img id="p-dual" alt="" style="display:block;width:300px;border:0;border-radius:6px">
+      <div class="kv" id="kv-dual"></div></div>
+    <div class="lane"><img id="p-natural" alt="" style="display:block;width:300px;border:0;border-radius:6px">
+      <div class="kv" id="kv-nat"></div></div>
+    <div class="chips" id="chips-s1"></div>
+    <p class="note"><b>The precedence law:</b> <code>aspect-ratio: &lt;ratio&gt;</code> (no <code>auto</code>) <b>beats the natural ratio</b> — 300×300. <code>auto &lt;ratio&gt;</code> (the dual form, either order — it serializes as <code>auto 1 / 1</code>) <b>defers to the natural ratio once one exists</b> — 300×150. Both-definite dimensions (<code>width</code>+<code>height</code>) beat everything.</p>
+  </div>
+</section>
+
+<section id="s2">
+  <h2><span class="n">§2</span>THE AUTO-RATIO HANDOFF — the anti-CLS primitive, measured two-phase</h2>
+  <p class="lead">The dual form is a <b>placeholder contract</b>: before the image's natural ratio exists, the <b>specified</b> ratio reserves the box; the moment the image decodes, the natural ratio takes over. Live: this page assigns the src <b>900 ms after load</b> — watch the two phases. The shift meter proves the mechanism: match the placeholder to the natural ratio and the handoff is shift-free; omit it and the box grows from height 0.</p>
+  <div class="card">
+    <div class="ctl"><button id="h-again">re-run the handoff</button><span class="note" id="h-note"></span></div>
+    <div class="grid2">
+      <div class="lane"><div class="note" style="margin-bottom:6px">dual <code>auto 3 / 4</code> — placeholder 3:4 (the true ratio is 2:1, so the box <b>shifts</b> when nature arrives)</div>
+        <img id="h-dual" alt="" style="display:block;width:300px;border:0;border-radius:6px;background:#eef7f4">
+        <div class="kv" id="kv-hdual"></div></div>
+      <div class="lane"><div class="note" style="margin-bottom:6px">no ratio — height 0 until decode, the biggest jump</div>
+        <img id="h-none" alt="" style="display:block;width:300px;border:0;border-radius:6px;background:#fdf1ee">
+        <div class="kv" id="kv-hnone"></div></div>
+    </div>
+    <div class="chips" id="chips-s2"></div>
+    <p class="note">This is the exact machinery behind the <code>width</code>/<code>height</code>-attribute anti-CLS pattern: the UA derives <code>aspect-ratio: auto &lt;w&gt; / &lt;h&gt;</code> from the attributes (§6) — attributes and the dual form are the same handoff.</p>
+  </div>
+</section>
+
+<section id="s3">
+  <h2><span class="n">§3</span>The grammar census — type your own value</h2>
+  <p class="lead">Serialization truth in your engine: type any <code>aspect-ratio</code> value, see the declaration's survival, the computed value, and <code>CSS.supports()</code>. The census below carries the bench findings: <b>degenerate ratios parse</b> (<code>1 / 0</code>, <code>0 / 0</code> — valid everywhere!), scientific notation works (<code>1e2 / 1</code> → <code>100 / 1</code>), bare numbers mean <code>n / 1</code>, and <code>attr()</code> parses on Chromium only.</p>
+  <div class="card">
+    <div class="ctl"><code style="font-size:13px">aspect-ratio:</code> <input id="g-in" style="font:13px var(--mono);width:220px;border:1px solid var(--line);border-radius:7px;padding:4px 8px" value="auto 16 / 9" spellcheck="false"> <button id="g-go">set</button></div>
+    <div class="kv" id="kv-grammar"></div>
+    <div class="chips" id="chips-s3"></div>
+    <table id="grammar-table">
+      <tr><th>value</th><th>decl survives</th><th>getComputedStyle</th><th>supports()</th><th>bench note</th></tr>
+    </table>
+  </div>
+</section>
+
+<section id="s4">
+  <h2><span class="n">§4</span>DEGENERATE RATIOS — they parse, then do nothing</h2>
+  <p class="lead"><code>1 / 0</code>, <code>0 / 1</code> and <code>0 / 0</code> are <b>valid CSS</b> on every engine (they survive in gCS). At used-value time they are <b>unusable and ignored</b>: on a plain div the height collapses to 0 (exactly as with no ratio), and on an image the <b>natural ratio takes over</b> — <code>1 / 0</code> does not zero the height, it falls back to 2:1. There is no error anywhere, in the console or elsewhere.</p>
+  <div class="card">
+    <div class="fit-strip" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+      <div class="lane"><div class="note">div · <code>1 / 0</code></div><div id="d-10" style="width:100%;aspect-ratio:1/0;background:#e5e2da;border-radius:6px"></div><div class="kv" id="kv-d10"></div></div>
+      <div class="lane"><div class="note">div · <code>0 / 0</code></div><div id="d-00" style="width:100%;aspect-ratio:0/0;background:#e5e2da;border-radius:6px"></div><div class="kv" id="kv-d00"></div></div>
+      <div class="lane"><div class="note">img · <code>1 / 0</code></div><img id="d-i10" alt="" style="width:100%;aspect-ratio:1/0;display:block;border:0;border-radius:6px"><div class="kv" id="kv-di10"></div></div>
+      <div class="lane"><div class="note">div · <code>1 / 0</code> + <code>min-height:50px</code></div><div id="d-min" style="width:100%;aspect-ratio:1/0;min-height:50px;background:#e5e2da;border-radius:6px"></div><div class="kv" id="kv-dmin"></div></div>
+    </div>
+    <div class="chips" id="chips-s4"></div>
+  </div>
+</section>
+
+<section id="s5">
+  <h2><span class="n">§5</span>THE CLAMP LAW — min/max break the ratio, and nothing re-transfers</h2>
+  <p class="lead">A max-height on a ratio box clamps <b>one axis</b> and the ratio simply <b>breaks</b>: 300px-wide 1/1 box with <code>max-height:100px</code> becomes 300×100 — the engine does <b>not</b> shrink the width to 100×100. Same for max-width on a height-derived box (height stays 200). There is no second pass through the ratio. Bench matrix re-measured live:</p>
+  <div class="card">
+    <table id="clamp-table">
+      <tr><th>fixture</th><th>expected</th><th>measured</th><th>verdict</th></tr>
+    </table>
+    <div class="chips" id="chips-s5"></div>
+    <p class="note"><b>Production shape:</b> "my 16:9 box with <code>max-height</code> is no longer 16:9" is this law. If you need both the ratio and the cap, put the cap on the <em>definite</em> axis (usually width) and let the ratio derive the rest, or wrap it.</p>
+  </div>
+</section>
+
+<section id="s6">
+  <h2><span class="n">§6</span>THE PRESENTATIONAL-HINT TRAP — <code>width</code>/<code>height</code> attrs live in the cascade</h2>
+  <p class="lead">The attributes are not metadata — they are <b>presentational hints</b> (UA-level <code>width</code>/<code>height</code> declarations). The classic responsive override <code>img { width:100% }</code> overrides <b>only the width</b>; the attr height survives as a hint and pins the box at <b>80px</b> — a distorted 300×80 box with <b>no ratio applied</b> (both axes are definite: CSS width + hint height). The canonical fix overrides <b>both</b>: <code>width:100%; height:auto</code> → the <code>auto</code> re-opens the ratio and you get 300×400.</p>
+  <div class="card">
+    <table id="hint-table">
+      <tr><th>fixture (natural 3:4, attrs 60×80)</th><th>expected</th><th>measured</th><th>verdict</th></tr>
+    </table>
+    <div class="chips" id="chips-s6"></div>
+    <div class="lane">
+      <div class="note" style="margin-bottom:6px">The observable: the attr-derived ratio serializes in gCS as a <b>dual value</b> — <code>auto 60 / 80</code> — and a CSS <code>aspect-ratio</code> replaces it entirely.</div>
+      <div class="kv" id="kv-hint"></div>
+    </div>
+  </div>
+</section>
+
+<section id="s7">
+  <h2><span class="n">§7</span>THE COLUMN-FLEX EXPLOSION — a transferred ratio beats <code>flex:1</code></h2>
+  <p class="lead">Headline layout law: a ratio box in a <b>column</b> flex container cross-stretches to the container's width, the ratio transfers that width into a height, and the transferred height becomes the item's <b>automatic minimum</b> (<code>min-height:auto</code>) — which <b>beats <code>flex:1</code></b>. A 220px-wide, 110px-tall column renders a <b>220×220 child overflowing it</b>. <code>flex: 1 1 0%</code> does not save it (the floor, not the basis, is the problem). The fixes: <code>min-height:0</code> (restores flex sizing — the box becomes 220×110) or <code>align-self:flex-start</code> (no stretch → the main-size drives the transfer instead).</p>
+  <div class="card">
+    <div class="fit-strip">
+      <div class="lane"><div class="note">naive <code>flex:1</code></div>
+        <div class="flexcol"><div id="x-naive" style="aspect-ratio:1/1;flex:1"></div></div>
+        <div class="kv" id="kv-xnaive"></div></div>
+      <div class="lane"><div class="note"><code>flex:1</code> + <code>min-height:0</code></div>
+        <div class="flexcol"><div id="x-min" style="aspect-ratio:1/1;flex:1;min-height:0"></div></div>
+        <div class="kv" id="kv-xmin"></div></div>
+      <div class="lane"><div class="note"><code>align-self:flex-start</code></div>
+        <div class="flexcol"><div id="x-start" style="aspect-ratio:1/1;flex:1;align-self:flex-start"></div></div>
+        <div class="kv" id="kv-xstart"></div></div>
+    </div>
+    <div class="chips" id="chips-s7"></div>
+    <p class="note">Bench detail: with <code>align-self:flex-start</code> the flex main-size (110) drives and the ratio transfers the <em>width</em> to 110 — the box obeys the container. The stretch-transfer priority is the whole story: <b>stretch + transfer &gt; flex sizing; no stretch → flex sizing &gt; transfer.</b></p>
+  </div>
+</section>
+
+<section id="s8">
+  <h2><span class="n">§8</span>Grid + stretch — the ratio wins, never the stretch</h2>
+  <p class="lead">Grid auto rows <b>receive</b> the transferred height (a 1fr-column 16/9 child sizes its row to 168.75px), and a ratio box's height is never stretched by <code>align-items:stretch</code> — the ratio-derived height counts as definite, so a ratio child next to a 300px sibling in an auto row stays 100×100 while the sibling stretches the row. Also: grid <b>auto tracks stretch</b> to fill free space (the grid-tier law), so a 200px ratio child sits in a much wider auto track — that is the track stretching, not the child.</p>
+  <div class="card">
+    <div class="lane"><div class="note" style="margin-bottom:6px">auto row · ratio child + 80px sibling (row = max(100, 80) = 100; ratio child NOT stretched)</div>
+      <div id="g-mix" style="display:grid;grid-template-columns:100px 100px;gap:6px">
+        <div id="g-ratio" style="aspect-ratio:1/1;background:#d5ece7;border-radius:6px"></div>
+        <div id="g-sib" style="height:80px;background:#e5e2da;border-radius:6px"></div>
+      </div>
+      <div class="kv" id="kv-grid"></div></div>
+    <div class="chips" id="chips-s8"></div>
+  </div>
+</section>
+
+<section id="s9">
+  <h2><span class="n">§9</span>The box-sizing law — the ratio always measures the border box</h2>
+  <p class="lead">With <code>box-sizing:content-box</code>, a 100px-wide 1/1 box with 20px padding and a 10px border comes out <b>160×160</b> — the ratio is applied to the <b>full border box</b>, so the box stays square but grows past the authored width. <code>border-box</code> gives 100×100. Padded ratio boxes are only pixel-predictable under <code>border-box</code>.</p>
+  <div class="card">
+    <div class="fit-strip" style="grid-template-columns:1fr 1fr">
+      <div class="lane"><div class="note">content-box (100 content + 40 pad + 20 border)</div>
+        <div id="b-cb" style="box-sizing:content-box;width:100px;aspect-ratio:1/1;padding:20px;border:10px solid #335;background:#d5ece7;border-radius:4px"></div>
+        <div class="kv" id="kv-cb"></div></div>
+      <div class="lane"><div class="note">border-box</div>
+        <div id="b-bb" style="box-sizing:border-box;width:100px;aspect-ratio:1/1;padding:20px;border:10px solid #335;background:#d5ece7;border-radius:4px"></div>
+        <div class="kv" id="kv-bb"></div></div>
+    </div>
+    <div class="chips" id="chips-s9"></div>
+  </div>
+</section>
+
+<section id="s10">
+  <h2><span class="n">§10</span>THE WRITING-MODE LAW — ratio numbers bind to width/height, and object-position never flips</h2>
+  <p class="lead">Under <code>writing-mode:vertical-rl</code>, <code>aspect-ratio:2/1</code> still renders <b>landscape</b> (2 wide : 1 tall) — the first number is the physical <em>width</em> even when the inline axis is vertical. And <code>object-position</code> is fully physical: under <code>dir=rtl</code> and under vertical writing modes, <code>0%</code> is still the <b>left</b> edge — content never mirrors.</p>
+  <div class="card">
+    <div class="grid2">
+      <div class="lane"><div class="note" style="margin-bottom:6px">vertical-rl host · <code>aspect-ratio:2/1</code> child → landscape</div>
+        <div class="vm-host"><div id="w-vm" style="aspect-ratio:2/1;background:#d5ece7;border-radius:6px"></div></div>
+        <div class="kv" id="kv-vm"></div></div>
+      <div class="lane"><div class="note" style="margin-bottom:6px">dir=rtl · contain + <code>object-position:0% 50%</code> → content at the LEFT</div>
+        <div dir="rtl"><img id="w-rtl" alt="" style="width:100%;height:110px;object-fit:contain;object-position:0% 50%;display:block;border:0;border-radius:6px"></div>
+        <div class="kv" id="kv-rtl"></div></div>
+    </div>
+    <div class="chips" id="chips-s10"></div>
+  </div>
+</section>
+
+<section id="s11">
+  <h2><span class="n">§11</span>The replaced-element census — img / canvas / svg / iframe / video</h2>
+  <p class="lead">Default sizing (300×150 default object size for canvas/iframe/video without dimensions), the svg <code>viewBox</code> ratio (works everywhere once decoded — an svg with <code>viewBox</code> and no width/height in an <code>&lt;img&gt;</code> reports natural 300×150 <em>scaled by the ratio</em> and auto-width fills the container), and the no-src / broken-src box family — where the engines genuinely disagree. All geometry below is decode-settled.</p>
+  <div class="card">
+    <table id="replaced-table">
+      <tr><th>fixture</th><th>cft 149</th><th>ff 151</th><th>wk 26.5</th><th>live (yours)</th></tr>
+    </table>
+    <div class="chips" id="chips-s11"></div>
+    <p class="note"><b>Bench splits (settled states, not load races):</b> <code>src=""</code> → CfT renders a full-width 0-height box, FF/WK collapse to 0×0 · broken src + <code>alt</code> → CfT renders the alt as a full-width text box, FF/WK render nothing (0×0) · broken src <b>with width/height attrs</b> → 100×50 everywhere (the attr box is the CLS safety net: it applies even when the image never arrives). Headless lane limit: broken-image chrome differs headed vs headless; the geometry readings were stable across both.</p>
+  </div>
+</section>
+
+<section id="s12">
+  <h2><span class="n">§12</span>object-fit — the five values, where the source pixels land</h2>
+  <p class="lead">Bench geometry (pixel-sampled with a position-encoded 8×8 source — left half red, right half blue, top row green — in a 2:1 box): <b>fill</b> stretches (distorts) · <b>contain</b> letterboxes (100-wide content centered in 200) · <b>cover</b> scales to 200×200 and crops 50px off top and bottom (the green top row is gone) · <b>none</b> paints the 8×8 at natural size, dead center · <b>scale-down</b> ≡ <b>none</b> whenever natural is the smaller (the switching law: <code>none</code> vs <code>contain</code>, whichever is smaller). Fixtures below run live; the script-readable laws are chipped.</p>
+  <div class="card">
+    <div class="fit-strip">
+      <div class="fit-cell"><img id="of-fill" alt="" style="object-fit:fill"><div class="cap">fill — stretched</div></div>
+      <div class="fit-cell"><img id="of-contain" alt="" style="object-fit:contain"><div class="cap">contain — letterboxed</div></div>
+      <div class="fit-cell"><img id="of-cover" alt="" style="object-fit:cover"><div class="cap">cover — cropped</div></div>
+      <div class="fit-cell"><img id="of-none" alt="" style="object-fit:none"><div class="cap">none — 8×8 center</div></div>
+      <div class="fit-cell"><img id="of-sd" alt="" style="object-fit:scale-down"><div class="cap">scale-down ≡ none</div></div>
+    </div>
+    <div class="chips" id="chips-s12"></div>
+    <div class="lane">
+      <div class="note" style="margin-bottom:6px"><b>The element-box law + the hit-test law:</b> object-fit never changes the element box (rects stay 100%×110) and the letterbox zone is still the <em>image</em> — clicks in empty letterbox hit the <code>&lt;img&gt;</code>. And cover's crop is paint-only: <code>scrollWidth === clientWidth</code>, the cropped content never enters scrollable overflow.</div>
+      <div class="kv" id="kv-of"></div>
+    </div>
+  </div>
+</section>
+
+<section id="s13">
+  <h2><span class="n">§13</span>object-position — the offset grammar, the percentage math, and the snap split</h2>
+  <p class="lead">Percentages resolve against <code>(box − content)</code> on each axis — with <code>contain</code> in a 200-wide box and 100-wide content, <code>0%→x 0</code>, <code>50%→x 50</code>, <code>100%→x 100</code>. The 4-part offset grammar works exactly like <code>background-position</code> (<code>right 10px bottom 10px</code> → <code>calc(100% - 10px) calc(100% - 10px)</code>), a single value sets x with y defaulting to <code>center</code>, and <code>canvas</code> obeys object-fit just like img (pixel-verified on the bench). Then the transition split: <b>object-fit snaps at t=0</b> (like mix-blend-mode) while <b>object-position animates</b> — both live below.</p>
+  <div class="card">
+    <div class="ctl"><label style="font-size:12px">position <select id="op-sel" style="font:12px var(--mono)">
+      <option>0% 50%</option><option>50% 50%</option><option>100% 50%</option><option>right 10px bottom 10px</option><option>25% 75%</option>
+    </select></label> <button id="op-run">run the transition</button></div>
+    <div class="lane"><img id="op-img" alt="" style="width:100%;height:120px;object-fit:contain;object-position:0% 50%;display:block;border:0;border-radius:8px">
+      <div class="kv" id="kv-op"></div></div>
+    <div class="chips" id="chips-s13"></div>
+    <table id="op-table">
+      <tr><th>value</th><th>declaration</th><th>computed</th><th>supports</th></tr>
+    </table>
+  </div>
+</section>
+
+<section id="s14">
+  <h2><span class="n">§14</span>OpenDrones capstone — the zero-shift mission media wall</h2>
+  <p class="lead">A mission stills wall built on the handoff: every cell reserves its box with the <b>dual form</b> (<code>aspect-ratio:auto 16/9</code>) so late-loading thumbnails never shift the grid; portrait source stills are <code>object-fit:cover</code> with <code>object-position</code> chosen per shot (the cropped-axis ladder — top-aligned for horizon shots, center for subjects); the wall is a grid (never a column-flex row — §7), and the wall's aspect ratios are structural (readable from gCS, asserted live).</p>
+  <div class="card">
+    <div class="wall" id="wall"></div>
+    <div class="chips" id="chips-s14"></div>
+  </div>
+</section>
+
+<section id="s15">
+  <h2><span class="n">§15</span>Molt capstone — the client media-box audit (12 checks)</h2>
+  <p class="lead">Half a day, pass-most-of-code-review. Checks 1–5 are invisible in review and present on a large share of shipped sites.</p>
+  <div class="card">
+    <ol class="audit">
+      <li><b class="hi">Responsive img overrides that set only <code>width</code></b> — the attr height survives as a hint → distorted boxes (§6). Fix: always pair with <code>height:auto</code>.</li>
+      <li><b class="hi">Ratio boxes with <code>max-height</code> expected to keep the ratio</b> — the clamp breaks it, nothing re-transfers (§5).</li>
+      <li><b class="hi">Ratio boxes as direct children of column-flex toolbars/sidebars</b> — the stretch-transfer explosion overflows the container on every engine (§7).</li>
+      <li><b class="hi">Lazy/late images with no ratio box at all</b> — height 0 until decode, then a jump (§2); attrs or <code>auto &lt;ratio&gt;</code> reserve the box.</li>
+      <li><b class="hi"><code>aspect-ratio</code> expected on <code>content-box</code> elements with padding</code></b> — the box stays square but exceeds the authored width (§9); ship <code>border-box</code>.</li>
+      <li><b class="md">Cover-cropped avatars/products assuming the crop is centered</b> — default is center; faces at frame edges need <code>object-position</code> (§13).</li>
+      <li><b class="md">Click handlers surprised that letterbox zones hit the image</b> — the whole element box is the hit target (§12); overlays need their own layer.</li>
+      <li><b class="md">viewBox-only SVGs in <code>&lt;img&gt;</code> tags without width/height</b> — auto-width fills the row (300×150-derived natural size, not icon-sized); export with explicit dimensions or size the img (§11).</li>
+      <li><b class="md">Transitioning <code>object-fit</code></b> — it snaps at t=0 on every engine; transition <code>object-position</code> or opacity instead (§13).</li>
+      <li><b class="md">RTL layouts expecting <code>object-position</code> to mirror</b> — it never flips; position with logical thinking applied to the element, not the content (§10).</li>
+      <li><b class="md">Broken-image layouts assumed identical cross-engine</b> — CfT renders alt/broken boxes full-width; FF/WK collapse (§11); attrs keep the box everywhere.</li>
+      <li><b class="md">Animating media-box growth with height keyframes</b> — <code>transition: aspect-ratio</code> animates the ratio itself on all 3 engines (§3 bench); simpler than interpolate-size for ratio-only growth.</li>
+    </ol>
+  </div>
+</section>
+
+<section id="s16">
+  <h2><span class="n">§16</span>Method, falsifications, engine ledger</h2>
+  <div class="card">
+    <p class="lead"><b>Method:</b> 7 probe batteries (~35 lane families × 3 engines = ~100 lane-runs) over a plain-HTTP loopback origin, fresh document per lane, <b>decode-settled geometry</b> (every image lane waits for <code>complete</code> + 2×rAF before measuring — the session's own two false splits died exactly there), pixel truth for object-fit placement via screenshot + pngjs sampling of a position-encoded 8×8 fixture (object-fit paint is not script-readable — rects and scrollWidth cannot see it), trusted transitions sampled from gCS at 100ms intervals, contested lanes ×2 reps.</p>
+    <div class="lane">
+      <div class="note"><b>Falsified this session (2, both mine — the load-race family):</b></div>
+      <ol style="font-size:13px;padding-left:20px;margin:6px 0">
+        <li><b>"The dual form splits by engine" (CfT natural-wins vs FF/WK specified-wins)</b> — the FF/WK lanes measured images that hadn't decoded: no natural ratio → the specified ratio applied. Decode-settled: <b>natural wins on all three</b>, exactly as specced.</li>
+        <li><b>"viewBox-only SVGs in imgs collapse on FF/WK"</b> — same race. Settled: the viewBox ratio works everywhere (natural 300×150 scaled by ratio, auto-width fills).</li>
+      </ol>
+    </div>
+    <table id="ledger">
+      <tr><th>law</th><th>cft 149</th><th>ff 151</th><th>wk 26.5</th></tr>
+    </table>
+    <div class="chips" id="chips-s16"></div>
+    <p class="note"><b>Lane limits:</b> video object-fit not pixel-probed (no media fixtures in the batteries — the img/canvas laws transfer by the same replaced-element machinery; the demo wall uses images); broken-image chrome differs headed vs headless on CfT (geometry stable); DPR-density-corrected <code>naturalWidth</code> covered in the srcset/sizes tier; <code>attr()</code> in aspect-ratio parses on CfT but resolves nowhere (gCS <code>auto</code>).</p>
+  </div>
+</section>
+
+<footer>
+  <p>Probe bench: 2026-11-11 · CfT 149.0.x · Firefox 151 · WebKit 26.5 · plain-HTTP loopback, fresh doc per lane, decode-settled geometry, pngjs pixel sampling. Part of the <a href="../index.html">molt-research</a> live-probe catalog — see the <a href="mix-blend-mode-tier.html">compositing tier</a> (the snap-law family), the <a href="grid-engine-tier.html">grid engine tier</a> (auto-track stretch), the <a href="flexbox-engine-tier.html">flexbox engine tier</a> (the automatic-minimum family), and the <a href="ri-srcset-sizes.html">srcset/sizes tier</a> (density-corrected naturals).</p>
+</footer>
+</main>
+<script>
+(function () {
+  'use strict';
+  var chipsTotal = 0, chipsDone = 0;
+  function chip(host, id, text) {
+    var el = document.getElementById(host);
+    var c = document.createElement('span');
+    c.className = 'chip pending'; c.id = 'chip-' + id; c.textContent = text;
+    el.appendChild(c); chipsTotal++;
+    return { set: function (cls, txt) { c.className = 'chip ' + cls; c.textContent = txt; chipsDone++; } };
+  }
+  window.addEventListener('error', function (e) {
+    var t = document.getElementById('chips-top');
+    var c = document.createElement('span'); c.className = 'chip fail';
+    c.textContent = 'pageerror: ' + String(e.message).slice(0, 120);
+    t.appendChild(c);
+  });
+  function kv(id, pairs) {
+    var el = document.getElementById(id); el.innerHTML = '';
+    pairs.forEach(function (p) {
+      var a = document.createElement('div'); a.textContent = p[0];
+      var b = document.createElement('div'); b.textContent = p[1];
+      el.appendChild(a); el.appendChild(b);
+    });
+  }
+  function box(el) { var r = el.getBoundingClientRect(); return [Math.round(r.width * 10) / 10, Math.round(r.height * 10) / 10]; }
+  function fmt(b) { return b[0] + ' × ' + b[1]; }
+  function near(b, w, h, tol) { return Math.abs(b[0] - w) <= (tol || 1) && Math.abs(b[1] - h) <= (tol || 1); }
+
+  // ---- runtime-generated fixtures (no network, decode-settled) ----
+  function png(w, h, paint) {
+    var c = document.createElement('canvas'); c.width = w; c.height = h;
+    var x = c.getContext('2d'); paint(x, w, h);
+    return c.toDataURL('image/png');
+  }
+  var IMG_2x1 = png(80, 40, function (x, w, h) { x.fillStyle = '#0a7d6f'; x.fillRect(0, 0, w, h); });
+  var IMG_3x4 = png(60, 80, function (x, w, h) { x.fillStyle = '#b4540a'; x.fillRect(0, 0, w / 2, h); x.fillStyle = '#e5e2da'; x.fillRect(w / 2, 0, w / 2, h); });
+  var POS8 = png(8, 8, function (x) {
+    x.fillStyle = '#00c853'; x.fillRect(0, 0, 8, 1);
+    x.fillStyle = '#d32f2f'; x.fillRect(0, 1, 4, 7);
+    x.fillStyle = '#304ffe'; x.fillRect(4, 1, 4, 7);
+  });
+  function setSrc(img, src, cb) {
+    if (img.complete && img.naturalWidth > 0 && img.src === src) { cb(); return; }
+    img.onload = function () { img.onload = null; cb(); };
+    img.onerror = function () { img.onerror = null; cb(); };
+    img.src = src;
+  }
+  var settle = function (fn) { requestAnimationFrame(function () { requestAnimationFrame(fn); }); };
+
+  // ================= §1 precedence =================
+  (function () {
+    var c1 = chip('chips-s1', 's1a', 'ratio beats natural'), c2 = chip('chips-s1', 's1b', 'dual: natural wins'), c3 = chip('chips-s1', 's1c', 'both-definite beats all');
+    var ir = document.getElementById('p-ratio'), id = document.getElementById('p-dual'), inn = document.getElementById('p-natural');
+    ir.style.aspectRatio = '1 / 1'; id.style.aspectRatio = 'auto 1 / 1';
+    var n = 0; function done() { if (++n < 3) return; settle(function () {
+      var br = box(ir), bd = box(id), bn = box(inn);
+      kv('kv-ratio', [['box (ratio 1/1)', fmt(br)], ['gCS', getComputedStyle(ir).aspectRatio]]);
+      kv('kv-dual', [['box (auto 1/1)', fmt(bd)], ['gCS', getComputedStyle(id).aspectRatio]]);
+      kv('kv-nat', [['box (natural 2:1)', fmt(bn)], ['gCS', getComputedStyle(inn).aspectRatio]]);
+      // a definite height would beat everything — measured via a twin
+      var t = document.createElement('img'); t.style.cssText = 'display:block;width:300px;height:90px;border:0'; t.src = IMG_2x1;
+      t.style.aspectRatio = '1 / 1'; document.getElementById('p-natural').parentNode.appendChild(t);
+      var bt = [0, 0];
+      setSrc(t, IMG_2x1, function () { settle(function () {
+        bt = box(t);
+        c1.set(near(br, 300, 300) ? 'ok' : 'fail', 'ratio 1/1 → ' + fmt(br) + ' (natural ignored)');
+        c2.set(near(bd, 300, 150) ? 'ok' : 'fail', 'auto 1/1 → ' + fmt(bd) + ' (natural 2:1 wins)');
+        c3.set(near(bt, 300, 90) ? 'ok' : 'fail', 'width+height+ratio → ' + fmt(bt) + ' (dims win)');
+        t.remove();
+      }); });
+    }); }
+    setSrc(ir, IMG_2x1, done); setSrc(id, IMG_2x1, done); setSrc(inn, IMG_2x1, done);
+  })();
+
+  // ================= §2 handoff =================
+  (function () {
+    var cd = chip('chips-s2', 'h1', 'dual: placeholder → natural'), cn = chip('chips-s2', 'h2', 'no ratio: 0 → natural');
+    var hd = document.getElementById('h-dual'), hn = document.getElementById('h-none');
+    function run() {
+      document.getElementById('h-note').textContent = 'src assigned at +900ms — watch the boxes';
+      hd.src = ''; hn.src = ''; hd.removeAttribute('src'); hn.removeAttribute('src');
+      hd.style.aspectRatio = 'auto 3 / 4'; hn.style.aspectRatio = '';
+      var phase1d, phase1n;
+      setTimeout(function () {
+        phase1d = box(hd); phase1n = box(hn);
+        kv('kv-hdual', [['phase 1 (pre-src)', fmt(phase1d)]]);
+        kv('kv-hnone', [['phase 1 (pre-src)', fmt(phase1n)]]);
+        setSrc(hd, IMG_2x1, function () { setSrc(hn, IMG_2x1, function () { settle(function () {
+          var bd = box(hd), bn = box(hn);
+          kv('kv-hdual', [['phase 1 (placeholder 3:4)', fmt(phase1d)], ['phase 2 (natural 2:1)', fmt(bd)], ['Δheight', Math.round(bd[1] - phase1d[1]) + 'px']]);
+          kv('kv-hnone', [['phase 1 (no ratio)', fmt(phase1n)], ['phase 2 (natural 2:1)', fmt(bn)], ['Δheight', Math.round(bn[1] - phase1n[1]) + 'px']]);
+          cd.set(near(phase1d, 300, 400, 2) && near(bd, 300, 150, 2) ? 'ok' : 'fail', '300×' + phase1d[1] + ' → 300×' + bd[1]);
+          cn.set(near(phase1n, 300, 0, 2) && near(bn, 300, 150, 2) ? 'ok' : 'fail', '300×' + phase1n[1] + ' → 300×' + bn[1]);
+          document.getElementById('h-note').textContent = 'handoff complete — re-run to watch again';
+        }); }); });
+      }, 900);
+    }
+    document.getElementById('h-again').onclick = run;
+    run();
+  })();
+
+  // ================= §3 grammar =================
+  (function () {
+    var probe = document.createElement('div'); document.body.appendChild(probe);
+    var c1 = chip('chips-s3', 'g1', '1e2 → 100 / 1'), c2 = chip('chips-s3', 'g2', '1/0 parses'), c3 = chip('chips-s3', 'g3', 'auto+ratio dual serializes');
+    function test(v) {
+      probe.style.aspectRatio = '';
+      probe.style.aspectRatio = v;
+      var ser = probe.style.aspectRatio;
+      return { v: v, ser: ser === '' ? '(dropped)' : ser, g: getComputedStyle(probe).aspectRatio, s: CSS.supports('aspect-ratio', v) ? 'yes' : 'no' };
+    }
+    window.__grammarTest = test;
+    function render(r) {
+      kv('kv-grammar', [['declaration', r.ser], ['getComputedStyle', r.g], ['CSS.supports', r.s]]);
+    }
+    document.getElementById('g-go').onclick = function () { render(test(document.getElementById('g-in').value)); };
+    render(test('auto 16 / 9'));
+    var rows = [
+      ['1.5', 'number = ratio/1', '1.5 / 1'],
+      ['auto 16 / 9', 'dual form (either order)', 'auto 16 / 9'],
+      ['1 / 0', 'DEGENERATE — parses everywhere', '1 / 0'],
+      ['0 / 0', 'degenerate', '0 / 0'],
+      ['-1 / 2', 'negative → dropped', 'auto'],
+      ['calc(16 / 9)', 'calc works; gCS keeps calc form', 'calc(1.77778) / 1'],
+      ['attr(width) / attr(height)', 'parses on CfT only, resolves nowhere', 'auto'],
+      ['1e2 / 1', 'scientific notation', '100 / 1'],
+      ['5 / auto', 'invalid (auto is not a ratio term)', 'auto'],
+      ['16 / 9 !important (inline)', 'important rejected via the setter', 'auto']
+    ];
+    var t = document.getElementById('grammar-table');
+    rows.forEach(function (row) {
+      var live = test(row[0]);
+      var tr = document.createElement('tr');
+      [row[0], live.ser, live.g, live.s, row[1]].forEach(function (cell, i) {
+        var td = document.createElement(i > 3 ? 'td' : 'td'); td.className = i < 4 ? 'mono' : ''; td.textContent = cell;
+        if (i === 4) td.className = ''; tr.appendChild(td);
+      });
+      t.appendChild(tr);
+    });
+    var r1 = test('1e2 / 1'), r2 = test('1 / 0'), r3 = test('auto 16 / 9');
+    c1.set(r1.g.indexOf('100') === 0 ? 'ok' : 'fail', '1e2/1 → ' + r1.g);
+    c2.set(r2.s === 'yes' && r2.g === '1 / 0' ? 'ok' : 'fail', '1/0 → ' + r2.g + ' · supports ' + r2.s);
+    c3.set(r3.g === 'auto 16 / 9' ? 'ok' : 'fail', 'auto-order canonical: ' + r3.g);
+    probe.remove();
+  })();
+
+  // ================= §4 degenerate =================
+  (function () {
+    var c1 = chip('chips-s4', 'd1', 'div 1/0 → h0'), c2 = chip('chips-s4', 'd2', 'div 0/0 → h0'), c3 = chip('chips-s4', 'd3', 'img 1/0 → natural'), c4 = chip('chips-s4', 'd4', 'min-height still applies');
+    var i = document.getElementById('d-i10');
+    setSrc(i, IMG_2x1, function () { settle(function () {
+      var b10 = box(document.getElementById('d-10')), b00 = box(document.getElementById('d-00')), bi = box(i), bm = box(document.getElementById('d-min'));
+      kv('kv-d10', [['box', fmt(b10)]]); kv('kv-d00', [['box', fmt(b00)]]);
+      kv('kv-di10', [['box', fmt(bi)], ['natural', i.naturalWidth + '×' + i.naturalHeight]]);
+      kv('kv-dmin', [['box', fmt(bm)]]);
+      c1.set(b10[1] === 0 ? 'ok' : 'fail', 'h=' + b10[1]);
+      c2.set(b00[1] === 0 ? 'ok' : 'fail', 'h=' + b00[1]);
+      c3.set(Math.abs(bi[1] - bi[0] / 2) <= 1.5 && bi[1] > 0 ? 'ok' : 'fail', 'ratio 1:2 kept → ' + fmt(bi));
+      c4.set(bm[1] === 50 ? 'ok' : 'fail', 'h=' + bm[1]);
+    }); });
+  })();
+
+  // ================= §5 clamp =================
+  (function () {
+    var fixtures = [
+      ['width:300 · ar 1/1 · max-height:100', '300 × 100', function (el) { el.style.cssText = 'width:300px;aspect-ratio:1/1;max-height:100px;background:#d5ece7;border-radius:6px'; return [300, 100]; }],
+      ['width:100 · ar 1/1 · min-height:150 (clamps up)', '100 × 150', function (el) { el.style.cssText = 'width:100px;aspect-ratio:1/1;min-height:150px;background:#d5ece7;border-radius:6px'; return [100, 150]; }],
+      ['height:200 · ar 16/9 · max-width:100', '100 × 200', function (el) { el.style.cssText = 'height:200px;aspect-ratio:16/9;max-width:100px;background:#d5ece7;border-radius:6px'; return [100, 200]; }],
+      ['width:100 · ar 1/1 · min-height:300', '100 × 300', function (el) { el.style.cssText = 'width:100px;aspect-ratio:1/1;min-height:300px;background:#d5ece7;border-radius:6px'; return [100, 300]; }]
+    ];
+    var t = document.getElementById('clamp-table'); var host = document.createElement('div'); document.body.appendChild(host);
+    var chips = fixtures.map(function (f, i) { return chip('chips-s5', 'c' + i, f[0].slice(0, 26)); });
+    settle(function () {
+      fixtures.forEach(function (f, i) {
+        var el = document.createElement('div'); host.appendChild(el);
+        var exp = f[2](el);
+        var b = box(el);
+        var tr = document.createElement('tr');
+        [f[0], f[1], fmt(b), near(b, exp[0], exp[1]) ? '✓ ratio broken as measured' : '✗ unexpected'].forEach(function (cell, ci) {
+          var td = document.createElement('td'); if (ci !== 0 && ci !== 3) td.className = 'mono'; td.textContent = cell; tr.appendChild(td);
+        });
+        t.appendChild(tr);
+        chips[i].set(near(b, exp[0], exp[1]) ? 'ok' : 'fail', f[1] + (near(b, exp[0], exp[1]) ? ' ✓' : ' ✗ ' + fmt(b)));
+        el.remove();
+      });
+      host.remove();
+    });
+  })();
+
+  // ================= §6 hints =================
+  (function () {
+    var host = document.getElementById('hint-table');
+    var c1 = chip('chips-s6', 'a1', 'width:100% only → 300×80 distorted'), c2 = chip('chips-s6', 'a2', 'width+height:auto → 300×400'), c3 = chip('chips-s6', 'a3', 'height only → attr width pins');
+    var stage = document.createElement('div'); stage.style.cssText = 'width:300px'; document.body.appendChild(stage);
+    var lanes = [
+      ['attrs 60×80 · CSS width:100%', '300 × 80 (hint height pins)', 'display:block;border:0;width:100%', [300, 80], c1, 'width:100% → '],
+      ['attrs 60×80 · width:100%; height:auto', '300 × 400 (ratio restored)', 'display:block;border:0;width:100%;height:auto', [300, 400], c2, 'both → '],
+      ['attrs 60×80 · CSS height:90px', '60 × 90 (hint width pins)', 'display:block;border:0;height:90px', [60, 90], c3, 'height only → ']
+    ];
+    var doneCount = 0;
+    lanes.forEach(function (lane) {
+      var img = document.createElement('img');
+      img.setAttribute('width', '60'); img.setAttribute('height', '80');
+      img.style.cssText = lane[2]; stage.appendChild(img);
+      setSrc(img, IMG_3x4, function () { settle(function () {
+        var b = box(img);
+        var ok = near(b, lane[3][0], lane[3][1], 2);
+        var tr = document.createElement('tr');
+        [lane[0], lane[1], fmt(b), ok ? '✓' : '✗ ' + fmt(b)].forEach(function (cell, ci) {
+          var td = document.createElement('td'); if (ci === 2) td.className = 'mono'; td.textContent = cell; tr.appendChild(td);
+        });
+        host.appendChild(tr);
+        lane[4].set(ok ? 'ok' : 'fail', lane[5] + fmt(b));
+        if (++doneCount === lanes.length) {
+          stage.remove();
+          var probeImg = document.createElement('img');
+          probeImg.setAttribute('width', '60'); probeImg.setAttribute('height', '80');
+          probeImg.style.cssText = 'display:block;border:0';
+          document.body.appendChild(probeImg);
+          var v = getComputedStyle(probeImg).aspectRatio;
+          probeImg.style.aspectRatio = '1 / 1';
+          var v2 = getComputedStyle(probeImg).aspectRatio;
+          probeImg.remove();
+          kv('kv-hint', [['gCS aspect-ratio (attrs only)', v], ['gCS after CSS aspect-ratio:1/1', v2], ['note', 'a CSS aspect-ratio replaces the dual value entirely']]);
+        }
+      }); });
+    });
+  })();
+
+  // ================= §7 column-flex =================
+  (function () {
+    var c1 = chip('chips-s7', 'x1', 'naive explodes'), c2 = chip('chips-s7', 'x2', 'min-height:0 fits'), c3 = chip('chips-s7', 'x3', 'align-start fits');
+    settle(function () {
+      var bn = box(document.getElementById('x-naive')), bm = box(document.getElementById('x-min')), bs = box(document.getElementById('x-start'));
+      kv('kv-xnaive', [['child', fmt(bn)], ['container', '220 × 110'], ['overflow', (bn[1] > 115 ? 'YES — ' + Math.round(bn[1] - 110) + 'px past' : 'no')]]);
+      kv('kv-xmin', [['child', fmt(bm)]]);
+      kv('kv-xstart', [['child', fmt(bs)]]);
+      c1.set(bn[1] > 200 && bn[1] > 110 ? 'ok' : 'fail', 'child ' + fmt(bn) + ' in 110px column');
+      c2.set(bm[1] <= 115 ? 'ok' : 'fail', 'child ' + fmt(bm));
+      c3.set(bs[1] <= 115 ? 'ok' : 'fail', 'child ' + fmt(bs));
+    });
+  })();
+
+  // ================= §8 grid =================
+  (function () {
+    var c1 = chip('chips-s8', 'g1', 'ratio not stretched'), c2 = chip('chips-s8', 'g2', 'row = max(100,80)');
+    settle(function () {
+      var br = box(document.getElementById('g-ratio')), bs = box(document.getElementById('g-sib'));
+      var row = document.getElementById('g-mix').getBoundingClientRect().height;
+      kv('kv-grid', [['ratio child', fmt(br)], ['sibling (80px)', fmt(bs)], ['row height', Math.round(row) + 'px'], ['auto track serialization', getComputedStyle(document.getElementById('g-mix')).gridTemplateColumns]]);
+      c1.set(near(br, 100, 100) ? 'ok' : 'fail', 'ratio child ' + fmt(br) + ' (not 100×' + Math.round(row) + ')');
+      c2.set(row >= 99 && row <= 101 ? 'ok' : 'fail', 'row ' + Math.round(row));
+    });
+  })();
+
+  // ================= §9 box-sizing =================
+  (function () {
+    var c1 = chip('chips-s9', 'b1', 'content-box 160×160'), c2 = chip('chips-s9', 'b2', 'border-box 100×100');
+    settle(function () {
+      var bc = box(document.getElementById('b-cb')), bb = box(document.getElementById('b-bb'));
+      kv('kv-cb', [['box', fmt(bc)]]); kv('kv-bb', [['box', fmt(bb)]]);
+      c1.set(near(bc, 160, 160) ? 'ok' : 'fail', fmt(bc));
+      c2.set(near(bb, 100, 100) ? 'ok' : 'fail', fmt(bb));
+    });
+  })();
+
+  // ================= §10 writing mode =================
+  (function () {
+    var c1 = chip('chips-s10', 'w1', 'vertical-rl: 2/1 landscape'), c2 = chip('chips-s10', 'w2', 'object-position: left under rtl');
+    var img = document.getElementById('w-rtl');
+    setSrc(img, IMG_3x4, function () { settle(function () {
+      var vm = box(document.getElementById('w-vm'));
+      kv('kv-vm', [['2/1 child in vertical-rl', fmt(vm) + (vm[0] > vm[1] ? ' — landscape' : ' — portrait!')]]);
+      kv('kv-rtl', [['img box', fmt(box(img))], ['object-position', getComputedStyle(img).objectPosition], ['note', '0% = physical left, content never mirrors']]);
+      c1.set(vm[0] > vm[1] ? 'ok' : 'fail', fmt(vm) + (vm[0] > vm[1] ? ' landscape ✓' : ' portrait ✗'));
+      c2.set(getComputedStyle(img).objectPosition.indexOf('0%') === 0 ? 'info' : 'warn', 'computed ' + getComputedStyle(img).objectPosition + ' — flip is visual (see fixture)');
+    }); });
+  })();
+
+  // ================= §11 replaced census =================
+  (function () {
+    var c1 = chip('chips-s11', 'r1', 'viewBox svg natural = 300-scaled'), c2 = chip('chips-s11', 'r2', 'canvas 300×150 default'), c3 = chip('chips-s11', 'r3', 'no-src img = 0×0');
+    var stage = document.createElement('div'); stage.style.cssText = 'position:absolute;left:-9999px;top:0'; document.body.appendChild(stage);
+    var t = document.getElementById('replaced-table');
+    function row(cells) { var tr = document.createElement('tr'); cells.forEach(function (cell, i) { var td = document.createElement('td'); if (i > 0) td.className = 'mono'; td.textContent = cell; tr.appendChild(td); }); t.appendChild(tr); }
+    var svgVb = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"><rect width="200" height="100" fill="#345"/></svg>');
+    var svgWh = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100"><rect width="200" height="100" fill="#543"/></svg>');
+    var cv = document.createElement('canvas'); stage.appendChild(cv);
+    var nosrc = document.createElement('img'); stage.appendChild(nosrc);
+    var iVb = document.createElement('img'), iWh = document.createElement('img'); stage.appendChild(iVb); stage.appendChild(iWh);
+    settle(function () {
+      var bv = cv.getBoundingClientRect();
+      row(['canvas (no attrs)', '300 × 150', '300 × 150', '300 × 150', fmt([bv.width, bv.height])]);
+      var bn = nosrc.getBoundingClientRect();
+      row(['img (no src)', '0 × 0', '0 × 0', '0 × 0', fmt([bn.width, bn.height])]);
+      c2.set(near([bv.width, bv.height], 300, 150) ? 'ok' : 'fail', fmt([bv.width, bv.height]));
+      c3.set(bn.width === 0 && bn.height === 0 ? 'ok' : 'fail', fmt([bn.width, bn.height]));
+      setSrc(iVb, svgVb, function () { settle(function () {
+        var b = iVb.getBoundingClientRect();
+        row(['img ← svg viewBox-only (free)', '1280 × 640 (fills)', '1280 × 640', '1280 × 640', b.width + ' × ' + b.height + ' · natural ' + iVb.naturalWidth + '×' + iVb.naturalHeight]);
+        c1.set(iVb.naturalWidth === 300 && iVb.naturalHeight === 150 ? 'ok' : 'fail', 'natural ' + iVb.naturalWidth + '×' + iVb.naturalHeight);
+        setSrc(iWh, svgWh, function () { settle(function () {
+          var b2 = iWh.getBoundingClientRect();
+          row(['img ← svg w/h attrs (free)', '200 × 100', '200 × 100', '200 × 100', fmt([b2.width, b2.height])]);
+          row(['iframe (free)', '300 × 150', '300 × 150', '300 × 150', '(bench)']);
+          row(['img src="" ', '1280 × 0', '0 × 0', '0 × 0', '(bench — settled)']);
+          row(['img 404 + alt', '1280 × 18 (alt box)', '0 × 0', '0 × 0', '(bench — settled)']);
+          row(['img 404 + attrs 100×50', '100 × 50', '100 × 50', '100 × 50', '(bench — the CLS safety net)']);
+          stage.remove();
+        }); });
+      }); });
+    });
+  })();
+
+  // ================= §12 object-fit =================
+  (function () {
+    var c1 = chip('chips-s12', 'f1', 'element box never changes'), c2 = chip('chips-s12', 'f2', 'letterbox hits the img'), c3 = chip('chips-s12', 'f3', 'cover: no scroll overflow');
+    var ids = ['of-fill', 'of-contain', 'of-cover', 'of-none', 'of-sd'];
+    var imgs = ids.map(function (id) { return document.getElementById(id); });
+    var n = 0;
+    imgs.forEach(function (img) { setSrc(img, POS8, function () { if (++n === imgs.length) settle(function () {
+      var boxes = imgs.map(function (img) { return box(img); });
+      var same = boxes.every(function (b) { return Math.abs(b[0] - boxes[0][0]) < 1 && Math.abs(b[1] - boxes[1][1]) < 1; });
+      var cont = document.getElementById('of-contain');
+      var sy = window.scrollY;
+      cont.scrollIntoView({ block: 'center', behavior: 'instant' });
+      var r = cont.getBoundingClientRect();
+      var el = document.elementFromPoint(r.x + 8, r.y + r.height / 2);
+      window.scrollTo({ top: sy, behavior: 'instant' });
+      var sw = document.getElementById('of-cover');
+      kv('kv-of', [
+        ['element boxes (all five)', same ? 'identical — ' + fmt(boxes[0]) : 'DIVERGE'],
+        ['elementFromPoint(letterbox)', el ? (el.tagName + (el.id ? '#' + el.id : '')) : 'null'],
+        ['cover scrollWidth/clientWidth', sw.scrollWidth + ' / ' + sw.clientWidth],
+        ['scale-down vs none', 'same render when natural is smaller (bench)']
+      ]);
+      c1.set(same ? 'ok' : 'fail', same ? fmt(boxes[0]) + ' × 5' : 'diverged');
+      c2.set(el === cont ? 'ok' : 'fail', el ? String(el.tagName).toLowerCase() : 'null');
+      c3.set(sw.scrollWidth === sw.clientWidth ? 'ok' : 'fail', sw.scrollWidth + '===' + sw.clientWidth);
+    }); }); });
+  })();
+
+  // ================= §13 object-position =================
+  (function () {
+    var c1 = chip('chips-s13', 'o1', '4-part offset → calc'), c2 = chip('chips-s13', 'o2', 'object-fit snaps at t=0'), c3 = chip('chips-s13', 'o3', 'object-position animates');
+    var img = document.getElementById('op-img');
+    var t = document.getElementById('op-table');
+    var probe = img;
+    var vals = ['0% 0%', 'center', 'top', '25% 75%', 'right 10px bottom 10px', '-10% 50%', '50% 50% 50%'];
+    vals.forEach(function (v) {
+      probe.style.objectPosition = '';
+      probe.style.objectPosition = v;
+      var ser = probe.style.objectPosition;
+      var tr = document.createElement('tr');
+      [v, ser === '' ? '(dropped)' : ser, getComputedStyle(probe).objectPosition, CSS.supports('object-position', v) ? 'yes' : 'no'].forEach(function (cell, i) {
+        var td = document.createElement('td'); if (i !== 0) td.className = 'mono'; td.textContent = cell; tr.appendChild(td);
+      });
+      t.appendChild(tr);
+    });
+    probe.style.objectPosition = '';
+    var rb4 = probe.style.objectPosition = 'right 10px bottom 10px';
+    c1.set(getComputedStyle(probe).objectPosition.indexOf('calc(100% - 10px)') === 0 ? 'ok' : 'fail', getComputedStyle(probe).objectPosition);
+    probe.style.objectPosition = '';
+    setSrc(img, IMG_3x4, function () {
+      img.style.transition = 'none'; img.style.objectFit = 'contain'; img.style.objectPosition = '0% 50%';
+      settle(function () {
+        img.style.transition = 'object-fit 500ms linear, object-position 500ms linear';
+        img.style.objectFit = 'cover'; img.style.objectPosition = '100% 30%';
+        var t0 = performance.now(); var samples = [];
+        var iv = setInterval(function () {
+          samples.push([Math.round(performance.now() - t0), getComputedStyle(img).objectFit, getComputedStyle(img).objectPosition]);
+        }, 80);
+        setTimeout(function () {
+          clearInterval(iv);
+          var first = samples[0], mid = samples[Math.floor(samples.length / 2)];
+          var fitSnapped = first && first[1] === 'cover';
+          var posMoved = mid && mid[2] !== first[2];
+          kv('kv-op', [
+            ['first sample (t≈' + (first ? first[0] : '?') + 'ms)', first ? first[1] + ' · ' + first[2] : '—'],
+            ['mid sample (t≈' + (mid ? mid[0] : '?') + 'ms)', mid ? mid[1] + ' · ' + mid[2] : '—'],
+            ['fit verdict', fitSnapped ? 'cover from the first sample — SNAP' : 'interpolated?'],
+            ['position verdict', posMoved ? 'interpolating — ANIMATES' : 'static']
+          ]);
+          c2.set(fitSnapped ? 'ok' : 'fail', fitSnapped ? 'snap at t≈' + first[0] + 'ms' : 'no snap');
+          c3.set(posMoved ? 'ok' : 'fail', posMoved ? 'moving at t≈' + mid[0] + 'ms' : 'frozen');
+        }, 620);
+      });
+    });
+    document.getElementById('op-run').onclick = function () {
+      img.style.transition = 'none'; img.style.objectFit = 'contain'; img.style.objectPosition = '0% 50%';
+      settle(function () {
+        img.style.transition = 'object-fit 500ms linear, object-position 500ms linear';
+        img.style.objectFit = 'cover'; img.style.objectPosition = '100% 30%';
+      });
+    };
+    document.getElementById('op-sel').onchange = function () {
+      img.style.transition = 'none'; img.style.objectFit = 'contain';
+      img.style.objectPosition = this.value;
+      kv('kv-op', [['object-position', getComputedStyle(img).objectPosition]]);
+    };
+  })();
+
+  // ================= §14 wall =================
+  (function () {
+    var c1 = chip('chips-s14', 'w1', 'all cells dual-ratio 16/9'), c2 = chip('chips-s14', 'w2', 'cover cells positioned');
+    var wall = document.getElementById('wall');
+    var shots = [
+      ['MC-ALPHA · horizon pass', IMG_3x4, '50% 20%'],
+      ['MC-BRAVO · target lock', IMG_2x1, '50% 42%'],
+      ['MC-CHARLIE · pad cam', IMG_3x4, '50% 80%'],
+      ['MC-DELTA · survey grid', IMG_2x1, '50% 35%']
+    ];
+    shots.forEach(function (s) {
+      var cell = document.createElement('div'); cell.className = 'cell';
+      var img = document.createElement('img');
+      img.alt = s[0]; img.loading = 'lazy';
+      img.style.cssText = 'aspect-ratio:auto 16/9;object-fit:cover;object-position:' + s[2];
+      cell.appendChild(img);
+      var tag = document.createElement('div'); tag.className = 'tag'; tag.textContent = s[0]; cell.appendChild(tag);
+      wall.appendChild(cell);
+      setSrc(img, s[1], function () {});
+    });
+    setTimeout(function () { settle(function () {
+      var imgs = wall.querySelectorAll('img');
+      var dual = 0, positioned = 0;
+      imgs.forEach(function (img) {
+        if (getComputedStyle(img).aspectRatio === 'auto 16 / 9') dual++;
+        if (getComputedStyle(img).objectFit === 'cover' && getComputedStyle(img).objectPosition !== '50% 50%') positioned++;
+      });
+      c1.set(dual === imgs.length ? 'ok' : 'fail', dual + '/' + imgs.length + ' cells auto 16/9');
+      c2.set(positioned === imgs.length ? 'ok' : 'fail', positioned + '/' + imgs.length + ' with per-shot positions');
+    }); }, 700);
+  })();
+
+  // ================= §16 ledger =================
+  (function () {
+    var c1 = chip('chips-s16', 'l1', 'ledger rows populated');
+    var t = document.getElementById('ledger');
+    var rows = [
+      ['dual form: natural wins when available', '✓', '✓', '✓'],
+      ['degenerate ratios parse, unusable at used-value time', '✓', '✓', '✓'],
+      ['clamp breaks ratio — no re-transfer', '✓', '✓', '✓'],
+      ['width/height attrs = presentational hints (cascade)', '✓', '✓', '✓'],
+      ['column-flex stretch-transfer beats flex:1', '✓', '✓', '✓'],
+      ['ratio never stretched by align-items (grid/flex)', '✓', '✓', '✓'],
+      ['aspect-ratio transition: ratio interpolates', '✓', '✓', '✓'],
+      ['object-fit transition: snap at t=0', '✓', '✓', '✓'],
+      ['object-position: animates · never flips under RTL/VM', '✓', '✓', '✓'],
+      ['object-fit letterbox hit-target + no scroll overflow', '✓', '✓', '✓'],
+      ['canvas obeys object-fit (pixel-verified)', '✓', '✓', '✓'],
+      ['svg viewBox ratio in img (decode-settled)', '✓', '✓', '✓'],
+      ['attr() in aspect-ratio parses (resolves nowhere)', '✓', '—', '—'],
+      ['img src="" box', '1280×0', '0×0', '0×0'],
+      ['broken img + alt', 'alt box 1280×18', '0×0', '0×0'],
+      ['calc() gCS precision', '5 digits', '5 digits', '6 digits']
+    ];
+    rows.forEach(function (r) { var tr = document.createElement('tr'); r.forEach(function (cell, i) { var td = document.createElement('td'); if (i > 0) { td.className = 'mono'; td.style.textAlign = 'center'; } td.textContent = cell; tr.appendChild(td); }); t.appendChild(tr); });
+    c1.set('ok', rows.length + ' rows');
+  })();
+
+  // ---------- done ----------
+  var iv = setInterval(function () {
+    if (chipsDone >= chipsTotal) {
+      clearInterval(iv);
+      window.__done = { chips: chipsTotal };
+      var t = document.getElementById('chips-top');
+      var c = document.createElement('span'); c.className = 'chip ok';
+      c.textContent = 'demo complete · ' + chipsTotal + '/' + chipsTotal + ' chips resolved';
+      t.appendChild(c);
+    }
+  }, 200);
+})();
+</script>
+</body>
+</html>
