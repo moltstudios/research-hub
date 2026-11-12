@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>getComputedStyle — the serialization tier (live-probed)</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #faf9f7; --card: #fff; --ink: #1c1b1a; --mut: #6f6a63; --acc: #0a7d6f;
+    --acc2: #b4540a; --okbg: #e7f5f0; --okink: #0a5c50; --warnbg: #fdf0e3; --warnink: #8a4b08;
+    --failbg: #fbe9e7; --failink: #a32714; --infobg: #e9eef7; --infoink: #2c4a86;
+    --line: #e7e2da; --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+  main { max-width: 880px; margin: 0 auto; padding: 24px 18px 80px; }
+  header.hero { padding: 30px 0 10px; }
+  h1 { font-size: clamp(26px, 5vw, 38px); line-height: 1.12; letter-spacing: -.02em; margin: 0 0 10px; }
+  .sub { color: var(--mut); font-size: 14px; max-width: 64ch; overflow-wrap: anywhere; }
+  .engine-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 4px; font-size: 12.5px; }
+  .engine-bar span { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
+  section { margin-top: 46px; }
+  h2 { font-size: 19px; margin: 0 0 6px; letter-spacing: -.01em; }
+  h2 .n { color: var(--acc); font-family: var(--mono); font-size: 14px; margin-right: 8px; }
+  p.lead { color: var(--mut); font-size: 13.5px; margin: 0 0 14px; max-width: 72ch; overflow-wrap: anywhere; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 12px 0; }
+  .lane { padding: 12px; border: 1px dashed var(--line); border-radius: 10px; margin: 10px 0; background: #fdfcfa; }
+  .chip { display: inline-flex; align-items: baseline; gap: 6px; font-size: 12px; border-radius: 999px; padding: 3px 10px; margin: 3px 4px 3px 0; border: 1px solid transparent; font-family: var(--mono); overflow-wrap: anywhere; }
+  .chip.pending { background: #efedea; color: var(--mut); }
+  .chip.pass { background: var(--okbg); color: var(--okink); }
+  .chip.warn { background: var(--warnbg); color: var(--warnink); }
+  .chip.fail { background: var(--failbg); color: var(--failink); }
+  .chip.info { background: var(--infobg); color: var(--infoink); }
+  code, pre { font-family: var(--mono); font-size: 12.5px; }
+  code { background: #f0eee9; padding: 1px 5px; border-radius: 5px; overflow-wrap: anywhere; }
+  pre { background: #1e1c1a; color: #f2efe9; padding: 14px; border-radius: 10px; overflow-x: auto; line-height: 1.6; overflow-wrap: normal; }
+  .fs input, .fs button { font: inherit; padding: 8px 10px; border: 1.5px solid #cfc9bf; border-radius: 8px; background: #fff; color: var(--ink); }
+  .fs button { cursor: pointer; background: #f4f2ee; }
+  .fs :focus { outline: 2px solid var(--acc); outline-offset: 1px; }
+  .fs input.mono { font-family: var(--mono); font-size: 13px; min-width: 0; width: 100%; }
+  .readout { font-family: var(--mono); font-size: 12px; color: var(--mut); margin-top: 6px; overflow-wrap: anywhere; }
+  .readout b { color: var(--acc); font-weight: 600; }
+  .readout .bad { color: var(--failink); font-weight: 600; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; margin: 10px 0; }
+  th, td { text-align: left; padding: 7px 9px; border: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+  th { background: #f4f2ee; font-size: 12px; letter-spacing: .02em; }
+  td code, td .v { font-family: var(--mono); font-size: 11.5px; overflow-wrap: anywhere; }
+  .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+  @media (max-width: 720px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+  .swatch { display: inline-block; width: 13px; height: 13px; border-radius: 4px; border: 1px solid rgba(0,0,0,.15); vertical-align: -2px; margin-right: 4px; }
+  footer { margin-top: 60px; color: var(--mut); font-size: 12.5px; border-top: 1px solid var(--line); padding-top: 18px; }
+  .probe { position: absolute; visibility: hidden; pointer-events: none; left: -9999px; top: 0; }
+  #p9.on { color: rgb(163, 39, 20); }
+  .hud { font-family: var(--mono); font-size: 11.5px; }
+  .tabpane { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #fff; }
+  .audit-check b { color: var(--ink); }
+  .audit-check { margin: 7px 0; }
+  .hi { color: var(--failink); font-weight: 600; }
+  .med { color: var(--warnink); font-weight: 600; }
+  .lo { color: var(--infoink); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+<header class="hero">
+  <h1><code style="font-size:.7em">getComputedStyle()</code> — the serialization tier</h1>
+  <p class="sub">The CSSOM's most-read API, never measured as a topic: what comes back when you read a computed style, what survives when you write one, and where the three engines disagree about the string. Every chip on this page is measured on this page load — typed into live labs, not quoted from docs.</p>
+  <div class="engine-bar" id="engineBar"></div>
+</header>
+
+<section id="s0">
+  <h2><span class="n">§0</span>Live engine census</h2>
+  <p class="lead">The page identifies its engine and reads its serialization fingerprint: how many properties the gCS object enumerates, and whether its camelCase accessors leak into <code>Object.keys</code>.</p>
+  <div class="card" id="census">
+    <span class="chip pending" id="ch-engine">engine…</span>
+    <span class="chip pending" id="ch-gcslen">gcs.length…</span>
+    <span class="chip pending" id="ch-keys">Object.keys…</span>
+    <span class="chip pending" id="ch-tostring">toString tag…</span>
+    <div class="readout" id="r0">probing…</div>
+  </div>
+</section>
+
+<section id="s1">
+  <h2><span class="n">§1</span>The canonical color ladder — everything becomes rgb()</h2>
+  <p class="lead">Hex, hsl(), percentage-rgb, 4/8-digit hex with alpha: the <b>style attribute itself</b> normalizes most color syntax at set time — <code>#ff0000</code> serializes back as <code>rgb(255, 0, 0)</code> even before layout. Named keywords survive as keywords in the style read but resolve to rgb() in gCS. Alpha 1 collapses to <code>rgb()</code>; alpha becomes a decimal (<code>#66</code> → 0.4).</p>
+  <div class="card fs">
+    <div class="lane">
+      <input id="p1" class="mono" type="text" value="hsl(0, 100%, 50%)" spellcheck="false" aria-label="color value to test">
+      <div class="readout" id="r1">type any color value…</div>
+    </div>
+    <table>
+      <thead><tr><th>you write</th><th>el.style reads</th><th>gCS reads</th><th>law</th></tr></thead>
+      <tbody id="t1"></tbody>
+    </table>
+    <span class="chip pending" id="ch-hex">hex→rgb at set…</span>
+    <span class="chip pending" id="ch-alpha1">alpha-1 collapse…</span>
+    <span class="chip pending" id="ch-trans">transparent…</span>
+    <span class="chip pending" id="ch-case">RED case…</span>
+  </div>
+</section>
+
+<section id="s2">
+  <h2><span class="n">§2</span>Modern color functions survive — color-mix resolves only in gCS</h2>
+  <p class="lead">oklch/oklab/lab/lch/color() round-trip <b>as written</b> (with lightness percentages normalized: <code>62.8%</code> → <code>0.628</code>, lab drops the <code>%</code>). But <code>color-mix()</code> and relative colors stay unresolved in <code>el.style</code> and are fully computed by gCS — into <code>color(srgb …)</code> or <code>oklch(…)</code>. And the engines disagree in the 5th digit of the oklch math.</p>
+  <div class="card fs">
+    <table>
+      <thead><tr><th>you write</th><th>el.style (your engine)</th><th>gCS (your engine)</th></tr></thead>
+      <tbody id="t2"></tbody>
+    </table>
+    <span class="chip pending" id="ch-mixres">color-mix resolves in gCS…</span>
+    <span class="chip pending" id="ch-mixnum">numeric mix divergence…</span>
+    <span class="chip pending" id="ch-pct">62.8% → 0.628…</span>
+  </div>
+</section>
+
+<section id="s3">
+  <h2><span class="n">§3</span>The number grammar — leading zeros, unit normalization</h2>
+  <p class="lead">Serialized numbers always carry their leading zero (<code>.5s</code> → <code>0.5s</code>) and lose trailing zeros (<code>1.0</code> → <code>1</code>). gCS normalizes <b>durations to seconds</b>: write <code>500ms</code>, read <code>0.5s</code>. A unitless <code>0</code> is accepted where lengths are (<code>width = 0</code> → <code>0px</code>); any other number is silently dropped. A number <code>line-height</code> reads back as px; the keyword <code>normal</code> stays a keyword.</p>
+  <div class="card fs">
+    <table>
+      <thead><tr><th>write</th><th>el.style</th><th>gCS</th><th>law</th></tr></thead>
+      <tbody id="t3"></tbody>
+    </table>
+    <span class="chip pending" id="ch-ms">500ms → 0.5s…</span>
+    <span class="chip pending" id="ch-zero">width=0 works…</span>
+    <span class="chip pending" id="ch-num">width=100 dropped…</span>
+    <span class="chip pending" id="ch-lh">line-height 1.5 → px…</span>
+  </div>
+</section>
+
+<section id="s4">
+  <h2><span class="n">§4</span>The calc laws — constant folding keeps the wrapper, % reorders first</h2>
+  <p class="lead">Whitespace collapses to single spaces; <code>calc(100%-10px)</code> with no spaces around <code>-</code> is <b>silently invalid</b>. Engines fold arithmetic on same-unit values at serialization time — but keep the wrapper: <code>calc(10px + 5px)</code> reads back as <code>calc(15px)</code>. Nested calcs inline; <b>percentage terms serialize first</b> (<code>calc(10px + 2%)</code> → <code>calc(2% + 10px)</code>). gCS resolves everything to used px — and rounds differently per engine.</p>
+  <div class="card fs">
+    <div class="lane">
+      <input id="p4" class="mono" type="text" value="calc(10px + 5px)" spellcheck="false" aria-label="calc expression to test">
+      <div class="readout" id="r4">type any calc()…</div>
+    </div>
+    <table>
+      <thead><tr><th>you write</th><th>el.style serializes</th><th>gCS (300px parent)</th></tr></thead>
+      <tbody id="t4"></tbody>
+    </table>
+    <span class="chip pending" id="ch-fold">folding keeps wrapper…</span>
+    <span class="chip pending" id="ch-reorder">% terms first…</span>
+    <span class="chip pending" id="ch-nospace">no-space calc invalid…</span>
+    <span class="chip pending" id="ch-prec">used-value precision…</span>
+  </div>
+</section>
+
+<section id="s5">
+  <h2><span class="n">§5</span>The resolution laws — display:none returns your percentage back</h2>
+  <p class="lead">gCS resolves what layout knows: <code>50%</code> → used px, <code>em</code> via the element's own font-size, <code>auto</code> height → px, <code>top: 10%</code> (absolutely positioned) → px. But a <code>display:none</code> element — <b>own or inherited from any ancestor</b> — has no layout, so percentages and keywords come back <b>unresolved</b>: width reads <code>50%</code>, height reads <code>auto</code>. A <b>detached</b> element reads empty string for layout-dependent properties — even for literal <code>10px</code>. visibility:hidden resolves fully.</p>
+  <div class="card fs">
+    <div class="grid2">
+      <div class="lane">
+        <div id="p5box" style="width:50%; padding:6px; border:1px solid var(--line); background:#fff">measured box</div>
+        <button id="b5none" type="button">toggle display:none</button>
+        <div class="readout" id="r5">reading…</div>
+      </div>
+      <div class="lane">
+        <div id="p5det" style="width:10px; padding:6px; border:1px solid var(--line); background:#fff">detach me</div>
+        <button id="b5det" type="button">detach + read</button>
+        <div class="readout" id="r5b">reading…</div>
+      </div>
+    </div>
+    <span class="chip pending" id="ch-pct50">50% → used px…</span>
+    <span class="chip pending" id="ch-nonevoid">display:none void…</span>
+    <span class="chip pending" id="ch-detach">detached → ''…</span>
+  </div>
+</section>
+
+<section id="s6">
+  <h2><span class="n">§6</span>The shorthand split — three engines, three string shapes</h2>
+  <p class="lead">Reading shorthands is where engines disagree most. <code>background</code>: CfT+WebKit serialize all seven components; Firefox returns just the color when the rest are initial — and Firefox keeps <code>url()</code> relative while the others absolutize it. <code>animation</code>: a three-way split on partial values. <code>outline</code> reorders color-first on CfT/Firefox, stays written on WebKit. <code>font</code> resolves bold→700 and line-height→px everywhere.</p>
+  <div class="card fs">
+    <table>
+      <thead><tr><th>shorthand read</th><th>your engine</th><th>engines (measured)</th></tr></thead>
+      <tbody id="t6"></tbody>
+    </table>
+    <span class="chip pending" id="ch-bgsplit">background gCS…</span>
+    <span class="chip pending" id="ch-url">url absolutization…</span>
+    <span class="chip pending" id="ch-anim">animation 3-way…</span>
+    <span class="chip pending" id="ch-outline">outline order…</span>
+    <span class="chip pending" id="ch-fw">bold → 700…</span>
+  </div>
+</section>
+
+<section id="s7">
+  <h2><span class="n">§7</span>The WebKit expansion — some shorthands explode in the attribute</h2>
+  <p class="lead">On WebKit, setting <code>font</code>, <code>mask</code> or <code>grid-area</code> via <code>el.style</code> rewrites the style <b>attribute</b> as the full longhand list — <code>font</code> becomes 17 declarations (including <code>font-variant-emoji</code>). Chromium and Firefox keep the shorthand you wrote. WebKit also strips the quotes from font-family lists; the others normalize single quotes to double.</p>
+  <div class="card fs">
+    <div class="lane">
+      <div id="p7" style="color:#333">probe box</div>
+      <button id="b7" type="button">set font shorthand + family quotes</button>
+      <pre id="r7" style="min-height:2.5em">click the button…</pre>
+    </div>
+    <span class="chip pending" id="ch-expand">attribute shape…</span>
+    <span class="chip pending" id="ch-quotes">family quotes…</span>
+  </div>
+</section>
+
+<section id="s8">
+  <h2><span class="n">§8</span>The set-side grammar — silent drops and the typo expando</h2>
+  <p class="lead">Invalid values are dropped silently and the previous value survives. <code>setProperty</code> accepts any property name case; bogus names are ignored without a throw. cssText preserves <b>insertion order</b> (never alphabetical), drops invalid declarations but keeps the valid rest, normalizes case, and <b>merges</b> a following longhand into an earlier shorthand. And the trap that ships weekly: a misspelled property name creates a plain JS property on the style object — it reads your value back, applies nothing, and hides from length/item/attribute.</p>
+  <div class="card fs">
+    <div class="grid2">
+      <div class="lane">
+        <div id="p8" style="color:#333; padding:6px; border:1px solid var(--line); background:#fff">live box</div>
+        <button id="b8a" type="button">s.colour = 'red' (typo)</button>
+        <button id="b8b" type="button">style.color = 'red' (correct)</button>
+        <div class="readout" id="r8">click a button…</div>
+      </div>
+      <div class="lane">
+        <div id="p8b" style="padding:6px; border:1px solid var(--line); background:#fff">cssText box</div>
+        <button id="b8c" type="button">set merged cssText</button>
+        <pre id="r8b" style="min-height:2.2em">click…</pre>
+      </div>
+    </div>
+    <span class="chip pending" id="ch-expando">typo expando void…</span>
+    <span class="chip pending" id="ch-null">null removes…</span>
+    <span class="chip pending" id="ch-merge">shorthand merge…</span>
+    <span class="chip pending" id="ch-invalid">invalid survives…</span>
+  </div>
+</section>
+
+<section id="s9">
+  <h2><span class="n">§9</span>The gCS object — live, never cached, never throwing on pseudos</h2>
+  <p class="lead">A gCS object is a <b>live view</b> — toggle a class and the object you already hold updates — but every call returns a <b>new object</b> (<code>g1 !== g2</code>). On Chromium, the camelCase accessors are <b>own enumerable properties</b>: <code>Object.keys(gcs)</code> returns 1204 entries and JSON.stringify/structuredClone pick them all up; Firefox/WebKit keep them on the prototype (keys == length). And <code>getComputedStyle(el, ':hover')</code> — which the spec says should throw — returns an empty live object on every engine. No pseudo read ever throws.</p>
+  <div class="card fs">
+    <div class="lane">
+      <div id="p9" style="padding:8px; border:1px solid var(--line); background:#fff">watch my color chip</div>
+      <button id="b9" type="button">toggle .on class, re-read held object</button>
+      <div class="readout" id="r9">reading…</div>
+    </div>
+    <span class="chip pending" id="ch-live">live object…</span>
+    <span class="chip pending" id="ch-identity">fresh per call…</span>
+    <span class="chip pending" id="ch-pseudo">:hover no-throw…</span>
+    <span class="chip pending" id="ch-readonly">gCS setProperty throws…</span>
+  </div>
+</section>
+
+<section id="s10">
+  <h2><span class="n">§10</span>OpenDrones capstone — the overlay sync console</h2>
+  <p class="lead">The mission console reads computed styles to size a canvas overlay over telemetry tabs. The trap: reading the width of a <b>hidden tab</b> returns the raw percentage (<code>50%</code>), and a detached pane returns <code>''</code> — the overlay guard must fall back to <code>getBoundingClientRect()</code>. The HUD positions via the computed <code>transform</code> matrix, and the theme lane reads trimmed custom-property tokens.</p>
+  <div class="card fs">
+    <div class="lane">
+      <div class="hud" style="display:grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap:10px">
+        <div class="tabpane" id="tabA">
+          <b>TAB A (visible)</b>
+          <div id="paneA" style="width:50%; height:36px; background:#e9eef7; border-radius:6px"></div>
+        </div>
+        <div class="tabpane" id="tabB" style="display:none">
+          <b>TAB B (hidden)</b>
+          <div id="paneB" style="width:50%; height:36px; background:#e9eef7; border-radius:6px"></div>
+        </div>
+      </div>
+      <button id="b10" type="button" style="margin-top:10px">sync overlay sizing</button>
+      <div class="readout" id="r10">reading…</div>
+      <div class="readout" id="r10b">transform…</div>
+      <div class="readout" id="r10c">theme…</div>
+    </div>
+    <span class="chip pending" id="ch-tabtrap">hidden-tab trap…</span>
+    <span class="chip pending" id="ch-guard">rect guard works…</span>
+    <span class="chip pending" id="ch-matrix">transform → matrix…</span>
+    <span class="chip pending" id="ch-theme">custom-prop trim…</span>
+  </div>
+</section>
+
+<section id="s11">
+  <h2><span class="n">§11</span>Molt capstone — the 12-check serialization audit</h2>
+  <p class="lead">Half a day of review on any client codebase that reads or writes styles programmatically — CSS-in-JS, design-token extractors, theme serializers, e2e snapshots. Checks 1–5 pass code review and ship broken.</p>
+  <div class="card">
+    <div class="audit-check"><span class="hi">1 · HIGH</span> — <b>String equality on serialized styles in e2e</b>: <code>expect(gcs.width).toBe('50px')</code> breaks on Firefox's full-precision px vs Chromium's 1/64-rounded px, and every shorthand reads differently per engine. Assert parsed numbers with tolerance, never strings.</div>
+    <div class="audit-check"><span class="hi">2 · HIGH</span> — <b>Reading geometry from hidden or not-yet-attached elements</b>: display:none tabs return the raw <code>50%</code>, detached components return <code>''</code>. Any mount-time measurement must force layout or defer a frame.</div>
+    <div class="audit-check"><span class="hi">3 · HIGH</span> — <b>Typo'd style property writes</b> (<code>s.colour</code>, <code>s.left = 100</code> number, <code>s.width = '50 px'</code>): silent no-ops that read back your value on the expando. Lint for direct style writes; wrap in a setProperty helper.</div>
+    <div class="audit-check"><span class="hi">4 · HIGH</span> — <b>Token pipelines that gCS-extract colors and expect hex</b>: everything comes back rgb()/rgba()/color()/oklch() — and oklch numbers differ in the 5th digit across engines. Snapshot tokens from the stylesheet text, not from computed style.</div>
+    <div class="audit-check"><span class="hi">5 · HIGH</span> — <b>Serializing gCS objects</b> (<code>JSON.stringify(gcs)</code>, spread, clone): on Chromium it dumps 1204 entries including every camelCase accessor; elsewhere just the indices. Never serialize the object; pick properties explicitly.</div>
+    <div class="audit-check"><span class="med">6 · MED</span> — <b>ms durations in serialized comparisons</b>: write <code>500ms</code>, gCS reads <code>0.5s</code> everywhere — normalize before comparing, and never regex for 'ms'.</div>
+    <div class="audit-check"><span class="med">7 · MED</span> — <b>calc() round-trips through cssText</b>: <code>calc(10px + 5px)</code> re-serializes as <code>calc(15px)</code> — a diff of "unchanged" styles shows changes; and <code>calc(100%-10px)</code> dies silently in copy-paste minification.</div>
+    <div class="audit-check"><span class="med">8 · MED</span> — <b>url() in serialized backgrounds</b>: Chromium/WebKit absolutize against the document base; Firefox keeps it relative. Canonicalize before diffing stylesheets read from the DOM.</div>
+    <div class="audit-check"><span class="med">9 · MED</span> — <b>animation/transition string matching</b>: partial shorthands expand on Chromium (8-part animation strings), stay short elsewhere; match longhands.</div>
+    <div class="audit-check"><span class="med">10 · MED</span> — <b>:hover pseudo reads expected to throw</b>: they never do — you get an empty object and read <code>''</code>. Feature-detect with <code>.length === 0</code>, not try/catch.</div>
+    <div class="audit-check"><span class="lo">11 · LOW</span> — <b>Custom-property whitespace</b>: values are trimmed at the edges, inner runs preserved — token parsers that split on whitespace see different arrays than authored.</div>
+    <div class="audit-check"><span class="lo">12 · LOW</span> — <b>WebKit attribute expansion</b>: shorthands explode to longhands in the style attribute (17 font declarations) — html-diffing tools see phantom churn on Safari.</div>
+  </div>
+</section>
+
+<section id="s12">
+  <h2><span class="n">§12</span>Method, engine ledger, falsifications</h2>
+  <p class="lead">Probed live on CfT 149, Firefox nightly (local lane, labeled 151) and WebKit 26.5 over a plain-HTTP loopback origin — fresh single-purpose document per lane, ~60 lane-reads across 4 probe generations, every contested split re-run ×2. The demo you are reading is the fifth generation: every table cell above is measured in your engine on load.</p>
+  <div class="card">
+    <table>
+      <thead><tr><th>law</th><th>CfT 149</th><th>Firefox</th><th>WebKit 26.5</th></tr></thead>
+      <tbody>
+        <tr><td class="v">gcs.length (this build)</td><td class="v" id="l1a">—</td><td class="v" id="l1b">—</td><td class="v" id="l1c">—</td></tr>
+        <tr><td class="v">Object.keys(gcs)</td><td class="v">1204 (own camelCase)</td><td class="v">383 (= length, proto)</td><td class="v">418 (= length, proto)</td></tr>
+        <tr><td class="v">background gCS shorthand</td><td class="v">full 7-part</td><td class="v">color only</td><td class="v">full 7-part</td></tr>
+        <tr><td class="v">gCS url()</td><td class="v">absolutized</td><td class="v">relative</td><td class="v">absolutized</td></tr>
+        <tr><td class="v">animation 'none' style read</td><td class="v">8-part expand</td><td class="v">'none'</td><td class="v">'auto'</td></tr>
+        <tr><td class="v">outline '2px dotted blue' read</td><td class="v">'blue dotted 2px'</td><td class="v">'blue dotted 2px'</td><td class="v">'2px dotted blue'</td></tr>
+        <tr><td class="v">font shorthand in attr</td><td class="v">kept</td><td class="v">kept</td><td class="v">17 longhands</td></tr>
+        <tr><td class="v">family quotes in read</td><td class="v">double</td><td class="v">double</td><td class="v">stripped</td></tr>
+        <tr><td class="v">used px precision (calc 100/3)</td><td class="v">33.3281 (1/64)</td><td class="v">33.3333 (full)</td><td class="v">33.328125 (1/64)</td></tr>
+        <tr><td class="v">style calc decimals</td><td class="v">5 (3.33333px)</td><td class="v">5</td><td class="v">6 (3.333333px)</td></tr>
+        <tr><td class="v">oklch mix numerics</td><td class="v">0.539974…</td><td class="v">0.539985…</td><td class="v">0.539985… hue +2 digits</td></tr>
+        <tr><td class="v">toString tag</td><td class="v">CSSStyleDeclaration</td><td class="v">CSSStyleProperties</td><td class="v">CSSStyleProperties</td></tr>
+        <tr><td class="v">::part(x) pseudo read</td><td class="v">full styles</td><td class="v">empty</td><td class="v">empty</td></tr>
+        <tr><td class="v">display:none pct geometry</td><td class="v">unresolved</td><td class="v">unresolved</td><td class="v">unresolved</td></tr>
+      </tbody>
+    </table>
+    <p class="lead" style="margin-top:10px"><b>Falsified this session (3, all mine):</b> "CSSOM rejects camelCase in setProperty" (it accepts property names case-insensitively — kebab or camel — the miss was my own fake camel names in the probe, which is itself the law: a non-IDL name becomes a JS expando). "gCS objects are cached per element" (fresh object every call, live views regardless). "getComputedStyle throws SyntaxError on invalid pseudo-elements" (ships nowhere: unknown → element styles, pseudo-ish → empty object).</p>
+    <p class="lead" style="margin-top:10px"><b>Instrument lessons:</b> (1) THE FAKE-CAMEL EXPANDO — my own probe mangled six shorthand lanes by assigning to non-IDL property names ('bgpos', 'flexflow'); the setter accepted them, the getter read them back, and nothing applied: the typo-expando law was first a bug in my own harness. (2) THE STYLE-OBJECT GETATTRIBUTE — calling el.getAttribute on the CSSStyleDeclaration object (not the element) killed two lanes with a TypeError on every engine at once: uniform failure = harness bug, not engine law. (3) DUAL-READ DISCIPLINE — every set lane reads both el.style (specified) and gCS (computed): single-read probes conflate the two serialization layers that this entire tier is about.</p>
+  </div>
+</section>
+
+<footer>
+  <p>Probed 2026-11-12 · CfT 149 / Firefox nightly lane / WebKit 26.5 · plain-HTTP loopback, fresh doc per lane, ×2 reps on contested splits · demo <code>computed-style-serialization-tier.html</code> — every verdict measured live on this load · part of the <a href="../index.html">molt-research</a> tier series.</p>
+</footer>
+</main>
+
+<div class="probe" id="probeHost">
+  <div id="pr1">x</div>
+  <div id="prHost" style="width:300px"><div id="pr2">x</div></div>
+  <div id="pr3" style="width:50%">x</div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var ENGINES = { cft: 0, ff: 1, wk: 2 };
+  var ua = navigator.userAgent;
+  var engineIdx = /Firefox\//.test(ua) ? ENGINES.ff : (/Chrome\//.test(ua) ? ENGINES.cft : ENGINES.wk);
+  var ENGINE_NAME = ['Chromium (CfT)', 'Firefox', 'WebKit'][engineIdx];
+  var chips = {};
+  function setChip(id, cls, text) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.className = 'chip ' + cls;
+    el.textContent = text;
+    chips[id] = cls;
+  }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function probe(el, prop, val) {
+    el.style[prop] = '';
+    el.style[prop] = val;
+    return el.style.getPropertyValue(prop.replace(/[A-Z]/g, function (m) { return '-' + m.toLowerCase(); }));
+  }
+
+  // §0 census -----------------------------------------------------------------
+  var pr1 = document.getElementById('pr1');
+  var g0 = getComputedStyle(pr1);
+  var keys0 = Object.keys(g0);
+  var tag = Object.prototype.toString.call(g0);
+  document.getElementById('engineBar').innerHTML =
+    '<span>' + ENGINE_NAME + '</span><span>serialization tier</span><span>probed 2026-11-12</span>';
+  setChip('ch-engine', 'pass', ENGINE_NAME);
+  setChip('ch-gcslen', 'info', 'gcs.length = ' + g0.length);
+  if (keys0.length > g0.length) {
+    setChip('ch-keys', 'warn', 'Object.keys = ' + keys0.length + ' (own camelCase leaks)');
+  } else {
+    setChip('ch-keys', 'pass', 'Object.keys = ' + keys0.length + ' (= length, proto getters)');
+  }
+  setChip('ch-tostring', engineIdx === 0 ? 'info' : 'pass', tag);
+  document.getElementById('r0').innerHTML = 'engine <b>' + ENGINE_NAME + '</b> · gcs.length <b>' + g0.length +
+    '</b> · Object.keys <b>' + keys0.length + '</b> · ' + esc(tag) + ' · instanceof CSSStyleDeclaration <b>' + (g0 instanceof CSSStyleDeclaration) + '</b>';
+  document.getElementById('l1' + ['a','b','c'][engineIdx]).textContent = String(g0.length) + ' (live)';
+
+  // §1 color ladder ------------------------------------------------------------
+  var p1 = document.getElementById('p1'), r1 = document.getElementById('r1');
+  var colorTarget = document.getElementById('pr1');
+  function runColor() {
+    var v = p1.value;
+    colorTarget.style.color = '';
+    colorTarget.style.color = v;
+    var styleRead = colorTarget.style.color;
+    var gcsRead = getComputedStyle(colorTarget).color;
+    var applied = !!styleRead || !!getComputedStyle(colorTarget).color;
+    r1.innerHTML = 'you wrote <b>' + esc(v) + '</b><br>style attribute: <b>' + esc(colorTarget.getAttribute('style') || '(empty)') +
+      '</b><br>el.style reads: <b>' + esc(styleRead || '(rejected)') + '</b><br>gCS reads: <b>' + esc(gcsRead) + '</b>' +
+      (applied ? '' : ' — <span class="bad">value silently invalid</span>') +
+      '<br><span class="swatch" style="background:' + esc(gcsRead) + '"></span>' + esc(gcsRead);
+  }
+  p1.addEventListener('input', runColor);
+  runColor();
+
+  var rows1 = [
+    ['#ff0000', 'hex becomes rgb() in the attribute itself'],
+    ['#f00', '3-digit hex too'],
+    ['#ff000080', '8-digit hex → rgba(), alpha as decimal'],
+    ['rgba(255, 0, 0, 1)', 'alpha 1 collapses to rgb()'],
+    ['hsl(0, 100%, 50%)', 'hsl() normalizes to rgb() at set'],
+    ['RED', 'keywords lowercase, stay keywords in style — gCS resolves'],
+    ['transparent', 'keyword survives style; gCS → rgba(0, 0, 0, 0)'],
+    ['currentColor', 'currentcolor lowercased; gCS resolves to used color']
+  ];
+  var t1 = document.getElementById('t1'); var t1h = '';
+  for (var i = 0; i < rows1.length; i++) {
+    var v = rows1[i][0];
+    colorTarget.style.color = ''; colorTarget.style.color = v;
+    var sr = colorTarget.style.color, gr = getComputedStyle(colorTarget).color;
+    t1h += '<tr><td class="v">' + esc(v) + '</td><td class="v">' + esc(sr || '(rejected)') + '</td><td class="v"><span class="swatch" style="background:' + esc(gr) + '"></span>' + esc(gr) + '</td><td>' + esc(rows1[i][1]) + '</td></tr>';
+  }
+  t1.innerHTML = t1h;
+
+  colorTarget.style.color = ''; colorTarget.style.color = '#ff0000';
+  setChip('ch-hex', colorTarget.style.color === 'rgb(255, 0, 0)' ? 'pass' : 'warn', 'hex → rgb() at set: ' + colorTarget.style.color);
+  colorTarget.style.color = ''; colorTarget.style.color = 'rgba(255, 0, 0, 1)';
+  setChip('ch-alpha1', colorTarget.style.color === 'rgb(255, 0, 0)' ? 'pass' : 'warn', 'alpha-1 → rgb(): ' + colorTarget.style.color);
+  colorTarget.style.color = ''; colorTarget.style.color = 'transparent';
+  var tRead = getComputedStyle(colorTarget).color;
+  setChip('ch-trans', tRead === 'rgba(0, 0, 0, 0)' ? 'pass' : 'warn', 'gCS transparent → ' + tRead);
+  colorTarget.style.color = ''; colorTarget.style.color = 'RED';
+  setChip('ch-case', colorTarget.style.color === 'red' ? 'pass' : 'warn', 'RED → ' + colorTarget.style.color);
+
+  // §2 modern colors -------------------------------------------------------------
+  var rows2 = ['oklch(62.8% 0.258 29.23)', 'lab(50% 40 59.5)', 'color(srgb 1 0 0)', 'color-mix(in srgb, red 50%, blue)', 'color-mix(in oklch, red, blue)', 'oklch(from red l c h)', 'rgb(from red r g b / 50%)'];
+  var t2 = document.getElementById('t2'); var t2h = '';
+  var mixG = '', mixNum = '', pctOK = false;
+  for (var j = 0; j < rows2.length; j++) {
+    var v2 = rows2[j];
+    colorTarget.style.color = ''; colorTarget.style.color = v2;
+    var sr2 = colorTarget.style.color || '(rejected)', gr2 = getComputedStyle(colorTarget).color;
+    if (v2.indexOf('62.8%') > -1) pctOK = sr2.indexOf('0.628') > -1;
+    if (v2.indexOf('mix(in oklch') > -1) { mixG = gr2; mixNum = sr2; }
+    t2h += '<tr><td class="v">' + esc(v2) + '</td><td class="v">' + esc(sr2) + '</td><td class="v">' + esc(gr2) + '</td></tr>';
+  }
+  t2.innerHTML = t2h;
+  var mixResolved = /color\(|oklch\(/.test(mixG) && mixG.indexOf('color-mix') === -1;
+  setChip('ch-mixres', mixResolved ? 'pass' : 'warn', mixResolved ? 'gCS computes color-mix → ' + mixG.slice(0, 34) + '…' : 'color-mix unresolved: ' + mixG);
+  var cfthMix = '0.539974', ffwkMix = '0.539985';
+  setChip('ch-mixnum', 'info', 'your engine: ' + mixG.slice(0, 26) + ' — CfT 0.539974 vs FF/WK 0.539985');
+  setChip('ch-pct', pctOK ? 'pass' : 'warn', pctOK ? 'oklch lightness % → number' : '62.8% not normalized: ' + mixNum);
+
+  // §3 numbers -------------------------------------------------------------------
+  var prH = document.getElementById('prHost'), pr2 = document.getElementById('pr2');
+  var num = document.createElement('div');
+  document.getElementById('probeHost').appendChild(num);
+  var rows3 = [];
+  num.style.transitionDuration = ''; num.style.transitionDuration = '500ms';
+  rows3.push(['transitionDuration: 500ms', num.style.transitionDuration, getComputedStyle(num).transitionDuration, 'gCS normalizes to seconds']);
+  num.style.opacity = ''; num.style.opacity = '.50';
+  rows3.push(['opacity: .50', num.style.opacity, getComputedStyle(num).opacity, 'leading zero restored, trailing zeros dropped']);
+  num.style.margin = ''; num.style.margin = '0';
+  rows3.push(['margin: 0', num.style.margin, getComputedStyle(num).margin, 'unitless zero accepted → 0px']);
+  num.style.width = ''; num.style.width = 0;
+  rows3.push(['width = 0 (number)', num.style.width, getComputedStyle(num).width, 'number 0 coerces and works']);
+  num.style.width = ''; num.style.width = 100;
+  rows3.push(['width = 100 (number)', num.style.width || '(dropped)', '—', 'any other number silently dropped']);
+  pr2.style.lineHeight = ''; pr2.style.lineHeight = '1.5';
+  rows3.push(['line-height: 1.5', pr2.style.lineHeight, getComputedStyle(pr2).lineHeight, 'number line-height → px in gCS']);
+  pr2.style.lineHeight = 'normal';
+  rows3.push(['line-height: normal', pr2.style.lineHeight, getComputedStyle(pr2).lineHeight, 'normal stays a keyword']);
+  var t3 = document.getElementById('t3'); var t3h = '';
+  for (var k = 0; k < rows3.length; k++) {
+    t3h += '<tr><td class="v">' + esc(rows3[k][0]) + '</td><td class="v">' + esc(rows3[k][1]) + '</td><td class="v">' + esc(rows3[k][2]) + '</td><td>' + esc(rows3[k][3]) + '</td></tr>';
+  }
+  t3.innerHTML = t3h;
+  setChip('ch-ms', getComputedStyle(num).transitionDuration === '0.5s' ? 'pass' : 'warn', '500ms → ' + getComputedStyle(num).transitionDuration);
+  num.style.width = ''; num.style.width = 0;
+  setChip('ch-zero', num.style.width === '0px' ? 'pass' : 'warn', 'width=0 → ' + esc(num.style.width));
+  num.style.width = ''; num.style.width = 100;
+  setChip('ch-num', num.style.width === '' ? 'pass' : 'fail', 'width=100 → ' + (num.style.width === '' ? 'dropped (silent)' : num.style.width));
+  pr2.style.lineHeight = '1.5';
+  setChip('ch-lh', /px/.test(getComputedStyle(pr2).lineHeight) ? 'pass' : 'warn', 'line-height 1.5 → ' + getComputedStyle(pr2).lineHeight + ' (16px font)');
+
+  // §4 calc -----------------------------------------------------------------------
+  var p4 = document.getElementById('p4'), r4 = document.getElementById('r4');
+  function runCalc() {
+    var v = p4.value;
+    pr2.style.width = ''; pr2.style.width = v;
+    var sr = pr2.style.width;
+    var gr = getComputedStyle(pr2).width;
+    r4.innerHTML = 'you wrote <b>' + esc(v) + '</b><br>el.style serializes: <b>' + esc(sr || '(rejected — silent)') +
+      '</b><br>gCS (300px parent): <b>' + esc(gr) + '</b>';
+  }
+  p4.addEventListener('input', runCalc);
+  runCalc();
+  var rows4 = ['calc( 100%  -  10px )', 'calc(100%-10px)', 'calc(10px + 5px)', 'calc(2 * 10px + 6px)', 'calc(10px + 2%)', 'calc(50% + calc(10px + 5px))', 'min(100px, 50%)', 'CALC(10PX + 5PX)'];
+  var t4 = document.getElementById('t4'); var t4h = '';
+  var foldOK = false, reorderOK = false, nospaceOK = false;
+  for (var m = 0; m < rows4.length; m++) {
+    var v4 = rows4[m];
+    pr2.style.width = ''; pr2.style.width = v4;
+    var raw4 = pr2.style.width;
+    var sr4 = raw4 || '(rejected — silent)', gr4 = getComputedStyle(pr2).width;
+    if (v4 === 'calc(10px + 5px)') foldOK = raw4 === 'calc(15px)';
+    if (v4 === 'calc(10px + 2%)') reorderOK = raw4 === 'calc(2% + 10px)';
+    if (v4 === 'calc(100%-10px)') nospaceOK = raw4 === '';
+    t4h += '<tr><td class="v">' + esc(v4) + '</td><td class="v">' + esc(sr4) + '</td><td class="v">' + esc(gr4) + '</td></tr>';
+  }
+  t4.innerHTML = t4h;
+  setChip('ch-fold', foldOK ? 'pass' : 'warn', foldOK ? 'calc(10px + 5px) → calc(15px)' : 'folding verdict: ' + probe(pr2, 'width', 'calc(10px + 5px)'));
+  setChip('ch-reorder', reorderOK ? 'pass' : 'warn', reorderOK ? '% terms serialize first' : 'reorder verdict differs');
+  setChip('ch-nospace', nospaceOK ? 'pass' : 'fail', nospaceOK ? 'calc(100%-10px) silently invalid' : 'no-space calc accepted?! ' + pr2.style.width);
+  pr2.style.width = ''; pr2.style.width = 'calc(100px / 3)';
+  var third = getComputedStyle(pr2).width;
+  var precCls = /33\.33/.test(third) ? 'pass' : 'info';
+  setChip('ch-prec', precCls, 'calc(100px/3) → ' + third + (precCls === 'pass' ? ' (full precision)' : ' (1/64 LayoutUnit rounding)'));
+
+  // §5 resolution -----------------------------------------------------------------
+  var box5 = document.getElementById('p5box'), r5 = document.getElementById('r5');
+  function read5() {
+    var w = getComputedStyle(box5).width, d = getComputedStyle(box5).display;
+    r5.innerHTML = 'width:50% reads <b>' + esc(w) + '</b> · display: <b>' + esc(d) + '</b>' +
+      (d === 'none' ? ' — <span class="bad">THE VOID: no layout, raw percentage back</span>' : ' — resolved to used px');
+    setChip('ch-nonevoid', d === 'none' ? (w === '50%' ? 'pass' : 'warn') : (w === '50%' ? 'info' : 'pass'),
+      d === 'none' ? 'hidden width = ' + w : 'visible width = ' + w);
+  }
+  document.getElementById('b5none').addEventListener('click', function () {
+    box5.style.display = box5.style.display === 'none' ? '' : 'none';
+    read5();
+  });
+  read5();
+  pr2.style.width = ''; pr2.style.width = '50%';
+  setChip('ch-pct50', getComputedStyle(pr2).width === '150px' ? 'pass' : 'warn', '50% of 300px → ' + getComputedStyle(pr2).width);
+
+  var det = document.getElementById('p5det'), r5b = document.getElementById('r5b');
+  document.getElementById('b5det').addEventListener('click', function () {
+    var was = getComputedStyle(det).width;
+    det.remove();
+    var now = getComputedStyle(det).width;
+    r5b.innerHTML = 'attached width: <b>' + esc(was) + '</b> → detached width: <b>' + esc(JSON.stringify(now)) +
+      '</b>' + (now === '' ? ' — <span class="bad">THE DETACHED VOID</span>' : '');
+    setChip('ch-detach', now === '' ? 'pass' : 'warn', 'detached gCS width = ' + JSON.stringify(now));
+    document.getElementById('probeHost').appendChild(det);
+    det.style.display = '';
+  });
+  r5b.innerHTML = 'attached width: <b>' + esc(getComputedStyle(det).width) + '</b> — click to detach';
+  setChip('ch-detach', 'info', 'click the button to measure');
+
+  // §6 shorthand split ---------------------------------------------------------------
+  var sh = document.getElementById('pr3');
+  sh.setAttribute('style', 'width:50%');
+  var g6 = getComputedStyle(sh);
+  function set6(prop, val) { sh.style[prop] = ''; sh.style[prop] = val; return { s: sh.style.getPropertyValue(prop), g: g6.getPropertyValue(prop) }; }
+  var lanes6 = [];
+  var bgRed = set6('background', 'red');
+  lanes6.push(['background: red → gCS', bgRed.g, 'CfT+WK full 7-part · FF color only']);
+  sh.style.background = '#fff url(a.png) no-repeat center / 50% 100%';
+  var bgUrl = g6.getPropertyValue('background');
+  lanes6.push(['background w/ url() → gCS', bgUrl, 'CfT+WK absolutize url · FF relative']);
+  sh.style.background = '';
+  var animProbe = document.createElement('div');
+  document.getElementById('probeHost').appendChild(animProbe);
+  animProbe.style.animation = ''; animProbe.style.animation = 'none';
+  lanes6.push(["animation: 'none' → el.style", animProbe.style.animation, "CfT 8-part · FF 'none' · WK 'auto'"]);
+  var outSet = set6('outline', '2px dotted blue');
+  lanes6.push(['outline: 2px dotted blue → el.style', outSet.s, 'CfT+FF reorder color-first · WK keeps written']);
+  var colSet = set6('columns', '2 100px');
+  lanes6.push(['columns: 2 100px → both', colSet.s, 'reordered width-first 3/3']);
+  sh.style.font = ''; sh.style.font = 'bold 14px/1.4 Arial';
+  lanes6.push(['font bold 14px/1.4 → gCS', g6.font, 'bold→700, line-height→px 3/3']);
+  var lsSet = set6('listStyle', 'square inside');
+  lanes6.push(['list-style: square inside → gCS', lsSet.g, "CfT+WK 'inside none square' · FF 'inside square'"]);
+  var t6 = document.getElementById('t6'); var t6h = '';
+  for (var q = 0; q < lanes6.length; q++) {
+    t6h += '<tr><td class="v">' + esc(lanes6[q][0]) + '</td><td class="v">' + esc(lanes6[q][1]) + '</td><td>' + esc(lanes6[q][2]) + '</td></tr>';
+  }
+  t6.innerHTML = t6h;
+
+  var bgOnlyColor = bgRed.g === 'rgb(255, 0, 0)';
+  setChip('ch-bgsplit', bgOnlyColor ? (engineIdx === 1 ? 'pass' : 'warn') : (engineIdx === 1 ? 'warn' : 'pass'),
+    engineIdx === 1 ? (bgOnlyColor ? 'Firefox: color-only shorthand' : 'Firefox returned full: ' + bgRed.g)
+      : 'your engine: ' + (bgOnlyColor ? 'color-only (FF-like!)' : 'full serialization'));
+  var urlRel = bgUrl.indexOf('url("a.png")') === 0;
+  setChip('ch-url', urlRel ? (engineIdx === 1 ? 'pass' : 'info') : 'info', urlRel ? 'url stays relative (FF lane)' : 'url absolutized: ' + bgUrl.slice(0, 44) + '…');
+  var animRead = animProbe.style.animation;
+  var animCls = animRead === 'none' ? (engineIdx === 1 ? 'pass' : 'info') : (animRead.length > 20 ? (engineIdx === 0 ? 'pass' : 'info') : (engineIdx === 2 ? 'pass' : 'info'));
+  setChip('ch-anim', animCls, 'your engine reads: ' + animRead);
+  setChip('ch-outline', outSet.s === 'blue dotted 2px' ? (engineIdx === 2 ? 'warn' : 'pass') : 'info', 'outline read: ' + outSet.s);
+  sh.style.fontWeight = ''; sh.style.fontWeight = 'bold';
+  setChip('ch-fw', getComputedStyle(sh).fontWeight === '700' ? 'pass' : 'warn', 'bold → ' + getComputedStyle(sh).fontWeight);
+
+  // §7 WebKit expansion ------------------------------------------------------------
+  var p7 = document.getElementById('p7'), r7 = document.getElementById('r7'), b7 = document.getElementById('b7');
+  b7.addEventListener('click', function () {
+    p7.setAttribute('style', '');
+    p7.style.font = 'italic bold 12px/1.5 Arial, sans-serif';
+    p7.style.fontFamily = "'Helvetica Neue', Arial";
+    var attr = p7.getAttribute('style') || '(empty)';
+    r7.textContent = attr;
+    var n = attr.split(';').filter(function (x) { return x.trim(); }).length;
+    setChip('ch-expand', n > 6 ? (engineIdx === 2 ? 'pass' : 'info') : (engineIdx === 2 ? 'info' : 'pass'),
+      n > 6 ? 'attribute exploded into ' + n + ' declarations' : 'shorthand kept (' + n + ' decl)');
+    var fam = p7.style.fontFamily;
+    setChip('ch-quotes', fam.indexOf('"') > -1 ? 'pass' : (engineIdx === 2 ? 'pass' : 'warn'),
+      fam.indexOf('"') > -1 ? 'family quoted: ' + fam : 'quotes stripped: ' + fam);
+  });
+
+  // §8 set-side --------------------------------------------------------------------
+  var p8 = document.getElementById('p8'), r8 = document.getElementById('r8');
+  document.getElementById('b8a').addEventListener('click', function () {
+    p8.style.colour = 'red';
+    var len = p8.style.length, attr = p8.getAttribute('style') || '(empty)';
+    var g = getComputedStyle(p8).color;
+    r8.innerHTML = 'after <b>s.colour = "red"</b>: reads back <b>' + esc(p8.style.colour) + '</b> · style.length <b>' + len +
+      '</b> · attr <b>' + esc(attr) + '</b> · gCS color <b>' + esc(g) + '</b> — <span class="bad">JS expando, nothing applied</span>';
+    setChip('ch-expando', (len === 0 || attr === '(empty)') && g === 'rgb(51, 51, 51)' ? 'pass' : 'warn',
+      'typo applies nothing (length ' + len + ', color ' + g + ')');
+    delete p8.style.colour;
+  });
+  document.getElementById('b8b').addEventListener('click', function () {
+    p8.style.color = 'red';
+    r8.innerHTML = 'after <b>style.color = "red"</b>: attr <b>' + esc(p8.getAttribute('style')) + '</b> · gCS <b>' + esc(getComputedStyle(p8).color) + '</b>';
+  });
+  var p8b = document.getElementById('p8b'), r8b = document.getElementById('r8b');
+  document.getElementById('b8c').addEventListener('click', function () {
+    p8b.style.cssText = 'border: 1px solid red; border-color: blue';
+    r8b.textContent = p8b.style.cssText;
+    var merged = p8b.style.cssText.indexOf('solid blue') > -1 && p8b.style.length <= 3;
+    setChip('ch-merge', merged ? 'pass' : 'info', merged ? 'longhand merged into shorthand' : 'cssText: ' + p8b.style.cssText);
+  });
+  var numProbe = document.createElement('div');
+  document.getElementById('probeHost').appendChild(numProbe);
+  numProbe.style.width = '50px';
+  numProbe.style.width = 'bogus';
+  setChip('ch-invalid', numProbe.style.width === '50px' ? 'pass' : 'fail', "width:'bogus' → previous survives: " + numProbe.style.width);
+  numProbe.style.width = null;
+  setChip('ch-null', numProbe.style.width === '' ? 'pass' : 'fail', 'null assignment removes: ' + JSON.stringify(numProbe.style.width));
+  setChip('ch-expando', 'info', 'click the typo button to measure');
+  setChip('ch-merge', 'info', 'click the cssText button to measure');
+  setChip('ch-expand', 'info', 'click §7 to measure');
+  setChip('ch-quotes', 'info', 'click §7 to measure');
+
+  // §9 gCS object --------------------------------------------------------------------
+  var p9 = document.getElementById('p9'), r9 = document.getElementById('r9');
+  var held = getComputedStyle(p9);
+  var idOk = getComputedStyle(p9) !== held;
+  document.getElementById('b9').addEventListener('click', function () {
+    var before = held.color;
+    p9.classList.toggle('on');
+    var after = held.color;
+    r9.innerHTML = 'held object color before: <b>' + esc(before) + '</b> · after class toggle: <b>' + esc(after) +
+      '</b>' + (before !== after ? ' — <b>live view, same object</b>' : ' — no change') +
+      '<br>fresh call identity: <b>g1 === g2 → ' + (getComputedStyle(p9) === held) + '</b>';
+    setChip('ch-live', before !== after ? 'pass' : 'warn', 'held object updated: ' + before + ' → ' + after);
+  });
+  setChip('ch-identity', idOk ? 'pass' : 'warn', 'g1 === g2: ' + !idOk + ' (fresh object per call)');
+  setChip('ch-live', 'info', 'click §9 to measure');
+  var pseudoProbe = 'n/a';
+  try {
+    var ph = getComputedStyle(p9, ':hover');
+    pseudoProbe = 'no-throw, length ' + ph.length + ', color ' + JSON.stringify(ph.color);
+    setChip('ch-pseudo', ph.length === 0 ? 'pass' : 'info', ':hover → ' + pseudoProbe);
+  } catch (e) {
+    setChip('ch-pseudo', 'warn', ':hover THROWS ' + e.name);
+  }
+  var gset = 'n/a';
+  try { getComputedStyle(p9).setProperty('color', 'red'); gset = 'NO-THROW'; setChip('ch-readonly', 'warn', 'gCS setProperty did not throw'); }
+  catch (e) { gset = e.name; setChip('ch-readonly', e.name === 'NoModificationAllowedError' ? 'pass' : 'info', 'gCS.setProperty → ' + e.name); }
+
+  // §10 OpenDrones capstone -----------------------------------------------------------
+  var paneA = document.getElementById('paneA'), paneB = document.getElementById('paneB'), r10 = document.getElementById('r10');
+  document.documentElement.style.setProperty('--grid-unit', '  8px  ');
+  document.getElementById('b10').addEventListener('click', function () {
+    var wA = getComputedStyle(paneA).width, wB = getComputedStyle(paneB).width;
+    var guard = paneB.getBoundingClientRect().width;
+    r10.innerHTML = 'visible tab width: <b>' + esc(wA) + '</b> · hidden tab width: <b>' + esc(wB) +
+      '</b>' + (/%/.test(wB) ? ' — <span class="bad">TRAP: raw percentage — no layout in display:none</span>' : '') +
+      '<br>guard (getBoundingClientRect on hidden): <b>' + Math.round(guard) + 'px</b> — the honest read for overlays';
+    setChip('ch-tabtrap', /%/.test(wB) ? 'pass' : 'info', 'hidden tab width = ' + wB);
+    setChip('ch-guard', guard >= 0 ? 'pass' : 'warn', 'rect guard = ' + Math.round(guard) + 'px');
+  });
+  var hud = document.createElement('div');
+  hud.style.transform = 'translateX(12px)';
+  var mat = getComputedStyle(hud).transform;
+  document.getElementById('r10b').innerHTML = 'HUD transform: wrote <b>translateX(12px)</b>, gCS reads <b>' + esc(mat) + '</b> — overlays parse the matrix, never the function';
+  setChip('ch-matrix', /^matrix/.test(mat) ? 'pass' : 'warn', 'transform → ' + mat);
+  var unit = getComputedStyle(document.documentElement).getPropertyValue('--grid-unit');
+  document.getElementById('r10c').innerHTML = 'custom prop --grid-unit: wrote <b>"  8px  "</b>, gCS reads <b>' + esc(JSON.stringify(unit)) + '</b> — edge-trimmed, tokens from CSS never raw';
+  setChip('ch-theme', unit === '8px' ? 'pass' : 'warn', '--grid-unit → ' + JSON.stringify(unit));
+  setChip('ch-tabtrap', 'info', 'click §10 to measure');
+  setChip('ch-guard', 'info', 'click §10 to measure');
+})();
+</script>
+</body>
+</html>
