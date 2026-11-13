@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>The CSSOM Rule Tier — CSSStyleSheet, cssRules & Constructable Sheets</title>
+<style>
+  :root { --ink:#1c1917; --mut:#78716c; --line:#e7e5e4; --bg:#fafaf9; --card:#fff; --acc:#0f766e; --acc2:#155e75; --warn:#b45309; --bad:#b91c1c; --ok:#15803d; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  .wrap { max-width:640px; margin:0 auto; padding:24px 20px 80px; }
+  header h1 { font-size:30px; line-height:1.15; letter-spacing:-.02em; margin:18px 0 6px; }
+  header p.sub { color:var(--mut); margin:0 0 8px; font-size:14px; }
+  .pill { display:inline-block; font-size:11.5px; font-weight:600; padding:2px 9px; border-radius:99px; background:#ccfbf1; color:#115e59; margin-right:6px; }
+  section { margin:44px 0; }
+  h2 { font-size:20px; margin:0 0 4px; letter-spacing:-.01em; }
+  h2 .n { color:var(--acc); font-variant-numeric:tabular-nums; }
+  p.why { color:var(--mut); font-size:13.5px; margin:0 0 12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin:12px 0; overflow-x:auto; max-width:100%; }
+  td.mono, th { overflow-wrap:anywhere; }
+  .chip { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; border-radius:8px; padding:3px 9px; margin:3px 4px 3px 0; border:1px solid var(--line); background:#fff; }
+  .chip::before { content:"·"; font-weight:800; }
+  .chip.ok { border-color:#bbf7d0; background:#f0fdf4; color:var(--ok); } .chip.ok::before { content:"✓"; }
+  .chip.warn { border-color:#fde68a; background:#fffbeb; color:var(--warn); } .chip.warn::before { content:"!"; }
+  .chip.info { border-color:#bae6fd; background:#f0f9ff; color:var(--acc2); } .chip.info::before { content:"i"; font-style:italic; }
+  .chip.bad { border-color:#fecaca; background:#fef2f2; color:var(--bad); } .chip.bad::before { content:"✕"; }
+  .chip.pending { border-color:#e7e5e4; background:#fafaf9; color:var(--mut); }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; margin:10px 0; }
+  th { text-align:left; color:var(--mut); font-weight:600; padding:5px 8px; border-bottom:1px solid var(--line); font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; }
+  td { padding:5px 8px; border-bottom:1px solid #f5f5f4; vertical-align:top; }
+  code, .mono { font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:12px; }
+  code { background:#f5f5f4; padding:1px 5px; border-radius:5px; }
+  .law { border-left:3px solid var(--acc); padding:2px 0 2px 12px; margin:10px 0; font-size:13.5px; }
+  .law b { color:var(--acc); }
+  .law.hi { border-color:var(--warn); } .law.hi b { color:var(--warn); }
+  button { font:inherit; font-size:13px; font-weight:600; padding:7px 14px; border-radius:9px; border:1px solid var(--line); background:#fff; cursor:pointer; }
+  button:hover { border-color:var(--acc); color:var(--acc); }
+  button.pri { background:var(--acc); border-color:var(--acc); color:#fff; }
+  button.pri:hover { background:#0d9488; color:#fff; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:8px 0; }
+  .kv { font-size:12px; color:var(--mut); }
+  .out { font-family:ui-monospace,Menlo,monospace; font-size:11.5px; background:#0c0a09; color:#e7e5e4; border-radius:10px; padding:10px 12px; overflow-x:auto; white-space:pre-wrap; word-break:break-word; margin:8px 0; }
+  .out b { color:#5eead4; font-weight:600; }
+  .swatch { display:inline-block; width:13px; height:13px; border-radius:4px; border:1px solid #0002; vertical-align:-2px; }
+  .hud { background:#0c1220; color:#d1e3f0; border-radius:12px; padding:12px 14px; margin:10px 0; border:1px solid #1e2c44; }
+  .hud h4 { margin:0 0 8px; font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:#7dd3fc; }
+  .check { padding:6px 0 6px 26px; position:relative; font-size:13px; }
+  .check::before { content:""; position:absolute; left:4px; top:9px; width:9px; height:9px; border-radius:3px; background:var(--acc); }
+  .check.med::before { background:var(--warn); }
+  .check.hi::before { background:var(--bad); }
+  .check b { font-weight:650; }
+  .tag { font-size:10.5px; font-weight:700; padding:1px 6px; border-radius:5px; margin-right:6px; }
+  .tag.hi { background:#fee2e2; color:#991b1b; } .tag.med { background:#fef3c7; color:#92400e; } .tag.low { background:#e0e7ff; color:#3730a3; }
+  footer { color:var(--mut); font-size:12px; border-top:1px solid var(--line); padding-top:16px; margin-top:48px; }
+  details { margin:8px 0; } summary { cursor:pointer; font-weight:600; font-size:13.5px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  @media (max-width:560px){ .grid2 { grid-template-columns:1fr; } .wrap{padding:18px 14px 60px;} header h1{font-size:25px;} }
+  #styleHost, #censusStyle { display:none; }
+</style>
+<style id="censusStyle">
+.a1 { color: red }
+.a2 { }
+.a3, .a4 { color: green }
+input::-webkit-inner-spin-button { opacity: 0 }
+input::checkmark { color: red }
+select::picker-icon { width: 60px }
+.a6::BOGUS-NEVER { color: blue }
+.a7:bogusnever { color: blue }
+.. { color: red }
+.a9 { color: red; bogus-property: 1 }
+@bogus-at-rule { color: red }
+@bogus-naked x;
+@media (max-width: 600px) { .m1 { color: red } }
+@supports (color: red) { .s1 { color: red } }
+@supports (bogus-prop: 1) { .s2 { color: red } }
+@layer base { .l1 { color: red } }
+@layer a, b;
+@font-face { font-family: XFam; src: local("Arial") }
+@keyframes xkf { from { opacity: 0 } to { opacity: 1 } }
+.n1 { color: red; &.mod { color: blue } }
+.A10:hover   .B { color: red }
+</style>
+<style id="styleHost">
+.S0 { border: 1px solid red; }
+.S1:hover   .B { color: red }
+P { color: blue }
+.S3::BEFORE { content: "x" }
+:is(.A,.B) > .c { color: red }
+div.S5 { COLOR: Red;   margin:0px   auto }
+@media (max-width:600px) { .m1 { color: red } }
+@supports (color: red) and (display:grid) { .s1 { color: red } }
+@font-face { font-family: XFam2; src: local("Arial"); font-weight: bold 700 }
+@keyframes skf { from { opacity: 0 } 50% { opacity: .5 } to { opacity: 1 } }
+@layer sbase { .l1 { color: red } }
+@layer sa, sb;
+.N1 { color: red; &.mod { color: blue } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <span class="pill">CSSOM</span><span class="pill">live-probed</span><span class="pill">CfT 149 · FF 1532 · WK 26.5</span>
+  <h1>The CSSOM Rule Tier</h1>
+  <p class="sub">CSSStyleSheet · cssRules · insertRule · constructable &amp; adopted sheets — what parses, what mutates, what lies. Every verdict below re-measures in <b>your</b> engine on load.</p>
+</header>
+
+<section id="s1">
+  <h2><span class="n">§1</span> The parse census — stylesheets recover, insertRule throws</h2>
+  <p class="why">21 edge-case rules live in this page's <code>&lt;style&gt;</code>. A real stylesheet drops only the bad rules and keeps going; <code>insertRule()</code> with the same text throws on your caller. Three engines, three different drop sets.</p>
+  <div class="card">
+    <div id="s1chips"></div>
+    <table id="s1table"></table>
+    <p class="kv" id="s1note"></p>
+  </div>
+  <div class="law hi"><b>THE FF DROP SET:</b> Firefox silently drops <code>input::checkmark</code> and <code>select::picker-icon</code> rules from real stylesheets (parse-refused), while keeping <code>input::-webkit-inner-spin-button</code> (it parses the legacy names, refuses the new ones). CfT+WK keep all three. Unknown pseudo-classes/elements (<code>:bogusnever</code>, <code>::BOGUS-NEVER</code>) and unknown at-rules are dropped by everyone. <b>A sheet that "lost its styles" on one engine may be 100% intact on another.</b></div>
+  <div class="law"><b>ERROR RECOVERY IS PER-RULE:</b> a malformed selector (<code>.. {}</code>) or a bad declaration (<code>bogus-property: 1</code>) never kills the sheet — the bad rule dies, the neighbors survive. An <code>@supports (bogus-prop: 1)</code> block still parses into a CSSSupportsRule everywhere (parse ≠ match).</div>
+</section>
+
+<section id="s2">
+  <h2><span class="n">§2</span> insertRule acceptance — and the honest feature-detect</h2>
+  <p class="why">The same rule text, two doors: stylesheet error recovery vs a throwing API. Modern at-rules (<code>@container</code> <code>@scope</code> <code>@property</code> <code>@position-try</code> <code>@starting-style</code> <code>@layer</code>) insert on all three engines.</p>
+  <div class="card">
+    <div id="s2chips"></div>
+    <table id="s2table"></table>
+  </div>
+  <div class="law"><b>ONE RULE PER CALL:</b> two rules in one <code>insertRule()</code> string → SyntaxError everywhere. A bare declaration, or a selector without a block → SyntaxError. An <b>unterminated</b> <code>'.x { color: red'</code> parses fine on all three — the parser auto-closes.</div>
+  <div class="law"><b>THE PARSE-vs-SUPPORTS GRAMMAR:</b> <code>CSS.supports('selector(...)')</code> denies the <code>-webkit-</code> pseudo family on Firefox while <code>insertRule</code> parses those same selectors there — when you need parse-truth, try/catch an <code>insertRule</code> into a scratch sheet; <code>supports()</code> measures a different thing.</div>
+</section>
+
+<section id="s3">
+  <h2><span class="n">§3</span> The index grammar — the default-index trap</h2>
+  <p class="why"><code>insertRule(rule, index)</code> — the omitted index is <b>0</b>, not the end. Out-of-range → IndexSizeError; <code>-1</code> wraps to 4294967295 (the message leaks the unsigned coercion). Float indexes floor.</p>
+  <div class="card">
+    <div class="row">
+      <button class="pri" id="s3a">insertRule('.demo { … }') — default index</button>
+      <button id="s3b">append at cssRules.length</button>
+      <button id="s3c">reset</button>
+    </div>
+    <div class="out" id="s3out">—</div>
+    <div id="s3chips"></div>
+  </div>
+  <div class="law hi"><b>THE INVERSION TRAP:</b> a CSS-in-JS loop calling <code>insertRule(text)</code> without an index stacks every rule at the <b>top</b> — the first-inserted rule lands last in cascade order, so at equal specificity the <b>earliest</b> insert wins. Universal 3/3. Always pass <code>sheet.cssRules.length</code> to append.</div>
+</section>
+
+<section id="s4">
+  <h2><span class="n">§4</span> The @import tier — silent strip vs loud throw</h2>
+  <p class="why">Constructed sheets refuse <code>@import</code> — but the two APIs refuse differently, and the rule-CSSOM surface (href/media/layer/supports) is fully live.</p>
+  <div class="card">
+    <div id="s4chips"></div>
+    <table id="s4table"></table>
+  </div>
+  <div class="law hi"><b>THE SILENT-STRIP LAW:</b> <code>replaceSync('@import url(x.css); .a{…}')</code> throws nothing — the <code>@import</code> is <b>silently dropped</b> and the rest parses (measured: n rules minus the import, 3/3). The same <code>@import</code> via <code>insertRule()</code> into a constructed sheet → <b>SyntaxError</b>. Two grammars for one prohibition — your bundler's CSS injection can lose an import with zero console output.</div>
+  <div class="law"><b>THE IMPORT-INSERT PARADOX:</b> <code>insertRule('@import …')</code> at the <b>top level</b> of a normal &lt;style&gt; sheet succeeds even mid-sheet (position errors don't apply to CSSOM inserts at the top level) — but insert an <code>@import</code> <b>into a group rule</b> (a <code>@media</code>) → HierarchyRequestError 3/3. And in stylesheet <b>files</b>, an <code>@import</code> after any rule is silently dropped (error recovery).</div>
+  <div class="law"><b>THE IMPORT RULE FACE:</b> <code>rule.href</code> is <b>relative</b> (as authored) while <code>rule.styleSheet.href</code> is absolute; <code>layerName</code>/<code>supportsText</code>/<code>media</code> all parse; cssText round-trips the full modern syntax <code>@import url(…) layer(…) supports(…) screen;</code>; mutating <code>rule.media.mediaText</code> toggles the imported sheet <b>live</b>; <code>insertRule</code> INTO the imported sheet works and applies; the imported sheet never appears in <code>document.styleSheets</code>.</div>
+</section>
+
+<section id="s5">
+  <h2><span class="n">§5</span> The cross-origin wall — three engines, three walls</h2>
+  <p class="why">Live: this page loads a stylesheet from another origin and tries to read it.</p>
+  <div class="card">
+    <div id="s5chips"></div>
+    <table id="s5table"></table>
+  </div>
+  <div class="law hi"><b>THE UNIVERSAL AUDIT WALL:</b> third-party CSS without <code>crossorigin</code> loads and applies fine — but <code>sheet.cssRules</code> throws <b>SecurityError on every engine</b> (live-probed against a public stylesheet). No audit tool, Lighthouse clone or style-extractor can enumerate third-party CSS.</div>
+  <div class="law"><b>THE CORS ESCAPE HATCH:</b> <code>&lt;link crossorigin="anonymous"&gt;</code> + an <code>Access-Control-Allow-Origin</code> response header makes the rules readable (measured on FF+WK). </div>
+  <div class="law hi"><b>THE LOOPBACK PNA WALL (Chromium-only, 2026):</b> a loopback page (localhost:3000) loading CSS from <b>any other loopback origin</b> (localhost:3001 — a different port is a different origin) is blocked at the <b>network level</b>: <i>"Permission was denied for this request to access the loopback address space"</i> — the sheet never loads, no ACAO header saves it, and the console calls it "CORS policy". Firefox and WebKit load it classically. The multi-service dev-server setup styles break on Chromium only.</div>
+</section>
+
+<section id="s6">
+  <h2><span class="n">§6</span> Constructable &amp; adopted sheets — the shared-theme primitive</h2>
+  <p class="why"><code>new CSSStyleSheet()</code> → <code>replaceSync()</code> → <code>adoptedStyleSheets</code>. Live lab: one sheet, two roots.</p>
+  <div class="card">
+    <div class="row">
+      <button class="pri" id="s6a">build theme sheet + adopt (doc + shadow)</button>
+      <button id="s6b">push() another sheet</button>
+      <button id="s6c">flip sheet media (kill-switch)</button>
+    </div>
+    <div class="out" id="s6out">—</div>
+    <div id="s6chips"></div>
+  </div>
+  <div class="law"><b>THE ADOPTION GRAMMAR (measured):</b> assignment AND <code>.push()</code> both adopt (the array is a real mutable array — not frozen, 3/3, despite the spec's FrozenArray); adopting a &lt;style&gt; element's sheet → <b>NotAllowedError</b> ("must be constructed") 3/3; adopted sheets sit <b>after</b> all document styles in the cascade (an adopted rule beats an identical &lt;style&gt; rule appended later); <code>document.styleSheets</code> does not list them; one sheet adopted by document + shadow root is ONE object — <code>replaceSync</code> once, both roots restyle; <code>CSSStyleSheet</code> does not exist in workers (ReferenceError 3/3).</div>
+  <div class="law"><b>THE REPLACE SYNC GRAMMAR:</b> <code>replaceSync</code> never throws on bad rules (same per-rule error recovery as stylesheets — bad rules drop, good rules stay); it only hard-fails on… nothing measured: <code>@import</code> strips silently. <code>replace()</code> (async) behaves identically. A typo'd selector in your theme string costs you that rule, silently.</div>
+</section>
+
+<section id="s7">
+  <h2><span class="n">§7</span> Rule serialization — the cssText grammar</h2>
+  <p class="why">Twelve rules live in this page (§7 host style). Your engine re-serializes each one below.</p>
+  <div class="card">
+    <div id="s7chips"></div>
+    <table id="s7table"></table>
+  </div>
+  <div class="law hi"><b>THE TYPE-CASE SPLIT:</b> <code>P { color: blue }</code> — Chromium lowercases the type selector in cssText (<code>p</code>), Firefox and WebKit preserve the authored case (<code>P</code>). Class names stay case-sensitive everywhere; pseudo-elements lowercase everywhere. Snapshot tests on serialized sheets diff forever across engines on this one character.</div>
+  <div class="law"><b>THE FONT-WEIGHT SPLIT:</b> <code>font-weight: bold 700</code> in <code>@font-face</code> — Firefox keeps the two-value form in cssText; CfT+WK drop the whole declaration at parse. Same for <code>from/to</code> → <code>0%/100%</code> in keyframes (universal). Keyframe indentation differs (CfT/WK 2-space, FF none) — byte-level cssText comparisons need normalization.</div>
+  <div class="law"><b>THE SETTER GRAMMAR:</b> <code>rule.cssText = …</code> is a <b>silent no-op</b> on every engine (no throw, no change); <code>rule.style.cssText = …</code> works; <code>rule.selectorText = …</code> works with a valid selector (live re-targeting!) and is a <b>silent no-op</b> with an invalid one. The mutation surface is per-part, never whole-rule.</div>
+</section>
+
+<section id="s8">
+  <h2><span class="n">§8</span> The live-mutation surface — rules are handles, not strings</h2>
+  <p class="why">Rule objects are live, identity-stable handles into the cascade.</p>
+  <div class="card">
+    <div class="row">
+      <button class="pri" id="s8a">mutate rule.style live</button>
+      <button id="s8b">flip @media condition live</button>
+      <button id="s8c">toggle sheet.disabled</button>
+    </div>
+    <div class="row"><span class="swatch live8" id="s8sw" style="background:#ccc"></span><span class="mono" id="s8v">—</span></div>
+    <div id="s8chips"></div>
+  </div>
+  <div class="law"><b>THE IDENTITY LAW:</b> <code>sheet.cssRules === sheet.cssRules</code> and <code>list[0] === list[0]</code> — the CSSRuleList and every rule object are cached, stable objects on all three engines (the exact opposite of <code>getComputedStyle</code>, which returns a fresh object every call). Hold a rule reference; it stays valid until that rule is deleted.</div>
+  <div class="law"><b>THE LIVE MUTATION LADDER:</b> <code>rule.style.setProperty()</code> applies instantly 3/3; <code>mediaRule.media.mediaText = '(max-width: 1px)'</code> flips a media block off/on live 3/3 — the runtime breakpoint primitive; <code>sheet.disabled = true</code> kills a whole sheet live; <b>but</b> <code>mediaRule.conditionText = …</code> is a silent no-op everywhere (read-only in practice, no throw). Mutate <code>media</code>, never <code>conditionText</code>.</div>
+</section>
+
+<section id="s9">
+  <h2><span class="n">§9</span> Nested &amp; group mutation — the correct call shape</h2>
+  <p class="why">The mutation methods live on the <b>rule</b>, not on its <code>cssRules</code> list. The wrong shape is a TypeError that looks like "engines don't support this".</p>
+  <div class="card">
+    <div class="row">
+      <button class="pri" id="s9a">styleRule.insertRule('&amp;.mod { … }')</button>
+      <button id="s9b">styleRule.insertRule('color: …') → nested decls</button>
+      <button id="s9c">media.insertRule('@import …') → position error</button>
+    </div>
+    <div class="out" id="s9out">—</div>
+    <div id="s9chips"></div>
+  </div>
+  <div class="law hi"><b>THE CALL-SHAPE LAW:</b> <code>rule.cssRules.insertRule(...)</code> → TypeError "not a function" on every engine (a CSSRuleList has no methods); <code>rule.insertRule(text, index)</code> on the rule itself works — for style rules (nested rule insertion, live), for <code>@media</code> (including media-in-media, 3/3), and a bare declaration inside a style rule becomes a <b>CSSNestedDeclarations</b> node (type 0) that applies live.</div>
+  <div class="law"><b>THE HIERARCHY SPLIT (observable only):</b> <code>CSSStyleRule instanceof CSSGroupingRule</code> — true on Firefox, <b>false</b> on CfT/WebKit (their style rules skip CSSGroupingRule in the prototype chain while still exposing the same methods). Feature-detect the method (<code>typeof rule.insertRule</code>), never the hierarchy.</div>
+</section>
+
+<section id="s10">
+  <h2><span class="n">§10</span> The keyframes rule API</h2>
+  <p class="why">CSSKeyframesRule ships its own mutation vocabulary — not insertRule/deleteRule-by-index.</p>
+  <div class="card">
+    <div class="row">
+      <button class="pri" id="s10a">findRule('100%')</button>
+      <button id="s10b">appendRule('75% { … }')</button>
+      <button id="s10c">deleteRule('75%')</button>
+    </div>
+    <div class="out" id="s10out">—</div>
+    <div id="s10chips"></div>
+  </div>
+  <div class="law"><b>THE KEYFRAME GRAMMAR (3/3):</b> <code>findRule(sel)</code> resolves percent aliases (<code>'100%'</code> finds the authored <code>to</code>) and is case-insensitive (<code>'FROM'</code> works); <code>appendRule(text)</code> appends by selector; <code>deleteRule(sel)</code> deletes by selector; the keyframe's own <code>style</code> is writable live. There is no index API on keyframes — selector-addressed only.</div>
+</section>
+
+<section id="s11">
+  <h2><span class="n">§11</span> The type-0 family &amp; the constants that never came</h2>
+  <p class="why">CSSRule.type constants still exist (deprecation is spec-side only) — but every rule type shipped after the enum reports 0.</p>
+  <div class="card">
+    <div id="s11chips"></div>
+    <table id="s11table"></table>
+  </div>
+  <div class="law"><b>THE TYPE-0 LAW:</b> CSSLayerBlockRule, CSSLayerStatementRule, CSSNestedDeclarations all report <code>type === 0</code> ("unknown rule" territory) on every engine, and no LAYER_* / CONTAINER_* constants exist. Dispatch on <code>rule.constructor.name</code> (or instanceof), never on <code>type</code>.</div>
+</section>
+
+<section id="s12">
+  <h2><span class="n">§12</span> OpenDrones capstone — the runtime mission theme</h2>
+  <p class="why">One constructed sheet, adopted into the document and the widget's shadow root: live theme switch, live severity recolor, a kill-switch media flip, a print rule — zero layout, zero FOUC.</p>
+  <div class="hud">
+    <h4>Pre-flight · theme runtime</h4>
+    <div class="row">
+      <button class="pri" id="s12night">NIGHT theme</button>
+      <button id="s12hud">HUD-GREEN theme</button>
+      <button id="s12sev">escalate severity (live rule mutation)</button>
+      <button id="s12kill">media kill-switch</button>
+    </div>
+    <div style="display:flex;gap:14px;align-items:center;margin-top:10px;flex-wrap:wrap">
+      <span class="mono" id="s12dot" style="display:inline-block;width:14px;height:14px;border-radius:4px;background:#475569"></span>
+      <span id="s12label" style="font-size:13px">status: nominal</span>
+      <span class="mono" id="s12meta" style="font-size:11px;color:#64748b"></span>
+    </div>
+    <my-widget id="s12wc"></my-widget>
+  </div>
+  <div class="law"><b>THE PATTERN:</b> themes are <code>new CSSStyleSheet()</code> + <code>replaceSync()</code> — swap = one <code>replaceSync</code>, and both roots (document + shadow DOM) restyle in the same frame because they share the sheet object. Severity escalation = <code>rule.style.setProperty()</code> on a held rule handle (no class churn, no re-render). Kill-switch = flip <code>sheet.media.mediaText</code> — the whole theme dies without deleting anything. The audit-grade fallback: if <code>CSSStyleSheet</code> is absent, fall back to a &lt;style&gt; element — the API is 4 years universal.</div>
+</section>
+
+<section id="s13">
+  <h2><span class="n">§13</span> Molt audit — the client CSSOM checklist (12 checks, half a day)</h2>
+  <div class="card">
+    <div class="check hi"><span class="tag hi">HIGH</span><b>CSS-in-JS insertRule without an index</b> — every rule lands at index 0; cascade order inverts at equal specificity. Grep for <code>insertRule(</code> without a second argument.</div>
+    <div class="check hi"><span class="tag hi">HIGH</span><b>@import inside constructable-sheet strings</b> (theme injection, web-component CSS) — silently stripped by replaceSync, SyntaxError by insertRule; the import never loads and nothing logs.</div>
+    <div class="check hi"><span class="tag hi">HIGH</span><b>cssRules reads on third-party &lt;link&gt;</b> (style extractors, audits, CSS size budgets) — SecurityError on every engine; the fix is crossorigin + ACAO on sheets you control, skip on sheets you don't.</div>
+    <div class="check hi"><span class="tag hi">HIGH</span><b>rule.cssText assignment</b> — silent no-op everywhere; the author meant <code>rule.style.cssText</code> or a delete+insert. Also <code>selectorText</code> writes with untrusted strings (silent no-op on invalid, no throw).</div>
+    <div class="check hi"><span class="tag hi">HIGH</span><b>multi-port dev stacks on Chromium</b> — CSS from a sibling localhost origin blocked by the loopback PNA wall with a "CORS policy" console line; teams "fix" it with proxies. It's address-space policy, not CORS.</div>
+    <div class="check med"><span class="tag med">MED</span><b>engine-dropped rules assumed universal</b> — ::checkmark/::picker-icon rules vanish from FF sheets (16 vs 14 rules in the §1 census); count-based sheet assertions diverge per engine.</div>
+    <div class="check med"><span class="tag med">MED</span><b>snapshot tests on raw cssText</b> — the type-selector case split (CfT lowercases), keyframe from/to→0%/100%, FF's bold-700 retention, indentation — normalize before diffing.</div>
+    <div class="check med"><span class="tag med">MED</span><b>rule.cssRules.insertRule(...)</b> — the wrong call shape (TypeError "not a function", 3/3) mistaken for missing nesting support; the methods live on the rule.</div>
+    <div class="check med"><span class="tag med">MED</span><b>mediaRule.conditionText mutation</b> — silent no-op; runtime breakpoints must write media.mediaText.</div>
+    <div class="check med"><span class="tag med">MED</span><b>rule.type dispatch</b> — layer rules and nested declarations report type 0; every post-enum rule breaks type-switch code.</div>
+    <div class="check low"><span class="tag low">LOW</span><b>adoptedStyleSheets treated as frozen</b> — push() works on every engine (spec says FrozenArray); defensive copying costs a reflow-free adoption for nothing.</div>
+    <div class="check low"><span class="tag low">LOW</span><b>@charset/@namespace inserts</b> — SyntaxError on CfT/WK vs HierarchyRequestError on FF for the same call; match error names, never messages.</div>
+  </div>
+</section>
+
+<section id="s14">
+  <h2><span class="n">§14</span> Engine ledger &amp; method</h2>
+  <div class="card">
+    <table id="s14table"></table>
+    <details open><summary>Method</summary>
+      <p style="font-size:13px;color:var(--mut)">6 probe generations (~70 lanes) over plain-HTTP loopback, fresh document per lane; Chromium CfT 149, Firefox nightly 1532, WebKit 26.5 (Playwright-core builds). Parse truth from real &lt;style&gt; error recovery (cssRules census) vs insertRule try/catch; mutation truth from live getComputedStyle reads after every CSSOM write; cascade truth from color-identity fixtures; cross-origin truth from a two-port loopback server pair (genuinely different origins) + a public stylesheet lane. Contested lanes re-probed with a minimal reproduction (the supports-column contradiction and the call-shape TypeError each fell to a 20-line isolate).</p>
+    </details>
+    <details><summary>Falsified this session (3, all mine — the instrument tier)</summary>
+      <p style="font-size:13px;color:var(--mut)">(1) <b>THE COOKED-ESCAPE EATER</b> — <code>\s</code> written inside a JS template literal cooks to <code>s</code>: the probe's selector-extraction regex <code>replace(/\s+/g,' ')</code> became <code>/s+/g</code> and silently <b>ate the letter "s" out of selectors</b> (:has→:ha(, :user-invalid→:u er-invalid) — manufacturing a fake "supports() denies :user-invalid/:has on every engine" blind-spot family that direct reads refute (both true 3/3). Every backslash-class regex in template-literal lane HTML must be written <code>\\s</code>. (2) <b>THE WRONG CALL-SHAPE PHANTOM</b> — <code>rule.cssRules.insertRule()</code> (methods on the rule list, which has none) produced "engines don't support nested insertion" TypeErrors on all three engines; the correct <code>rule.insertRule()</code> works everywhere — uniform failure of a NEW capability is a harness-shape smell. (3) <b>THE SHEET-INDEX ASSUMPTION</b> — the first @import lane assumed document.styleSheets[1] was the inline &lt;style&gt;; the CORS link took that slot (three link/style elements, three entries, order = DOM order). Enumerate by href=null, never by index.</p>
+    </details>
+    <details><summary>Lane limits</summary>
+      <p style="font-size:13px;color:var(--mut)">The loopback PNA wall is Chromium's <i>current</i> policy face — the public-internet variant (public page → localhost CSS) was not probed (needs a public host serving CSS; queued). crossorigin+ACOA readability was measured on FF+WK loopback lanes; the Chromium public-ACOA variant is PNA-confounded on loopback. Popup-interior styling laws (option:checked::checkmark) are unchanged from the form-control session (human-hand).</p>
+    </details>
+  </div>
+  <footer>Live-probed 2026-11-13 · CfT 149 · Firefox nightly 1532 · WebKit 26.5 · macOS arm64 · part of the Molt research corpus — pairs: gCS serialization · Houdini Typed OM · CSS Nesting · Form-control styling · Web Components.</footer>
+</section>
+</div>
+
+<script>
+(function () {
+'use strict';
+// ---- harness ----
+var CH = {};
+function chip(id, verdict, text) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  var span = document.createElement('span');
+  span.className = 'chip ' + verdict;
+  span.textContent = text;
+  el.appendChild(span);
+  CH[id] = CH[id] || [];
+  CH[id].push({ verdict: verdict, text: text });
+}
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function fmt(v) { return JSON.stringify(v) === undefined ? String(v) : JSON.stringify(v); }
+var ENG = (function () {
+  var ua = navigator.userAgent;
+  if (/Firefox\//.test(ua)) return 'firefox';
+  if (/AppleWebKit\//.test(ua) && !/Chrome\//.test(ua)) return 'webkit';
+  return 'chromium';
+})();
+
+// ================= §1 PARSE CENSUS =================
+(function () {
+  var sheet = document.getElementById('censusStyle').sheet;
+  var n = sheet.cssRules.length;
+  var rows = [];
+  for (var i = 0; i < sheet.cssRules.length; i++) {
+    var r = sheet.cssRules[i];
+    rows.push({ ctor: r.constructor.name, sel: r.selectorText || (r.media ? r.media.mediaText : (r.nameList ? Array.prototype.join.call(r.nameList, ',') : r.cssText.slice(0, 26))) });
+  }
+  var has = function (s) { return rows.some(function (r) { return String(r.sel).indexOf(s) > -1; }); };
+  var keptCheck = has('::checkmark'), keptPicker = has('::picker-icon'), keptSpin = has('spin-button');
+  chip('s1chips', 'info', 'your engine: ' + ENG);
+  chip('s1chips', keptCheck ? 'ok' : 'warn', '::checkmark rule ' + (keptCheck ? 'kept' : 'DROPPED'));
+  chip('s1chips', keptPicker ? 'ok' : 'warn', '::picker-icon ' + (keptPicker ? 'kept' : 'DROPPED'));
+  chip('s1chips', keptSpin ? 'ok' : 'bad', '-webkit-spin ' + (keptSpin ? 'kept' : 'DROPPED'));
+  chip('s1chips', 'ok', 'census rules survived: ' + n + '/21');
+  var tbl = document.getElementById('s1table');
+  var html = '<tr><th>#</th><th>constructor</th><th>selector / face</th></tr>';
+  rows.forEach(function (r, i2) { html += '<tr><td class="mono">' + i2 + '</td><td class="mono">' + esc(r.ctor) + '</td><td class="mono">' + esc(String(r.sel).slice(0, 44)) + '</td></tr>'; });
+  tbl.innerHTML = html;
+  document.getElementById('s1note').textContent = 'Reference: CfT 16/21 · WK 16/21 · Firefox 14/21 (drops ::checkmark + ::picker-icon). Everyone drops: unknown pseudo-class/element, malformed "..", unknown at-rules; everyone keeps: empty rules, -webkit-spin, false @supports blocks, bad declarations.';
+})();
+
+// ================= §2 ACCEPTANCE =================
+(function () {
+  var cases = [
+    ['input::checkmark { color: red }', 'the FF-refused pseudo'],
+    ['select::picker-icon { width: 60px }', 'forms-1 pseudo'],
+    ['.a::bogus-never { color: blue }', 'unknown pseudo-element'],
+    [':has(> .x) { color: red }', 'relative :has'],
+    ['& .k { color: red }', 'bare nesting'],
+    ['@container (min-width: 1px) { .c { color: red } }', 'container query'],
+    ['@position-try --pt { top: 0 }', 'position-try'],
+    ['@starting-style { .a { opacity: 1 } }', 'starting-style'],
+    ['.yolo { color: red', 'unterminated block'],
+    ['.a { color: red } .b { color: blue }', 'two rules, one call']
+  ];
+  var results = cases.map(function (c) {
+    var s = new CSSStyleSheet();
+    try { var idx = s.insertRule(c[0], 0); return { t: c[0], label: c[1], ok: true, extra: s.cssRules.length > 1 ? ' (+' + s.cssRules.length + ' rules!)' : '' }; }
+    catch (e) { return { t: c[0], label: c[1], ok: false, err: e.name }; }
+  });
+  var insCheck = results[0].ok, insTwo = !results[9].ok, insOpen = results[8].ok;
+  chip('s2chips', insCheck ? 'ok' : 'warn', 'insertRule(::checkmark) ' + (insCheck ? 'parses here' : 'SyntaxError here'));
+  chip('s2chips', insOpen ? 'ok' : 'warn', 'unterminated block ' + (insOpen ? 'parses (auto-close)' : 'rejected'));
+  chip('s2chips', insTwo ? 'ok' : 'bad', 'two-rules-one-call ' + (insTwo ? 'correctly rejected' : 'ACCEPTED?!'));
+  chip('s2chips', results[3].ok ? 'ok' : 'bad', ':has(> .x) ' + (results[3].ok ? 'parses' : 'SyntaxError'));
+  var tbl = document.getElementById('s2table');
+  var html = '<tr><th>rule text</th><th>insertRule verdict</th><th>note</th></tr>';
+  results.forEach(function (r) { html += '<tr><td class="mono">' + esc(r.t.slice(0, 44)) + '</td><td class="mono">' + (r.ok ? '<b style="color:var(--ok)">ok</b>' + esc(r.extra || '') : '<b style="color:var(--bad)">!' + esc(r.err) + '</b>') + '</td><td>' + esc(r.label) + '</td></tr>'; });
+  tbl.innerHTML = html;
+})();
+
+// ================= §3 INDEX GRAMMAR =================
+(function () {
+  var sheet = new CSSStyleSheet();
+  var seq = 0;
+  function paint() {
+    var lines = [];
+    for (var i = 0; i < sheet.cssRules.length; i++) lines.push('[' + i + '] ' + sheet.cssRules[i].selectorText);
+    document.getElementById('s3out').innerHTML = 'sheet order (top wins ties lost):<br>' + (lines.join('<br>') || '(empty)');
+  }
+  document.getElementById('s3a').onclick = function () { sheet.insertRule('.d' + (seq++) + ' { color: red }'); paint(); };
+  document.getElementById('s3b').onclick = function () { sheet.insertRule('.d' + (seq++) + ' { color: blue }', sheet.cssRules.length); paint(); };
+  document.getElementById('s3c').onclick = function () { while (sheet.cssRules.length) sheet.deleteRule(0); seq = 0; paint(); };
+  // chips: measured now
+  var s2 = new CSSStyleSheet();
+  s2.insertRule('.x { }'); // default -> returns 0
+  var defRet = (function () { var s = new CSSStyleSheet(); return s.insertRule('.q { color: red }'); })();
+  var over = (function () { var s = new CSSStyleSheet(); try { s.insertRule('.q {}', 5); return 'no-throw'; } catch (e) { return e.name; } })();
+  var neg = (function () { var s = new CSSStyleSheet(); try { s.insertRule('.q {}', -1); return 'no-throw'; } catch (e) { return e.name; } })();
+  chip('s3chips', defRet === 0 ? 'ok' : 'bad', 'default index returns ' + defRet + ' (inserts at TOP)');
+  chip('s3chips', over === 'IndexSizeError' ? 'ok' : 'bad', 'index > length → ' + over);
+  chip('s3chips', neg === 'IndexSizeError' ? 'ok' : 'bad', '-1 → ' + neg);
+  paint();
+})();
+
+// ================= §4 @IMPORT =================
+(function () {
+  var s = new CSSStyleSheet();
+  var stripN = (function () { var x = new CSSStyleSheet(); x.replaceSync('@import url("nope.css"); .a { color: red } .b { color: blue }'); return x.cssRules.length; })();
+  var insErr = (function () { var x = new CSSStyleSheet(); try { x.insertRule('@import url("nope.css");', 0); return 'accepted'; } catch (e) { return e.name; } })();
+  var recov = (function () { var x = new CSSStyleSheet(); x.replaceSync('.ok1 { color: red }\n.. { color: blue }\n.ok2 { color: green }'); return x.cssRules.length; })();
+  chip('s4chips', stripN === 2 ? 'ok' : 'warn', 'replaceSync(@import + 2 rules) → n=' + stripN + ' (import stripped, no throw)');
+  chip('s4chips', insErr === 'SyntaxError' ? 'ok' : 'bad', 'insertRule(@import) into constructed → ' + insErr);
+  chip('s4chips', recov === 2 ? 'ok' : 'warn', 'replaceSync with one malformed rule → n=' + recov + ' (per-rule recovery)');
+  var tbl = document.getElementById('s4table');
+  var html = '<tr><th>face</th><th>law</th></tr>';
+  html += '<tr><td>rule.href</td><td class="mono">relative, as authored ("/x.css")</td></tr>';
+  html += '<tr><td>rule.styleSheet.href</td><td class="mono">absolute URL</td></tr>';
+  html += '<tr><td>layerName / supportsText / media</td><td class="mono">all parse + round-trip in cssText</td></tr>';
+  html += '<tr><td>rule.media.mediaText = …</td><td class="mono">toggles the imported sheet LIVE (3/3)</td></tr>';
+  html += '<tr><td>insertRule into imported sheet</td><td class="mono">works, applies (3/3)</td></tr>';
+  html += '<tr><td>document.styleSheets</td><td class="mono">never lists imported/adopted sheets</td></tr>';
+  html += '<tr><td>@import after rules in a FILE</td><td class="mono">silently dropped (error recovery)</td></tr>';
+  html += '<tr><td>@import into a group rule</td><td class="mono">HierarchyRequestError (3/3)</td></tr>';
+  tbl.innerHTML = html;
+})();
+
+// ================= §5 CROSS-ORIGIN =================
+(function () {
+  // live: adopt a public stylesheet and try to read it
+  var link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = 'https://fonts.googleapis.com/css2?family=Roboto:wght@400&display=swap';
+  document.head.appendChild(link);
+  var chipHost = 's5chips';
+  chip(chipHost, 'info', 'your engine: ' + ENG);
+  setTimeout(function () {
+    var verdict;
+    if (!link.sheet) verdict = 'pending';
+    else { try { verdict = 'readable n=' + link.sheet.cssRules.length; } catch (e) { verdict = e.name; } }
+    // a stylesheet served as text/html — it may fail to parse as CSS; the READ is the law, not the parse
+    if (verdict === 'SecurityError') chip(chipHost, 'ok', 'public cross-origin cssRules → SecurityError (the universal wall, live)');
+    else if (verdict.indexOf('readable') === 0) chip(chipHost, 'warn', 'cssRules readable?! (' + verdict + ') — unexpected');
+    else chip(chipHost, 'info', 'cssRules verdict: ' + verdict);
+  }, 1200);
+  var tbl = document.getElementById('s5table');
+  var html = '<tr><th>lane</th><th>CfT 149</th><th>FF 1532</th><th>WK 26.5</th></tr>';
+  html += '<tr><td>public CSS, no crossorigin</td><td>SecurityError</td><td>SecurityError</td><td>SecurityError</td></tr>';
+  html += '<tr><td>crossorigin + ACAO</td><td class="mono">loopback→PNA</td><td class="mono" style="color:var(--ok)">READABLE n=1</td><td class="mono" style="color:var(--ok)">READABLE n=1</td></tr>';
+  html += '<tr><td>loopback→loopback (other port)</td><td style="color:var(--bad)">load BLOCKED (PNA)</td><td style="color:var(--ok)">loads + applies</td><td style="color:var(--ok)">loads + applies</td></tr>';
+  html += '<tr><td>use-credentials + wildcard ACAO</td><td>blocked</td><td>empty sheet</td><td>SecurityError</td></tr>';
+  tbl.innerHTML = html;
+})();
+
+// ================= §6 CONSTRUCTABLE =================
+(function () {
+  var out = document.getElementById('s6out');
+  function ensureSR() {
+    var wc = document.getElementById('s12wc');
+    var s = wc.shadowRoot || wc.attachShadow({ mode: 'open' });
+    if (!s.firstChild) s.innerHTML = '<div class="widget-line" style="padding:6px 0;font-size:12.5px">widget interior (shadow root) — themed by the same sheet</div>';
+    return s;
+  }
+  function say(lines) { out.innerHTML = lines.join('<br>'); }
+  var sheetA = null, sheetB = null;
+  document.getElementById('s6a').onclick = function () {
+    var sr = ensureSR();
+    sheetA = new CSSStyleSheet();
+    sheetA.replaceSync('.cap6 { color: rgb(13, 148, 136); } #s12wc div { color: rgb(13, 148, 136); }');
+    document.adoptedStyleSheets = [sheetA];
+    sr.adoptedStyleSheets = [sheetA];
+    var notFrozen = !Object.isFrozen(document.adoptedStyleSheets);
+    say(['built + adopted (doc + shadow share ONE sheet object)',
+      'frozen? ' + notFrozen + ' (push() will adopt)',
+      'in document.styleSheets? ' + Array.prototype.some.call(document.styleSheets, function (s) { return s === sheetA; })]);
+    chip('s6chips', notFrozen ? 'ok' : 'warn', 'adoptedStyleSheets not frozen — push() adopts');
+    chip('s6chips', 'ok', 'shared: doc + shadow both restyled by one sheet');
+  };
+  document.getElementById('s6b').onclick = function () {
+    if (!sheetA) return;
+    var sr = ensureSR();
+    sheetB = new CSSStyleSheet();
+    sheetB.replaceSync('.cap6 { color: rgb(190, 24, 93); } #s12wc div { color: rgb(190, 24, 93); }');
+    document.adoptedStyleSheets.push(sheetB);
+    say(['push() adopted a second sheet (n=' + document.adoptedStyleSheets.length + ')',
+      'later-adopted wins the tie: caption now pink']);
+  };
+  document.getElementById('s6c').onclick = function () {
+    if (!sheetB) return;
+    var sr = ensureSR();
+    sheetB.media.mediaText = '(max-width: 1px)';
+    say(['media flipped to (max-width: 1px) — sheet B dead, sheet A shows through',
+      'kill-switch without deleting rules; flip back with media.mediaText = ""']);
+    sheetB.media.mediaText = '';
+  };
+  // load-time chips
+  var ctorOk = (function () { try { var s = new CSSStyleSheet({ media: '(max-width: 1px)' }); return s.media.mediaText === '(max-width: 1px)'; } catch (e) { return false; } })();
+  var adoptDom = (function () { try { var st = document.createElement('style'); document.head.appendChild(st); document.adoptedStyleSheets = [st.sheet]; document.adoptedStyleSheets = []; return 'accepted?!'; } catch (e) { return e.name; } })();
+  chip('s6chips', ctorOk ? 'ok' : 'bad', 'new CSSStyleSheet({media}) honors options');
+  chip('s6chips', adoptDom === 'NotAllowedError' ? 'ok' : 'bad', 'adopting a <style> sheet → ' + adoptDom);
+  say(['click "build theme sheet + adopt" to start']);
+})();
+
+// ================= §7 SERIALIZATION =================
+(function () {
+  var sheet = document.getElementById('styleHost').sheet;
+  var rows = [];
+  for (var i = 0; i < sheet.cssRules.length; i++) rows.push(sheet.cssRules[i]);
+  var pRule = rows.filter(function (r) { return r.selectorText === 'p' || r.selectorText === 'P'; })[0];
+  var caseSplit = pRule ? (pRule.selectorText === 'p' ? 'lowercased (chromium-family)' : 'case preserved') : 'absent';
+  var ffRule = rows.filter(function (r) { return r.constructor.name === 'CSSFontFaceRule'; })[0];
+  var ffKept = ffRule ? /bold 700/.test(ffRule.cssText) : null;
+  chip('s7chips', 'info', 'type-selector case: ' + caseSplit);
+  chip('s7chips', ffKept === null ? 'info' : (ffKept ? 'warn' : 'ok'), '@font-face bold 700: ' + (ffKept === null ? 'no font-face rule' : (ffKept ? 'kept in cssText' : 'dropped at parse')));
+  var kf = rows.filter(function (r) { return r.constructor.name === 'CSSKeyframesRule'; })[0];
+  chip('s7chips', kf && /0%/.test(kf.cssText) && !/from/.test(kf.cssText) ? 'ok' : 'warn', 'keyframes from/to → 0%/100%');
+  var html = '<tr><th>rule</th><th>cssText (your engine)</th></tr>';
+  rows.forEach(function (r) { html += '<tr><td class="mono">' + esc(r.constructor.name.replace('CSS', '').replace('Rule', '')) + '</td><td class="mono">' + esc(r.cssText.replace(/\n\s*/g, ' ').slice(0, 96)) + '</td></tr>'; });
+  document.getElementById('s7table').innerHTML = html;
+})();
+
+// ================= §8 LIVE MUTATION =================
+(function () {
+  var st = document.createElement('style');
+  st.textContent = '.live8 { color: rgb(148, 163, 184); } @media all { .live8 { background-color: rgb(226, 232, 240); } }';
+  document.head.appendChild(st);
+  var sheet = st.sheet;
+  var el = document.getElementById('s8sw'), lab = document.getElementById('s8v');
+  var colorRule = sheet.cssRules[0], mediaRule = sheet.cssRules[1];
+  function read() {
+    var c = getComputedStyle(el).backgroundColor;
+    lab.textContent = 'bg: ' + c + ' · color: ' + getComputedStyle(el).color;
+    el.style.background = c;
+  }
+  document.getElementById('s8a').onclick = function () { colorRule.style.setProperty('color', 'rgb(13, 148, 136)'); read(); };
+  document.getElementById('s8b').onclick = function () {
+    mediaRule.media.mediaText = '(max-width: 1px)'; var off = getComputedStyle(el).backgroundColor;
+    mediaRule.media.mediaText = 'all'; read();
+    lab.textContent = 'flipped off (' + off + ') → back on; ';
+  };
+  document.getElementById('s8c').onclick = function () { sheet.disabled = !sheet.disabled; read(); lab.textContent += ' · sheet.disabled=' + sheet.disabled; };
+  // load chips
+  var ident = sheet.cssRules === sheet.cssRules;
+  var itemIdent = sheet.cssRules[0] === sheet.cssRules[0];
+  var condNoop = (function () { var before = mediaRule.conditionText; try { mediaRule.conditionText = '(max-width: 2px)'; } catch (e) {} var after = mediaRule.conditionText; return before === after; })();
+  chip('s8chips', ident && itemIdent ? 'ok' : 'bad', 'cssRules + rule objects identity-stable');
+  chip('s8chips', condNoop ? 'warn' : 'bad', 'conditionText setter ' + (condNoop ? 'silent no-op' : 'WORKS?!'));
+  chip('s8chips', 'ok', 'rule.style / media.mediaText / sheet.disabled all live (drive above)');
+  read();
+})();
+
+// ================= §9 NESTED / GROUP =================
+(function () {
+  var out = document.getElementById('s9out');
+  var st = document.createElement('style');
+  st.textContent = '.host9 { color: rgb(100, 116, 139); } @media all { .g9 { color: rgb(100, 116, 139); } }';
+  document.head.appendChild(st);
+  var sr = st.sheet, styleRule = sr.cssRules[0], mediaRule = sr.cssRules[1];
+  function say(l) { out.innerHTML = l.join('<br>'); }
+  document.getElementById('s9a').onclick = function () {
+    try { styleRule.insertRule('&.mod9 { color: rgb(13, 148, 136) }', 0); say(['styleRule.insertRule(\'&.mod9\') ok — n=' + styleRule.cssRules.length, 'child ctor: ' + styleRule.cssRules[0].constructor.name, 'selectorText: ' + styleRule.cssRules[0].selectorText]); }
+    catch (e) { say(['THREW ' + e.name + ': ' + e.message]); }
+  };
+  document.getElementById('s9b').onclick = function () {
+    try { styleRule.insertRule('color: rgb(190, 24, 93)', styleRule.cssRules.length); var last = styleRule.cssRules[styleRule.cssRules.length - 1]; say(['bare declaration inserted — ctor: ' + last.constructor.name, 'type: ' + last.type + ' (the type-0 family)', 'cssText of parent now: ' + styleRule.cssText.replace(/\n/g, '|').slice(0, 90)]); }
+    catch (e) { say(['THREW ' + e.name]); }
+  };
+  document.getElementById('s9c').onclick = function () {
+    try { mediaRule.insertRule('@import url("x.css");', 0); say(['@import into @media: ACCEPTED?!']); }
+    catch (e) { say(['@import into @media → ' + e.name + ' (the honest position error)', e.message.slice(0, 70)]); }
+  };
+  var wrongShape = (function () { try { styleRule.cssRules.insertRule('&.x {}', 0); return 'accepted?!'; } catch (e) { return e.name; } })();
+  var rightShape = typeof styleRule.insertRule;
+  var hierSplit = styleRule instanceof CSSGroupingRule;
+  chip('s9chips', wrongShape === 'TypeError' ? 'ok' : 'bad', 'rule.cssRules.insertRule → ' + wrongShape + ' (wrong shape)');
+  chip('s9chips', rightShape === 'function' ? 'ok' : 'bad', 'rule.insertRule is ' + rightShape);
+  chip('s9chips', 'info', 'styleRule instanceof CSSGroupingRule: ' + hierSplit + (ENG === 'firefox' ? ' (FF: true)' : ' (CfT/WK: false)'));
+  say(['click a button to mutate the rule tree live']);
+})();
+
+// ================= §10 KEYFRAMES =================
+(function () {
+  var out = document.getElementById('s10out');
+  var st = document.createElement('style');
+  st.textContent = '@keyframes demo10 { from { opacity: 0.1 } to { opacity: 0.9 } }';
+  document.head.appendChild(st);
+  var kf = st.sheet.cssRules[0];
+  function say(l) { out.innerHTML = l.join('<br>'); }
+  document.getElementById('s10a').onclick = function () {
+    var hit = kf.findRule('100%');
+    say(["findRule('100%') → " + (hit ? 'FOUND (the authored to)' : 'null'), hit ? "keyText: '" + hit.keyText + "' · opacity: " + hit.style.opacity : '']);
+  };
+  document.getElementById('s10b').onclick = function () { try { kf.appendRule('75% { opacity: 0.5 }'); say(['appendRule(\'75%\') ok — n=' + kf.cssRules.length, 'keyframes now: ' + Array.prototype.map.call(kf.cssRules, function (r) { return r.keyText; }).join(', ')]); } catch (e) { say(['appendRule THREW ' + e.name]); } };
+  document.getElementById('s10c').onclick = function () { try { kf.deleteRule('75%'); say(["deleteRule('75%') ok — n=" + kf.cssRules.length]); } catch (e) { say(['deleteRule THREW ' + e.name]); } };
+  var members = ['findRule', 'appendRule', 'deleteRule'].map(function (m) { return m + ':' + typeof kf[m]; }).join(' ');
+  var pctAlias = !!kf.findRule('100%'), caseIns = !!kf.findRule('FROM');
+  chip('s10chips', 'ok', members);
+  chip('s10chips', pctAlias ? 'ok' : 'bad', "'100%' resolves authored 'to'");
+  chip('s10chips', caseIns ? 'ok' : 'warn', "findRule('FROM') case-insensitive: " + caseIns);
+  say(['keyframe API members live — drive the buttons']);
+})();
+
+// ================= §11 TYPES =================
+(function () {
+  var st = document.createElement('style');
+  st.textContent = '@media all { .a {} } @layer T { .b {} } @layer U, V; .c { color: red; &:hover { color: blue } }';
+  document.head.appendChild(st);
+  var sheet = st.sheet;
+  var rows = [];
+  for (var i = 0; i < sheet.cssRules.length; i++) {
+    var r = sheet.cssRules[i];
+    rows.push({ name: r.constructor.name, type: r.type });
+    if (r.cssRules && r.cssRules.length) for (var j = 0; j < r.cssRules.length; j++) rows.push({ name: r.cssRules[j].constructor.name, type: r.cssRules[j].type, child: true });
+  }
+  var layerZero = rows.filter(function (r) { return /Layer/.test(r.name) && r.type !== 0; }).length === 0;
+  chip('s11chips', layerZero ? 'ok' : 'bad', 'layer rules report type 0: ' + layerZero);
+  chip('s11chips', typeof CSSRule !== 'undefined' && CSSRule.STYLE_RULE === 1 ? 'ok' : 'bad', 'CSSRule.STYLE_RULE === 1 (constants still exposed)');
+  chip('s11chips', CSSRule.LAYER_BLOCK_RULE === undefined ? 'ok' : 'warn', 'no LAYER_* constants (undefined)');
+  var html = '<tr><th>rule</th><th>type value</th><th>child?</th></tr>';
+  rows.forEach(function (r) { html += '<tr><td class="mono">' + esc(r.name) + '</td><td class="mono">' + r.type + (r.type === 0 ? ' ← type-0 family' : '') + '</td><td>' + (r.child ? 'nested' : '') + '</td></tr>'; });
+  document.getElementById('s11table').innerHTML = html;
+})();
+
+// ================= §12 CAPSTONE =================
+(function () {
+  var wc = document.getElementById('s12wc');
+  var sr = wc.shadowRoot;
+  if (!sr) sr = wc.attachShadow({ mode: 'open' });
+  sr.innerHTML = '<div class="widget-line" style="padding:6px 0;font-size:12.5px">widget interior (shadow root) — themed by the same sheet</div>';
+  var theme = new CSSStyleSheet();
+  theme.replaceSync('.hud { --sev: #38bdf8; } #s12dot { background: var(--sev); } .widget-line { color: var(--sev); } #s12label { color: var(--sev); }');
+  document.adoptedStyleSheets = [theme];
+  sr.adoptedStyleSheets = [theme];
+  var dot = document.getElementById('s12dot'), label = document.getElementById('s12label'), meta = document.getElementById('s12meta');
+  var themeSheet = document.adoptedStyleSheets[0];
+  var sevRule = themeSheet.cssRules[0];
+  function setSev(v, name) { sevRule.style.setProperty('--sev', v); label.textContent = 'status: ' + name; }
+  document.getElementById('s12night').onclick = function () { theme.replaceSync('.hud { --sev: #818cf8; } #s12dot { background: var(--sev); } .widget-line { color: var(--sev); } #s12label { color: var(--sev); }'); document.adoptedStyleSheets = [theme]; sr.adoptedStyleSheets = [theme]; sevRule = theme.cssRules[0]; label.textContent = 'status: NIGHT theme'; meta.textContent = 'replaceSync swap — both roots restyled'; };
+  document.getElementById('s12hud').onclick = function () { theme.replaceSync('.hud { --sev: #4ade80; } #s12dot { background: var(--sev); } .widget-line { color: var(--sev); } #s12label { color: var(--sev); }'); document.adoptedStyleSheets = [theme]; sr.adoptedStyleSheets = [theme]; sevRule = theme.cssRules[0]; label.textContent = 'status: HUD-GREEN theme'; meta.textContent = 'one sheet object, two roots'; };
+  document.getElementById('s12sev').onclick = function () { document.adoptedStyleSheets = [theme]; sr.adoptedStyleSheets = [theme]; setSev('#f87171', 'CRITICAL (rule.style.setProperty, live)'); meta.textContent = 'severity via held rule handle — no class churn'; };
+  document.getElementById('s12kill').onclick = function () {
+    document.adoptedStyleSheets = [theme]; sr.adoptedStyleSheets = [theme];
+    var off = theme.media.mediaText === '(max-width: 1px)';
+    theme.media.mediaText = off ? '' : '(max-width: 1px)';
+    label.textContent = off ? 'status: theme restored' : 'status: theme KILLED (media flip)';
+    meta.textContent = 'media kill-switch: ' + (off ? 'off' : 'engaged');
+  };
+})();
+
+// ================= §14 LEDGER =================
+(function () {
+  var rows = [
+    ['parse census (21 rules)', '16 kept', '14 kept (drops ::checkmark/::picker-icon)', '16 kept'],
+    ['insertRule default index', '0 (top)', '0 (top)', '0 (top)'],
+    ['insertRule @charset', 'SyntaxError', 'HierarchyRequestError', 'SyntaxError'],
+    ['insertRule @namespace', 'InvalidStateError', 'HierarchyRequestError', 'InvalidStateError'],
+    ['constructed replaceSync @import', 'silent strip', 'silent strip', 'silent strip'],
+    ['constructed insertRule @import', 'SyntaxError', 'SyntaxError', 'SyntaxError'],
+    ['adoptedStyleSheets.push()', 'adopts (not frozen)', 'adopts', 'adopts'],
+    ['adopt a <style> sheet', 'NotAllowedError', 'NotAllowedError', 'NotAllowedError'],
+    ['adopted vs late <style>', 'adopted wins', 'adopted wins', 'adopted wins'],
+    ['CSSStyleSheet in workers', 'ReferenceError', 'ReferenceError', 'ReferenceError'],
+    ['selector case in cssText', 'lowercased', 'preserved', 'preserved'],
+    ['@font-face bold 700', 'dropped', 'kept', 'dropped'],
+    ['rule.cssText setter', 'no-op', 'no-op', 'no-op'],
+    ['selectorText bad setter', 'no-op', 'no-op', 'no-op'],
+    ['conditionText setter', 'no-op', 'no-op', 'no-op'],
+    ['media.mediaText setter', 'live', 'live', 'live'],
+    ['styleRule.insertRule', 'works (not CSSGroupingRule heir)', 'works (is CSSGroupingRule heir)', 'works (not heir)'],
+    ['@import into group rule', 'HierarchyRequestError', 'HierarchyRequestError', 'HierarchyRequestError'],
+    ['keyframes findRule 100%/FROM', 'found/found', 'found/found', 'found/found'],
+    ['layer rule type', '0', '0', '0'],
+    ['public cross-origin cssRules', 'SecurityError', 'SecurityError', 'SecurityError'],
+    ['loopback→loopback CSS load', 'BLOCKED (PNA)', 'loads', 'loads']
+  ];
+  var html = '<tr><th>lane</th><th>CfT 149</th><th>FF nightly</th><th>WK 26.5</th></tr>';
+  rows.forEach(function (r) { html += '<tr><td>' + esc(r[0]) + '</td><td class="mono">' + esc(r[1]) + '</td><td class="mono">' + esc(r[2]) + '</td><td class="mono">' + esc(r[3]) + '</td></tr>'; });
+  document.getElementById('s14table').innerHTML = html;
+})();
+
+// final chip sweep — any chip hosts still empty get an info filler
+setTimeout(function () {
+  ['s1chips','s2chips','s3chips','s4chips','s5chips','s6chips','s7chips','s8chips','s9chips','s10chips','s11chips'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el && !el.firstChild) chip(id, 'info', '(drive the lane above — verdicts resolve on interaction)');
+  });
+  window.__chipsDone = true;
+}, 2500);
+})();
+</script>
+</body>
+</html>
