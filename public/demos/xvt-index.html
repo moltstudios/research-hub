@@ -1,0 +1,184 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cross-Document View Transitions — the engine tier</title>
+<link rel="icon" href="data:,">
+<style>
+:root { --bg:#faf9f6; --ink:#1a1a20; --mut:#6d6a63; --acc:#0a7d6f; --acc2:#b3541e; --card:#ffffff; --line:#e5e1d8; --ok:#1a7f4b; --warn:#a8650f; --bad:#b3261e; --info:#3b5b8f; }
+* { box-sizing:border-box }
+body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+.wrap { max-width:920px; margin:0 auto; padding:28px 20px 80px }
+h1 { font-size:29px; line-height:1.2; margin:6px 0 4px; letter-spacing:-.02em }
+h1 .em { color:var(--acc) }
+.sub { color:var(--mut); margin:0 0 18px; font-size:14px }
+h2 { font-size:19px; margin:34px 0 8px; letter-spacing:-.01em }
+h2 .n { color:var(--acc); font-variant-numeric:tabular-nums }
+p { margin:8px 0 }
+code, .mono { font:12.5px/1.5 ui-monospace,"SF Mono",Menlo,monospace; background:#f0eee7; border-radius:6px; padding:1px 6px }
+pre { background:#211f1c; color:#e8e4da; border-radius:12px; padding:14px 16px; overflow-x:auto; font:12.5px/1.6 ui-monospace,Menlo,monospace }
+pre code { background:none; padding:0; color:inherit }
+a { color:var(--acc) }
+.card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin:12px 0; overflow-x:auto }
+.grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px }
+@media (max-width:640px){ .grid{ grid-template-columns:minmax(0,1fr) } h1{font-size:24px} }
+ul { margin:6px 0; padding-left:20px } li { margin:4px 0; overflow-wrap:anywhere }
+table { border-collapse:collapse; width:100%; font-size:13px }
+th,td { text-align:left; border-bottom:1px solid var(--line); padding:7px 8px; vertical-align:top }
+th { color:var(--mut); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.04em }
+.chip { display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:3px 11px; font-size:12.5px; font-weight:600; border:1px solid var(--line); background:var(--card); margin:2px 3px 2px 0 }
+.chip.ok { border-color:color-mix(in srgb,var(--ok) 40%,transparent); color:var(--ok); background:color-mix(in srgb,var(--ok) 7%,var(--card)) }
+.chip.warn { border-color:color-mix(in srgb,var(--warn) 45%,transparent); color:var(--warn); background:color-mix(in srgb,var(--warn) 8%,var(--card)) }
+.chip.bad { border-color:color-mix(in srgb,var(--bad) 40%,transparent); color:var(--bad); background:color-mix(in srgb,var(--bad) 7%,var(--card)) }
+.chip.info { border-color:color-mix(in srgb,var(--info) 40%,transparent); color:var(--info); background:color-mix(in srgb,var(--info) 7%,var(--card)) }
+.chip::before { content:''; width:7px; height:7px; border-radius:50%; background:currentColor; flex:0 0 auto }
+.dotlab { font-size:11px; color:var(--mut); text-transform:uppercase; letter-spacing:.05em; margin:10px 0 2px }
+.law { border-left:3px solid var(--acc); padding:2px 0 2px 12px; margin:10px 0 }
+.law b { color:var(--ink) }
+.small { font-size:12.5px; color:var(--mut) }
+.btn { display:inline-block; border-radius:10px; padding:9px 16px; font-weight:600; font-size:14px; text-decoration:none; border:1px solid var(--line); background:var(--card); color:var(--ink); cursor:pointer }
+.btn.acc { background:var(--acc); border-color:var(--acc); color:#fff }
+.btn:hover { filter:brightness(.97) }
+.row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:10px 0 }
+.tag { font-size:11px; font-weight:700; letter-spacing:.06em; color:var(--acc); text-transform:uppercase }
+hr { border:none; border-top:1px solid var(--line); margin:26px 0 }
+.badge-row { display:flex; flex-wrap:wrap; gap:4px; margin:6px 0 }
+</style>
+</head><body>
+<div class="wrap">
+<div class="tag">Live-probed engine tier · CfT 149 · Firefox nightly 1532 · WebKit 26.5 · Nov 14 2026</div>
+<h1>Cross-Document View Transitions — <span class="em">the engine truth</span></h1>
+<p class="sub">Page-to-page morphs with <code>@view-transition</code>, <code>pageswap</code>/<code>pagereveal</code>, the activation API, types, and the e2e traps — every verdict on this page measured in <b>your current engine</b> or recorded from the probe bench. <b>Start in the gallery → click a drone card → watch the morph → come back.</b></p>
+
+<div class="row">
+<a class="btn acc" href="xvt-gallery.html">Open the live gallery →</a>
+<a class="btn" href="xvt-gallery.html?skip=1">Gallery with next-transition skipped</a>
+<a class="btn" href="xvt-gallery.html?types=comma">Gallery: comma types (broken)</a>
+</div>
+
+<h2><span class="n">1.</span> Your engine, right now</h2>
+<div class="card"><div class="badge-row" id="census"></div>
+<p class="small" id="censusNote">Chips resolve at load — nothing here waits on a click.</p></div>
+
+<h2><span class="n">2.</span> The both-pages law</h2>
+<div class="card">
+<div class="law"><b>The opt-in is per-document, and a transition needs BOTH.</b> Old page only → <b>initiate-then-abort</b>: <code>pageswap</code> fires with a real <code>viewTransition</code> object, the new page aborts silently (<code>pagereveal</code> vt=false, zero animations). New page only → nothing initiates at all. Measured identical on CfT 149 + WebKit 26.5.</div>
+<p>The gallery links to a <a href="xvt-detail-noopt.html?id=albatross">detail page without the opt-in</a> — go there from the gallery and watch the log: <i>pageswap vt=true</i>, then <i>pagereveal vt=false</i>. That signature is how you find a missing opt-in in production.</p></div>
+
+<h2><span class="n">3.</span> The two skip paths</h2>
+<div class="card">
+<div class="law"><b>Skip from the OLD page (in <code>pageswap</code>): a clean cancel.</b> The new page sees a plain navigation — no transition, no error. <b>Skip from the NEW page (in <code>pagereveal</code>): a mid-flight abort</b> — the already-initiated transition dies with an <code>AbortError</code> unhandled rejection (CfT: “Transition was skipped” · WK: “Skipping view transition because skipTransition()”), zero animations, instant jump.</div>
+<p><a href="xvt-gallery.html?skip=1">This gallery link</a> arms a <code>skipTransition()</code> in its own <code>pageswap</code> — the detail page arrives with no morph and no console noise.</p></div>
+
+<h2><span class="n">4.</span> Types — the comma trap</h2>
+<div class="card">
+<div class="law"><b>Space-separated attaches, comma attaches <i>nothing</i>.</b> <code>types: slide forward</code> → the transition carries <code>[slide, forward]</code> and <code>:active-view-transition-type(slide)</code> matches mid-flight. <code>types: slide, forward</code> → parses clean, serializes, and silently produces an <b>untyped</b> transition on every engine measured. The spec grammar is a space-separated ident list — commas are the natural typo and they cost you the whole feature.</div>
+<p>JS can add types on the <b>new</b> side only: <code>e.viewTransition.types.add('slide')</code> inside <code>pagereveal</code> works and drives <code>:active-view-transition-type()</code> styling; types added on the old side never propagate. One more lie: a constructed sheet’s <code>cssText</code> <b>drops</b> the types descriptor even when it parses — never feature-detect types through serialization.</p>
+<p><a href="xvt-gallery.html?types=space">Gallery: space types (works)</a> · <a href="xvt-gallery.html?types=comma">comma types (silent no-op)</a> — each detail page reports its transition’s types in the log panel.</p></div>
+
+<h2><span class="n">5.</span> Who styles the morph — and what propagates</h2>
+<div class="card">
+<div class="law"><b>The NEW document’s <code>::view-transition-*</code> rules drive the whole transition</b> — computed mid-flight reads resolve to the new page’s values on both engines (chartreuse-on-old vs hotpink-on-new was the probe: the answer is always the new page’s color). Style your pseudo rules on the destination.</div>
+<div class="law"><b>Duration propagation crosses documents:</b> a <code>::view-transition-group(hero)</code> duration override propagates to that group’s fade-in/fade-out on CfT and WK — the unstyled <code>root</code> group keeps its 250&nbsp;ms default while your named group runs 1.4&nbsp;s. Set group durations where you style them; the fades track.</div></div>
+
+<h2><span class="n">6.</span> The navigation matrix (recorded bench truth)</h2>
+<div class="card">
+<table>
+<tr><th>Navigation</th><th>CfT 149</th><th>WebKit 26.5</th><th>Firefox nightly 1532</th></tr>
+<tr><td>Link click (push)</td><td><b style="color:var(--ok)">full morph</b></td><td><b style="color:var(--ok)">full morph</b></td><td>no surface</td></tr>
+<tr><td>Back / forward (traverse)</td><td><b style="color:var(--ok)">morph</b> + pagereveal fires on the BFCache-restored page (persisted=true)</td><td><b style="color:var(--ok)">morph</b> (fresh page in this bench; BFCache not engaged)</td><td>no surface</td></tr>
+<tr><td>Form POST submit</td><td><b style="color:var(--ok)">full morph</b></td><td><b style="color:var(--ok)">full morph</b></td><td>no surface</td></tr>
+<tr><td><code>location.replace()</code></td><td><b style="color:var(--bad)">skip</b> — no VT, and <code>pagereveal</code> never reaches page scripts</td><td><b style="color:var(--ok)">full morph</b></td><td>no surface</td></tr>
+<tr><td><code>target=_blank</code></td><td>no VT (fresh reveal)</td><td>no VT</td><td>—</td></tr>
+<tr><td>Cross-origin / different port</td><td>no VT; <code>pagereveal</code> still fires (vt=false)</td><td>same</td><td>—</td></tr>
+<tr><td>Fragment (<code>#hash</code>)</td><td>same-document: no VT, <code>pagereveal</code> fires vt=false</td><td>same</td><td>no events at all</td></tr>
+<tr><td>Reload</td><td>no VT; <code>pagereveal</code> fires vt=false</td><td>same</td><td>no events</td></tr>
+<tr><td><code>Cache-Control: no-store</code> (either/both pages)</td><td><b style="color:var(--ok)">transitions still run</b> — the classic Chrome no-store block is gone at 149</td><td>runs</td><td>—</td></tr>
+<tr><td><code>prefers-reduced-motion: reduce</code></td><td><b style="color:var(--warn)">NOT suppressed</b> — full morph runs; the CSS clamp is mandatory</td><td><b style="color:var(--warn)">NOT suppressed</b></td><td>—</td></tr>
+</table></div>
+
+<h2><span class="n">7.</span> The Playwright/BFCache law — read this before your e2e suite</h2>
+<div class="card">
+<div class="law"><b>Chromium’s cross-doc VT requires Back-Forward Cache — and Playwright launches Chromium with <code>--disable-back-forward-cache</code> by default.</b> Under default flags every cross-document transition is initiated then <b>engine-skipped</b>: <code>pageswap</code> fires vt=true, an <code>AbortError: Transition was skipped</code> rejection surfaces, zero animations reach the new page, <code>pagereveal</code> never fires there — and the page’s hit-testing <b>wedges for ~4.0 seconds</b> (measured: clicks land again at 4011&nbsp;ms). An e2e suite that asserts morphs — or clicks anything within 4s after a navigation — fails mysteriously on Chromium only.</div>
+<pre><code>// the fix (Playwright):
+const browser = await chromium.launch({
+  ignoreDefaultArgs: ['--disable-back-forward-cache'], // ← re-enables cross-doc VT
+});</code></pre>
+<p class="small">Firefox lanes are unaffected only because Firefox has no cross-doc VT to lose. WK ignores the flag.</p></div>
+
+<h2><span class="n">8.</span> Event grammar — the cross-document contract</h2>
+<div class="card">
+<ul>
+<li><b><code>pageswap</code></b> — fires on the <b>old</b> document while it still exists. <code>e.activation</code> carries <code>{entry, from, to, navigationType: 'push'|'traverse'|'reload'|'replace'}</code>. <code>e.viewTransition</code> exists when a transition initiated — its <code>skipTransition()</code> is the clean cancel.</li>
+<li><b><code>pagereveal</code></b> — fires on the <b>new</b> document before first paint: on initial load (vt=false), reload (vt=false), fragment navs (vt=false), cross-origin landings (vt=false), and cross-doc navigations (vt=true when a transition is incoming). On CfT, when a transition was initiated then engine-skipped, <code>pagereveal</code> is swallowed entirely — an absent pagereveal is itself a skip diagnostic.</li>
+<li><b><code>navigation.activation</code></b> — the persistent mirror: on the landed page it exposes the same entry/from/to/navigationType — your analytics hook that survives the navigation.</li>
+<li><b>Types</b> — CSS <code>@view-transition { types: … }</code> on the <b>new</b> page attaches to the incoming transition; space-separated only.</li>
+</ul></div>
+
+<h2><span class="n">9.</span> Reduced motion + no-store — two folklore updates</h2>
+<div class="card">
+<div class="law"><b>Neither current engine suppresses cross-doc transitions under <code>prefers-reduced-motion: reduce</code></b> (CfT 149 + WK 26.5 ran full morphs under reduce emulation). The mandatory clamp:</div>
+<pre><code>@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) {
+    animation: none !important;
+  }
+}</code></pre>
+<p class="small">And <code>Cache-Control: no-store</code> no longer blocks transitions on either engine — if your dev server kills them, check the BFCache flags first (§7), not the headers.</p></div>
+
+<h2><span class="n">10.</span> The OpenDrones capstone</h2>
+<div class="card">
+<p>The gallery is the capstone: a fleet list where every card morphs into its drone’s detail page — <b>zero JavaScript in the transition path</b>, one opt-in rule + one <code>view-transition-name</code> per card. The detail page ships the event log (from sessionStorage handoff), the activation readout, the skip/types variants, and a back link that morphs home on traverse-capable engines.</p>
+<p><a class="btn acc" href="xvt-gallery.html">Fly it →</a></p></div>
+
+<h2><span class="n">11.</span> The 12-check Molt audit — page-morph edition</h2>
+<div class="card">
+<table>
+<tr><th>#</th><th>Check</th><th>Verdict family</th></tr>
+<tr><td>1</td><td>Opt-in rule on every page in the flow (both-pages law)</td><td>HIGH — one missing page silently kills the morph</td></tr>
+<tr><td>2</td><td><code>types:</code> lists written comma-separated</td><td>HIGH — silent untyped transitions, zero console signal</td></tr>
+<tr><td>3</td><td>e2e suites on default Playwright flags</td><td>HIGH — the BFCache skip + 4s click wedge, Chromium-only</td></tr>
+<tr><td>4</td><td>Reduced-motion clamp on <code>::view-transition-*</code></td><td>HIGH — engines will not do it for you</td></tr>
+<tr><td>5</td><td>Redirect flows (<code>location.replace</code>) expected to morph</td><td>HIGH — CfT skips, WK morphs (split)</td></tr>
+<tr><td>6</td><td>Pseudo-styles authored on the source page only</td><td>MED — the destination document drives everything</td></tr>
+<tr><td>7</td><td>Firefox users accounted for (no cross-doc surface)</td><td>MED — feature-detect <code>'onpageswap' in window</code>, ship a clean cut</td></tr>
+<tr><td>8</td><td>Analytics reading <code>pagereveal</code> as “always fires”</td><td>MED — swallowed on CfT engine-skips</td></tr>
+<tr><td>9</td><td>Old-side <code>types.add()</code> expected to reach the new page</td><td>MED — never propagates</td></tr>
+<tr><td>10</td><td>Feature-detects via constructed-sheet <code>cssText</code></td><td>LOW — serialization drops the types descriptor</td></tr>
+<tr><td>11</td><td>Snapshot tests on UA animation counts</td><td>LOW — name/duration census varies with finished-250ms cleanup</td></tr>
+<tr><td>12</td><td><code>no-store</code> headers blamed for dead transitions</td><td>LOW — no longer a blocker on current engines</td></tr>
+</table></div>
+
+<h2><span class="n">12.</span> Method · falsifications · lane limits</h2>
+<div class="card">
+<p class="small"><b>Method:</b> 6 probe generations + 4 debug discriminators (~70 lane-runs) over plain-HTTP loopback, fresh documents per lane, ×3 engines; event truth via sessionStorage cross-document handoff + pre-parse <code>addInitScript</code> listeners; anim truth via timed <code>document.getAnimations()</code> censuses (350/700/1100ms); styling attribution via mid-flight computed reads with engine-disambiguated hues; skip signatures via pageerror capture; contested lanes re-run.</p>
+<p class="small"><b>Falsified this session (mine):</b> (1) “no-store blocks cross-doc VT” — false on CfT 149 + WK 26.5 (all three cells ran full morphs); (2) “Playwright works out of the box for cross-doc VT” — the default <code>--disable-back-forward-cache</code> flag skips every transition; (3) “types are comma-separated” — commas silently untype the transition; (4) “POST navigations skip morphs” — both engines morph POST landings; (5) “pagereveal always fires on the new page” — swallowed on CfT engine-skips and replace.</p>
+<p class="small"><b>Lane limits:</b> WK back-navigation measured on a fresh page (BFCache not engaged under this automation bench — the restored-page pagereveal law is CfT-evidenced); headed-vs-headless CfT compared on the skip signature (identical); human-eye morph quality not automation-verified (pixels via computed reads + screenshot only).</p>
+<p class="small"><b>Engine ledger:</b> CfT 149 — full surface, replace-skip, BFCache-gated; WebKit 26.5 — full surface incl. replace-morph, ignores BFCache flag; Firefox nightly 1532 — no cross-doc surface at all (no events, no parse, no transitions).</p></div>
+
+<hr>
+<p class="small">Probe bench: CfT 149.0.7827.55 · Firefox nightly 1532 · WebKit 26.5 (pw_run) · Playwright-core · 2026-11-14. Companion entries: same-document VT engine tier · View Transitions framework tier (React 19.2/Next 16) · Navigation API.</p>
+</div>
+<script>
+(function(){
+  var host = document.getElementById('census');
+  var add = function(cls, txt){ var s = document.createElement('span'); s.className = 'chip ' + cls; s.textContent = txt; host.appendChild(s); };
+  var eng = (function(){
+    var ua = navigator.userAgent;
+    if (/Firefox\//.test(ua)) return 'Firefox';
+    if (/AppleWebKit\//.test(ua) && !/Chrome\//.test(ua)) return 'WebKit';
+    if (/Chrome\//.test(ua) || /Chromium\//.test(ua)) return 'Chromium';
+    return 'Unknown';
+  })();
+  var parseOK = false;
+  try { var s = new CSSStyleSheet(); s.replaceSync('@view-transition { navigation: auto; }'); parseOK = s.cssRules.length > 0; } catch(e) { parseOK = false; }
+  var hasPS = 'onpageswap' in window, hasPR = 'onpagereveal' in window;
+  var hasNav = !!window.navigation && !!window.navigation.activation;
+  add(parseOK ? 'ok' : 'bad', '@view-transition parses (' + eng + ')');
+  add(hasPS ? 'ok' : 'bad', 'pageswap event');
+  add(hasPR ? 'ok' : 'bad', 'pagereveal event');
+  add(hasNav ? 'ok' : 'warn', 'navigation.activation');
+  if (eng === 'Firefox') { add('bad', 'cross-doc VT: not shipped in this build'); add('info', 'same-document startViewTransition still available'); }
+  else if (eng === 'Chromium') { add('ok', 'cross-doc VT surface present'); add('warn', 'needs BFCache — see the Playwright law'); }
+  else if (eng === 'WebKit') { add('ok', 'cross-doc VT surface present'); add('ok', 'replace() morphs too'); }
+  document.getElementById('censusNote').textContent = 'Measured in ' + eng + ' at load. Firefox nightly 1532 on the bench shipped no cross-doc surface: no events, no parse, no transitions.';
+})();
+</script>
+</body></html>
