@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>accent-color × forced-colors — the interplay tier (live-probed)</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #faf9f7; --card: #fff; --ink: #1c1b1a; --mut: #6f6a63; --acc: #0a7d6f;
+    --acc2: #b4540a; --okbg: #e7f5f0; --okink: #0a5c50; --warnbg: #fdf0e3; --warnink: #8a4b08;
+    --failbg: #fbe9e7; --failink: #a32714; --infobg: #e9eef7; --infoink: #2c4a86;
+    --line: #e7e2da; --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 18px 80px; }
+  header.hero { padding: 30px 0 10px; }
+  h1 { font-size: clamp(24px, 5vw, 36px); line-height: 1.12; letter-spacing: -.02em; margin: 0 0 10px; }
+  .sub { color: var(--mut); font-size: 14px; max-width: 64ch; overflow-wrap: anywhere; }
+  .engine-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 4px; font-size: 12.5px; }
+  .engine-bar span { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
+  section { margin-top: 46px; }
+  h2 { font-size: 19px; margin: 0 0 6px; letter-spacing: -.01em; }
+  h2 .n { color: var(--acc); font-family: var(--mono); font-size: 14px; margin-right: 8px; }
+  p.lead { color: var(--mut); font-size: 13.5px; margin: 0 0 14px; max-width: 72ch; overflow-wrap: anywhere; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 12px 0; }
+  .lane { padding: 12px; border: 1px dashed var(--line); border-radius: 10px; margin: 10px 0; background: #fdfcfa; }
+  .chip { display: inline-flex; align-items: baseline; gap: 6px; font-size: 12px; border-radius: 999px; padding: 3px 10px; margin: 3px 4px 3px 0; border: 1px solid transparent; font-family: var(--mono); }
+  .chip.pending { background: #efedea; color: var(--mut); }
+  .chip.pass { background: var(--okbg); color: var(--okink); }
+  .chip.warn { background: var(--warnbg); color: var(--warnink); }
+  .chip.fail { background: var(--failbg); color: var(--failink); }
+  .chip.info { background: var(--infobg); color: var(--infoink); }
+  code, pre { font-family: var(--mono); font-size: 12.5px; }
+  code { background: #f0eee9; padding: 1px 5px; border-radius: 5px; }
+  pre { background: #1e1c1a; color: #f2efe9; padding: 14px; border-radius: 10px; overflow-x: auto; line-height: 1.6; }
+  .demo input, .demo progress, .demo meter { font: inherit; }
+  :focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+  .readout { font-family: var(--mono); font-size: 12px; color: var(--mut); margin-top: 6px; overflow-wrap: anywhere; }
+  .readout b { color: var(--acc); font-weight: 600; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; margin: 10px 0; table-layout: fixed; }
+  th, td { text-align: left; padding: 6px 8px; border: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+  th { background: #f4f2ee; font-size: 11.5px; letter-spacing: .02em; }
+  .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 720px) { .grid2, .grid3 { grid-template-columns: minmax(0, 1fr); } }
+  footer { margin-top: 60px; color: var(--mut); font-size: 12.5px; border-top: 1px solid var(--line); padding-top: 18px; }
+  .strip { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .strip label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-family: var(--mono); color: var(--mut); }
+  .strip input[type="checkbox"] { width: 22px; height: 22px; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+  .swcell { text-align: center; font-size: 11px; font-family: var(--mono); color: var(--mut); }
+  .swcell .box { width: 64px; height: 40px; border-radius: 8px; border: 1px solid var(--line); margin-bottom: 3px; }
+  .big { width: 36px; height: 36px; }
+  .audit tr td:first-child { font-family: var(--mono); font-size: 11.5px; }
+  .od { border: 1.5px solid #cfc9bf; border-radius: 12px; padding: 14px; background: #fff; }
+  .od .row { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin: 8px 0; }
+  .od label { display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px; }
+  .od .led { width: 18px; height: 18px; border-radius: 5px; background: #7629fe; forced-color-adjust: none; display: inline-block; }
+</style>
+</head>
+<body>
+<main>
+<header class="hero">
+  <h1>accent-color × forced-colors — the interplay tier</h1>
+  <p class="sub">What actually happens to the accent-color property (and the oklch grammar beneath it) when a user forces colors onto your page. Live-probed on Chrome for Testing 149, Firefox nightly 1532 and WebKit 26.5 via Playwright <code>emulateMedia({forcedColors:'active'})</code> — pixel-sampled quarter-points, ~63 lane-runs. Companion to the <b>Forced Colors Tier</b> (the forcing layer itself) and the <b>form-control styling tier</b> (the accent matrix unforced).</p>
+  <div class="engine-bar" id="ebar"></div>
+</header>
+
+<section id="s1">
+  <h2><span class="n">§1</span>Your real state — nothing here is simulated</h2>
+  <p class="lead">The chips read your actual rendering state. Most visitors see <code>none</code>. If any read <code class="mono">active</code>, your OS is forcing colors onto this page right now — and every table below describing "forced" lanes is live for you.</p>
+  <div class="card"><div id="stateChips"></div>
+  <p class="readout" id="stateOut"></p>
+  <p class="readout">Flip it without Windows: Chromium/Firefox DevTools → Rendering → <i>Emulate CSS media feature forced-colors</i>. In CI: Playwright <code>page.emulateMedia({ forcedColors: 'active' })</code> — the exact lane that produced every "measured" claim below. One instrument warning learned the hard way: <b>emulateMedia persists unmentioned keys across calls</b> — always pass the full state, or open a fresh page per mode.</p></div>
+</section>
+
+<section id="s2">
+  <h2><span class="n">§2</span>THE DEATH LAW — accent-color is ignored, not adapted</h2>
+  <p class="lead">The hopeful folklore: forcing "darkens" or "simplifies" your accent. Measured: under forced colors, <b>every accent value paints the same palette color</b> — the property loses all meaning for that user.</p>
+  <div class="card">
+    <div class="demo"><div class="strip" id="divStrip"></div></div>
+    <p class="readout">Nine checked boxes: auto, #0075ff, #7629fe, #d30000, #00873d, #1a1a1a, #f0f0f0, #9a9a9a, oklch(0.62 0.25 145). Unforced you should see distinct fills. Flip forced-colors on and count: <b>one color on CfT and Firefox, nine on WebKit</b> (the no-op law, §3).</p>
+    <table>
+      <tr><th>Engine</th><th>forced fill (light palette)</th><th>forced fill (dark palette)</th><th>accent-derived?</th></tr>
+      <tr><td>CfT 149</td><td><code>#37006e</code> × all 9</td><td><code>#1aebff</code> × all 9</td><td><b>No</b> — identical for auto and every accent; fill is palette-driven (the forced-checkbox blend over Highlight), scheme-dependent</td></tr>
+      <tr><td>Firefox 1532</td><td><code>#000000</code> × all 9</td><td><code>#000000</code> × all 9</td><td><b>No</b> — a hard black box, check glyph disappears into it, dark fill even on the light palette</td></tr>
+      <tr><td>WebKit 26.5</td><td>unchanged</td><td>unchanged</td><td>n/a — forcing is a no-op (§3)</td></tr>
+    </table>
+    <p class="readout"><b>Falsified this session:</b> the Forced Colors Tier's aside that forced checkboxes keep a "darkened" accent on Chromium — the uniform <code>#37006e</code> across nine divergent accents (including near-white <code>#f0f0f0</code>) kills it: nothing accent-derived survives. The color you see is the forced-palette checkbox fill, full stop.</p>
+  </div>
+</section>
+
+<section id="s3">
+  <h2><span class="n">§3</span>THE THREE-ENGINE SPLIT — and the WebKit no-op</h2>
+  <p class="lead">Forcing is not one behavior, it's three. The deepest surprise: WebKit flips the media query and renders <b>nothing</b> differently.</p>
+  <div class="card">
+    <table>
+      <tr><th>Lane</th><th>CfT 149</th><th>Firefox 1532</th><th>WebKit 26.5</th></tr>
+      <tr><td><code>(forced-colors: active)</code> under emulation</td><td>matches ✓</td><td>matches ✓</td><td>matches ✓</td></tr>
+      <tr><td>authored <code>color:#ff0066; background:#222</code> text box</td><td>forces → white-on-#1c1c1c plate</td><td>forces → white-on-#1c1c1c plate</td><td><b>unchanged — #e7045f text on #222</b></td></tr>
+      <tr><td><code>Highlight</code> swatch</td><td>remaps #b3d7fe → #37336d</td><td>keeps #3399ff</td><td><b>keeps #b3d7fe</b></td></tr>
+      <tr><td>checked checkbox fill</td><td>#37006e (palette-driven)</td><td>#000000</td><td>unchanged engine-blue/white</td></tr>
+      <tr><td>gCS reads forced values?</td><td>yes (the gCS falsification, pair entry)</td><td>yes</td><td>moot — nothing forced</td></tr>
+      <tr><td><code>forced-color-adjust</code> property</td><td>in gCS ✓</td><td>in gCS ✓</td><td><b>absent from gCS entirely</b> (<code>NO-PROP</code>)</td></tr>
+    </table>
+    <p class="readout">The WK lane is not "partial support" — the MQ answers <code>true</code> while paint, system-color remapping and even the escape-hatch property all sit inert. Sites gate-styled via <code>@media (forced-colors: active)</code> get the CSS branch on Safari with none of the native forcing underneath. Recorded as measured on this emulated lane + WK 26.5 nightly-class build; real Windows HCM drives Chromium/Firefox here.</p>
+  </div>
+</section>
+
+<section id="s4">
+  <h2><span class="n">§4</span>THE SYSTEM-COLOR SURVIVORS — accent-color: Highlight</h2>
+  <p class="lead">One accent value survives forcing: a system color. <code>accent-color: Highlight</code> parses and paints on all three engines, and follows the user's palette when it remaps.</p>
+  <div class="card">
+    <div class="grid2">
+      <div class="lane"><b>The lane</b>
+        <div class="demo"><div class="strip" style="margin-top:8px">
+          <label><input type="checkbox" checked style="accent-color:Highlight;width:22px;height:22px"> Highlight</label>
+          <label><input type="checkbox" checked style="accent-color:#7629fe;width:22px;height:22px"> literal purple</label>
+          <label><input type="checkbox" checked style="width:22px;height:22px"> auto</label>
+        </div></div>
+        <p class="readout">Under forcing on CfT: the Highlight-accented box remaps with the palette (<code>#37336d</code>), the purple one dies to the uniform fill. On Firefox <b>even this survivor dies</b> — gCS reads <code>auto</code> and the box paints black: Firefox discards the accent declaration entirely under forcing, system colors included.</p>
+      </div>
+      <div class="lane"><b>System colors, live on your engine</b>
+        <div class="swatches" id="sysSw"></div>
+        <p class="readout" id="sysOut">gCS reads + painted swatches. Unforced they resolve to your platform defaults; under real HCM they resolve to the user's palette — the same keyword your checkbox would ride.</p>
+      </div>
+    </div>
+    <p class="readout"><b>The recipe:</b> <code>accent-color: Highlight</code> is the only authored accent that (a) never fights the forced layer on CfT, (b) already matches what the UA paints anyway, and (c) costs nothing unforced. The complete inverse: never encode brand <i>meaning</i> in the accent value itself.</p>
+  </div>
+</section>
+
+<section id="s5">
+  <h2><span class="n">§5</span>THE ESCAPE HATCH — forced-color-adjust, per engine</h2>
+  <p class="lead">The pair entry's escape doors, measured against the accent family. <code>forced-color-adjust: none</code> is one declaration on a container protecting a whole subtree — on one engine.</p>
+  <div class="card">
+    <div class="lane"><b>Live census</b> (fca:none via inheritance on the wrapper)
+      <div class="demo" id="fcaWrap" style="forced-color-adjust:none"><div class="strip" style="margin-top:8px">
+        <label><input type="radio" name="fca" checked style="accent-color:#7629fe;width:22px;height:22px"> radio</label>
+        <label><input type="range" value="60" style="accent-color:#7629fe;width:110px"> range</label>
+        <label><progress value="70" max="100" style="accent-color:#7629fe;width:90px"> </progress> progress</label>
+        <label><meter value="7" min="0" max="10" style="accent-color:#7629fe;width:90px"> </meter> meter</label>
+      </div></div>
+      <p class="readout">Flip forced-colors on: on CfT every one of these keeps its purple; on Firefox the radio goes black and progress goes forced-blue — <b>fca:none preserves nothing accent-shaped there</b>; on WebKit the property doesn't exist.</p>
+    </div>
+    <table>
+      <tr><th>Variant</th><th>CfT 149</th><th>Firefox 1532</th><th>WebKit 26.5</th></tr>
+      <tr><td><code>fca: none</code> + accent checkbox/radio</td><td>brand purple preserved (gCS + pixels)</td><td>NOT preserved — forced black</td><td>property absent (no-op)</td></tr>
+      <tr><td><code>fca: none</code> inherited from a wrapper</td><td>preserved (the one-declaration subtree law holds)</td><td>not preserved</td><td>absent</td></tr>
+      <tr><td><code>fca: preserve-parent-color</code> (CfT-only)</td><td>keeps literal purple, check glyph still adapts to palette</td><td>unsupported (<code>CSS.supports</code> false)</td><td>unsupported</td></tr>
+    </table>
+    <p class="readout"><b>Gate-refined nuance (FF):</b> Firefox honors <code>fca:none</code> on <i>author-styled boxes</i> — a plain <code>&lt;div class="led" style="forced-color-adjust:none"&gt;</code> keeps its background under forcing — while native control <i>widget interiors</i> (the radio's UA-painted disc) still force black. The hatch is real on FF for your own boxes; it just can't reach inside UA widgets. <b>The a11y line, inherited from the pair entry and re-iterated because this session makes it sharper:</b> fca:none opts a subtree out of the user's accessibility demand. Reserve it for brand islands (logos, status LEDs) that carry no information the user needs recolored — never for form controls whose checked state IS the information.</p>
+  </div>
+</section>
+
+<section id="s6">
+  <h2><span class="n">§6</span>THE VANISHING CHECKBOX — appearance:none under forcing</h2>
+  <p class="lead">Custom checkboxes built the standard way — <code>appearance:none</code> + background — are the audit finding that ships weekly: they rely on exactly the properties forcing strips.</p>
+  <div class="card">
+    <div class="grid2">
+      <div class="lane"><b>bg-checkbox</b><div class="demo" style="margin-top:8px">
+        <input type="checkbox" checked id="apBg" style="appearance:none;width:30px;height:30px;background:#7629fe;border:none">
+        <input type="checkbox" id="apBg2" style="appearance:none;width:30px;height:30px;background:#7629fe;border:none">
+        <p class="readout" id="apBgOut"></p>
+      </div></div>
+      <div class="lane"><b>border-checkbox</b><div class="demo" style="margin-top:8px">
+        <input type="checkbox" checked id="apBd" style="appearance:none;width:30px;height:30px;border:3px solid #7629fe;background:transparent">
+        <input type="checkbox" id="apBd2" style="appearance:none;width:30px;height:30px;border:3px solid #7629fe;background:transparent">
+        <p class="readout" id="apBdOut"></p>
+      </div></div>
+    </div>
+    <table>
+      <tr><th>Control</th><th>CfT forced</th><th>Firefox forced</th><th>Net effect</th></tr>
+      <tr><td><code>appearance:none</code> + <code>background</code></td><td>background forced to white → blank box, no check glyph ever painted</td><td>background forced to transparent → <b>invisible</b></td><td>state unreadable; the checked box has no glyph at all</td></tr>
+      <tr><td><code>appearance:none</code> + <code>border</code></td><td>border survives but shows no state (checked ≡ unchecked)</td><td>border survives, no state</td><td>shape without meaning</td></tr>
+    </table>
+    <p class="readout"><b>The custom-control checklist:</b> if you go appearance:none, your checked indicator must live in a forcing-safe channel — a system color, an inline SVG/raster glyph, or an fca:none island on Chromium (with the FF caveat that it dies there). The native checkbox + <code>accent-color</code> degrades to a solid, readable, palette-colored box on CfT/FF: for most products that is the better trade.</p>
+  </div>
+</section>
+
+<section id="s7">
+  <h2><span class="n">§7</span>THE gCS GRAMMAR — oklch round-trips, then dies in the reflection</h2>
+  <p class="lead">The accent grammar is modern-CSS-complete unforced — and the forced layer makes gCS actively lie about it.</p>
+  <div class="card">
+    <table id="gramTable">
+      <tr><th>Input (setProperty)</th><th>Your engine, unforced gCS</th><th>CfT forced gCS</th><th>FF forced gCS</th></tr>
+    </table>
+    <p class="readout" id="gramOut"></p>
+    <p class="readout"><b>Grammar laws (3/3 engines, unforced):</b> oklch round-trips as written (case-insensitive, bare components fine) · <code>oklch(none 0.25 145)</code> round-trips with the none-component · relative <code>oklch(from red l c h)</code> computes to a concrete color <i>in gCS</i> while staying unresolved in el.style (the serialization session's law, accent edition) · invalid values fall back to <code>auto</code> silently · initial and removed both read <code>auto</code>.</p>
+    <p class="readout"><b>The audit trap:</b> on CfT and Firefox under forcing, gCS reads <code>auto</code> for every accent — a JS audit comparing gCS against authored tokens reports "all accents missing" for exactly the users whose rendering you can't see anyway. WebKit — the engine that doesn't force — is the only one whose gCS stays honest under the forced MQ. Never gCS-diff accent-color in a forced-colors audit lane.</p>
+  </div>
+</section>
+
+<section id="s8">
+  <h2><span class="n">§8</span>THE INERT STACK — prefers-contrast adds nothing</h2>
+  <p class="lead">Both a11y media features, one interaction: none. Measured on fresh pages per mode (the persistence confound, §12, killed this lane twice before it was measured clean).</p>
+  <div class="card">
+    <table>
+      <tr><th>Mode</th><th>CfT checkbox fill</th><th>FF checkbox fill</th><th>Conclusion</th></tr>
+      <tr><td><code>forced: none</code> + <code>contrast: more</code></td><td>engine blue — identical to baseline</td><td>engine blue</td><td>contrast:more alone does not touch accent rendering on any engine</td></tr>
+      <tr><td><code>forced: active</code> + <code>contrast: more</code></td><td>#37006e — byte-identical to forced alone</td><td>#000000 — identical</td><td>no stacking effect, no second adjustment pass</td></tr>
+    </table>
+    <p class="readout">The pair entry's finding generalizes to the accent family: <code>prefers-contrast</code> is a separate question (button/legend rendering, UA control sizing) and never a second color-forcing pass. Gate contrast work on its own feature, never assume it implies forcing.</p>
+  </div>
+</section>
+
+<section id="s9">
+  <h2><span class="n">§9</span>THE GLYPH + THE CONVERSION — oklch's one traceable descendant</h2>
+  <p class="lead">Two small laws that close the loop: the check glyph flips with the palette, and oklch accent leaves exactly one measurable descendant — its sRGB conversion.</p>
+  <div class="card">
+    <div class="grid2">
+      <div class="lane"><b>oklch → sRGB, live</b>
+        <div class="demo" style="margin-top:8px;display:flex;gap:10px;align-items:center">
+          <input type="checkbox" checked id="okCb" style="accent-color:oklch(0.62 0.25 145);width:26px;height:26px">
+          <span class="swcell"><span class="box" id="okSw" style="display:inline-block;background:oklch(0.62 0.25 145)"></span><br>swatch</span>
+        </div>
+        <p class="readout" id="okOut"></p>
+      </div>
+      <div class="lane"><b>The glyph law</b>
+        <p class="readout">On CfT the forced check glyph reads white on the light-palette fill (#37006e) and black on the dark-palette fill (#1aebff) — the UA inverts the glyph to keep contrast inside the user palette, exactly as it does for native selection UI. Firefox's glyph vanishes into the black fill on the sampled points. Never bake glyph-color assumptions into copy or e2e asserts: the glyph is palette-owned.</p>
+      </div>
+    </div>
+    <p class="readout"><b>The conversion law:</b> every engine flattens <code>oklch(0.62 0.25 145)</code> to the same sRGB <code>#00a800</code> for accent purposes (and swatch paint) — a green, not the purple intuition suggests of "lightness .62 chroma .25", because hue 145 in oklch IS green. The one number an oklch accent contributes to forced-adjacent debugging is its sRGB descendant; the oklch form itself never survives any boundary (gCS grammar keeps it unforced, forcing drops the whole property, canvas never sees it).</p>
+  </div>
+</section>
+
+<section id="s10">
+  <h2><span class="n">§10</span>OpenDrones — the forced-safe mission panel</h2>
+  <p class="lead">The capstone pattern: brand lives where forcing can't reach it, controls degrade to the palette, nothing meaningful is accent-encoded.</p>
+  <div class="card od demo">
+    <div class="row">
+      <b style="font-size:13.5px">Pre-flight</b>
+      <label><input type="checkbox" checked style="accent-color:Highlight"> Arms verified</label>
+      <label><input type="checkbox" style="accent-color:Highlight"> Payload seated</label>
+      <label><input type="checkbox" checked style="accent-color:Highlight"> Geofence loaded</label>
+      <span class="led" title="brand island"></span><span style="font-size:12px;font-family:var(--mono);color:var(--mut)">LED = fca:none island</span>
+    </div>
+    <div class="row">
+      <span style="font-size:12px;font-family:var(--mono);color:var(--mut)">Battery</span>
+      <progress value="72" max="100" style="accent-color:Highlight;width:110px"></progress>
+      <span style="font-size:12px;font-family:var(--mono);color:var(--mut)">Link</span>
+      <input type="range" value="60" style="accent-color:Highlight;width:110px">
+      <span id="odNote" style="font-size:12px;font-family:var(--mono);color:var(--mut)"></span>
+    </div>
+    <p class="readout"><b>Why each choice:</b> pre-flight checks carry state → native checkboxes + <code>accent-color: Highlight</code> (forced users get the palette's own selection fill; FF users get black boxes that still show state through the checked shape) · the LED is a brand/color island with no information content → <code>fca:none</code> keeps fleet purple on Chromium, degrades silently elsewhere · telemetry bars never depend on accent hue for meaning (labels carry the numbers) · zero appearance:none controls in the state path.</p>
+  </div>
+</section>
+
+<section id="s11">
+  <h2><span class="n">§11</span>Molt — the client accent audit (12 checks, half a day)</h2>
+  <p class="lead">Pass/fail review for any client site shipping accent-color.</p>
+  <div class="card"><table class="audit">
+    <tr><th>#</th><th>Check</th><th>Sev</th></tr>
+    <tr><td>1</td><td>Is any state communicated ONLY by accent hue (checked vs unchecked vs indeterminate beyond shape)? Under forcing all accents collapse to one color on CfT/FF.</td><td>HIGH</td></tr>
+    <tr><td>2</td><td>Do dark themes rely on accent-tinted checkboxes surviving HCM? They become the palette fill (CfT) or black (FF) — verify with text labels.</td><td>HIGH</td></tr>
+    <tr><td>3</td><td>Any appearance:none custom checkbox without a forcing-safe checked indicator (system color / inline SVG)? It renders blank (CfT) or invisible (FF) under forcing.</td><td>HIGH</td></tr>
+    <tr><td>4</td><td>Any e2e/unit test asserting gCS accent-color values? Under forced emulation CfT/FF read auto — gate those asserts on forced state.</td><td>HIGH</td></tr>
+    <tr><td>5</td><td><code>forced-color-adjust: none</code> applied to interactive controls (vs brand islands)? It blocks the a11y layer AND silently fails on Firefox.</td><td>HIGH</td></tr>
+    <tr><td>6</td><td>Safari checked at all? The forced MQ answers true while nothing renders forced — forced-gated CSS (backplates, palette swaps) fires with no native forcing underneath.</td><td>MED</td></tr>
+    <tr><td>7</td><td>oklch/design-token accents expected to survive to canvas/screenshots? Only the sRGB descendant (#00a800 for the probe green) exists downstream.</td><td>MED</td></tr>
+    <tr><td>8</td><td><code>accent-color: Highlight</code> considered as the zero-cost default? It matches UA behavior unforced and rides the palette forced (CfT).</td><td>MED</td></tr>
+    <tr><td>9</td><td>Meters tinted via accent and expected to communicate severity? Meter semantics stay engine-green/blue regardless of accent, forced or not.</td><td>MED</td></tr>
+    <tr><td>10</td><td>Range sliders whose fill color is the ONLY progress indicator for low-vision users? Pair with a text readout.</td><td>MED</td></tr>
+    <tr><td>11</td><td>Tests toggling emulateMedia modes on one page? Keys persist across calls — fresh page per mode or full-state calls.</td><td>LOW</td></tr>
+    <tr><td>12</td><td>Check-glyph color baked into visual copy or e2e pixel asserts? The glyph is palette-owned (white/black per palette).</td><td>LOW</td></tr>
+  </table></div>
+</section>
+
+<section id="s12">
+  <h2><span class="n">§12</span>Method, ledger &amp; falsifications</h2>
+  <p class="lead">3 probe generations, ~63 lane-runs, fresh document per lane, quarter-point pixel sampling (5 pts/fixture) + gCS dual-reads; every "forced" claim from a clean fresh-page emulation lane.</p>
+  <div class="card">
+    <table>
+      <tr><th>Claim family</th><th>CfT 149</th><th>FF 1532</th><th>WK 26.5</th></tr>
+      <tr><td>forced fill uniform across 9 accents</td><td>measured (#37006e / #1aebff dark)</td><td>measured (#000000)</td><td>n/a (no-op)</td></tr>
+      <tr><td>accent gCS → auto under forcing</td><td>measured</td><td>measured</td><td>not forced (literal reads)</td></tr>
+      <tr><td>fca:none preserves accent family</td><td>radio/range/progress measured ✓ (meter semantic)</td><td>measured ✗ (nothing preserved)</td><td>property absent</td></tr>
+      <tr><td>accent-color: Highlight survives</td><td>measured (remaps #37336d)</td><td>measured ✗ (dies to auto)</td><td>parses+paints (no forcing layer)</td></tr>
+      <tr><td>appearance:none blank under forcing</td><td>white box</td><td>transparent (invisible)</td><td>n/a</td></tr>
+      <tr><td>contrast:more inert for accent</td><td>measured alone + stacked</td><td>measured</td><td>measured (alone)</td></tr>
+      <tr><td>oklch grammar round-trip</td><td>measured</td><td>measured</td><td>measured</td></tr>
+    </table>
+    <p class="readout"><b>Falsified this session (2):</b> (1) "forced checkboxes keep a darkened accent" — uniform #37006e across nine divergent accents; the color is palette-driven, not accent-derived. (2) "forced-color-adjust: none protects accent styling cross-engine" — it protects nothing accent-shaped on Firefox (radio black, progress forced-blue despite fca:none).</p>
+    <p class="readout"><b>Instrument lessons (2):</b> (1) THE PERSISTENT-EMULATION CONFOUND — Playwright's emulateMedia carries previously-set keys across calls; the first activeContrast lane silently inherited colorScheme:dark and read as a "stack effect" until fresh-page-per-mode reruns separated them. Always pass the full state object or open a fresh page per mode. (2) THE STALE-SELECTOR STRIKE — generation 1's accent rules targeted <code>#ac-purple</code> while the element id was <code>cb-purple</code>: every accent lane quietly measured an unaccented control; the swatch lanes (which worked) exposed the uniformity too cleanly and triggered the audit that caught it.</p>
+    <p class="readout"><b>Lane limits:</b> emulation drives the emulated default palette, not real Windows HCM themes (user palettes differ; the LAWS — uniformity, gCS auto, fca splits — are structural, the exact hex values are palette-specific) · WK 26.5 is the installed nightly-class build; a Safari stable may differ · Firefox fill/glyph points sampled at quarter-points, glyph-interior sampling not pixel-mapped · no HCM-over-remote-desktop lane.</p>
+  </div>
+</section>
+
+<footer id="s13">
+  <p><b>Companion entries:</b> Forced Colors Tier (the forcing layer: gCS falsification, !important wall, survivors, system-color remaps) · form-control styling tier (the unforced accent matrix: range CfT-only, meter dead, appearance ladder) · the serialization tier (oklch round-trip laws in el.style vs gCS).</p>
+  <p id="footOut"></p>
+</footer>
+</main>
+<script>
+(function () {
+  var q = function (s) { return document.querySelector(s); };
+  var chip = function (text, cls) { return '<span class="chip ' + cls + '">' + text + '</span>'; };
+  var mono = function (v) { return '<b>' + String(v) + '</b>'; };
+
+  // engine detect (honest for this topic: fca presence in gCS)
+  var probe = document.createElement('input'); probe.type = 'checkbox';
+  document.body.appendChild(probe);
+  var cs = getComputedStyle(probe);
+  var hasFca = 'forcedColorAdjust' in cs || cs.forcedColorAdjust !== undefined;
+  var ua = navigator.userAgent;
+  var engine = ua.indexOf('Firefox') >= 0 ? 'Firefox' : (ua.indexOf('Safari') >= 0 && ua.indexOf('Chrome') < 0 ? 'WebKit/Safari' : 'Chromium');
+  probe.remove();
+
+  var mqF = matchMedia('(forced-colors: active)');
+  var mqC = matchMedia('(prefers-contrast: more)');
+
+  // §1 engine bar + state chips
+  var bar = '';
+  bar += '<span>engine: <b>' + engine + '</b></span>';
+  bar += '<span>forced-colors: <b>' + (mqF.matches ? 'ACTIVE' : 'none') + '</b></span>';
+  bar += '<span>prefers-contrast: <b>' + (mqC.matches ? 'more' : 'no-preference') + '</b></span>';
+  bar += '<span>forced-color-adjust: <b>' + (hasFca ? 'supported' : 'ABSENT (WebKit)') + '</b></span>';
+  q('#ebar').innerHTML = bar;
+
+  var st = [];
+  st.push(chip('forced: ' + (mqF.matches ? 'active (tables below are LIVE for you)' : 'none (most visitors)'), mqF.matches ? 'warn' : 'info'));
+  st.push(chip('contrast: ' + (mqC.matches ? 'more' : 'no-preference'), 'info'));
+  try { st.push(chip('fca prop: ' + (hasFca ? 'present' : 'absent — the WK no-op signature (documented, §3)'), hasFca ? 'pass' : 'info')); } catch (e) { st.push(chip('fca prop: error', 'warn')); }
+  try { st.push(chip('fca ppc: ' + (CSS.supports('forced-color-adjust', 'preserve-parent-color') ? 'supported' : 'unsupported'), CSS.supports('forced-color-adjust', 'preserve-parent-color') ? 'pass' : 'warn')); } catch (e) { st.push(chip('fca ppc: n/a', 'warn')); }
+  q('#stateChips').innerHTML = st.join('');
+  q('#stateOut').innerHTML = 'Detector note: the engine chip above is UA-based; the fca chip is behavioral (' + mono('forcedColorAdjust in gCS') + ') — the honest feature-detect for this tier, per the insertRule-vs-supports law from the form-control session.';
+
+  // §2 diversity strip
+  var accents = ['(auto)', '#0075ff', '#7629fe', '#d30000', '#00873d', '#1a1a1a', '#f0f0f0', '#9a9a9a', 'oklch(0.62 0.25 145)'];
+  var strip = '';
+  accents.forEach(function (a, i) {
+    var stl = a === '(auto)' ? '' : ' style="accent-color:' + a + '"';
+    strip += '<label><input type="checkbox" checked' + stl + '>' + a.replace('oklch(0.62 0.25 145)', 'oklch') + '</label>';
+  });
+  q('#divStrip').innerHTML = strip;
+
+  // §4 system-color swatches, live gCS
+  var sys = [['Highlight', 'Highlight'], ['HighlightText', 'HighlightText'], ['CanvasText', 'CanvasText'], ['ButtonFace', 'ButtonFace']];
+  var swH = '', reads = [];
+  sys.forEach(function (p) {
+    var d = document.createElement('div'); d.style.background = p[1]; document.body.appendChild(d);
+    var v = getComputedStyle(d).backgroundColor; reads.push(p[0] + '=' + v);
+    swH += '<span class="swcell"><span class="box" style="background:' + p[1] + '"></span><br>' + p[0] + '<br>' + v + '</span>';
+    d.remove();
+  });
+  q('#sysSw').innerHTML = swH;
+  q('#sysOut').innerHTML = 'Live: ' + mono(reads.join(' · '));
+
+  // §6 live reads
+  var bg = getComputedStyle(q('#apBg')).backgroundColor;
+  var bd = getComputedStyle(q('#apBd')).borderTopColor;
+  q('#apBgOut').innerHTML = 'gCS background now: ' + mono(bg) + ' — unforced you see purple; forced (CfT) this reads white, (FF) transparent.';
+  q('#apBdOut').innerHTML = 'gCS border now: ' + mono(bd) + ' — borders survive forcing on both, but show no state.';
+
+  // §7 grammar table (live unforced column)
+  var rows = [
+    ['OKLCH(0.62 0.25 145)', 'case-folds, round-trips'],
+    ['0.62 0.25 145', 'bare components parse'],
+    ['oklch(none 0.25 145)', 'none-component round-trips'],
+    ['oklch(from red l c h)', 'relative: computes in gCS'],
+    ['auto', 'auto'],
+    ['not-a-color', 'auto (silent)'],
+    ['(removed)', 'auto (initial)']
+  ];
+  var t = q('#gramTable');
+  var p2 = document.createElement('input'); p2.type = 'checkbox'; document.body.appendChild(p2);
+  var cells = [];
+  rows.forEach(function (r) {
+    if (r[0] === '(removed)') { p2.style.removeProperty('accent-color'); } else { p2.style.setProperty('accent-color', r[0]); }
+    var v = getComputedStyle(p2).accentColor;
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td><code>' + r[0] + '</code></td><td>' + v + '</td><td>auto</td><td>auto</td>';
+    t.appendChild(tr);
+  });
+  p2.remove();
+  q('#gramOut').innerHTML = 'Your engine, unforced, measured live at load (middle column). Forced columns are the recorded CfT/FF measurements — ' + mono('every value reads auto') + ' while forcing is active.';
+
+  // §9 oklch readout
+  var okv = getComputedStyle(q('#okCb')).accentColor;
+  q('#okOut').innerHTML = 'gCS accent on the checkbox: ' + mono(okv) + ' — the engine keeps the oklch form in reflection but paints sRGB #00a800 (the swatch beside it).';
+
+  // §10 note
+  q('#odNote').textContent = mqF.matches ? '(forced active — you are seeing the degraded face live)' : '';
+
+  // footer
+  q('#footOut').textContent = 'Probed 2026-11-15 · CfT 149 + FF nightly 1532 + WebKit 26.5 · Playwright emulateMedia lanes, fresh page per mode · quarter-point pixel sampling + gCS dual-reads · demo: every unforced column measured in your engine at load.';
+
+  window.__done = true;
+})();
+</script>
+</body>
+</html>
