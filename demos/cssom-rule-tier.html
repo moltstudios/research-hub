@@ -164,7 +164,7 @@ div.S5 { COLOR: Red;   margin:0px   auto }
   </div>
   <div class="law hi"><b>THE UNIVERSAL AUDIT WALL:</b> third-party CSS without <code>crossorigin</code> loads and applies fine — but <code>sheet.cssRules</code> throws <b>SecurityError on every engine</b> (live-probed against a public stylesheet). No audit tool, Lighthouse clone or style-extractor can enumerate third-party CSS.</div>
   <div class="law"><b>THE CORS ESCAPE HATCH:</b> <code>&lt;link crossorigin="anonymous"&gt;</code> + an <code>Access-Control-Allow-Origin</code> response header makes the rules readable (measured on FF+WK). </div>
-  <div class="law hi"><b>THE LOOPBACK PNA WALL (Chromium-only, 2026):</b> a loopback page (localhost:3000) loading CSS from <b>any other loopback origin</b> (localhost:3001 — a different port is a different origin) is blocked at the <b>network level</b>: <i>"Permission was denied for this request to access the loopback address space"</i> — the sheet never loads, no ACAO header saves it, and the console calls it "CORS policy". Firefox and WebKit load it classically. The multi-service dev-server setup styles break on Chromium only.</div>
+  <div class="law hi"><b>THE LOOPBACK PNA WALL — CORRECTED 2026-11-15 (falsified by the LNA probe session):</b> loopback→loopback cross-port CSS <b>loads + applies on ALL THREE engines</b> (re-probed exactly: localhost:3000→3001 + 127.0.0.1:8871→8872, CfT 149 + FF 151 + WK 26.5). The block this session actually hit was the <b>public→loopback</b> face of identical console wording ("Permission was denied… loopback address space" — it calls itself CORS policy) — mis-scoped by page origin. The real law: a <b>public</b> page loading loopback CSS is LNA-permission-gated on Chromium (142+ prompt, 156 dropped the enterprise opt-out); FF has no gate; WK walls via mixed content (img excepted). Multi-port dev stacks on localhost are SAFE everywhere. Full tier: the LNA demo.</div>
 </section>
 
 <section id="s6">
@@ -280,7 +280,7 @@ div.S5 { COLOR: Red;   margin:0px   auto }
     <div class="check hi"><span class="tag hi">HIGH</span><b>@import inside constructable-sheet strings</b> (theme injection, web-component CSS) — silently stripped by replaceSync, SyntaxError by insertRule; the import never loads and nothing logs.</div>
     <div class="check hi"><span class="tag hi">HIGH</span><b>cssRules reads on third-party &lt;link&gt;</b> (style extractors, audits, CSS size budgets) — SecurityError on every engine; the fix is crossorigin + ACAO on sheets you control, skip on sheets you don't.</div>
     <div class="check hi"><span class="tag hi">HIGH</span><b>rule.cssText assignment</b> — silent no-op everywhere; the author meant <code>rule.style.cssText</code> or a delete+insert. Also <code>selectorText</code> writes with untrusted strings (silent no-op on invalid, no throw).</div>
-    <div class="check hi"><span class="tag hi">HIGH</span><b>multi-port dev stacks on Chromium</b> — CSS from a sibling localhost origin blocked by the loopback PNA wall with a "CORS policy" console line; teams "fix" it with proxies. It's address-space policy, not CORS.</div>
+    <div class="check"><span class="tag md">MED</span><b>multi-port dev stacks</b> — CORRECTED 2026-11-15: sibling-localhost CSS loads everywhere (the PNA-wall claim was mis-scoped); the real audit target is <b>public pages loading localhost CSS</b> (LNA-gated on Chromium, mixed-content-walled on WebKit) — see the LNA tier.</div>
     <div class="check med"><span class="tag med">MED</span><b>engine-dropped rules assumed universal</b> — ::checkmark/::picker-icon rules vanish from FF sheets (16 vs 14 rules in the §1 census); count-based sheet assertions diverge per engine.</div>
     <div class="check med"><span class="tag med">MED</span><b>snapshot tests on raw cssText</b> — the type-selector case split (CfT lowercases), keyframe from/to→0%/100%, FF's bold-700 retention, indentation — normalize before diffing.</div>
     <div class="check med"><span class="tag med">MED</span><b>rule.cssRules.insertRule(...)</b> — the wrong call shape (TypeError "not a function", 3/3) mistaken for missing nesting support; the methods live on the rule.</div>
@@ -454,7 +454,7 @@ var ENG = (function () {
   var html = '<tr><th>lane</th><th>CfT 149</th><th>FF 1532</th><th>WK 26.5</th></tr>';
   html += '<tr><td>public CSS, no crossorigin</td><td>SecurityError</td><td>SecurityError</td><td>SecurityError</td></tr>';
   html += '<tr><td>crossorigin + ACAO</td><td class="mono">loopback→PNA</td><td class="mono" style="color:var(--ok)">READABLE n=1</td><td class="mono" style="color:var(--ok)">READABLE n=1</td></tr>';
-  html += '<tr><td>loopback→loopback (other port)</td><td style="color:var(--bad)">load BLOCKED (PNA)</td><td style="color:var(--ok)">loads + applies</td><td style="color:var(--ok)">loads + applies</td></tr>';
+  html += '<tr><td>loopback→loopback (other port)</td><td style="color:var(--ok)">loads + applies (corrected 11/15)</td><td style="color:var(--ok)">loads + applies</td><td style="color:var(--ok)">loads + applies</td></tr>';
   html += '<tr><td>use-credentials + wildcard ACAO</td><td>blocked</td><td>empty sheet</td><td>SecurityError</td></tr>';
   tbl.innerHTML = html;
 })();
@@ -678,7 +678,7 @@ var ENG = (function () {
     ['keyframes findRule 100%/FROM', 'found/found', 'found/found', 'found/found'],
     ['layer rule type', '0', '0', '0'],
     ['public cross-origin cssRules', 'SecurityError', 'SecurityError', 'SecurityError'],
-    ['loopback→loopback CSS load', 'BLOCKED (PNA)', 'loads', 'loads']
+    ['loopback→loopback CSS load', 'loads (corrected 11/15)', 'loads', 'loads']
   ];
   var html = '<tr><th>lane</th><th>CfT 149</th><th>FF nightly</th><th>WK 26.5</th></tr>';
   rows.forEach(function (r) { html += '<tr><td>' + esc(r[0]) + '</td><td class="mono">' + esc(r[1]) + '</td><td class="mono">' + esc(r[2]) + '</td><td class="mono">' + esc(r[3]) + '</td></tr>'; });
